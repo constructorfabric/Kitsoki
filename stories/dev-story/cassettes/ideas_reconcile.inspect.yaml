@@ -1,0 +1,61 @@
+kind: inspect_cassette
+interactions:
+  - op: read
+    target: ideas.md
+    out: |
+      # Ideas
+
+      Intro survives.
+
+      ## Ideas
+
+      - react UI
+      - tests are slow
+      - keep this
+  - op: read
+    target: .artifacts/ideas-review/latest.json
+    out: |
+      {
+        "summary": "Two parked items have shipped; backlog needs two moves.",
+        "reclassifications": [
+          {
+            "item": "react UI",
+            "from": "ideas",
+            "to": "partial",
+            "evidence": "docs/proposals/web-ui.md - SPA partially landed",
+            "confidence": 0.7
+          },
+          {
+            "item": "tests are slow",
+            "from": "ideas",
+            "to": "done",
+            "evidence": "commit f085566 - fast test budget enforced",
+            "confidence": 0.9
+          }
+        ],
+        "candidates": [
+          {
+            "item": "react UI",
+            "rationale": "high-visibility surface; partial scaffolding exists",
+            "effort": "large"
+          }
+        ]
+      }
+  - op: write
+    target: ideas.md
+    out: |
+      # Ideas
+
+      Intro survives.
+
+      ## Done
+
+      - tests are slow
+
+      ## Partial / in progress
+
+      - react UI
+
+      ## Ideas
+
+      - keep this

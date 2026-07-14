@@ -33,7 +33,8 @@ type InspectCassette struct {
 // Op is one of read|exists|glob|probe; Target is the path/pattern/probe-name;
 // Exit is the probe exit code (0 for fs ops); Out is the recorded payload — file
 // bytes (read), probe output (probe). For exists, Out "true"/"false" encodes the
-// result; for glob, Out is a newline-joined path list.
+// result; for glob, Out is a newline-joined path list. For write, Out is the
+// expected content; replay consumes it without touching disk.
 type InspectInteraction struct {
 	Op     string `yaml:"op" json:"op"`
 	Target string `yaml:"target" json:"target"`
@@ -143,6 +144,21 @@ func (r *ReplayInspector) Glob(_ context.Context, pattern string) ([]string, err
 	}
 	r.inspections = append(r.inspections, InspectExchange{Op: "glob", Target: pattern, Status: fmt.Sprintf("matched:%d", len(matches))})
 	return matches, nil
+}
+
+// Write replays a recorded write interaction without touching disk.
+func (r *ReplayInspector) Write(_ context.Context, path string, content []byte) (string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	it := r.match("write", path)
+	if it == nil {
+		return "", r.missError("write", path)
+	}
+	if it.Out != string(content) {
+		return "", fmt.Errorf("starlark inspect replay: write %s content mismatch", path)
+	}
+	r.inspections = append(r.inspections, InspectExchange{Op: "write", Target: path, Status: "ok"})
+	return path, nil
 }
 
 // Probe replays a recorded probe interaction.

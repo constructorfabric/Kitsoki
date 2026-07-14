@@ -17,7 +17,10 @@
 #   kitsoki web                          # then pick the provider in the header
 #   # …or in the TUI:  /provider synthetic-claude  ·  /model 2
 #
-# See docs/architecture/harness-profiles.md for the full reference.
+# See docs/guide/agents/harness-profiles.md for profiles and
+# docs/guide/agents/launch-policy.md for the local agent launch guard.
+# If you want agents confined to capsules and kept out of this checkout, put
+# `agent_launch_policy:` in `.kitsoki.local.yaml`, not this shared baseline.
 
 default_profile: claude-native
 
@@ -28,6 +31,34 @@ story_dirs:
   - ./stories
 
 harness_profiles:
+  # Your native OpenAI Codex subscription (ambient auth — nothing to set).
+  # This makes a declared GPT-5.4 comparison cell resolve to the same worker
+  # model for every operator who has the Codex CLI available.
+  codex-gpt54:
+    backend: codex
+    model: gpt-5.4
+    models: [gpt-5.4]
+    effort: medium
+    efforts: [low, medium, high, xhigh, max]
+
+  # Pinned small Codex cohort for task optimization. Keeping this distinct
+  # prevents a larger model from silently standing in for the requested cell.
+  codex-gpt54-mini:
+    backend: codex
+    model: gpt-5.4-mini
+    models: [gpt-5.4-mini]
+    effort: medium
+    efforts: [low, medium, high, xhigh, max]
+
+  # Dedicated native Codex tier. This uses the same ambient authentication as
+  # codex-gpt54, so it is a shared profile rather than a secret local overlay.
+  codex-spark:
+    backend: codex
+    model: gpt-5.3-codex-spark
+    models: [gpt-5.3-codex-spark]
+    effort: medium
+    efforts: [low, medium, high, xhigh, max]
+
   # Your native Anthropic Claude Code subscription (ambient auth — nothing to
   # set). claude supports a model selector (short names) and --effort.
   claude-native:
@@ -36,3 +67,19 @@ harness_profiles:
     models: [opus, sonnet, haiku]
     effort: medium
     efforts: [low, medium, high, xhigh, max]
+
+  # Stable study pin for the requested low-effort Sonnet cohort. This uses
+  # ambient Claude auth and only selects values already supported by the
+  # baseline Claude profile above.
+  claude-sonnet-low:
+    backend: claude
+    model: sonnet
+    models: [sonnet]
+    effort: low
+    efforts: [low, medium, high, xhigh, max]
+
+  # Your native Google Antigravity (agy CLI) subscription (ambient auth — nothing to set).
+  agy-native:
+    backend: agy
+    model: gemini-3.5-flash
+    models: [gemini-3.5-flash, gemini-3.5-pro, gemini-next]

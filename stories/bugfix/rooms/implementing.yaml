@@ -23,30 +23,55 @@ states:
           text:     "IMPLEMENTING"
           subtitle: "Phase 3 / 7  ·  apply the proposed fix to the workspace"
           color:    "#8B5CF6"   # violet — doing the work
+      - banner:
+          text:     "ACTION NEEDED: IMPLEMENTER BLOCKED"
+          subtitle: "The artifact says applied=false. Continue stops at needs-human; refine retries with operator guidance."
+          color:    "#DC2626"
+        when: "world.implement_artifact.applied == false"
+      - banner:
+          text:     "FIX APPLIED"
+          subtitle: "Structured artifact reports applied=true; continue advances to testing."
+          color:    "#16A34A"
+        when: "world.implement_artifact.applied == true"
       - prose: "{{ world.ticket_id|default:'(no ticket)' }} · cycle {{ world.cycle }} · {{ world.bugfix_mode }} bugfix · judge {{ world.judge_mode }}"
       - kv:
           pairs:
             Ticket:           "{{ world.ticket_id }} — {{ world.ticket_title }}"
             Workspace:        '{{ world.workspace_id|default:"—" }}{% if world.workdir %}  ·  {{ world.workdir }}{% endif %}'
             "Feature branch": '{{ world.feature_branch|default:"—" }}'
+            "Action surface":  '{{ world.implementation_mode|default:"agent_task" }}'
             Applied:          '{{ world.implement_artifact.summary_title|default:"(pending — agent has not returned yet)" }}'
             Status:           '{% if world.implement_artifact.applied == false %}blocked{% elif world.implement_artifact.summary_title %}applied{% else %}(pending){% endif %}'
             Files:            '{{ world.implement_artifact.files_changed|join:", "|default:"(none recorded)" }}'
-      - heading: "Artifact"
-      - code: '{{ world.implement_artifact.summary_markdown|default:"(no implementation body — agent pending or failed)" }}'
+            "Continue does":   '{% if world.implement_artifact.applied == false %}stop at needs-human{% elif world.implement_artifact.summary_title %}advance to testing{% else %}wait for implementation artifact{% endif %}'
+      - heading: "Action needed"
+        when: "world.implement_artifact.applied == false || world.implement_artifact.blockers"
+      - prose: "The implementer did not complete the requested edit. Use refine with concrete guidance, or continue to stop the run for human attention."
+        when: "world.implement_artifact.applied == false"
       - heading: "Blockers"
-        when:  "world.implement_artifact.blockers"
+        when: "world.implement_artifact.blockers"
       - code: |
           {% for b in world.implement_artifact.blockers %}- {{ b }}
           {% endfor %}
         when: "world.implement_artifact.blockers"
+      - heading: "Summary"
+      - template: '{{ world.implement_artifact.summary_markdown|default:"(no implementation body — agent pending or failed)" }}'
+      - prose: 'Detailed implementation report: {{ world.implement_artifact.report_path|default:"(not written)" }}'
       - choice:
           mode: single
           prompt: "Actions"
           items:
-            - label:  "continue"
-              hint:   "advance to testing"
+            - label:  "{% if world.implement_artifact.applied == false %}blocked: stop run{% else %}continue{% endif %}"
+              hint:   "{% if world.implement_artifact.applied == false %}ACTION NEEDED: stop at needs-human with the implementation blockers{% else %}advance to testing{% endif %}"
               intent: accept
+            - label:  "refine"
+              hint:   "retry implementation with feedback"
+              intent: refine
+              param:
+                slot:        feedback
+                type:        string
+                placeholder: "what the implementer should do next"
+                required:    false
             - label:  "restart from reproducing"
               hint:   "bounce back to phase 1 (resets cycle)"
               intent: restart_from
@@ -61,7 +86,7 @@ states:
             - label:  "look"
               hint:   "re-render"
               intent: look
-    relevant_world: [ticket_id, ticket_title, workspace_id, workdir, feature_branch, propose_fix_artifact, implement_artifact, reproduction_artifact, gate_command, landing_gate, repro_committed, test_cmd, repro_gate_ran, repro_gate_ok, repro_baseline_green, repro_test_red, repro_gate_summary]
+    relevant_world: [ticket_id, ticket_title, workspace_id, workdir, feature_branch, implementation_mode, propose_fix_artifact, implement_artifact, codeact_implement_steps, reproduction_artifact, gate_command, landing_gate, repro_committed, test_cmd, repro_gate_ran, repro_gate_ok, repro_baseline_green, repro_test_red, repro_gate_summary]
     on_enter:
       # Self-heal the workspace before we touch it. bf.idle's auto-
       # create only runs when `!bf_autostart_attempted`, so once that
@@ -70,22 +95,25 @@ states:
       # — process restart, manual `rm -rf`, a prior aborted create —
       # would fail at sync below with `on_error: idle` and silently
       # bounce. iface.workspace.create is idempotent (returns ok when
-      # the worktree is already registered at our path with our
-      # branch; reattaches an orphaned branch when the dir was
-      # deleted), so calling it here costs nothing in the happy case
-      # and rescues the bounce case.
+      # the managed workspace already exists at our path with our branch), so
+      # calling it here costs nothing in the happy case and rescues the bounce
+      # case.
       # Idempotent re-create: same cut-point precedence as the idle autostart
       # (explicit base_commit, else base_branch) so a bounce-recovery rebuild
       # lands on the same baseline the reproducer used.
       - when: "world.workspace_id != '' && world.feature_branch != ''"
         invoke: iface.workspace.create
         with:
-          id:   "{{ world.workspace_id }}"
-          name: "{{ world.feature_branch }}"
-          base: "{{ world.base_commit != '' ? world.base_commit : world.base_branch }}"
+          id:         "{{ world.workspace_id }}"
+          definition: "development"
+          name:       "{{ world.feature_branch }}"
+          base:       "{{ world.base_commit != '' ? world.base_commit : world.base_branch }}"
+        bind:
+          workdir:        path
+          feature_branch: branch
         on_error: idle
       # The iface.workspace.sync + iface.vcs.commit are the workspace-
-      # side write seams (instance bindings: host.git_worktree / host.git
+      # side write seams (instance bindings: host.capsule_workspace / host.git
       # in kitsoki-dev). Guarded on non-empty ids so dogfood walks
       # without an isolated worktree degrade to a narrative-only beat
       # instead of bouncing to idle via on_error.
@@ -146,15 +174,16 @@ states:
             - |
               set +e
               export GIT_TERMINAL_PROMPT=0 GIT_PAGER=cat
-              WT="{{ world.workdir }}"
-              cd "$WT" || { printf '{"sha":"","committed":false}\n'; exit 0; }
+              # host.run already chdirs the child into cwd (world.workdir); do NOT
+              # re-apply world.workdir here — it is a RELATIVE path in production
+              # and a second cd/git -C would nest it under the already-chdir'd cwd.
               git add -A
               git reset -q -- .kitsoki-owner 2>/dev/null
               if git diff --cached --quiet; then
                 printf '{"sha":"","committed":false}\n'
               else
                 git commit -q -m "test(repro): RED reproducer for {{ world.ticket_id }}" >/dev/null 2>&1
-                printf '{"sha":"%s","committed":true}\n' "$(git -C "$WT" rev-parse HEAD)"
+                printf '{"sha":"%s","committed":true}\n' "$(git rev-parse HEAD)"
               fi
           cwd: "{{ world.workdir }}"
         on_error: idle
@@ -178,11 +207,24 @@ states:
       # failed/blocked accept arms, validating's fail_short arm, and the
       # restart_from-to-implementing arms — clears implement_artifact to
       # re-arm the apply.
-      - when: "world.workdir != ''"
+      - when: "world.workdir != '' && world.implementation_mode != 'codeact' && world.implementation_mode != 'codeact_decomposed' && world.implementation_mode != 'codeact_decomposed_fallback'"
         invoke: host.agent.task
         once: true
         with:
           agent: implementer
+          # The implementer is a write-capable live subprocess. Supervision
+          # gives strict MCP an explicit runtime terminal event and a bounded
+          # failure instead of an opaque indefinitely-running implementation
+          # phase when a provider exits without a valid submit.
+          sandbox:
+            min_strength: supervised
+            degrade: warn
+            # Provider-backed worker profiles authenticate through the
+            # operator's Claude home. Keep it for this explicitly live call.
+            auth_home: inherit
+            resources:
+              timeout: "15m"
+              activity_timeout: "90s"
           working_dir: "{{ world.workdir }}"
           acceptance:
             schema: schemas/implementing_artifact.json
@@ -191,6 +233,7 @@ states:
             args:
               ticket_id:        "{{ world.ticket_id }}"
               ticket_title:     "{{ world.ticket_title }}"
+              ticket_body:      "{{ world.ticket_body }}"
               workdir:          "{{ world.workdir }}"
               fix_description:  "{{ world.propose_fix_artifact.fix_description }}"
               root_cause:       "{{ world.propose_fix_artifact.root_cause }}"
@@ -203,6 +246,95 @@ states:
               cycle:            "{{ world.cycle }}"
         bind:
           implement_artifact: submitted
+        on_error: idle
+
+      # Strict decomposed CodeAct is deliberately a separate action surface.
+      # It selects one compiler-normalized item, grants exactly that item's
+      # Starlark capabilities, and runs a host-owned deterministic gate after
+      # the item.  Missing/invalid plans fail closed through on_error; this
+      # branch never falls back to the broad `codeact` grant.
+      - when: "world.workdir != '' && (world.implementation_mode == 'codeact_decomposed' || world.implementation_mode == 'codeact_decomposed_fallback') && len(world.compiled_implementation_plan) > world.decomposed_implementation_index"
+        invoke: host.agent.codeact
+        id: execute_implementation_item
+        once: true
+        with:
+          agent: implementer
+          working_dir: "{{ world.workdir }}"
+          budget: "{{ world.compiled_implementation_plan[world.decomposed_implementation_index].max_steps }}"
+          capabilities:
+            world: read
+            fs:
+              read: "{{ world.compiled_implementation_plan[world.decomposed_implementation_index].read_paths }}"
+              write: "{{ world.compiled_implementation_plan[world.decomposed_implementation_index].write_paths }}"
+              max_bytes: "{{ world.compiled_implementation_plan[world.decomposed_implementation_index].capabilities.fs.max_bytes }}"
+            vcs: read
+          schema: schemas/implementing_artifact.json
+          goal: >-
+            Implement exactly work item {{ world.compiled_implementation_plan[world.decomposed_implementation_index].id }} in
+            the working tree rooted at {{ world.workdir }}. Objective:
+            {{ world.compiled_implementation_plan[world.decomposed_implementation_index].objective }}. Evidence:
+            {{ join(world.compiled_implementation_plan[world.decomposed_implementation_index].evidence_refs ?? [], "; ") }}.
+            Invariants: {{ join(world.compiled_implementation_plan[world.decomposed_implementation_index].invariants ?? [], "; ") }}.
+            Expected artifacts: {{ join(world.compiled_implementation_plan[world.decomposed_implementation_index].expected_artifacts ?? [], ", ") }}.
+            Prior accepted item outputs: {{ world.decomposed_completed_summary ?? '(none)' }}.
+            Act only through Starlark snippets and the granted capability map.
+            Do not run commands, inspect paths outside the grant, or implement a
+            different item. The host runs acceptance commands after done(); do
+            not claim they ran. Finish with implementing_artifact payload.
+          world:
+            ticket_id: "{{ world.ticket_id }}"
+            work_item: "{{ world.compiled_implementation_plan[world.decomposed_implementation_index] }}"
+            prior_accepted_outputs: "{{ world.decomposed_completed_summary }}"
+        bind:
+          implement_artifact: payload
+          codeact_implement_steps: steps
+        on_error: idle
+
+      - when: "world.workdir != '' && world.implementation_mode == 'codeact'"
+        invoke: host.agent.codeact
+        once: true
+        with:
+          agent: implementer
+          working_dir: "{{ world.workdir }}"
+          budget: 10
+          capabilities:
+            world: read
+            fs:
+              read: ["**"]
+              write: ["**"]
+              max_bytes: 1048576
+            vcs: read
+          schema: schemas/implementing_artifact.json
+          goal: >-
+            Implement the proposed fix for {{ world.ticket_id }} —
+            {{ world.ticket_title }} inside the working tree rooted at
+            {{ world.workdir }}. Act only through Starlark snippets: inspect
+            files with ctx.fs.glob/read/exists, modify files with ctx.fs.write,
+            and inspect git state with ctx.probe("git.status") or
+            ctx.probe("git.ls_files"). Do not assume Bash, Python, Node, or
+            direct editor tools exist. The proposal says:
+            {{ world.propose_fix_artifact.fix_description }}
+            Root cause: {{ world.propose_fix_artifact.root_cause }}.
+            Affected files: {{ join(world.propose_fix_artifact.affected_files ?? [], ", ") }}.
+            {% if world.refine_feedback %}Refinement directive:
+            {{ world.refine_feedback }}{% endif %}
+            Apply the smallest correct edit, leave the workspace dirty for the
+            pipeline commit step, and finish by calling done() with a payload
+            matching schemas/implementing_artifact.json. Set applied=false with
+            concrete blockers if you cannot safely make the edit through the
+            granted CodeAct surface.
+          world:
+            ticket_id:        "{{ world.ticket_id }}"
+            ticket_title:     "{{ world.ticket_title }}"
+            workdir:          "{{ world.workdir }}"
+            fix_description:  "{{ world.propose_fix_artifact.fix_description }}"
+            root_cause:       "{{ world.propose_fix_artifact.root_cause }}"
+            affected_files:   "{{ world.propose_fix_artifact.affected_files }}"
+            refine_feedback:  "{{ world.refine_feedback }}"
+            cycle:            "{{ world.cycle }}"
+        bind:
+          implement_artifact: payload
+          codeact_implement_steps: steps
         on_error: idle
 
       - when: "world.workdir != ''"
@@ -225,7 +357,53 @@ states:
         say: "Fix applied — {{ world.implement_artifact.summary_title|default:world.propose_fix_artifact.summary_title }}"
     on:
       accept:
+        # No decomposed item advances without an independently executed gate.
+        # One bounded re-run returns the exact gate diagnostic to that same
+        # item; a second failure is explicit needs-human rather than a broad
+        # fallback or an unbounded repair loop.
+        - when: "(world.implementation_mode == 'codeact_decomposed' || world.implementation_mode == 'codeact_decomposed_fallback') && world.implement_artifact.applied == true"
+          target: implementation_gating
+          effects:
+            - set:
+                decomposed_active_item: "{{ world.compiled_implementation_plan[world.decomposed_implementation_index] }}"
+        # The only fallback in the treatment ladder is one same-item retry. It
+        # requires a schema-typed reason explicitly allowed by the compiler's
+        # immutable item plan. Clearing the artifact re-arms the exact same
+        # CodeAct invocation; the capabilities remain derived from that item.
+        - when: "world.implementation_mode == 'codeact_decomposed_fallback' && world.implement_artifact.applied == false && world.decomposed_fallback_attempt == 0 && world.implement_artifact.fallback_reason in world.compiled_implementation_plan[world.decomposed_implementation_index].fallback_reason_allowlist"
+          target: implementing
+          effects:
+            - set:
+                decomposed_fallback_attempt: "{{ world.decomposed_fallback_attempt + 1 }}"
+                decomposed_fallback_reason: "{{ world.implement_artifact.fallback_reason }}"
+                decomposed_fallback_item_id: "{{ world.compiled_implementation_plan[world.decomposed_implementation_index].id }}"
+                refine_feedback: "Recorded allowlisted fallback reason {{ world.implement_artifact.fallback_reason }} for {{ world.compiled_implementation_plan[world.decomposed_implementation_index].id }}. Retry only this item with the unchanged capability grant."
+                implement_artifact: {}
+                codeact_implement_steps: []
+        - when: "world.implement_artifact.applied == false"
+          target: "@exit:needs-human"
+          effects:
+            - set:
+                last_error: "implementation blocked before tests could run: {{ world.implement_artifact.summary_markdown }}"
+                status:     "needs-human"
         - target: testing
+
+      refine:
+        - when: "world.implementing_cycle >= world.implementing_budget"
+          target: "@exit:abandoned"
+          effects:
+            - set:
+                abandon_reason: "implementing_cycle_budget_exhausted_after_implementation_refine"
+                status:         "abandoned"
+        - target: implementing
+          effects:
+            - set:
+                refine_feedback:           "{{ slots.feedback ?? '' }}"
+                implementing_cycle:        "{{ world.implementing_cycle + 1 }}"
+                cycle:                     "{{ world.cycle + 1 }}"
+                implement_artifact:        {}
+                implement_review_artifact: {}
+                validate_artifact:         {}
 
       restart_from:
         - when: "slots.stage == 'reproducing'"
@@ -268,6 +446,92 @@ states:
                 # Clear proposing's once: bind so it re-runs fresh.
                 propose_fix_artifact: {}
 
+      quit:
+        - target: "@exit:abandoned"
+      look:
+        - target: .
+
+  # A separate state makes the host-owned acceptance command a distinct turn:
+  # foreground on_enter calls are selected before prior binds exist, so keeping
+  # this boundary prevents a CodeAct done payload from being mistaken for a
+  # gate result in the same dispatch batch.
+  implementation_gating:
+    description: "Run the focused deterministic gate for one decomposed implementation item."
+    relevant_world: [implementation_mode, compiled_implementation_plan, decomposed_implementation_index, decomposed_gate, decomposed_gate_attempt, implement_artifact]
+    view:
+      - banner:
+          text: "IMPLEMENTATION GATE"
+          subtitle: "Strict CodeAct item verification"
+          color: "#3B82F6"
+      - prose: "The host, not CodeAct, ran the selected item's focused acceptance command."
+      - kv:
+          pairs:
+            Item: "{{ world.decomposed_active_item.id }}"
+            Gate: '{{ world.decomposed_gate.ok|default:"(pending)" }} (exit {{ world.decomposed_gate.exit_code|default:"(pending)" }})'
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: continue
+              hint: "accept the gate and advance, or retry the same item"
+              intent: accept
+            - label: quit
+              intent: quit
+            - label: look
+              intent: look
+    on_enter:
+      - invoke: host.run
+        id: gate_implementation_item
+        once: true
+        with:
+          cmd: bash
+          args:
+            - "-o"
+            - pipefail
+            - "-c"
+            - "{{ world.decomposed_active_item.acceptance_gate_command }}"
+          cwd: "{{ world.workdir }}"
+          timeout: 5m
+          fail_on_error: false
+        bind:
+          decomposed_gate: stdout_json
+        on_error: idle
+    on:
+      accept:
+        - when: "world.decomposed_gate.ok != true && world.decomposed_gate_attempt >= 1"
+          target: "@exit:needs-human"
+          effects:
+            - set:
+                last_error: "implementation item {{ world.decomposed_active_item.id }} failed its deterministic acceptance gate (exit {{ world.decomposed_gate.exit_code }})."
+                status: "needs-human"
+        - when: "world.decomposed_gate.ok != true"
+          target: implementing
+          effects:
+            - set:
+                decomposed_gate_attempt: "{{ world.decomposed_gate_attempt + 1 }}"
+                refine_feedback: "Acceptance gate for {{ world.decomposed_active_item.id }} failed (exit {{ world.decomposed_gate.exit_code }}). Fix only this item under the same capability grant."
+                implement_artifact: {}
+                codeact_implement_steps: []
+                decomposed_gate: {}
+        - when: "world.decomposed_implementation_index + 1 < len(world.compiled_implementation_plan)"
+          target: implementing
+          effects:
+            - set:
+                decomposed_completed_summary: "{{ world.decomposed_completed_summary }}\n{{ world.decomposed_active_item.id }}: {{ world.implement_artifact.summary_title }} — {{ world.implement_artifact.summary_markdown }}"
+                decomposed_implementation_index: "{{ world.decomposed_implementation_index + 1 }}"
+                decomposed_gate_attempt: 0
+                decomposed_fallback_attempt: 0
+                decomposed_fallback_reason: ""
+                decomposed_fallback_item_id: ""
+                refine_feedback: ""
+                implement_artifact: {}
+                codeact_implement_steps: []
+                decomposed_gate: {}
+                decomposed_active_item: {}
+        - target: testing
+          effects:
+            - set:
+                decomposed_completed_summary: "{{ world.decomposed_completed_summary }}\n{{ world.decomposed_active_item.id }}: {{ world.implement_artifact.summary_title }} — {{ world.implement_artifact.summary_markdown }}"
       quit:
         - target: "@exit:abandoned"
       look:

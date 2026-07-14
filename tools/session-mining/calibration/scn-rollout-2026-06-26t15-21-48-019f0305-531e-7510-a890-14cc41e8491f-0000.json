@@ -1,0 +1,22 @@
+{
+  "schema_version": "1.0",
+  "kind": "conversation",
+  "id": "scn-rollout-2026-06-26t15-21-48-019f0305-531e-7510-a890-14cc41e8491f-0000",
+  "source": "mined",
+  "provenance": {
+    "corpus": "codex",
+    "session_id": "rollout-2026-06-26T15-21-48-019f0305-531e-7510-a890-14cc41e8491f",
+    "span_idx": 0
+  },
+  "persona": "explorer",
+  "goal": "is there an rrweb viewer extension for vs code?",
+  "turns": [
+    {
+      "role": "user",
+      "text": "is there an rrweb viewer extension for vs code?",
+      "corrected": false
+    }
+  ],
+  "expected_effects": [],
+  "abandoned": false
+}

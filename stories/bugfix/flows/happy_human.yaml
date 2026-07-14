@@ -38,7 +38,7 @@ host_cassette: ../cassettes/happy_human.cassette.yaml
 host_bindings:
   vcs:       host.git
   ci:        host.local
-  workspace: host.git_worktree
+  workspace: host.capsule_workspace
   transport: host.append_to_file
 
 turns:

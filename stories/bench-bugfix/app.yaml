@@ -6,11 +6,11 @@
 # live under any harness profile (codex-native → GPT-5.5, synthetic-claude →
 # GLM-5.2) against a prepared worktree, and grade the resulting fix.
 #
-# Host bindings are the local file/git/CI seam. The full
-# bug description is carried in `ticket_title` (the reproducing room forwards
-# ticket_id + ticket_title to the reproducer; no ticket file is read), so a rich
-# initial_world.ticket_title is all the model needs. judge_mode defaults to `llm`
-# so the review/validate gates auto-advance headlessly.
+# Host bindings are the local file/git/CI seam. Drivers seed the public ticket
+# summary in `ticket_title` and may seed its complete public report in
+# `ticket_body`; the latter is forwarded to the reproducer rather than read from
+# a potentially hidden issue file. judge_mode defaults to `llm` so the
+# review/validate gates auto-advance headlessly.
 app:
   id: bench-bugfix
   version: 0.1.0
@@ -20,17 +20,29 @@ app:
 
 hosts:
   - host.local_files.ticket
+  - host.gh.ticket.comment
+  - host.gh.ticket.get
+  - host.gh.ticket.transition
   - host.git
   - host.local
   - host.git_worktree
+  - host.capsule_workspace
   - host.append_to_file
+  - host.starlark.run
   - host.inbox.add
   - host.agent.ask
   - host.agent.decide
   - host.agent.task
+  - host.agent.codeact
   - host.diff.open
   - host.run
   - host.artifacts_dir
+  # bf's opt-in editor-awareness pull (WS-C C3, validating room). `hosts:
+  # declared` on the bf import is strict — every child host bind must be
+  # listed here even though bugfix_exit is pinned to open-PR below (the
+  # room still runs on_enter regardless of the exit slot).
+  - host.ide.get_diagnostics
+  - host.capsule_workspace
 
 imports:
   bf:
@@ -46,25 +58,40 @@ imports:
     world_in:
       ticket_id:       "{{ world.ticket_id }}"
       ticket_title:    "{{ world.ticket_title }}"
+      ticket_body:     "{{ world.ticket_body }}"
       ticket_url:      "{{ world.ticket_url }}"
+      ticket_repo:     "{{ world.ticket_repo }}"
       thread:          "{{ world.thread }}"
       workspace_id:    "{{ world.workspace_id }}"
       workdir:         "{{ world.workdir }}"
+      # The paired-task runner owns this already-isolated checkout. Propagate
+      # the explicit ownership marker into bugfix so its autostart guard never
+      # tries to replace it with a story-created workspace.
+      workspace_prepared: "{{ world.workspace_prepared }}"
       base_branch:     "{{ world.base_branch }}"
       feature_branch:  "{{ world.feature_branch }}"
       bugfix_mode:     "{{ world.bugfix_mode }}"
+      implementation_mode: "{{ world.implementation_mode }}"
       # End at the PR-ready close-out (reviewing → validating → done); no push.
       bugfix_exit:     "open-PR"
       judge_mode:      "{{ world.judge_mode }}"
       test_cmd:        "{{ world.test_cmd }}"
       build_cmd:       "{{ world.build_cmd }}"
       gate_command:    "{{ world.gate_command }}"
+      acceptance_contract: "{{ world.acceptance_contract }}"
+      acceptance_base_sha: "{{ world.acceptance_base_sha }}"
       bf_autostart_attempted: "{{ world.bf_autostart_attempted }}"
       # Autonomous benchmark/dogfood runs want ACTIVE escalation: quit early to
       # needs-human on a mis-scoped reproduction / low-confidence proposal / budget
       # exhaustion rather than grinding a low-value fix (see #47). Overridable per
       # session via initial_world.escalate_low_value.
       escalate_low_value: "{{ world.escalate_low_value }}"
+      # Bench cells pin a KNOWN-LIVE pre-fix baseline (base_commit), so bf's
+      # auto_triage pre-flight would be pure redundant spend (and a mistaken
+      # ALREADY-FIXED would silently drop the cell at @exit:triaged).
+      # Overridable per session via initial_world.auto_triage for benches that
+      # want to measure the triage stage itself.
+      auto_triage: "{{ world.auto_triage }}"
     exits:
       done:             { to: finished }
       abandoned:        { to: finished }
@@ -73,6 +100,11 @@ imports:
       needs-human:      { to: finished }
       not-reproducible: { to: finished }
       triaged:          { to: finished }
+      # bf's opt-in CI-watch/merge tail (WS-C C3, bugfix_exit=open-PR-merge).
+      # bugfix_exit is pinned to "open-PR" above so this is unreachable from
+      # this bench harness today — mapped so the loader's every-exit-covered
+      # check passes.
+      merged:           { to: finished }
 
 # Generic world — everything seeded per session via initial_world. The defaults
 # below are benchmark-neutral; a driver overrides ticket_id/ticket_title/workdir/
@@ -80,19 +112,27 @@ imports:
 world:
   ticket_id:       { type: string, default: "" }
   ticket_title:    { type: string, default: "" }
+  # Optional complete public report. Paired raw/MCP cells receive the same
+  # task-supplied body; a benchmark never reads a hidden oracle through this key.
+  ticket_body:     { type: string, default: "" }
   ticket_url:      { type: string, default: "" }
+  ticket_repo:     { type: string, default: "" }
   thread:          { type: string, default: "" }
   workspace_id:    { type: string, default: "" }
   workdir:         { type: string, default: "" }
+  workspace_prepared: { type: bool, default: false }
   base_branch:     { type: string, default: "main" }
   feature_branch:  { type: string, default: "" }
   bugfix_mode:     { type: string, default: "full" }
+  implementation_mode: { type: string, default: "agent_task" }
   judge_mode:      { type: string, default: "llm" }
   test_cmd:        { type: string, default: "" }
   build_cmd:       { type: string, default: "" }
   # gate_command empty ⇒ skip the deterministic pre-fix RED-gate (LLM-only
   # reproduction); the hidden oracle is NEVER exposed to the pipeline.
   gate_command:    { type: string, default: "" }
+  acceptance_contract: { type: list, default: [] }
+  acceptance_base_sha: { type: string, default: "" }
   # true ⇒ bf.idle does NOT auto-derive workspace_id/feature_branch/workdir or
   # auto-create a worktree (which would clobber the pre-prepared workdir and try
   # to create a worktree in the wrong repo). The driver seeds workdir +
@@ -102,6 +142,11 @@ world:
   # low-confidence proposal / budget exhaustion instead of grinding. Default true
   # for autonomous runs; override per session via initial_world.
   escalate_low_value: { type: bool, default: true }
+  # bf's auto_triage pre-flight is OFF by default here: bench cells pin a
+  # known-live pre-fix baseline, so a triage verdict is redundant spend and a
+  # mistaken ALREADY-FIXED would drop the cell at @exit:triaged. Override per
+  # session via initial_world for benches measuring the triage stage itself.
+  auto_triage: { type: bool, default: false }
 
 states:
   finished:

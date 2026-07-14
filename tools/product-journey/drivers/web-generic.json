@@ -1,0 +1,22 @@
+{
+  "id": "web-generic",
+  "label": "Generic Playwright/browser surface",
+  "app_kind": "web",
+  "capabilities": {
+    "visual.open": ["mcp__browser__navigate"],
+    "visual.observe": ["mcp__browser__observe", "mcp__browser__screenshot"],
+    "visual.act": ["mcp__browser__click", "mcp__browser__fill", "mcp__browser__press"],
+    "session.open": ["mcp__browser__navigate"],
+    "session.status": ["mcp__browser__observe"],
+    "session.submit": ["mcp__browser__press", "mcp__browser__click"],
+    "session.drive": ["mcp__browser__click", "mcp__browser__fill", "mcp__browser__press"],
+    "session.inspect": ["mcp__browser__observe", "mcp__browser__console", "mcp__browser__network"],
+    "session.trace": ["mcp__browser__console", "mcp__browser__network"],
+    "render.tui": ["mcp__browser__screenshot"]
+  },
+  "affordances": {},
+  "evidence_contract": {
+    "web": {"primary_tool": "mcp__browser__screenshot", "evidence_kind": "browser_screenshot", "level": "frame-level"}
+  },
+  "oracles": []
+}

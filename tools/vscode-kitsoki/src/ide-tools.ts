@@ -8,27 +8,22 @@
 // handlers (internal/host/ide_handlers.go) normalise them, so fidelity here is
 // load-bearing.
 //
-// openDiff is intentionally a thin stub in this slice (returns {ok:true}); the
-// native diff + accept/reject verdict gate land in DiffController (see
-// ide-diff.ts) and replace this method. Everything else is the genuine,
-// hand-drivable behaviour.
+// openDiff without a registered DiffController THROWS (never fabricates a
+// verdict — see openDiff's doc comment for why); the native diff +
+// accept/reject verdict gate live in DiffController (see ide-diff.ts).
+// Everything else is the genuine, hand-drivable behaviour.
 
 import * as vscode from 'vscode';
 import * as path from 'node:path';
-import { ChatPanel } from './webview';
 import type { DiffController } from './ide-diff';
 
 /**
  * The editor column kitsoki opens host.ide documents (brief / PRD / diff) into.
- * It must be BESIDE the popped-out chat — never ON it — so the conversation
- * (the operator's inputs + the agent's replies) stays visible alongside the
- * file/diff. When the chat is popped out we target the column just past it (a
- * stable left=chat / right=docs split); otherwise we fall back to Beside the
- * active editor (the sidebar chat is always visible anyway).
+ * Chat lives in the bottom panel, outside the editor grid, so documents can use
+ * the active editor column without replacing or splitting the conversation.
  */
 export function chatDocColumn(): vscode.ViewColumn {
-  const col = ChatPanel.column;
-  return col ? ((col + 1) as vscode.ViewColumn) : vscode.ViewColumn.Beside;
+  return vscode.ViewColumn.Active;
 }
 
 /**
@@ -139,14 +134,27 @@ export class IdeTools {
   /**
    * openDiff — open a native side-by-side diff with accept/reject affordances,
    * then BLOCK until the operator decides. The returned {verdict} is what the
-   * Go handler surfaces so the story
-   * branches (publish on accept, re-refine on reject). Without a DiffController
-   * it degrades to a non-blocking ack.
+   * Go handler surfaces so the story branches (publish/validating on accept,
+   * re-refine/implementing on reject); see DiffController for the Mode A
+   * ({paths, base} — already-applied edits) vs Mode B ({path, new_text} —
+   * proposed content) split.
+   *
+   * Without a DiffController registered (never true for the real extension —
+   * extension.ts always constructs one; this only matters for a host that
+   * builds IdeTools directly), THROW rather than fabricate a verdict. An
+   * earlier version returned {ok:true, verdict:'accepted'} here, which
+   * silently accepted a change the operator never reviewed — indistinguishable
+   * from a real accept to the calling room. Throwing makes ide-server.ts wrap
+   * the response as {isError:true}; internal/host's diffOpenIDE
+   * (diff_open.go) turns that into Result{Error:...}, which
+   * reviewing_external's `on_error: reviewing` routes back to the room's own
+   * choice screen — an honest "couldn't review, decide by hand" outcome
+   * instead of a fabricated accept.
    */
   private async openDiff(args: Record<string, unknown>): Promise<unknown> {
+    this.out.appendLine(`[ide] openDiff args=${JSON.stringify(args)}`);
     if (!this.diff) {
-      this.out.appendLine('[ide] openDiff: no diff controller; acknowledging');
-      return { ok: true, verdict: 'accepted' };
+      throw new Error('kitsoki-vscode: openDiff has no DiffController registered');
     }
     return this.diff.open(args);
   }
@@ -157,6 +165,7 @@ export class IdeTools {
    */
   private async getDiagnostics(args: Record<string, unknown>): Promise<unknown> {
     const p = typeof args.path === 'string' ? args.path : '';
+    this.out.appendLine(`[ide] getDiagnostics args=${JSON.stringify(args)} (narrowed to path=${p || '(none — workspace-wide)'})`);
     const encode = (uri: vscode.Uri, diags: readonly vscode.Diagnostic[]) => ({
       uri: uri.toString(),
       diagnostics: diags.map((d) => ({

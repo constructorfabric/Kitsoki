@@ -1,0 +1,27 @@
+schema: project-object-graph/seed-catalog/v0
+type_registry:
+  - id: core-node
+    schema: graph-type/v0
+  - id: area
+    schema: graph-type/v0
+    extends: core-node
+    edge_fields:
+      - id: part_of
+        target_type: area
+        cardinality: one
+        acyclic: true
+nodes:
+  - schema: graph/area/v0
+    id: area-a
+    title: Area A
+    status: active
+    visibility: internal
+    edges:
+      part_of: ["area-b"]
+  - schema: graph/area/v0
+    id: area-b
+    title: Area B
+    status: active
+    visibility: internal
+    edges:
+      part_of: ["area-a"]

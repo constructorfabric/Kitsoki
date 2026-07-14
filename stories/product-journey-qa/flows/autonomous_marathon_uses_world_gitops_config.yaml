@@ -1,0 +1,135 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+initial_world:
+  capture_preflight_status: passed
+  ticket_repo: bsacrobatix/Kitsoki
+  gh_agent_public_base_url: https://agent.example
+
+host_handlers:
+  host.product_journey.run:
+    by_call:
+      autonomous_product_journey_marathon_create:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: autonomous_marathon_ready_for_driver
+            autonomous_marathon_status: autonomous_marathon_ready_for_driver
+            autonomous_marathon_summary: "Created 1 scenario(s); driver evidence capture is pending."
+            autonomous_marathon_report_path: .artifacts/product-journey/run-world-url/autonomous-marathon-report.md
+            autonomous_control_path: .artifacts/product-journey/run-world-url/autonomous-marathon-control.json
+            autonomous_control_markdown_path: .artifacts/product-journey/run-world-url/autonomous-marathon-control.md
+            autonomous_control_status: ready_for_driver
+            autonomous_control_summary: "cadence=24h, next_due=2026-07-06T00:00:00+00:00, budget=6m/scenario, heartbeat=15m, watchdog=45m"
+            autonomous_fix_status: not_run
+            autonomous_gate_summary: "filing=not_run, gh_agent=not_run, independent_verify=not_run, review=not_run, validation=not_run"
+            independent_verify_status: not_run
+            independent_verify_summary: "independent verification not run"
+            gh_agent_health_status: pass
+            gh_agent_health_summary: "https://agent.example/healthz: ok"
+            gh_agent_readiness_status: pass
+            gh_agent_readiness_summary: "https://agent.example/api/ready: ready for bsacrobatix/Kitsoki as test-worker"
+            run_id: run-world-url
+            run_dir: .artifacts/product-journey/run-world-url
+            project: vscode
+            persona: core-maintainer
+            seed: marathon-world-url
+            deck_path: .artifacts/product-journey/run-world-url/deck.slidey.json
+            execution_plan_path: .artifacts/product-journey/run-world-url/execution-plan.md
+            driver_plan_path: .artifacts/product-journey/run-world-url/driver-plan.md
+            driver_journal_path: .artifacts/product-journey/run-world-url/driver-journal.md
+            agent_brief_path: .artifacts/product-journey/run-world-url/agent-brief.md
+            driver_handoff_path: .artifacts/product-journey/run-world-url/driver-handoff.md
+            media_manifest_path: .artifacts/product-journey/run-world-url/media-manifest.json
+            scenario_outcomes_path: .artifacts/product-journey/run-world-url/scenario-outcomes.md
+            live_budget_minutes: 6
+            scenario_count: 1
+            proof_evidence_count: 0
+            demo_evidence_count: 0
+            finding_total_count: 0
+            strength_count: 0
+            weakness_count: 0
+            issue_count: 0
+            fix_count: 0
+            blocked_count: 0
+            missing_evidence_count: 3
+            missing_proof_evidence_count: 3
+            proof_minimum_evidence_count: 3
+            minimum_evidence_count: 3
+            driver_contract_summary: "Driver contract: 1 scenarios (bugfix); 1 missing-proof rows; 4 final gates."
+
+turns:
+  - intent:
+      name: autonomous_marathon
+      slots:
+        project: vscode
+        persona: core-maintainer
+        seed: marathon-world-url
+        scenarios: bugfix
+        live_budget_minutes: 6
+    expect_state: run_created
+    expect_world:
+      status: autonomous_marathon_ready_for_driver
+      run_id: run-world-url
+      ticket_repo: bsacrobatix/Kitsoki
+      gh_agent_public_base_url: https://agent.example
+      autonomous_marathon_status: autonomous_marathon_ready_for_driver
+      autonomous_control_status: ready_for_driver
+      gh_agent_health_status: pass
+      gh_agent_readiness_status: pass
+      validation_errors: 0
+    expect_view_matches: "RUN CREATED[\\s\\S]*Ticket repo[\\s\\S]*bsacrobatix/Kitsoki[\\s\\S]*GH-agent health[\\s\\S]*pass: https://agent.example/healthz[\\s\\S]*GH-agent readiness[\\s\\S]*pass: https://agent.example/api/ready"
+    expect_host_calls:
+      - handler: host.product_journey.run
+        args:
+          call: autonomous_product_journey_marathon_create
+          args:
+            - --autonomous-marathon
+            - --json-output
+            - --report-invalid-autonomous-marathon
+            - --project
+            - vscode
+            - --persona
+            - core-maintainer
+            - --seed
+            - marathon-world-url
+            - --scenarios
+            - bugfix
+            - --live-budget-minutes
+            - 6
+            - --autonomous-driver-mode
+            - pending
+            - --autonomous-driver-live-profile
+            - ""
+            - --autonomous-cadence-hours
+            - 24
+            - --autonomous-heartbeat-minutes
+            - 15
+            - --autonomous-watchdog-minutes
+            - 45
+            - --ticket-repo
+            - bsacrobatix/Kitsoki
+            - --gh-agent-db
+            - ""
+            - --gh-agent-story
+            - stories/bugfix
+            - --gh-agent-public-base-url
+            - https://agent.example
+            - --gh-agent-project-root
+            - ""
+            - --gh-agent-incident-repo
+            - ""
+            - --gh-agent-asset-dir
+            - ""
+            - --gh-agent-comment-mode
+            - none
+            - --issue-state-file
+            - ""
+            - --stats-root
+            - ""
+            - --stats-output
+            - ""
+
+expect_no_errors: true

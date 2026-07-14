@@ -21,7 +21,7 @@ states:
               intent: look
     on:
       start:
-        - when: "slots.manifest_path != ''"
+        - when: "slots.manifest_path != nil && slots.manifest_path != ''"
           target: load
           effects:
             - set:

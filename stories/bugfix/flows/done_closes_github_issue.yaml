@@ -1,0 +1,139 @@
+# done_closes_github_issue — GitHub issue close-out traceability.
+#
+# A bugfix run whose ticket is a GitHub issue must post the same
+# kitsoki-fixed-in close-out comment and close the GitHub issue through
+# host.gh.ticket. It must not fall back to the local-files ticket provider,
+# which cannot resolve numeric GitHub issue ids in standalone/autonomous runs.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: validating
+initial_world:
+  ticket_id:     "117"
+  ticket_title:  "done room fails on GitHub issue ids"
+  ticket_url:    "https://github.com/bsacrobatix/Kitsoki/issues/117"
+  ticket_repo:   "bsacrobatix/Kitsoki"
+  ticket_source_mode: "remote"
+  ticket_source_ref:  "https://github.com/bsacrobatix/Kitsoki/issues/117"
+  thread:        "https://github.com/bsacrobatix/Kitsoki/issues/117"
+  workdir:       ".worktrees/bf-117"
+  workspace_id:  "bf-117-sess-gh-audit"
+  feature_branch: "fix/117-sess-gh-audit"
+  base_branch:   "main"
+  bugfix_exit:   "open-PR"
+  judge_mode:    "human"
+  session_id:    "sess-gh-audit"
+  audit_mode:    "headless-remote"
+  run_trace_ref: "https://runs.example.invalid/kitsoki/117/trace.jsonl"
+  run_artifacts_ref: "https://runs.example.invalid/kitsoki/117/artifacts"
+  done_artifact:
+    summary_title:    "GitHub close-out fixed"
+    summary_markdown: "Close-out body."
+  validate_artifact:
+    summary_title:    "Done-room GitHub flow passed"
+    summary_markdown: "Validation body."
+    outcome:          "pass"
+
+host_handlers:
+  host.run:
+    by_call:
+      done_clean_tree_check:
+        data: { ok: true, exit_code: 0, stdout_json: { dirty: false, files: "" } }
+      done_fixed_in_commit:
+        data: { ok: true, exit_code: 0, stdout_json: { commit: "7c9dfcb51234" } }
+  host.gh.ticket.comment:
+    data: { ok: true, comment_id: "https://github.com/bsacrobatix/Kitsoki/issues/117#issuecomment-1" }
+  host.gh.ticket.transition:
+    data: { ok: true }
+  host.append_to_file:
+    data: { ok: true, message_id: "done-post" }
+  host.agent.decide:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "GitHub close-out fixed"
+        summary_markdown: "Close-out body."
+
+turns:
+  - intent: { name: accept, slots: {} }
+    expect_state: done
+    expect_world:
+      fixed_in_commit: "7c9dfcb51234"
+    expect_host_calls:
+      - handler: host.run
+        args: { call: done_fixed_in_commit }
+
+  - intent: { name: accept, slots: {} }
+    expect_state: __exit__done
+    expect_world:
+      status: "fixed"
+      fixed_in_commit: "7c9dfcb51234"
+    expect_host_calls:
+      - handler: host.gh.ticket.comment
+        args:
+          repo: "bsacrobatix/Kitsoki"
+          id: "https://github.com/bsacrobatix/Kitsoki/issues/117"
+          body: |
+            Fixed in:
+
+            - `7c9dfcb51234` GitHub close-out fixed
+
+            Verification:
+
+            - Done-room GitHub flow passed
+
+            <!-- kitsoki-fixed-in
+            commits:
+              - 7c9dfcb51234
+            branch: main
+            workdir: .worktrees/bf-117
+            verified:
+              - Done-room GitHub flow passed
+            -->
+
+            <!-- kitsoki-bugfix-audit
+            version: 1
+            story: bugfix
+            classification: bugfix
+            actor: kitsoki
+            audit_mode: headless-remote
+            session_id: sess-gh-audit
+            trace_ref: https://runs.example.invalid/kitsoki/117/trace.jsonl
+            artifacts_ref: https://runs.example.invalid/kitsoki/117/artifacts
+            ticket_id: 117
+            ticket_repo: bsacrobatix/Kitsoki
+            ticket_url: https://github.com/bsacrobatix/Kitsoki/issues/117
+            source_mode: remote
+            source_ref: https://github.com/bsacrobatix/Kitsoki/issues/117
+            thread: https://github.com/bsacrobatix/Kitsoki/issues/117
+            bugfix_mode: full
+            judge_mode: human
+            bugfix_exit: open-PR
+            base_branch: main
+            base_commit: (none)
+            feature_branch: fix/117-sess-gh-audit
+            workspace_id: bf-117-sess-gh-audit
+            workdir: .worktrees/bf-117
+            fixed_in_commit: 7c9dfcb51234
+            shipped_sha: (none)
+            merge_sha: (none)
+            pr_url: (none)
+            repro_checked: false
+            repro_gate_ran: false
+            repro_gate_ok: false
+            regression_gate_checked: false
+            regression_red_pre_fix: false
+            unsafe_jumps_made: 0
+            cycle: 0
+            -->
+      - handler: host.gh.ticket.transition
+        args:
+          repo: "bsacrobatix/Kitsoki"
+          id: "https://github.com/bsacrobatix/Kitsoki/issues/117"
+          to: "resolved"
+
+expect_no_host_calls:
+  - host.local_files.ticket.comment
+  - host.local_files.ticket.transition
+expect_terminal: true
+expect_no_errors: true

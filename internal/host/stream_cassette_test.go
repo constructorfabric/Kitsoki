@@ -169,6 +169,50 @@ func TestStreamCassette_NarrationCompleteness(t *testing.T) {
 	}
 }
 
+func TestStreamCassette_CodexAssistantMessageBeforeToolSurfaces(t *testing.T) {
+	t.Parallel()
+
+	raw, err := os.ReadFile(filepath.Join("testdata", "codex", "with_tool_round.jsonl"))
+	if err != nil {
+		t.Fatalf("read codex stream cassette: %v", err)
+	}
+
+	sink := &memSink{}
+	stream := &captureStreamSink{}
+	dir := t.TempDir()
+	promptPath := filepath.Join(dir, "p.md")
+	if err := os.WriteFile(promptPath, []byte("run the probe"), 0o644); err != nil {
+		t.Fatalf("write prompt: %v", err)
+	}
+
+	ctx := host.WithStreamSink(agentCtxForTest(sink), stream)
+	ctx = host.WithAgentBackendForTest(ctx, host.NewCodexBackendForTest())
+	ctx = host.WithCodexRunner(ctx, streamCassetteRunner(string(raw)))
+
+	if _, err := host.AgentAskHandler(ctx, map[string]any{"prompt_path": promptPath}); err != nil {
+		t.Fatalf("AgentAskHandler: %v", err)
+	}
+
+	introIdx, toolIdx := -1, -1
+	for i, ev := range stream.all() {
+		if ev.Type == "assistant.message" && strings.Contains(ev.Text, "run the command") {
+			introIdx = i
+		}
+		if ev.Type == "assistant" && ev.Tool == "shell" && strings.Contains(ev.Preview, "echo hi") {
+			toolIdx = i
+		}
+	}
+	if introIdx == -1 {
+		t.Fatalf("codex assistant.message narration never reached the stream sink; events=%+v", stream.all())
+	}
+	if toolIdx == -1 {
+		t.Fatalf("codex command_execution tool start never reached the stream sink; events=%+v", stream.all())
+	}
+	if introIdx > toolIdx {
+		t.Fatalf("codex activity order = narration:%d tool:%d, want narration before tool", introIdx, toolIdx)
+	}
+}
+
 // compile-time: captureStreamSink (defined in agent_stream_test.go) must
 // satisfy host.StreamSink.
 var _ host.StreamSink = (*captureStreamSink)(nil)

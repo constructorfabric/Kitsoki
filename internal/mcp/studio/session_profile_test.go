@@ -41,6 +41,7 @@ func newProfileSession() *StudioSession {
 func profileFixtures() map[string]orchestrator.HarnessProfile {
 	return map[string]orchestrator.HarnessProfile{
 		"claude-native":    {Name: "claude-native", Backend: "claude", Model: "claude-sonnet-4-5"},
+		"codex-native":     {Name: "codex-native", Backend: "codex", Model: "gpt-5.5"},
 		"synthetic-claude": {Name: "synthetic-claude", Backend: "synthetic", Model: "hf:claude-sonnet-4-5"},
 	}
 }
@@ -97,4 +98,19 @@ func TestSessionProfile_NoneConfiguredLeavesLegacyPath(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, sh.Runtime.orch.Selection().Profile,
 		"no declared profiles ⇒ legacy default-backend path, never a hard error")
+}
+
+func TestSessionProfile_UnknownExplicitProfileFailsClosed(t *testing.T) {
+	sess := newProfileSession()
+	sess.SetHarnessProfiles(profileFixtures(), "claude-native")
+
+	sh, err := sess.OpenDrivingSession(context.Background(), OpenDrivingSessionParams{
+		StoryPath: profileCloakApp,
+		TracePath: t.TempDir() + "/trace.jsonl",
+		Profile:   "codex",
+	})
+
+	require.Error(t, err)
+	require.Nil(t, sh)
+	require.Contains(t, err.Error(), `unknown harness profile "codex"`)
 }

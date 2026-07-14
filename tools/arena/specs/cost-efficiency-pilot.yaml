@@ -1,0 +1,49 @@
+# WB.3 pilot shakeout: 3 armed tasks x 2 treatments x 2 candidates x n=1 = 12 cells.
+# The committed replay fixture under tools/arena/results/pilot proves the same
+# paired-task plugin path can regenerate rollups offline with costs and oracle
+# verdicts. Live execution must be explicit via arena run --live.
+
+job_type: paired-task
+
+targets:
+  - id: cost-bench-pilot
+    label: "cost-efficiency pilot"
+    image: kitsoki-arena/paired-task:latest
+    dockerfile: tools/arena/docker/Dockerfile.paired-task
+
+variants:
+  - id: kitsoki-codex-native
+    treatment: kitsoki
+    candidate: codex-native
+    backend: codex
+    model: gpt-5.5
+    effort: medium
+  - id: single-briefed-codex-native
+    treatment: single-briefed
+    candidate: codex-native
+    backend: codex
+    model: gpt-5.5
+    effort: medium
+  - id: kitsoki-synthetic-claude
+    treatment: kitsoki
+    candidate: synthetic-claude
+    backend: synthetic
+    model: claude-synthetic
+    effort: medium
+  - id: single-briefed-synthetic-claude
+    treatment: single-briefed
+    candidate: synthetic-claude
+    backend: synthetic
+    model: claude-synthetic
+    effort: medium
+
+axes:
+  task:
+    - query-string-qs1-bugfix-test-repair
+    - vscode-01-docs-site-release
+    - nextjs-05-story-runtime
+
+placement:
+  hosts: [local]
+  concurrency: 2
+  retry: 1

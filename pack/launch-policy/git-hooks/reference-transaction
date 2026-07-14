@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Pin only the primary checkout to its default branch tip. Managed capsule
+# clones have their own common directory and are exempt.
+set -euo pipefail
+[ "${1:-}" = "prepared" ] || exit 0
+
+gitdir="$(git rev-parse --git-dir 2>/dev/null || true)"
+commondir="$(git rev-parse --git-common-dir 2>/dev/null || true)"
+[ -n "$gitdir" ] && [ "$gitdir" = "$commondir" ] || exit 0
+
+default_branch="$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's@^origin/@@' || true)"
+if [ -z "$default_branch" ]; then
+  if git show-ref --verify --quiet refs/heads/main 2>/dev/null; then default_branch=main; else default_branch=master; fi
+fi
+zero="0000000000000000000000000000000000000000"
+main_tip="$(git rev-parse --verify --quiet "refs/heads/$default_branch" 2>/dev/null || true)"
+while read -r _old new ref; do
+  [ "$ref" = "HEAD" ] || continue
+  case "$new" in
+    "$zero"|ref:refs/heads/"$default_branch") continue ;;
+    *)
+      [ -n "$main_tip" ] && [ "$new" = "$main_tip" ] && continue
+      printf '%s\n' "Blocked: the primary checkout may only be $default_branch at its tip. Use a managed capsule workspace." >&2
+      exit 1 ;;
+  esac
+done

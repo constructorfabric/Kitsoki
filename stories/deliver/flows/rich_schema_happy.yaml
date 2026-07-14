@@ -1,0 +1,56 @@
+# rich_schema_happy — a manifest carrying the skill-absorbed rich fields
+# (coverage_note; per-brief title/kind/scope/acceptance/risk) lints clean and
+# reaches fleet. Proves schemas/decomposition.json + lint_decomposition.star's
+# scope-bound + acceptance checks (proposal: deliver-canonical-decomposition
+# B2a) accept the richer optional shape, not just the bare id/brief/
+# gate_command/deps contract.
+#
+# Full path: configure → start → decompose (agent mocked) → lint (Starlark,
+# real scope/acceptance checks against the inspect cassette) → review (agent
+# mocked, accept) → fleet.load (Starlark).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: configure
+initial_world:
+  base_branch: main
+  main_worktree_path: "."
+
+starlark_inspect_cassette: ../cassettes/rich_schema_happy.inspect.yaml
+
+host_handlers:
+  host.agent.task:
+    by_call:
+      decomposer:
+        data:
+          submitted:
+            briefs:
+              - id: health-model
+                brief: "Add HealthStatus struct in internal/health/ with Status and Version fields. Gate: go test ./internal/health/..."
+                gate_command: "go test ./internal/health/..."
+                deps: []
+              - id: health-handler
+                brief: "Add GET /health handler serialising HealthStatus to JSON. Gate: go test ./internal/handler/..."
+                gate_command: "go test ./internal/handler/..."
+                deps: [health-model]
+  host.agent.decide:
+    by_call:
+      review:
+        data:
+          submitted:
+            verdict: accept
+            reason: "Rich-schema fields (scope, acceptance) are consistent with the two briefs and coverage_note."
+            questions: []
+
+turns:
+  - intent:
+      name: start
+      slots:
+        epic_path: "stories/deliver/testdata/fixture_epic.md"
+    expect_state: fleet.load
+    expect_world:
+      epic_path:          "stories/deliver/testdata/fixture_epic.md"
+      decomposition_path: ".artifacts/deliver/decomposition.yaml"
+      lint_route:         "ok"
+
+expect_no_errors: true

@@ -43,7 +43,7 @@ host_handlers:
       reason: "Migration verified: GitHub lists 16 issues for the repo (>= 16 expected)."
 
 turns:
-  - intent: { name: work, slots: { request: "import the issues folder in the repo to github" } }
+  - intent: { name: landing_capture, slots: { request: "import the issues folder in the repo to github" } }
     expect_state: landing
 
   - intent: { name: accept_plan, slots: {} }

@@ -1,0 +1,8 @@
+inputs:
+  legs:       { type: object, required: false }
+  leg_index:  { type: int, required: false }
+
+outputs:
+  current_leg:      { type: object }
+  current_leg_id:   { type: string }
+  current_leg_json: { type: string }

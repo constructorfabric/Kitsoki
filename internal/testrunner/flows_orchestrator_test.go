@@ -49,6 +49,75 @@ func TestRunFlows_OrchestratorPath_BackgroundJob(t *testing.T) {
 	require.Greater(t, report.Passed, 0, "at least one flow should pass")
 }
 
+func TestRunFlows_OrchestratorPath_OperationAssertionsIncludeBackgroundCompletion(t *testing.T) {
+	dir := t.TempDir()
+	appPath := filepath.Join(dir, "app.yaml")
+	flowPath := filepath.Join(dir, "flow.yaml")
+	require.NoError(t, os.WriteFile(appPath, []byte(`
+app:
+  id: bg-op
+  title: Background operation
+hosts: [host.run]
+world:
+  result:      { type: string, default: "" }
+  artifact:    { type: string, default: "" }
+  last_job_id: { type: string, default: "" }
+intents:
+  enter: { description: "enter" }
+operations:
+  bg_run:
+    title: "Background run"
+    mode: autonomous
+    execution_mode: one-shot
+    run_in_background: true
+    terminal_artifact: artifact
+root: idle
+states:
+  idle:
+    on:
+      enter:
+        - target: running
+          operation: bg_run
+  running:
+    on_enter:
+      - invoke: host.run
+        background: true
+        with: { cmd: "echo ok" }
+        bind: { last_job_id: job_id }
+        on_complete:
+          - set:
+              result: "{{ world.last_job_result.output }}"
+              artifact: "artifact#done"
+          - target: done
+  done:
+    terminal: true
+`), 0644))
+	require.NoError(t, os.WriteFile(flowPath, []byte(`
+test_kind: flow
+app: ./app.yaml
+initial_state: idle
+host_handlers:
+  host.run:
+    data: { output: "ok" }
+    delay: "10ms"
+turns:
+  - intent: { name: enter, slots: {} }
+    advance_clock: "1s"
+    expect_state: done
+    expect_world:
+      result: "ok"
+expect_operation_policy: bg_run
+expect_operation_status: completed
+expect_terminal_artifact: artifact
+expect_no_errors: true
+`), 0644))
+
+	report, err := testrunner.RunFlows(t.Context(), appPath, flowPath, testrunner.FlowOptions{})
+	require.NoError(t, err)
+	require.Equal(t, 0, report.Failed, "operation assertion should see background completion events")
+	require.Equal(t, 1, report.Passed)
+}
+
 // ─── TestRunFlows_OrchestratorPath_HostError ─────────────────────────────────
 
 // TestRunFlows_OrchestratorPath_HostError verifies that a stub returning an

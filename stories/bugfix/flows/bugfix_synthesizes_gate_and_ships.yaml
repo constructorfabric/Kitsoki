@@ -31,7 +31,7 @@ initial_world:
 host_handlers:
   host.append_to_file: { data: { ok: true } }
   host.inbox.add:      { data: { ok: true } }
-  host.git_worktree:   { data: { ok: true, log: "", path: ".worktrees/norepro-fix" } }
+  host.capsule_workspace:   { data: { ok: true, log: "", path: ".worktrees/norepro-fix" } }
   host.git:            { data: { ok: true, sha: "abc", diff: "" } }
   host.local:          { data: { ok: true, log: "PASS", passed: 1, failed: 0 } }
   # Shared maker-agent cassette. The reproducer half carries the NEW

@@ -1,5 +1,42 @@
 <template>
   <div class="home" data-testid="home-view">
+    <!-- ── Setup warnings ───────────────────────────────────────────────── -->
+    <section
+      v-if="setupWarnings.length > 0"
+      class="home__setup"
+      data-testid="setup-warnings"
+      aria-label="Setup warnings"
+    >
+      <div
+        v-for="warning in setupWarnings"
+        :key="warning.id"
+        class="home__setup-warning"
+        data-testid="setup-warning"
+        role="alert"
+      >
+        <div class="home__setup-mark" aria-hidden="true" data-testid="setup-warning-mark">!</div>
+        <div class="home__setup-copy">
+          <h2 class="home__setup-title" data-testid="setup-warning-title">{{ warning.title }}</h2>
+          <p class="home__setup-body" data-testid="setup-warning-body">{{ warning.body }}</p>
+          <code
+            v-if="warning.action_command"
+            class="home__setup-command"
+            data-testid="setup-warning-command"
+          >{{ warning.action_command }}</code>
+        </div>
+        <button
+          v-if="setupWarningStory(warning)"
+          class="home__btn home__btn--warning"
+          type="button"
+          data-testid="setup-warning-action"
+          :disabled="startingPath === setupWarningStory(warning)?.path"
+          @click="onSetupWarningAction(warning)"
+        >
+          {{ startingPath === setupWarningStory(warning)?.path ? "Starting…" : (warning.action_label || "Open setup story") }}
+        </button>
+      </div>
+    </section>
+
     <!-- ── Stories ─────────────────────────────────────────────────────── -->
     <section class="home__section">
       <div class="home__section-head">
@@ -79,6 +116,23 @@
       </div>
     </section>
 
+    <!-- ── Kits (S5): a generic nav section for any installed kit's       -->
+    <!-- provides.ui entries flagged nav:true (kitLoader.ts) — this view   -->
+    <!-- has no idea which kits, if any, are installed. Empty (and hidden) -->
+    <!-- when none are, the common case today.                            -->
+    <section v-if="kitNavLinks.length > 0" class="home__section">
+      <h2 class="home__subtitle">Kits</h2>
+      <div class="home__cards">
+        <router-link
+          v-for="link in kitNavLinks"
+          :key="link.path"
+          class="home__btn home__btn--ghost"
+          data-testid="kit-nav-link"
+          :to="link.path"
+        >{{ link.title }}</router-link>
+      </div>
+    </section>
+
     <!-- ── Active sessions ─────────────────────────────────────────────── -->
     <section class="home__section">
       <h2 class="home__subtitle">Active sessions</h2>
@@ -134,6 +188,7 @@
               State
               <span class="home__sort-indicator">{{ sortIndicator('state') }}</span>
             </th>
+            <th>Operation</th>
             <th
               class="home__th--sortable"
               data-testid="session-sort-activity"
@@ -161,10 +216,71 @@
             </td>
             <td><code data-testid="session-id">{{ truncateId(s.session_id) }}</code></td>
             <td><code data-testid="session-state">{{ s.current_state }}</code></td>
+            <td
+              class="home__row-operation"
+              data-testid="session-operation"
+              :data-operation-status="s.operation_run?.status || ''"
+            >
+              <div v-if="s.operation_run" class="home__operation">
+                <div class="home__operation-line">
+                  <span class="home__operation-title" data-testid="session-operation-title">
+                    {{ operationTitle(s) }}
+                  </span>
+                  <span
+                    class="home__operation-status"
+                    :class="operationStatusClass(s)"
+                    data-testid="session-operation-status"
+                  >
+                    {{ operationStatusLabel(s) }}
+                  </span>
+                </div>
+                <div
+                  v-if="operationDetail(s)"
+                  class="home__operation-detail"
+                  data-testid="session-operation-detail"
+                >
+                  {{ operationDetail(s) }}
+                </div>
+                <div
+                  v-if="operationFacts(s).length > 0"
+                  class="home__operation-summary"
+                  data-testid="session-operation-summary"
+                >
+                  <span
+                    v-for="fact in operationFacts(s)"
+                    :key="fact.label"
+                    class="home__operation-fact"
+                  >
+                    <span class="home__operation-fact-label">{{ fact.label }}</span>
+                    {{ fact.value }}
+                  </span>
+                </div>
+              </div>
+              <span v-else class="home__row-muted">—</span>
+            </td>
             <td class="home__row-activity" data-testid="session-activity">{{ formatDate(s.started_at) }}</td>
             <td class="home__row-turns" data-testid="session-turns">{{ s.turn != null ? s.turn : '—' }}</td>
             <td class="home__row-duration" data-testid="session-duration">—</td>
             <td class="home__row-actions">
+              <a
+                v-if="operationArtifactHref(s)"
+                class="home__link"
+                data-testid="session-operation-artifact-open"
+                :href="operationArtifactHref(s)"
+                target="_blank"
+                rel="noopener noreferrer"
+                :title="`Open ${operationArtifactLabel(s)}`"
+              >Artifact</a>
+              <button
+                v-if="canDriveOperation(s)"
+                class="home__link home__link--button"
+                type="button"
+                data-testid="session-drive-operation"
+                :disabled="drivingSession === s.session_id"
+                @click="onDriveOperation(s)"
+              >
+                {{ drivingSession === s.session_id ? "Driving" : "Drive" }}
+              </button>
               <router-link
                 class="home__link"
                 data-testid="session-open"
@@ -186,10 +302,11 @@ import { useRouter } from "vue-router";
 // full rationale (persisted in sessionStorage; also marked spent by the session
 // views so a tab that opens straight into a session can still reach "/").
 import { autoNavDone, markAutoNavDone } from "../lib/auto-nav.js";
-import { LiveSource, type StoryHeader } from "../data/live-source.js";
+import { LiveSource, type SetupWarning, type StoryHeader } from "../data/live-source.js";
 import { createDataSource } from "../data/source.js";
 import type { SessionHeader } from "../types.js";
 import { useTourStore } from "../stores/tour.js";
+import { kitNavLinks } from "../kits/kitLoader.js";
 
 // The home screen drives the session-agnostic lifecycle RPCs directly against
 // the live server. In a static snapshot artifact (file:// trace-review mode)
@@ -218,13 +335,17 @@ const stories = ref<StoryHeader[]>([]);
 const storiesLoading = ref(true);
 const storiesError = ref<string | null>(null);
 const rescanning = ref(false);
+const setupWarnings = ref<SetupWarning[]>([]);
 
 const sessions = ref<SessionHeader[]>([]);
 const sessionsError = ref<string | null>(null);
 
 const startingPath = ref<string | null>(null);
 const startError = ref<string | null>(null);
+
+type OperationFact = { label: string; value: string };
 const startErrorPath = ref<string | null>(null);
+const drivingSession = ref<string | null>(null);
 
 // ── Session table: filter + sort ─────────────────────────────────────────────
 type SessionFilterMode = "all" | "active" | "terminal";
@@ -307,7 +428,7 @@ onMounted(async () => {
     return;
   }
 
-  await Promise.all([loadStories(), loadSessions()]);
+  await Promise.all([loadStories(), loadSessions(), loadSetupWarnings()]);
   storiesLoading.value = false;
 
   // Auto-navigate when there is exactly one live session and no others. A
@@ -350,6 +471,15 @@ async function loadSessions(): Promise<void> {
   }
 }
 
+async function loadSetupWarnings(): Promise<void> {
+  try {
+    const status = await source.setupStatus();
+    setupWarnings.value = status.warnings ?? [];
+  } catch {
+    setupWarnings.value = [];
+  }
+}
+
 async function onRescan(): Promise<void> {
   rescanning.value = true;
   try {
@@ -380,6 +510,26 @@ async function onNewSession(story: StoryHeader): Promise<void> {
   }
 }
 
+async function onSetupWarningAction(warning: SetupWarning): Promise<void> {
+  const story = setupWarningStory(warning);
+  if (!story) return;
+  await onNewSession(story);
+}
+
+async function onDriveOperation(s: SessionHeader): Promise<void> {
+  if (!canDriveOperation(s) || drivingSession.value !== null) return;
+  drivingSession.value = s.session_id;
+  sessionsError.value = null;
+  try {
+    await source.driveOperation(s.session_id);
+    await loadSessions();
+  } catch (e) {
+    sessionsError.value = errMsg(e);
+  } finally {
+    drivingSession.value = null;
+  }
+}
+
 // Getting-started CTA on the stories-empty branch: replay the onboarding tour
 // so a first-time developer has a next step instead of a dead end. Resolved
 // lazily (not at setup) so the store is only required when the empty state is
@@ -391,6 +541,19 @@ function onTakeTour(): void {
 
 function storyTitle(story: StoryHeader): string {
   return story.title || story.app_id || relativePath(story.path);
+}
+
+function setupWarningStory(warning: SetupWarning): StoryHeader | undefined {
+  const storyID = warning.story_id || storyIDFromRef(warning.story_ref);
+  if (!storyID) return undefined;
+  return stories.value.find((st) =>
+    st.app_id === storyID || st.path.includes(`/stories/${storyID}/`)
+  );
+}
+
+function storyIDFromRef(ref?: string): string {
+  if (!ref) return "";
+  return ref.replace(/^@kitsoki\//, "").trim();
 }
 
 function sessionStoryTitle(s: SessionHeader): string {
@@ -405,6 +568,89 @@ function sessionStoryPath(s: SessionHeader): string {
     st.active_sessions.includes(s.session_id)
   );
   return story ? relativePath(story.path) : "";
+}
+
+function operationTitle(s: SessionHeader): string {
+  const run = s.operation_run;
+  if (!run) return "";
+  return run.title || run.operation_id || run.policy_id || "operation";
+}
+
+function operationStatusLabel(s: SessionHeader): string {
+  const run = s.operation_run;
+  if (!run) return "";
+  const status = run.status || "running";
+  if (status === "waiting" && run.stop_reason) return `waiting for ${run.stop_reason}`;
+  if (status === "running" && run.run_in_background) return "running in background";
+  return status.replace(/_/g, " ");
+}
+
+function operationStatusClass(s: SessionHeader): string {
+  const status = s.operation_run?.status || "running";
+  return `home__operation-status--${status.replace(/[^a-z0-9_-]/gi, "-")}`;
+}
+
+function canDriveOperation(s: SessionHeader): boolean {
+  const run = s.operation_run;
+  if (!run) return false;
+  return (
+    !s.terminal &&
+    (run.status === "" || run.status === undefined || run.status === "running") &&
+    operationModeCanDrive(run.mode)
+  );
+}
+
+function operationModeCanDrive(mode?: string): boolean {
+  return !mode || mode === "autonomous" || mode === "supervised";
+}
+
+function operationDetail(s: SessionHeader): string {
+  const run = s.operation_run;
+  if (!run) return "";
+  if (run.stop_detail) return run.stop_detail;
+  if (run.status === "waiting" && run.terminal_state) return `parked at ${run.terminal_state}`;
+  if (run.status === "completed" && run.terminal_state) return `terminal ${run.terminal_state}`;
+  if (run.terminal_artifact) return `artifact ${run.terminal_artifact}`;
+  if (run.phase) return `phase ${operationPhaseLabel(run.phase)}`;
+  if (run.from && run.to) return `${run.from} -> ${run.to}`;
+  return run.entry_intent ? `intent ${run.entry_intent}` : "";
+}
+
+function operationFacts(s: SessionHeader): OperationFact[] {
+  const run = s.operation_run;
+  if (!run) return [];
+  const facts: OperationFact[] = [];
+  const add = (label: string, value?: string) => {
+    if (value && value.trim()) facts.push({ label, value });
+  };
+  add("mode", run.mode);
+  add("execution", run.execution_mode);
+  if (run.phase) add("phase", operationPhaseLabel(run.phase));
+  if (run.from && run.to) add("route", `${run.from} -> ${run.to}`);
+  add("intent", run.entry_intent);
+  add("terminal", run.terminal_state);
+  add("artifact", run.terminal_artifact);
+  add("stop", run.stop_reason);
+  return facts;
+}
+
+function operationArtifactHref(s: SessionHeader): string {
+  const artifact = operationArtifactHandle(s);
+  return artifact ? source.artifactUrl(artifact) : "";
+}
+
+function operationArtifactHandle(s: SessionHeader): string {
+  const run = s.operation_run;
+  return run?.terminal_artifact_handle || run?.terminal_artifact || "";
+}
+
+function operationArtifactLabel(s: SessionHeader): string {
+  const run = s.operation_run;
+  return run?.terminal_artifact || run?.terminal_artifact_handle || "artifact";
+}
+
+function operationPhaseLabel(phase: string): string {
+  return phase.trim().replace(/_artifact$/i, "").replace(/_/g, " ");
 }
 
 function relativePath(abs: string): string {
@@ -438,6 +684,66 @@ function errMsg(e: unknown): string {
   padding: 1.5rem;
   max-width: 900px;
   margin: 0 auto;
+}
+
+.home__setup {
+  margin-bottom: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.home__setup-warning {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: flex-start;
+  gap: 1rem;
+  border: 1px solid color-mix(in srgb, #f97316 72%, #ef4444);
+  background: color-mix(in srgb, #f97316 22%, var(--k-bg-widget, #111827));
+  border-radius: 0.5rem;
+  padding: 1rem;
+  box-shadow: inset 4px 0 0 color-mix(in srgb, #f97316 70%, #ef4444);
+}
+
+.home__setup-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, #f97316 76%, #ef4444);
+  color: #111827;
+  font-size: 0.95rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.home__setup-copy {
+  min-width: 0;
+}
+
+.home__setup-title {
+  color: #fdba74;
+  font-size: 0.95rem;
+  font-weight: 700;
+  margin-bottom: 0.35rem;
+}
+
+.home__setup-body {
+  color: var(--k-fg-muted, #cbd5e1);
+  font-size: 0.85rem;
+  line-height: 1.45;
+  margin-bottom: 0.55rem;
+}
+
+.home__setup-command {
+  display: inline-block;
+  max-width: 100%;
+  color: #fed7aa;
+  font-size: 0.76rem;
+  white-space: normal;
+  word-break: break-word;
 }
 
 .home__section {
@@ -590,6 +896,27 @@ function errMsg(e: unknown): string {
   background: var(--k-bg-hover, #1e293b);
 }
 
+.home__btn--warning {
+  flex: 0 0 auto;
+  background: #f97316;
+  color: #111827;
+}
+
+.home__btn--warning:hover:not(:disabled) {
+  background: #fb923c;
+}
+
+@media (max-width: 640px) {
+  .home__setup-warning {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .home__btn--warning {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+}
+
 /* ── Session filter chips ─────────────────────────────────────────────────── */
 .home__session-filters {
   display: flex;
@@ -688,8 +1015,109 @@ function errMsg(e: unknown): string {
   font-size: 0.8rem;
 }
 
+.home__row-operation {
+  min-width: 13rem;
+  max-width: 22rem;
+}
+
+.home__operation {
+  min-width: 0;
+}
+
+.home__operation-line {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.home__operation-title {
+  min-width: 0;
+  max-width: 12rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--k-fg, #e2e8f0);
+  font-weight: 600;
+}
+
+.home__operation-status {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 0.08rem 0.42rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.home__operation-status--running {
+  color: #7dd3fc;
+  border: 1px solid color-mix(in srgb, #38bdf8 42%, transparent);
+  background: rgba(14, 165, 233, 0.12);
+}
+
+.home__operation-status--waiting {
+  color: #facc15;
+  border: 1px solid color-mix(in srgb, #facc15 42%, transparent);
+  background: rgba(250, 204, 21, 0.1);
+}
+
+.home__operation-status--completed {
+  color: #86efac;
+  border: 1px solid color-mix(in srgb, #22c55e 42%, transparent);
+  background: rgba(34, 197, 94, 0.12);
+}
+
+.home__operation-detail {
+  margin-top: 0.2rem;
+  max-width: 100%;
+  color: var(--k-fg-muted, #94a3b8);
+  font-size: 0.73rem;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home__operation-summary {
+  margin-top: 0.32rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.24rem;
+  min-width: 0;
+}
+
+.home__operation-fact {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.2rem;
+  max-width: 100%;
+  border: 1px solid var(--k-border-subtle, #334155);
+  border-radius: 4px;
+  padding: 0.06rem 0.3rem;
+  color: var(--k-fg-muted, #94a3b8);
+  font-size: 0.68rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.home__operation-fact-label {
+  color: var(--k-fg-subtle, #64748b);
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.home__row-muted {
+  color: var(--k-fg-muted, #64748b);
+}
+
 .home__row-actions {
-  text-align: right;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.55rem;
   white-space: nowrap;
 }
 
@@ -698,6 +1126,20 @@ function errMsg(e: unknown): string {
   text-decoration: none;
   font-size: 0.8rem;
   font-weight: 600;
+}
+
+.home__link--button {
+  appearance: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+}
+
+.home__link--button:disabled {
+  cursor: default;
+  opacity: 0.55;
 }
 
 .home__link:hover {

@@ -1,0 +1,33 @@
+kind: inspect_cassette
+interactions:
+  - op: read
+    target: .artifacts/product-journey/scenario-qa-cause-run/driver-plan.json
+    out: |
+      {
+        "driver_agent": ".agents/agents/product-journey-qa-driver.md",
+        "scenarios": [
+          {
+            "scenario": "bugfix",
+            "label": "Bugfix carrier scenario",
+            "primary_story": "stories/bugfix/app.yaml",
+            "task_prompt": "Drive the bugfix pipeline end to end.",
+            "evidence_dir": "evidence/gears-rust--core-maintainer/bugfix",
+            "transport": "tui",
+            "leg_id": "bugfix::tui",
+            "transport_evidence_contract": {
+              "primary_tool": "render.tui_png",
+              "evidence_kind": "rendered_tui_frame",
+              "level": "frame-level"
+            },
+            "required_mcp": ["session.new", "session.drive"],
+            "success_criteria": ["The bugfix pipeline completes on the TUI transport."],
+            "natural_utterances": [
+              {
+                "text": "resolve the red gate test that's already written but not committed",
+                "source": "session-transcript",
+                "source_ref": "mined-scn-1b4ace86-f192-43b0-ab86-16142fec0079-0001"
+              }
+            ]
+          }
+        ]
+      }

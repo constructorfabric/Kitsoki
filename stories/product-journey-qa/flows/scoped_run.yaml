@@ -1,0 +1,72 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.product_journey.run:
+    by_call:
+      emit_product_journey_run:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: created
+            run_id: run-scoped
+            run_dir: .artifacts/product-journey/run-scoped
+            deck_path: .artifacts/product-journey/run-scoped/deck.slidey.json
+            execution_plan_path: .artifacts/product-journey/run-scoped/execution-plan.md
+            driver_plan_path: .artifacts/product-journey/run-scoped/driver-plan.md
+            driver_journal_path: .artifacts/product-journey/run-scoped/driver-journal.md
+            agent_brief_path: .artifacts/product-journey/run-scoped/agent-brief.md
+            driver_handoff_path: .artifacts/product-journey/run-scoped/driver-handoff.md
+            media_manifest_path: .artifacts/product-journey/run-scoped/media-manifest.json
+            scenario_outcomes_path: .artifacts/product-journey/run-scoped/scenario-outcomes.md
+            scenario_count: 2
+            live_budget_minutes: 20
+            persona_starting_surface: "docs-first"
+            persona_first_question: "Can I follow a scoped run?"
+            persona_evidence_emphasis: "scoped evidence slots"
+            persona_escalation_trigger: "scope mismatch"
+            persona_finding_bias: "Prefer scoped findings."
+            proof_evidence_count: 0
+            demo_evidence_count: 0
+            finding_total_count: 0
+            strength_count: 0
+            weakness_count: 0
+            issue_count: 0
+            fix_count: 0
+            blocked_count: 0
+            missing_evidence_count: 10
+            missing_proof_evidence_count: 10
+            proof_minimum_evidence_count: 0
+            minimum_evidence_count: 10
+            missing_proof_summary: "bugfix: candidate_diff, regression_test_result; project-onboarding: generated_config_diff"
+            driver_contract_summary: "Driver contract: 2 scenarios (bugfix, project-onboarding); 2 missing-proof rows; 4 final gates."
+            next_driver_capture: "Next capture: bugfix/candidate_diff. Save a retained patch or diff reference."
+            next_driver_attach_command: 'host.product_journey.run --attach-evidence --run-dir .artifacts/product-journey/run-scoped --scenario bugfix --evidence-kind candidate_diff --evidence-path <path-or-retained-id> --evidence-source <retained|external|local|cassette> --notes "Save a retained patch or diff reference."'
+            next_driver_blocker_command: "host.product_journey.run --record-blocker --run-dir .artifacts/product-journey/run-scoped --scenario bugfix --title <blocker-title> --summary <why-this-scenario-could-not-be-captured> --evidence-path <trace-or-frame-path>"
+
+steps:
+  - intent:
+      name: start
+      slots:
+        project: gears-rust
+        persona: core-maintainer
+        seed: scoped-flow
+        scenarios: bugfix,project-onboarding
+    expect_state: run_created
+    expect_world:
+      status: created
+      project: gears-rust
+      persona: core-maintainer
+      seed: scoped-flow
+      scenario_scope: bugfix,project-onboarding
+      run_scenario_count: 2
+      live_budget_minutes: 20
+      missing_evidence_count: 10
+      minimum_evidence_count: 10
+      run_id: run-scoped
+    expect_view_matches: "Scenario scope[\\s\\S]*bugfix,project-onboarding[\\s\\S]*Scenario count[\\s\\S]*2[\\s\\S]*Proof evidence[\\s\\S]*minimum 0 / 10[\\s\\S]*Driver contract: 2 scenarios"
+    expect_host_calls:
+      - handler: host.product_journey.run
+        args: { call: emit_product_journey_run }

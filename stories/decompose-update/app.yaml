@@ -1,0 +1,62 @@
+app:
+  id: decompose-update
+  version: 0.1.0
+  title: "Managed decomposition updates"
+  author: "Kitsoki"
+  license: "CC0"
+
+hosts:
+  - host.starlark.run
+  - host.decomposition.update
+  - host.agent.decide
+
+agents:
+  reviewer:
+    system_prompt: "You are a skeptical decomposition-change reviewer. Approve only provenance-backed, schema-gated, versioned deltas that preserve active work and surface plan evolution in reporting artifacts."
+    model: claude-sonnet-4-6
+    tools: []
+
+world:
+  workdir: { type: string, default: "." }
+  status: { type: string, default: "idle" }
+  review_approved: { type: bool, default: false }
+  review_summary: { type: string, default: "" }
+  review_findings: { type: list, default: [] }
+  result_stdout: { type: string, default: "" }
+  result_exit_code: { type: int, default: 0 }
+  result_ok: { type: bool, default: false }
+  last_error: { type: string, default: "" }
+
+intents:
+  run:
+    description: "Run the deterministic managed-delta transaction gate."
+    examples: ["run", "test managed delta", "apply delta"]
+    priority: 90
+  accept:
+    description: "Accept the managed-update result."
+    examples: ["accept", "done"]
+    priority: 80
+  failed:
+    description: "Route a structured transaction failure to the failure room."
+    examples: []
+    priority: 1
+  quit:
+    description: "Exit the story."
+    examples: ["quit", "stop"]
+    priority: 40
+  look:
+    description: "Re-render the current view."
+    examples: ["look", "status"]
+    priority: 10
+
+exports:
+  intents: [run, accept, quit, look]
+
+exits:
+  done: {}
+  abandoned: {}
+
+root: idle
+
+include:
+  - rooms/*.yaml

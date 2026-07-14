@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://kitsoki.dev/schemas/project-profile/v1.json",
   "title": "Project profile (project-profile/v1)",
-  "description": "The schema-validated YAML report kitsoki's dev-story init phase emits: how to instantiate dev-story for THIS project. The declarative source the generated .kitsoki/stories/<id>-dev/ instance compiles from. See docs/proposals/project-init.md.",
+  "description": "The schema-validated YAML report kitsoki's dev-story init phase emits: how to instantiate dev-story for THIS project. The declarative source the generated .kitsoki/stories/<id>-dev/ instance compiles from. See docs/project-onboarding.md.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "id", "title", "repo", "stack", "kitsoki"],
@@ -48,7 +48,7 @@
       "additionalProperties": false,
       "required": ["kind"],
       "properties": {
-        "kind": { "enum": ["frontend", "backend", "fullstack", "service", "cli", "library", "monorepo", "rust", "go", "node", "generic", "other"] },
+        "kind": { "enum": ["frontend", "backend", "fullstack", "service", "cli", "library", "monorepo", "rust", "go", "node", "python", "generic", "other"] },
         "languages": { "type": "array", "items": { "type": "string" } },
         "frameworks": { "type": "array", "items": { "type": "string" } },
         "package_managers": { "type": "array", "items": { "type": "string" } }
@@ -343,7 +343,27 @@
       "additionalProperties": false,
       "properties": {
         "job": { "type": "string" },
+        "status": { "enum": ["no-transcripts-found", "transcripts-found", "mined"] },
         "sample": { "enum": ["recency", "all", "tagged", "none"] },
+        "first_pass_sample": { "type": "integer", "minimum": 0 },
+        "transcript_count": { "type": "integer", "minimum": 0 },
+        "sources": {
+          "type": "array",
+          "description": "Associated transcript sources found during deterministic discovery. Evidence only; mining still requires explicit consent/config.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["backend", "sessions"],
+            "properties": {
+              "backend": { "enum": ["claude-code", "codex", "kitsoki-trace", "other"] },
+              "dir": { "type": "string" },
+              "sessions": { "type": "integer", "minimum": 0 },
+              "latest_mtime": { "type": "integer", "minimum": 0 },
+              "include": { "enum": ["human", "agent", "both"] }
+            }
+          }
+        },
+        "note": { "type": "string", "contentMediaType": "text/markdown" },
         "intent_count": { "type": "integer", "minimum": 0 },
         "themes": {
           "type": "array",

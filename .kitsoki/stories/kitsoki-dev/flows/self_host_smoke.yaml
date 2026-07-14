@@ -1,0 +1,92 @@
+# self_host_smoke — boot, land in core.landing, verify iface.ticket.search
+# resolves through host.ticket_federation and returns ordered named sources.
+#
+# Smallest possible flow proving:
+#   - kitsoki-dev's `imports.core` folds dev-story cleanly under the
+#     `core` alias.
+#   - host_bindings rebind iface.ticket → host.ticket_federation
+#     across the second-fold boundary (the iface op call inside
+#     core.ticket_search resolves to host.ticket_federation.search at
+#     dispatch time).
+#   - the bare day-level intents (go_main, go_ticket_search) prefixed
+#     to core__ are dispatchable from inside the import compound.
+#
+# A stubbed `host.ticket_federation` handler returns a canned mixed list —
+# including one legitimate frontmatter-less local artifact and two named GitHub
+# remotes. The flow doesn't run the real providers because flows use stubs only.
+# A real-handler walk against the on-disk seeds is documented in
+# .kitsoki/stories/kitsoki-dev/README.md under "Manual walkthrough".
+
+test_kind: flow
+app: ../app.yaml
+initial_state: core.landing
+initial_world: {}
+
+host_handlers:
+  host.ticket_federation:
+    data:
+      ok: true
+      local_count: 1
+      github_count: 2
+      tickets:
+        - { id: "2026-07-11-frontmatterless-local", title: "Frontmatter-less local report remains visible", status: "", severity: "", assignee: "", index: 1, ref: "local:2026-07-11-frontmatterless-local", source: "local", source_label: "Local", source_kind: "local", source_mode: "local", source_repo: "", url: ".artifacts/issues/bugs/2026-07-11-frontmatterless-local.md" }
+        - { id: "1200", title: "Fork report loops in ticket picker", status: "open", priority: "", assignee: "", index: 2, ref: "origin:1200", source: "origin", source_label: "bsacrobatix/Kitsoki", source_kind: "github", source_mode: "remote", source_repo: "bsacrobatix/Kitsoki", url: "https://github.com/bsacrobatix/Kitsoki/issues/1200" }
+        - { id: "77", title: "Upstream report remains separately identified", status: "open", priority: "", assignee: "", index: 3, ref: "upstream:77", source: "upstream", source_label: "constructorfabric/Kitsoki", source_kind: "github", source_mode: "remote", source_repo: "constructorfabric/Kitsoki", url: "https://github.com/constructorfabric/Kitsoki/issues/77" }
+      source_groups:
+        - id: local
+          label: Local
+          kind: local
+          mode: local
+          repo: ""
+          count: 1
+          tickets:
+            - { id: "2026-07-11-frontmatterless-local", title: "Frontmatter-less local report remains visible", status: "", severity: "", index: 1, ref: "local:2026-07-11-frontmatterless-local", source: "local", source_label: "Local", source_kind: "local", source_mode: "local", source_repo: "" }
+        - id: origin
+          label: bsacrobatix/Kitsoki
+          kind: github
+          mode: remote
+          repo: bsacrobatix/Kitsoki
+          count: 1
+          tickets:
+            - { id: "1200", title: "Fork report loops in ticket picker", status: "open", index: 2, ref: "origin:1200", source: "origin", source_label: "bsacrobatix/Kitsoki", source_kind: "github", source_mode: "remote", source_repo: "bsacrobatix/Kitsoki" }
+        - id: upstream
+          label: constructorfabric/Kitsoki
+          kind: github
+          mode: remote
+          repo: constructorfabric/Kitsoki
+          count: 1
+          tickets:
+            - { id: "77", title: "Upstream report remains separately identified", status: "open", index: 3, ref: "upstream:77", source: "upstream", source_label: "constructorfabric/Kitsoki", source_kind: "github", source_mode: "remote", source_repo: "constructorfabric/Kitsoki" }
+      provider_errors: []
+
+turns:
+  # Verify we landed at core.landing with the look intent. The lift
+  # via imports.core.intents.import would surface this as bare `look`
+  # at the parent table, but kitsoki-dev keeps the lift list minimal
+  # (proposal §9 strict declared-mode encourages prefixed names for
+  # navigation). The operator types core__look from inside the import.
+  - intent: { name: core__look, slots: {} }
+    expect_state: core.landing
+
+  # Enter the ticket-search room (via the lifted go_ticket_search
+  # intent — dev-story's hub navigation surfaces this at the core
+  # level).
+  - intent: { name: core__go_ticket_search, slots: {} }
+    expect_state: core.ticket_search
+
+  # Run a search; ticket_searching's on_enter fires iface.ticket.search
+    # which is bound at the kitsoki-dev instance to host.ticket_federation.
+  - intent: { name: core__search_tickets, slots: { query: "open kitsoki bugs" } }
+    expect_state: core.ticket_searching
+    expect_view_matches: "Local[\\s\\S]*Frontmatter-less local report remains visible[\\s\\S]*bsacrobatix/Kitsoki[\\s\\S]*Fork report loops in ticket picker[\\s\\S]*constructorfabric/Kitsoki[\\s\\S]*Upstream report remains separately identified"
+    expect_world:
+      # Both legacy single-GitHub keys stay empty until a GitHub row is picked;
+      # the selector's remote sections are driven by ticket_sources.
+      ticket_repo: ""
+      ticket_github_repo: ""
+
+  # Land back at main.
+  - intent: { name: core__go_main, slots: {} }
+    expect_state: core.landing
+
+expect_no_errors: true

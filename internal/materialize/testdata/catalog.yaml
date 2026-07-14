@@ -1,0 +1,140 @@
+schema: project-object-graph/seed-catalog/v0
+catalog:
+  id: materialize-test-fixture-catalog
+type_registry:
+  - id: core-node
+    schema: graph-type/v0
+    extends: null
+    required_fields: [id, schema, title, status, visibility]
+  - id: phase
+    schema: graph-type/v0
+    extends: core-node
+  - id: changeset
+    schema: graph-type/v0
+    extends: core-node
+  - id: work-item
+    schema: graph-type/v0
+    extends: core-node
+    edge_fields:
+      - id: in_phase
+        target_type: phase
+        cardinality: one
+    artifact:
+      schema: pog/artifact/implementation-brief/v0
+      format: markdown
+      presentation: document
+    materialize:
+      story: story
+      context_edges: [in_phase]
+      params:
+        - { id: depth, type: int, default: 2 }
+        - { id: audience, type: enum, values: [internal, public] }
+      gates: [gate, owner]
+  - id: no-artifact-type
+    schema: graph-type/v0
+    extends: core-node
+  # A producer type whose story declares hosts: [host.run] — used to prove
+  # the private drive rig wires the builtin host registry (host verbs are
+  # real, not silent no-ops).
+  - id: host-work-item
+    schema: graph-type/v0
+    extends: core-node
+    edge_fields:
+      - id: in_phase
+        target_type: phase
+        cardinality: one
+    artifact:
+      schema: pog/artifact/implementation-brief/v0
+      format: markdown
+      presentation: document
+    materialize:
+      story: hoststory
+      context_edges: [in_phase]
+  # A work-item variant whose materialize: declares a gate check: each node
+  # names its own .star assertion (script_field) and parameterizes it
+  # (inputs_field) — the reusable-type/parameterized-assertion contract.
+  - id: checked-work-item
+    schema: graph-type/v0
+    extends: core-node
+    edge_fields:
+      - id: in_phase
+        target_type: phase
+        cardinality: one
+    artifact:
+      schema: pog/artifact/implementation-brief/v0
+      format: markdown
+      presentation: document
+    materialize:
+      story: story
+      context_edges: [in_phase]
+      gates: [gate]
+      checks:
+        - id: gate
+          script_field: check
+          inputs_field: check_inputs
+nodes:
+  - schema: graph/phase/v0
+    id: phase-one
+    title: Phase one
+    status: active
+    visibility: internal
+  - schema: graph/work-item/v0
+    id: wi-ready
+    title: Ready work item
+    status: active
+    visibility: internal
+    gate: "reviewers assigned"
+    owner: brad
+    edges:
+      in_phase: [phase-one]
+  - schema: graph/work-item/v0
+    id: wi-not-ready
+    title: Not ready work item
+    status: active
+    visibility: internal
+    edges:
+      in_phase: [phase-one]
+  - schema: graph/no-artifact-type/v0
+    id: plain-one
+    title: Plain node
+    status: active
+    visibility: internal
+  - schema: graph/checked-work-item/v0
+    id: wi-check-pass
+    title: Checked work item whose assertion holds
+    status: active
+    visibility: internal
+    gate: "the verdict is yes"
+    check: checks/judge.star
+    check_inputs:
+      want: "yes"
+    edges:
+      in_phase: [phase-one]
+  - schema: graph/checked-work-item/v0
+    id: wi-check-fail
+    title: Checked work item whose assertion does not hold
+    status: active
+    visibility: internal
+    gate: "the verdict is yes"
+    check: checks/judge.star
+    check_inputs:
+      want: "no"
+    edges:
+      in_phase: [phase-one]
+  - schema: graph/checked-work-item/v0
+    id: wi-check-missing
+    title: Checked work item that never declared its assertion
+    status: active
+    visibility: internal
+    gate: "somebody eyeballed it"
+    edges:
+      in_phase: [phase-one]
+  - schema: graph/host-work-item/v0
+    id: wi-host-run
+    title: Host-producing work item
+    status: planned
+    visibility: internal
+    summary: Fixture node whose story produces a file via host.run.
+    sources: []
+    edges:
+      in_phase: [phase-one]

@@ -1,0 +1,38 @@
+# landing_next_step_warning — non-zero next-step exits can render as warnings.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world: {}
+
+host_handlers:
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary: "Finished setup and suggested a diagnostic."
+        next_steps:
+          - label: "Run optional diagnostic"
+            command: "printf warn-diagnostic"
+            severity: warning
+            description: "non-zero should be amber, not red"
+  host.run:
+    by_call:
+      landing-next-step:
+        data: { ok: false, stdout: "warn-diagnostic", exit_code: 2 }
+
+turns:
+  - intent: { name: landing_capture, slots: { request: "check optional diagnostic" } }
+    expect_state: landing
+
+  - intent: { name: run_next_step, slots: { n: 1 } }
+    expect_state: landing
+    expect_view_matches: 'NEXT STEP ⚠[\s\S]*exit 2[\s\S]*warn-diagnostic'
+    expect_world:
+      landing_next_step_label: "Run optional diagnostic"
+      landing_next_step_severity: "warning"
+      landing_next_step_stdout: "warn-diagnostic"
+      landing_next_step_exit_code: 2
+      landing_next_step_ran: true
+
+expect_no_errors: true

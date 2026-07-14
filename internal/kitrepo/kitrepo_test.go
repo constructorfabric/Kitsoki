@@ -99,6 +99,41 @@ func TestResolve_AutoDetectsCheckoutAndPersists(t *testing.T) {
 	}
 }
 
+func TestResolve_CurrentCheckoutBeatsRememberedCheckout(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv(EnvVar, "")
+
+	remembered := t.TempDir()
+	if err := os.MkdirAll(filepath.Dir(savedFileFor(home)), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(savedFileFor(home), []byte(remembered+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	current := t.TempDir()
+	if err := os.WriteFile(filepath.Join(current, "go.mod"), []byte("module kitsoki\n\ngo 1.25\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	nested := filepath.Join(current, ".capsules", "workspaces", "reliability")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(nested)
+
+	if got := Resolve(); got != current {
+		t.Fatalf("Resolve() = %q, want current checkout %q instead of remembered %q", got, current, remembered)
+	}
+	b, err := os.ReadFile(savedFileFor(home))
+	if err != nil {
+		t.Fatalf("read refreshed location: %v", err)
+	}
+	if got := string(b); got != current+"\n" {
+		t.Fatalf("persisted = %q, want refreshed current checkout %q", got, current+"\n")
+	}
+}
+
 func TestResolve_UnresolvableReturnsEmpty(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

@@ -21,6 +21,9 @@ initial_world:
   workdir:     "."
   output_path: ".artifacts/prd.md"
   judge_mode:  "human"
+  publish_durable_path: "/tmp/kitsoki-prd-fixtures"
+
+starlark_inspect_cassette: ../cassettes/slug_a_cli_for_x.inspect.yaml
 
 host_handlers:
   # The brief room opens the editable brief in the editor on entry.
@@ -48,14 +51,6 @@ host_handlers:
             roadmap_fit: "Greenfield — no existing PRD covers this."
       analyst_questions:
         error: "host.agent.decide: analyst session abandoned without successful submit"
-  # search-confirm mints the per-PRD workspace before clarifying's analyst runs.
-  host.run:
-    by_call:
-      mint_workspace:
-        data:
-          ok: true
-          exit_code: 0
-          stdout_json: { slug: "a-cli-for-x", workspace: ".artifacts/prd/a-cli-for-x" }
   host.artifacts_dir:
     data: { ok: true, path: ".artifacts/prd/a-cli-for-x/001-brief.md", message_id: "001-brief#1" }
 

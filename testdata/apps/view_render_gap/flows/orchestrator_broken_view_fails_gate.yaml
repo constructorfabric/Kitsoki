@@ -1,0 +1,25 @@
+# G-VIEW gate teeth, negative case, orchestrator-backed rig.
+#
+# Same shape as legacy_broken_view_fails_gate.yaml but forced through
+# runOneFlowOrchestrator via use_orchestrator: true, proving the gate also
+# fires when outcome.View is empty (clock-only/terminal turns don't always
+# populate it) and RenderState is the only source of the error.
+#
+# To run:
+#   go run ./cmd/kitsoki test flows testdata/apps/view_render_gap/app.yaml
+
+test_kind: flow
+app: ../app.yaml
+initial_state: lobby
+use_orchestrator: true
+
+host_handlers:
+  host.test.scan:
+    data:
+      summary: "two overlapping drafts"
+
+turns:
+  - intent: { name: go_bad, slots: {} }
+    expect_state: broken
+
+expect_terminal: true

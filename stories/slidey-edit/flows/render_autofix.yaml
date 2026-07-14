@@ -1,11 +1,11 @@
-# render_autofix — render_deck fails → fixing_render auto-repairs the deck and
-# re-renders, bounded by render_retry_budget, then falls through to reviewing.
+# render_autofix — render_deck fails → visible troubleshooting checkpoint →
+# explicit troubleshoot runs one repair attempt and re-renders. If rendering
+# still fails, the story returns to troubleshooting instead of silently burning
+# the full retry budget in one turn.
 #
-# render_deck is stubbed to ERROR on every call, so the loop runs the full
-# budget (2 repair passes) and gives up: rendering → fixing_render → render_retry
-# → rendering → fixing_render → render_retry → rendering → fixing_render →
-# render_giveup → reviewing. All within the single `accept` turn (the engine
-# chases the on_enter emit_intent chain).
+# render_deck is stubbed to ERROR on every call, so two explicit troubleshoot
+# turns spend the repair budget one visible step at a time; a final troubleshoot
+# gives up and returns to reviewing with the renderer error surfaced.
 
 test_kind: flow
 app: ../app.yaml
@@ -45,11 +45,48 @@ host_handlers:
             frame_handle: ""
 
 turns:
-  # accept → rendering(error) → auto-fix loop exhausts budget → reviewing.
+  # accept → rendering(error) → visible troubleshooting checkpoint. No agent yet.
   - intent: { name: accept, slots: {} }
+    expect_state: checking_render_failure
+    expect_world:
+      deck_handle: ""
+      render_retries: 0
+      render_error_kind: ""
+    expect_no_host_calls: [host.agent.task]
+
+  # First explicit troubleshoot runs one repair attempt, then render fails again
+  # and lands back in troubleshooting.
+  - intent: { name: troubleshoot, slots: {} }
+    expect_state: checking_render_failure
+    expect_world:
+      deck_handle: ""
+      render_retries: 1
+      render_error_kind: ""
+      deck:
+        spec_path: "stories/slidey-edit/baked/deck.json"
+        summary: "Repaired the malformed scene."
+    expect_host_calls:
+      - handler: host.agent.task
+        args: { call: "fix_render" }
+
+  # Second explicit troubleshoot spends the second repair attempt.
+  - intent: { name: troubleshoot, slots: {} }
+    expect_state: checking_render_failure
+    expect_world:
+      deck_handle: ""
+      render_retries: 2
+      render_error_kind: ""
+    expect_host_calls:
+      - handler: host.agent.task
+        args: { call: "fix_render" }
+
+  # Budget exhausted; no third repair agent dispatch.
+  - intent: { name: troubleshoot, slots: {} }
     expect_state: reviewing
     expect_world:
       deck_handle: ""
       render_retries: 2
+      render_error_kind: deck_validation
+    expect_no_host_calls: [host.agent.task]
 
 expect_terminal: false

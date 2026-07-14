@@ -1,0 +1,27 @@
+<!doctype html>
+<html>
+  <head><meta charset="utf-8" /><title>fixture mockup</title></head>
+  <body>
+    <div data-testid="portal">fixture portal</div>
+    <script>
+      // Mockup states are code, not data (yet) -- this is the convention
+      // demo-doctor's "states" check parses pragmatically: top-level keys of
+      // this object literal.
+      const states = {
+        a: {
+          title: 'State A',
+          nested: { ignored: true, list: [1, 2, { deep: 'not a top-level key' }] }
+        },
+        b: {
+          title: 'State B'
+        }
+      };
+
+      function render(id) {
+        document.title = `fixture mockup: ${id}`;
+      }
+
+      window.storyboard = { setStep: render };
+    </script>
+  </body>
+</html>

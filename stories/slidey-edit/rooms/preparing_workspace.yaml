@@ -1,0 +1,94 @@
+# preparing_workspace — deterministic managed clone provisioning.
+#
+# Deck edits are write operations, so they must happen in the managed
+# clone-backed capsule workspace created by the workspace provider. The deck
+# state remains repository-relative; only host calls that touch files receive
+# the concrete workdir path.
+
+states:
+
+  preparing_workspace:
+    description: "Prepare the managed workspace for deck editing."
+    relevant_world: [workspace_id, feature_branch, base_branch, workdir, workspace_prepared, pending_deck_spec_path]
+    view:
+      - heading: "Slidey deck editor · preparing workspace"
+      - kv:
+          pairs:
+            Workspace id: '{{ world.workspace_id|default:"(allocating)" }}'
+            Branch:       '{{ world.feature_branch|default:"(allocating)" }}'
+            Base:         '{{ world.base_branch }}'
+            Workdir:      '{{ world.workdir|default:"(creating)" }}'
+      - prose: "Preparing the managed capsule workspace before any deck files are edited."
+      - heading: "Actions"
+      - list:
+          items:
+            - label: "quit"
+              hint: "abandon the editor"
+            - label: "look"
+    on_enter:
+      - when: "world.workspace_id == ''"
+        set:
+          workspace_id: "slidey-edit-{{ world.session_id != '' ? world.session_id : 'manual' }}"
+      - when: "world.feature_branch == ''"
+        set:
+          feature_branch: "agent/slidey-edit-{{ world.session_id != '' ? world.session_id : 'manual' }}"
+      - invoke: iface.workspace.create
+        id: prepare_workspace
+        once: true
+        when: "!world.workspace_prepared"
+        with:
+          id:         "{{ world.workspace_id }}"
+          name:       "{{ world.feature_branch }}"
+          base:       "{{ world.base_branch }}"
+          session_id: "{{ world.session_id }}"
+        bind:
+          workdir: path
+          workspace_prepared: ok
+        on_error: workspace_failed
+      - when: "world.workspace_prepared"
+        emit_intent: accept
+    on:
+      accept:
+        - when: "world.pending_deck_spec_path != ''"
+          target: loading_existing
+        - target: drafting
+      quit:
+        - target: "@exit:abandoned"
+          effects:
+            - set: { abandon_reason: "abandoned_at_workspace_prepare" }
+      look:
+        - target: .
+
+  workspace_failed:
+    description: "Managed workspace preparation failed."
+    relevant_world: [workspace_id, feature_branch, base_branch, workdir, last_error]
+    view:
+      - heading: "Slidey deck editor · workspace failed"
+      - kv:
+          pairs:
+            Workspace id: '{{ world.workspace_id|default:"(unknown)" }}'
+            Branch:       '{{ world.feature_branch|default:"(unknown)" }}'
+            Base:         '{{ world.base_branch|default:"(unknown)" }}'
+            Error:        '{{ world.last_error|default:world.host_error.message|default:"(unknown)" }}'
+      - prose: "The managed capsule workspace could not be prepared, so no deck files were edited."
+      - heading: "Actions"
+      - list:
+          items:
+            - label: "retry_workspace"
+              hint: "try managed workspace preparation again"
+            - label: "quit"
+              hint: "abandon the editor"
+            - label: "look"
+    on:
+      retry_workspace:
+        - target: preparing_workspace
+          effects:
+            - set:
+                workspace_prepared: false
+                workdir: ""
+      quit:
+        - target: "@exit:abandoned"
+          effects:
+            - set: { abandon_reason: "abandoned_at_workspace_failure" }
+      look:
+        - target: .

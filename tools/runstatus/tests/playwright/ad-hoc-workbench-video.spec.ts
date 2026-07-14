@@ -18,7 +18,7 @@
  * quick-action choice buttons (intent-btn-go_ticket_search, go_bugfix, go_prd, …)
  * the room ships AND the free-text floor beneath them.
  *
- * The other two surfaces — the read-only→write opt-in and the /mine proposals —
+ * The other two surfaces — the scoped capsule write opt-in and the /mine proposals —
  * are PRODUCED by a real agent at runtime, which a no-LLM demo never invokes.
  * They are seeded through the deterministic demo seams registered onMounted:
  *   - window.__pushOperatorQuestion (OperatorQuestionModal) — the write-mode
@@ -78,20 +78,20 @@ const CHAPTER_SOURCE = "tools/runstatus/src/tour/ad-hoc-workbench-manifest.ts";
 
 // ── The seeded demo frames (deterministic, "demo-" ids resolve locally) ───────
 
-// The read-only→write opt-in, surfaced in the operator-question card.
+// The scoped capsule write opt-in, surfaced in the operator-question card.
 const WRITE_MODE_FRAME = {
   session_id: "demo-session",
   question_id: "demo-write-mode-1",
   questions: [
     {
       question:
-        "I'd like to edit docs/architecture/ambient-mining.md to capture what I just learned. May I switch from read-only to write mode for this file?",
-      header: "May I edit?",
+        "I'd like to update docs/architecture/ambient-mining.md in a managed capsule, then validate and merge it to staging/local. May I make that scoped change?",
+      header: "May I change this?",
       multiSelect: false,
       options: [
-        { label: "accept", description: "Grant write mode for this edit (emits WriteModeGranted)." },
+        { label: "accept", description: "Grant mutation capability for this capsule change (emits WriteModeGranted)." },
         { label: "refine", description: "Narrow the ask — scope it to a smaller change." },
-        { label: "dismiss", description: "Keep the session read-only; do not edit." },
+        { label: "dismiss", description: "Make no change; keep the primary checkout protected." },
       ],
     },
   ],
@@ -270,11 +270,12 @@ test.describe("ad-hoc workbench feature-spotlight (live, no-LLM --flow)", () => 
           await dwell(page, SETTLE_MS);
         }
         if (step.id === "awb-writemode-card") {
-          // Seed the read-only→write opt-in as a real operator-question frame so
+          // Seed the scoped capsule write opt-in as a real operator-question frame so
           // the REAL card renders (operator-question-modal / oq-option-* / oq-submit).
           await pushOperatorQuestion(page, WRITE_MODE_FRAME);
           await expect(page.getByTestId("operator-question-modal")).toBeVisible({ timeout: 8000 });
-          await expect(page.getByTestId("operator-question-modal")).toContainText("read-only to write mode");
+          await expect(page.getByTestId("operator-question-modal")).toContainText("managed capsule");
+          await expect(page.getByTestId("operator-question-modal")).toContainText("staging/local");
           await expect(page.getByTestId("oq-option-0-0")).toContainText("accept");
           await expect(page.getByTestId("oq-option-0-2")).toContainText("dismiss");
           // Pick "accept" so the submit (the step's click-target) grants write mode.

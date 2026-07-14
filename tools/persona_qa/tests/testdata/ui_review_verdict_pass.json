@@ -1,0 +1,20 @@
+{
+  "overall": "pass",
+  "strict": false,
+  "server": {"cmd": "bin/kitsoki web --stories-dir stories --flow flows/onboarding.json", "base": "http://127.0.0.1:7746"},
+  "summary": {"error": 0, "warn": 0, "info": 1, "blocking": 0, "by_source": {"geometry": 0, "a11y": 0, "vision": 1}},
+  "findings": [
+    {
+      "source": "vision",
+      "check": "layout:visual-balance",
+      "severity": "info",
+      "surface": "home-welcome",
+      "viewport": "desktop",
+      "frame": "01-home-welcome@desktop.png",
+      "count": 1,
+      "frames": ["01-home-welcome@desktop.png"],
+      "detail": "Minor whitespace imbalance in the hero panel.",
+      "recommendation": "Consider tightening the hero margin."
+    }
+  ]
+}

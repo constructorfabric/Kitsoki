@@ -1,0 +1,23 @@
+# Host cassette for workbench_expected_effects_unsatisfied.yaml. The
+# submitted note deliberately omits "filed a ticket" (only reflects the test
+# fix), so the engine's own expected_effects join should find
+# candidate_completed = false despite a clean (non-error) dispatch.
+kind: host_cassette
+app_id: workbench-smoke
+app_version: "0.1.0"
+match_on: [handler]
+
+episodes:
+  - id: bench_dispatch
+    match: { handler: host.agent.task }
+    response:
+      data:
+        ok: true
+        submitted:
+          summary: "Ran the flaky test until it passed."
+    agent:
+      verb: task
+      agent: bench_agent
+      model: ""
+      duration_ms: 500
+      response: "Ran the flaky test until it passed."

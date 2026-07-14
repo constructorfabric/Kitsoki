@@ -1,0 +1,20 @@
+- id: core-node
+  schema: graph-type/v1
+  required_fields: [id, schema, title, status, visibility]
+- id: feature
+  schema: graph-type/v1
+  extends: core-node
+  edge_fields:
+    - id: requirements
+      target_type: requirement
+      cardinality: many
+- id: requirement
+  schema: graph-type/v1
+  extends: core-node
+  edge_fields:
+    - id: required_by
+      target_type: feature
+      cardinality: many
+- id: changeset
+  schema: graph-type/v1
+  extends: core-node

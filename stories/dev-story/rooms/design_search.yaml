@@ -137,6 +137,28 @@ states:
               intent: look
     relevant_world: [design_idea, design_existing_state, design_existing_path, design_overlap_decision, design_change_target]
     on_enter:
+      # 0. Resolve the design workspace's durable root to a writable location
+      #    BEFORE any scan, folder mint, or publish. dev-story's fallback
+      #    convention is docs/proposals, but any checkout can have its
+      #    configured durable path locked down. Rebinding design_durable_path
+      #    here means every
+      #    downstream step — workspace minting (design_workspace.star /
+      #    design_amend_workspace.star), the scratch artifact writes, and the
+      #    final publish (design_draft.yaml) — sees the SAME resolved,
+      #    guaranteed-writable root without each re-deriving it. once: keyed
+      #    off design_workspace_root_resolved (blank until this runs; kept
+      #    separate from design_durable_path itself, which already carries a
+      #    non-empty default and so can't gate a once: on its own).
+      - invoke: host.fs.writable_dir
+        once: true
+        id: resolve_durable_path
+        with:
+          path:     "{{ world.design_durable_path }}"
+          fallback: ".context/designs"
+        bind:
+          design_durable_path:            "path"
+          design_workspace_root_resolved: "path"
+        on_error: design
       # Scout: check for overlapping proposals + roadmap fit. THE EARLY GATE —
       # runs before any folder is created. once: keyed off design_existing_state.
       - invoke: host.agent.decide
@@ -182,17 +204,20 @@ states:
                 design_overlap_decision: "change_existing"
                 design_change_target:    "{{ slots.target }}"
                 last_error: ""
-            - invoke: host.run
+            - invoke: host.starlark.run
               id: amend_workspace
               with:
-                cmd: python3
-                args:
-                  - "stories/dev-story/scripts/design_amend_workspace.py"
-                  - "{{ slots.target }}"
-                  - "{{ world.design_slug }}"
+                script: scripts/design_amend_workspace.star
+                capabilities:
+                  fs:
+                    read: ["**"]
+                inputs:
+                  target:        "{{ slots.target }}"
+                  proposed_slug: "{{ world.design_slug }}"
+                  durable_path:  "{{ world.design_durable_path }}"
               bind:
-                design_slug:      "stdout_json.slug"
-                design_workspace: "stdout_json.workspace"
+                design_slug:      "slug"
+                design_workspace: "workspace"
               on_error: design_search
 
       # Override: create a new proposal despite the overlap (recorded for audit).

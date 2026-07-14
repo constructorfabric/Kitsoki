@@ -1,0 +1,253 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.product_journey.run:
+    by_call:
+      capture_product_journey_preflight:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: passed
+            preflight_id: preflight-live-driver
+            preflight_dir: .artifacts/product-journey/preflights/preflight-live-driver
+            preflight_path: .artifacts/product-journey/preflights/preflight-live-driver/preflight.json
+            markdown_path: .artifacts/product-journey/preflights/preflight-live-driver/preflight.md
+            webshot_output: .artifacts/product-journey/preflights/preflight-live-driver/webshot-smoke.png
+            passed: 6
+            failed: 0
+      autonomous_product_journey_marathon_create:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: autonomous_marathon_ready_for_driver
+            run_id: run-live-driver
+            run_dir: .artifacts/product-journey/run-live-driver
+            project: vscode
+            persona: core-maintainer
+            seed: live-driver
+            deck_path: .artifacts/product-journey/run-live-driver/deck.slidey.json
+            execution_plan_path: .artifacts/product-journey/run-live-driver/execution-plan.md
+            driver_plan_path: .artifacts/product-journey/run-live-driver/driver-plan.md
+            driver_journal_path: .artifacts/product-journey/run-live-driver/driver-journal.md
+            agent_brief_path: .artifacts/product-journey/run-live-driver/agent-brief.md
+            driver_handoff_path: .artifacts/product-journey/run-live-driver/driver-handoff.md
+            media_manifest_path: .artifacts/product-journey/run-live-driver/media-manifest.json
+            scenario_outcomes_path: .artifacts/product-journey/run-live-driver/scenario-outcomes.md
+            autonomous_marathon_status: autonomous_marathon_ready_for_driver
+            autonomous_marathon_summary: "Created 1 scenario(s); driver evidence capture is ready for story-owned dispatch."
+            autonomous_marathon_report_path: .artifacts/product-journey/run-live-driver/autonomous-marathon-report.md
+            autonomous_driver_mode: live
+            autonomous_driver_live_profile: test-live
+            autonomous_driver_status: ready_for_dispatch
+            autonomous_driver_summary: "Story-owned live driver dispatch is ready."
+            autonomous_driver_evidence_count: 0
+            autonomous_driver_issue_count: 0
+            autonomous_control_status: ready_for_driver
+            autonomous_control_path: .artifacts/product-journey/run-live-driver/autonomous-marathon-control.json
+            autonomous_control_markdown_path: .artifacts/product-journey/run-live-driver/autonomous-marathon-control.md
+            autonomous_control_summary: "driver=live, cadence=24h, watchdog=45m"
+            autonomous_fix_status: not_run
+            autonomous_gate_summary: "driver=ready, filing=not_run, gh_agent=not_run, independent_verify=not_run, review=not_run, validation=not_run"
+            independent_verify_status: not_run
+            independent_verify_summary: "independent verification not run"
+            validation_status: ""
+            validation_errors: 0
+            validation_warnings: 0
+            validation_issue_summary: ""
+            review_status: not_run
+            review_failed_count: 0
+            live_budget_minutes: 6
+            scenario_count: 1
+            proof_evidence_count: 0
+            demo_evidence_count: 0
+            missing_proof_evidence_count: 5
+            minimum_evidence_count: 5
+            proof_minimum_evidence_count: 0
+      autonomous_product_journey_marathon_finalize:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: autonomous_marathon_valid
+            run_id: run-live-driver
+            run_dir: .artifacts/product-journey/run-live-driver
+            deck_path: .artifacts/product-journey/run-live-driver/deck.slidey.json
+            execution_plan_path: .artifacts/product-journey/run-live-driver/execution-plan.md
+            driver_plan_path: .artifacts/product-journey/run-live-driver/driver-plan.md
+            driver_journal_path: .artifacts/product-journey/run-live-driver/driver-journal.md
+            agent_brief_path: .artifacts/product-journey/run-live-driver/agent-brief.md
+            driver_handoff_path: .artifacts/product-journey/run-live-driver/driver-handoff.md
+            media_manifest_path: .artifacts/product-journey/run-live-driver/media-manifest.json
+            scenario_outcomes_path: .artifacts/product-journey/run-live-driver/scenario-outcomes.md
+            autonomous_marathon_status: autonomous_marathon_valid
+            autonomous_marathon_summary: "driver=pass, filing=pass, gh_agent=pass, independent_verify=pass, review=pass, validation=pass"
+            autonomous_marathon_report_path: .artifacts/product-journey/run-live-driver/autonomous-marathon-report.md
+            autonomous_driver_mode: live
+            autonomous_driver_live_profile: test-live
+            autonomous_driver_status: captured
+            autonomous_driver_summary: "Story-owned live driver captured evidence and recorded credible findings."
+            autonomous_driver_evidence_count: 5
+            autonomous_driver_issue_count: 1
+            autonomous_control_status: ready_for_driver
+            autonomous_control_path: .artifacts/product-journey/run-live-driver/autonomous-marathon-control.json
+            autonomous_control_markdown_path: .artifacts/product-journey/run-live-driver/autonomous-marathon-control.md
+            autonomous_control_summary: "driver=live, cadence=24h, watchdog=45m"
+            autonomous_watchdog_status: autonomous_watchdog_ok
+            autonomous_watchdog_summary: "heartbeat age 0m within watchdog=45m"
+            autonomous_fix_status: autonomous_fix_valid
+            autonomous_fix_report_path: .artifacts/product-journey/run-live-driver/autonomous-fix-report.md
+            autonomous_gate_summary: "watchdog=pass, filing=pass, gh_agent=pass, independent_verify=pass, review=pass, validation=pass"
+            independent_verify_status: pass
+            independent_verify_summary: "gh-agent fix evidence and independent verify artifacts are present"
+            filing_status: filed
+            findings_filed_count: 1
+            findings_skipped_count: 0
+            findings_failed_count: 0
+            findings_unfiled_count: 0
+            filed_issue_summary: "#105"
+            filing_summary: "Filed 1 credible finding through native gitops"
+            gh_agent_health_status: pass
+            gh_agent_readiness_status: pass
+            gh_agent_enqueue_status: enqueued
+            gh_agent_enqueued_count: 1
+            gh_agent_drain_status: drained
+            gh_agent_drained_count: 1
+            gh_agent_done_count: 1
+            gh_agent_failed_count: 0
+            gh_agent_active_count: 0
+            gh_agent_run_summary: "1 job done"
+            gh_agent_fix_evidence_count: 1
+            gh_agent_missing_evidence_count: 0
+            gh_agent_triage_evidence_count: 1
+            gh_agent_missing_triage_count: 0
+            gh_agent_independent_verify_count: 1
+            gh_agent_missing_verify_count: 0
+            gh_agent_missing_run_url_count: 0
+            stats_status: pass
+            stats_root: .artifacts/product-journey
+            stats_output: .artifacts/product-journey/run-live-driver/autonomous-marathon-stats.json
+            stats_summary: "runs=1 found=1 filed=1 fixed=1"
+            stats_gate_status: pass
+            stats_gate_summary: "current run scanned"
+            stats_current_run_scanned: yes
+            stats_runs_scanned: 1
+            stats_found_count: 1
+            stats_filed_count: 1
+            stats_fixed_count: 1
+            stats_reopened_count: 0
+            stats_unknown_state_count: 0
+            stats_similar_pair_count: 0
+            live_budget_minutes: 6
+            scenario_count: 1
+            proof_evidence_count: 5
+            demo_evidence_count: 0
+            finding_total_count: 1
+            issue_count: 1
+            fix_count: 1
+            blocked_count: 0
+            missing_proof_evidence_count: 0
+            minimum_evidence_count: 5
+            proof_minimum_evidence_count: 5
+            review_status: pass
+            review_summary: "review passed"
+            review_passed_count: 4
+            review_failed_count: 0
+            review_warning_count: 0
+            review_total_count: 4
+            validation_status: valid
+            validation_errors: 0
+            validation_warnings: 0
+            validation_issue_summary: ""
+      record_autonomous_product_journey_driver_dispatch:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: autonomous_driver_dispatch_recorded
+            run_id: run-live-driver
+            run_dir: .artifacts/product-journey/run-live-driver
+            autonomous_driver_dispatch_path: .artifacts/product-journey/run-live-driver/autonomous-driver-dispatch.json
+            autonomous_driver_dispatch_markdown_path: .artifacts/product-journey/run-live-driver/autonomous-driver-dispatch.md
+            autonomous_driver_dispatch_status: captured
+            autonomous_driver_dispatch_summary: "Captured live persona proof, recorded one credible issue, and ran story-owned gates."
+            autonomous_driver_dispatch_trace: .artifacts/product-journey/run-live-driver/driver-trace.jsonl
+            autonomous_marathon_status: autonomous_marathon_ready_for_driver
+            autonomous_marathon_summary: "Created 1 scenario(s); driver evidence capture is ready for story-owned dispatch."
+            autonomous_marathon_report_path: .artifacts/product-journey/run-live-driver/autonomous-marathon-report.md
+            autonomous_driver_mode: live
+            autonomous_driver_live_profile: test-live
+            autonomous_driver_status: captured
+            autonomous_driver_summary: "Captured live persona proof, recorded one credible issue, and ran story-owned gates."
+            autonomous_driver_evidence_count: 5
+            autonomous_driver_issue_count: 1
+
+  host.agent.task:
+    by_call:
+      autonomous_product_journey_driver:
+        data:
+          ok: true
+          submitted:
+            status: captured
+            summary: "Captured live persona proof, recorded one credible issue, and ran story-owned gates."
+            evidence_count: 5
+            issue_count: 1
+            trace: .artifacts/product-journey/run-live-driver/driver-trace.jsonl
+
+turns:
+  - intent:
+      name: capture_preflight
+      slots:
+        seed: live-driver
+    expect_state: idle
+    expect_world:
+      status: capture_preflight_checked
+      capture_preflight_status: passed
+      capture_preflight_failed: 0
+    expect_host_calls:
+      - handler: host.product_journey.run
+        args: { call: capture_product_journey_preflight }
+
+  - intent:
+      name: autonomous_marathon
+      slots:
+        project: vscode
+        persona: core-maintainer
+        seed: live-driver
+        scenarios: bugfix
+        live_budget_minutes: 6
+        autonomous_driver_mode: live
+        autonomous_driver_live_profile: test-live
+        ticket_repo: bsacrobatix/Kitsoki
+        gh_agent_public_base_url: https://agent.example
+    expect_state: run_created
+    expect_world:
+      status: autonomous_marathon_complete
+      autonomous_marathon_status: autonomous_marathon_valid
+      autonomous_driver_mode: live
+      autonomous_driver_live_profile: test-live
+      autonomous_driver_status: captured
+      autonomous_driver_evidence_count: 5
+      autonomous_driver_issue_count: 1
+      autonomous_driver_dispatch_markdown_path: .artifacts/product-journey/run-live-driver/autonomous-driver-dispatch.md
+      autonomous_gate_summary: "watchdog=pass, filing=pass, gh_agent=pass, independent_verify=pass, review=pass, validation=pass"
+      autonomous_driver_dispatch_trace: .artifacts/product-journey/run-live-driver/driver-trace.jsonl
+      validation_status: valid
+      validation_errors: 0
+      review_status: pass
+      stats_current_run_scanned: yes
+    expect_view_matches: "RUN CREATED[\\s\\S]*Autonomous gates[\\s\\S]*watchdog=pass, filing=pass, gh_agent=pass,[\\s\\S]*independent_verify=pass, review=pass, validation=pass[\\s\\S]*Autonomous marathon[\\s\\S]*autonomous_marathon_valid[\\s\\S]*Autonomous driver[\\s\\S]*live / captured[\\s\\S]*Driver receipt[\\s\\S]*autonomous-driver-[\\s\\S]*dispatch.md"
+    expect_host_calls:
+      - handler: host.product_journey.run
+        args: { call: autonomous_product_journey_marathon_create }
+      - handler: host.agent.task
+        args: { call: autonomous_product_journey_driver }
+      - handler: host.product_journey.run
+        args: { call: record_autonomous_product_journey_driver_dispatch }
+      - handler: host.product_journey.run
+        args: { call: autonomous_product_journey_marathon_finalize }
+
+expect_no_errors: true

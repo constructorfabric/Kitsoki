@@ -1,288 +1,415 @@
-# Runtime: confine a write/external agent's filesystem writes (OS sandbox)
+# Runtime: secure agent runtime and sandbox backends
 
-**Status:** Draft v1. Nothing implemented yet.
+**Status:** Draft v2. Re-scoped from a bwrap-first filesystem sandbox into a
+pluggable agent-runtime boundary. Nothing implemented yet.
 **Kind:**   runtime
-**Epic:**   [agent-capability-model.md](agent-capability-model.md) (slice 3 — the OS enforcement layer)
+**Epic:**   [agent-capability-model.md](agent-capability-model.md) (slice 3 — the OS/runtime enforcement layer)
 
 ## Why
 
-An agent whose toolbox resolves to the `write` or `external` class — chiefly
-`host.agent.task`, but any write-capable `converse` too — can write anywhere
-its tools reach. `working_dir` is not a jail (`internal/host/agent_task.go:284`
-just sets the subprocess CWD). Real incident: `design_author`, asked for a
-*proposal document*, implemented the idea instead — wrote `cmd/kitsoki/web.go` +
-`internal/runstatus/server/live.go` + a `/actions→/intents` rename alongside
-`docs/proposals/web-ui.md`.
+Kitsoki can already reduce agent damage with story/runtime policy:
+`write_mode: read_only` boots agents into a read-only posture and routes
+mutating Bash attempts through the operator gate
+([`docs/stories/state-machine.md`](../stories/state-machine.md#write_mode),
+[`docs/architecture/hosts.md`](../architecture/hosts.md#write-mode-gate)).
+That is necessary, but it is not enough.
 
-This slice is the **kernel layer of the [capability
-model](agent-capability-model.md)**: [slice 1](effect-taxonomy.md) names the
-`write`/`external` class, [slice 2](toolbox-and-enforcement.md) enforces a tool
-allowlist on it — but the allowlist only governs *named tools*. Three weaker
-fixes were considered and rejected as *the* boundary:
-- **Prompt-hardening** (shipped) lowers the odds but a capable model still
-  goes off-lane.
-- **Mediating the `Read`/`Write`/`Edit` tools** (earlier draft of this
-  proposal) only covers *those* tools — a task with `Bash` can
-  `python -c 'open(...).write()'` or `sed -i` straight past them.
-- **The slice-2 tool allowlist** stops a *denied* tool, but a `write`-class
-  agent legitimately *holds* `Bash`/`Write` — so the allowlist can't be the
-  jail for the writes it's meant to permit-yet-confine.
+The remaining problem is below the tool layer. A `host.agent.task` or
+write-capable `host.agent.converse` ultimately forks a coding-agent CLI. If the
+process can run arbitrary Bash, Python, package managers, helper binaries, or
+backend-specific tool calls, then `working_dir` is not a jail. The existing docs
+say the same in several places:
 
-The boundary has to sit **below the tools**, at the OS, so *no* tool —
-present or future, built-in or shelled-out — can write outside the agent's
-declared output. Proven feasible on this host (kernel 5.14, RHEL 9.4):
-`bwrap` is installed and unprivileged user namespaces work; a PoC bound the
-repo read-only and a scratch dir read-write, and python/sed/bash writes to
-the repo all failed with `EROFS` while the scratch write succeeded.
+- `host.agent.task` can run under `bypassPermissions` and mutate from turn one
+  unless a room opts into `write_mode: read_only`.
+- `bash_profile: sandboxed_write` is useful policy, but network denial is a
+  best-effort `HTTP_PROXY` trick; raw TCP is not blocked
+  ([`docs/stories/authoring.md`](../stories/authoring.md#bash-profiles)).
+- The Codex backend bypasses Codex's own sandbox so MCP submit tools work
+  ([`docs/guide/agents/backends.md`](../guide/agents/backends.md));
+  therefore Kitsoki must own the process boundary.
+
+The product requirement is also sharper than "run Docker." Default local users
+should be able to download Kitsoki and go, especially on macOS and Linux. Docker
+Desktop is too heavy and too externally controlled to be the default dependency.
+Hosted Linux can use stronger isolation, and the proprietary side may ship
+Firecracker/Kubernetes/cloud backends, but the OSS core needs a stable runtime
+interface plus useful local backends.
+
+One sentence: *every write-capable agent subprocess runs through a Kitsoki-owned
+runtime boundary that records the actual confinement applied; the first local
+Linux boundary is Landlock/supervision, not Docker.*
 
 ## What changes
 
-A `write`/`external`-class agent declared with **`sandbox:`** (in practice a
-`task`, the first adopter) runs its claude-cli subprocess inside an OS sandbox:
-the repo is **read-only**, a single per-task **workspace is read-write**, and
-everything else is unavailable. The agent
-(and anything it spawns) can only write into the workspace; the engine then
-**validates and persists** that workspace diff into the repo. Writing outside
-the workspace is denied by the kernel, not by a prompt or a tool wrapper.
+Add an `AgentRuntime` layer under `host.agent.*`. It wraps the backend CLI
+launch (`claude`, `codex`, `copilot`, or future plugins), applies filesystem and
+resource policy, supervises the process tree, and returns a machine-readable
+`AppliedPolicy` recorded in the trace.
 
-One sentence: *the interpretive step runs in a box whose only writable door
-is the workspace, and the engine decides what leaves the box.*
+The runtime is selected by capability, not by a single hard-coded backend:
+
+1. `none` — explicit unsafe mode for development only.
+2. `supervised` — all platforms: timeout, process-group cleanup, environment
+   filtering, temporary HOME/XDG dirs, rlimits where available, final diff
+   capture.
+3. `fs_confined` — kernel-enforced filesystem policy: repo read-only, explicit
+   read-write workspace/worktree/scratch paths. Linux Landlock is the first
+   no-daemon backend; macOS native sandboxing is best-effort.
+4. `os_confined` — namespace/jail-level isolation: mount/PID/network/seccomp and
+   stronger resource controls via bubblewrap, nsjail, FreeBSD jails, or similar.
+5. `vm_confined` — microVM/VM/orchestrated isolation: Firecracker, Lima, WSL2,
+   Kubernetes jobs.
+
+The story-facing `sandbox:` vocabulary remains opt-in and asks for minimum
+strength and policy. The runtime chooses the best available backend that
+satisfies the request, or fails/degrades according to explicit policy. A
+degraded run must never look like a confined run in the trace.
 
 ## Impact
 
-- **Code seams:** `internal/host/agent_task.go` (the claude-cli spawn at
-  ~:284 — wrap argv in the sandbox launcher); a new
-  `internal/host/tasksandbox/` with a **pluggable backend** (bwrap → landlock
-  → degraded) and the mount/ruleset assembly; `internal/app/types.go` (a
-  `Sandbox` field on the task invoke); load-time validation.
-- **Vocabulary:** one config block (`sandbox:`), the persist/override events
-  (table below). No change to `set:`/`bind:`/`once:`/the acceptance loop.
-- **Stories affected:** none forced. `design_author` is the first adopter
-  (workspace = `docs/proposals/.workspace/<slug>`; it already writes only
-  there and `publish_design.py` moves the result out — so confinement is a
-  natural fit). bugfix/implementation/cypilot writers can adopt to confine to
-  their worktree.
-- **Backward compat:** opt-in, default off. No `sandbox:` → today's behavior.
-  When no kernel backend is available (no userns / no Landlock), the engine
-  **degrades** to tool-minimization + a loud warning rather than silently
-  running unconfined — see Backward compat.
-- **Docs on ship:** `docs/architecture/hosts.md`, the authoring skill (§5),
-  `docs/stories/state-machine.md`.
+- **Code seams:** `internal/host/agent_runner.go` and `internal/host/agent_task.go`
+  for launch wrapping; `internal/host/agent_converse.go` for write-capable
+  conversations; a new `internal/host/agentruntime/` package; loader/types
+  changes in `internal/app/types.go` and `internal/app/loader.go`.
+- **Vocabulary:** extend the existing proposed `sandbox:` block with
+  `min_strength`, `rw`, `network`, `resources`, `degrade`, and optional
+  `persist` policy.
+- **Stories affected:** none by default. Existing stories keep current behavior
+  unless they declare `sandbox:` or an app/session config requires a runtime
+  minimum. First adopters should be write-capable tasks such as design authoring
+  and implementation worktrees.
+- **Backward compat:** opt-in. A `sandbox:` task with no acceptable backend
+  either fails closed or degrades loudly depending on `degrade`.
+- **Docs on ship:** `docs/architecture/hosts.md`,
+  `docs/guide/agents/backends.md`,
+  `docs/stories/state-machine.md`, `docs/stories/authoring.md`, and the
+  `kitsoki-story-authoring` skill.
 
 ## Vocabulary changes
 
 | Kind | Name | Shape | Notes |
 |---|---|---|---|
-| config | `sandbox` | on a `task` invoke `with:` (templated): `{ workspace: <path>, repo_ro: true, allow_net: true, persist: <allowlist globs>, override_decider: <agent?> }` | Presence → run the subprocess confined; `workspace` is the sole RW path. |
-| event | `TaskSandboxStart` | `{ backend, workspace, repo_ro }` | Which backend confined the task (bwrap/landlock/degraded). |
-| event | `TaskPersist` | `{ paths }` | The workspace files the engine copied into the repo. |
-| event | `TaskPersistOverride` | `{ path, rationale, verdict, confidence }` | An out-of-allowlist persist gated by `agent.decide` (recorded — the moat). |
+| config | `sandbox.min_strength` | `supervised \| fs_confined \| os_confined \| vm_confined` | The minimum acceptable runtime guarantee. |
+| config | `sandbox.repo` | `read_only \| none` | `read_only` is the normal write-agent posture. |
+| config | `sandbox.rw` | list of templated paths | Explicit read-write doors: worktree, workspace, scratch, cache. |
+| config | `sandbox.hidden` | list of templated paths | Paths that must not be visible or writable, such as credential dirs. |
+| config | `sandbox.network` | `inherit \| deny \| model_only \| allowlist` | `model_only` is a future policy; v1 may treat it as `inherit` with a warning. |
+| config | `sandbox.resources` | `{ timeout, memory, cpus, pids, file_size, fds }` | Backends apply what they can and record gaps. |
+| config | `sandbox.degrade` | `fail \| warn` | Whether falling below `min_strength` aborts or records degraded execution. |
+| event | `agent.runtime.start` | `{ backend, strength, policy, degraded[] }` | Emitted before launch. |
+| event | `agent.runtime.end` | `{ exit_code, signal, resources, killed }` | Emitted after process-tree cleanup. |
+| event | `TaskPersist` | `{ paths }` | Deferred persist layer: files copied out of a confined workspace. |
+| event | `TaskPersistOverride` | `{ path, rationale, verdict, confidence }` | Deferred override gate for out-of-allowlist persist. |
+
+Example:
+
+```yaml
+agents:
+  impl_writer:
+    system_prompt_path: prompts/implement.md
+    tools: [Read, Grep, Glob, Edit, Write, Bash]
+    external_side_effect: false
+
+on_enter:
+  - invoke: host.agent.task
+    with:
+      agent: impl_writer
+      sandbox:
+        min_strength: fs_confined
+        repo: read_only
+        rw:
+          - "{{ world.worktree_path }}"
+          - "{{ world.scratch_dir }}"
+        hidden:
+          - "{{ env.HOME }}/.ssh"
+          - "{{ env.HOME }}/.aws"
+        network: inherit
+        resources:
+          timeout: 20m
+          memory: 8GiB
+          cpus: 2
+          pids: 256
+        degrade: fail
+      acceptance:
+        schema: schemas/implementation_result.json
+```
 
 ## The model
 
 ```
-host.agent.task (sandbox:)  ─spawn─▶  bwrap/landlock:
-                                          repo            → READ-ONLY
-                                          workspace       → READ-WRITE   (the only door)
-                                          ~/.claude,/tmp  → READ-WRITE   (claude-cli needs them)
-                                          claude bin+rt   → READ-ONLY
-                                          net             → per allow_net
-                                              │
-                                  agent uses ANY tool (Write/Bash/python/…)
-                                  kernel denies every write outside workspace
-                                              │
-                              task ends ─▶ engine VALIDATES workspace diff vs `persist:` allowlist
-                                          ─▶ in-allowlist  → copy into repo (TaskPersist)
-                                          ─▶ out-of-allowlist → reject; agent/operator may supply an
-                                             override_rationale → agent.decide(override_decider)
-                                             → allow (TaskPersistOverride, recorded) | deny
+host.agent.task / write-capable converse
+       │
+       ▼
+resolve backend CLI invocation
+       │
+       ▼
+AgentRuntime.Probe + select backend by requested min_strength
+       │
+       ├─ supervised       all platforms: env, temp HOME, timeout, rlimits
+       ├─ linux-landlock   fs_confined: repo RO, explicit RW paths
+       ├─ darwin-local     fs_confined-ish best effort, recorded as such
+       ├─ bwrap/nsjail     os_confined optional stronger Linux backend
+       └─ firecracker/k8s  vm_confined hosted/proprietary plugin
+       │
+       ▼
+agent process tree runs with applied policy
+       │
+       ▼
+engine captures diff/artifacts, validates acceptance, optionally persists
 ```
 
-Everything INTERPRETIVE (what the agent writes in the box) is unconstrained
-and cheap; everything that crosses the DETERMINISTIC boundary (what gets
-persisted into the repo) is allowlisted, and any exception is a recorded
-`agent.decide` — the moat, applied to agent output.
+The interpretive step is still the agent. The deterministic runtime does not
+decide whether a change is good; it only controls what the process can touch and
+records the boundary applied. The existing moat stays intact:
+
+- agent output crosses into Kitsoki through schema validation and acceptance;
+- write-mode grants remain operator decisions, not LLM decisions;
+- future persist overrides are explicit `agent.decide`/operator decisions and
+  are recorded.
+
+## Backend choices
+
+### `supervised` — all platforms, OSS core
+
+This backend is the always-available floor:
+
+- run the agent in its own process group;
+- kill the whole tree on timeout/cancel;
+- set a temporary HOME/XDG/cache layout by default;
+- pass an environment allowlist instead of ambient shell state;
+- apply Unix `setrlimit` for file size, descriptors, processes, CPU/wall
+  where useful;
+- capture final diff and artifacts.
+
+This is not a sandbox, but it removes many accidental damage channels and gives
+every platform the same runtime event shape.
+
+### `linux-landlock` — first no-daemon Linux confinement
+
+Landlock is the preferred first Linux backend because it is unprivileged,
+Go-friendly, and does not require Docker, an image store, or a daemon. The
+backend should run a small supervisor/child that applies Landlock rules before
+`exec`:
+
+- repo root read-only;
+- declared `rw` paths read-write;
+- credential and sibling-repo paths unavailable or at least unwritable;
+- inherited network in v1 unless a supported Landlock ABI/network policy is
+  detected;
+- optional cgroup-v2 resource manager if the current user/session has delegated
+  cgroup control.
+
+Sources for implementation research:
+
+- <https://www.kernel.org/doc/html/latest/userspace-api/landlock.html>
+- <https://github.com/landlock-lsm/go-landlock>
+
+### `darwin-local` — useful local Mac damage prevention
+
+macOS should have a local backend because Mac developers are a first-priority
+audience. The target is honest best-effort behavior:
+
+- native filesystem sandboxing where available;
+- temp HOME/XDG/cache;
+- process group and timeout cleanup;
+- `setrlimit` where supported;
+- trace `strength=fs_confined` only for policies the backend can actually
+  enforce, otherwise `strength=supervised` with `degraded[]`.
+
+This backend should not pretend to provide Linux cgroup-level isolation. Strong
+local Mac isolation is a separate VM runner.
+
+### Optional local/hosted backends
+
+- `linux-bwrap`: stronger local Linux filesystem/process/network shape via
+  bubblewrap. Good optional backend, but not the zero-setup default.
+- `linux-nsjail`: stronger hosted/CI isolation through namespaces, cgroups,
+  rlimits, and seccomp-bpf. Good advanced/proprietary backend.
+- `lima-linux`: optional strong local Mac runner that uses the Linux backend
+  inside a Lima VM without Docker Desktop.
+- `wsl2-linux`: supported Windows path; run Kitsoki under WSL2 and use the
+  Linux backend available there.
+- `firecracker`: hosted/proprietary microVM backend.
+- `k8s`: enterprise/proprietary orchestration backend using pods, volumes,
+  service accounts, resource limits, and NetworkPolicy.
+- `runc/libcontainer`: possible future OCI backend, but not the starting point;
+  rootless/userns, OCI bundle/rootfs, and image lifecycle are too much surface
+  for the first process sandbox.
 
 ## Decision recording
 
-`TaskSandboxStart` (which backend actually confined the run — so a degraded,
-unconfined run is visible in the trace, never silent), `TaskPersist` (the
-exact files that landed — the file-level audit the trace lacks today), and
-`TaskPersistOverride` (rationale + verdict for any out-of-allowlist persist —
-a labeled datapoint: how often agents try to escape, with what justification,
-and whether the judge agreed).
+Every live agent launch emits `agent.runtime.start` before the subprocess runs:
+
+```json
+{
+  "backend": "linux-landlock",
+  "strength": "fs_confined",
+  "repo_ro": true,
+  "rw_paths": [".../.worktrees/item", ".../.artifacts/session/scratch"],
+  "network": "inherit",
+  "resources": {
+    "timeout": "20m",
+    "memory": "8GiB",
+    "cpus": 2
+  },
+  "degraded": ["cgroup_memory_unavailable"]
+}
+```
+
+If `sandbox.min_strength: fs_confined` and the selected backend only provides
+`supervised`, the run either fails before launch or emits a degraded start event
+depending on `sandbox.degrade`. The trace is the contract: no unconfined run may
+look equivalent to a confined run.
+
+`agent.runtime.end` records exit status, whether Kitsoki killed the process
+tree, and best-effort resource usage. If the backend cannot provide usage, it
+records that gap.
 
 ## Engine seams & invariants
 
-- Wrap the claude-cli argv (`agent_task.go` spawn) in the backend launcher.
-  bwrap: `--ro-bind <repo> <repo> --bind <workspace> <workspace> --bind
-  ~/.claude ~/.claude --tmpfs /tmp --ro-bind <claude-rt> … --proc /proc --dev
-  /dev --chdir <repo>` (+ net unless `allow_net:false`). The workspace dir must
-  exist before the bind (the brief room already creates it).
-- **Backend probe at startup**: detect userns (`unshare -Ur`) / Landlock LSM /
-  `bwrap`; pick the strongest; record it. `sandbox:` + no backend → load/run
-  WARNING and degrade (do not fail the run, do not silently run unconfined).
-- Load-time invariant: `sandbox.workspace` non-empty; `override_decider` (if
-  named) resolves to a declared `decide` agent.
-- Persist is atomic under the session lock; on task error nothing persists.
+- `internal/host/agentruntime` owns:
+  - `Runtime` interface;
+  - `Probe(ctx) Capabilities`;
+  - `Launch(ctx, LaunchSpec) (*Running, AppliedPolicy, error)`;
+  - backend registry and selection by `min_strength`;
+  - fake backend for tests.
+- `agent_runner.go` remains the backend-CLI normalization point. Runtime wrapping
+  happens after backend translation, before process start.
+- `agent_task.go` builds `LaunchSpec` from `with.sandbox`, `working_dir`,
+  repo root, acceptance/post-command needs, and app/session runtime config.
+- `agent_converse.go` only uses the runtime for write-capable conversations; a
+  read-only conversation remains tool-policy-only.
+- Loader invariants:
+  - `sandbox.min_strength` is known;
+  - every `rw`/`hidden` path is non-empty after templating or rejected at runtime
+    before launch;
+  - `sandbox.degrade` is `fail` or `warn`;
+  - `sandbox.network: model_only` warns until a backend can prove it;
+  - `write`/`external` agent tasks without `sandbox:` continue to load, but the
+    future toolbox slice may warn.
+- Replay/cassette mode does not re-run live sandboxes. It replays recorded
+  outputs and asserts the trace contains the runtime policy that existed in the
+  live run.
 
 ## Backward compatibility / migration
 
-Opt-in; absent `sandbox:` nothing changes. First adopter `design_author`
-(its YOLO becomes kernel-impossible). Degraded mode (no userns/Landlock — e.g.
-some CI/containers) keeps tool-minimization (no `Bash` for doc agents) +
-prompt guidance + the persist allowlist, and emits a `TaskSandboxStart{backend:
-degraded}` so the weaker posture is auditable. macOS would add a `sandbox-exec`
-backend.
+Default-off. Existing stories, cassettes, and agent declarations keep working.
+
+Migration is incremental:
+
+1. Add the runtime package and `supervised` backend with no story vocabulary
+   change.
+2. Add `sandbox:` parsing and trace events, still default-off.
+3. Adopt `sandbox:` in one or two risky write-agent call sites.
+4. Move shipped semantics into architecture/story docs and trim this proposal.
+
+Hosted deployments can set a session/app-level minimum later, e.g. "every
+write-capable agent must be at least `fs_confined`." Local developer defaults
+should remain pragmatic and visible rather than surprising.
 
 ## Tasks
 
-Dependency-ordered. **The fix ships at the end of Phase 4** (confinement alone
-makes `design_author`'s YOLO kernel-impossible); the persist/override layer
-(Phase 5) is a deferred slice for *worktree-mutating* tasks and could be its
-own proposal. Sizes: S ≈ <½ day, M ≈ 1–2 days, L ≈ 3+ days. Critical path runs
-through **0.1**.
-
 ```
-## Phase 0 — De-risk spike (throwaway code; gates the schema)
-- [ ] 0.1 (M, CRITICAL PATH) Enumerate claude-cli's minimal confined bind set.
-        Wrap one real `host.agent.task` (or a bare `claude -p`) in bwrap and
-        iteratively add binds until a real task completes confined: reads the
-        repo, writes only the workspace, reaches the model.
-        WHY: the single biggest unknown — claude-cli needs ~/.claude (creds/
-        session), /tmp, its node runtime + binary, TLS certs, and network.
-        ACCEPT: a documented, reproducible bwrap argv where a real confined
-        task succeeds AND a repo write fails (EROFS). Output: the bind list.
-- [ ] 0.2 (S) Capability probe matrix: detection for userns (`unshare -Ur`),
-        `bwrap` presence, Landlock LSM. Decide the degraded-fallback policy
-        (warn-and-degrade default + a hard-fail knob).
-        ACCEPT: a `Probe() -> {backend, capabilities}` design + decision note.
-- [ ] 0.3 (S) Finalize the `sandbox:` YAML schema from 0.1/0.2 learnings
-        (workspace, repo_ro, allow_net, extra_rw[], persist[], override_decider).
-        ACCEPT: frozen `Sandbox` struct shape + example block.
+## Phase 0 — Probe and policy spike
+- [ ] 0.1 Define `Strength`, `NetworkPolicy`, `ResourcePolicy`,
+        `PersistPolicy`, and `AppliedPolicy`; validate names against this proposal.
+- [ ] 0.2 Linux spike: run a fake agent under Landlock, prove repo writes fail
+        and declared workspace writes succeed.
+- [ ] 0.3 macOS spike: determine the native filesystem sandbox shape Kitsoki can
+        invoke reliably; document exactly what is enforceable.
+- [ ] 0.4 Resource spike: process-group kill + rlimit behavior on macOS/Linux;
+        cgroup-v2 detection on Linux.
 
-## Phase 1 — tasksandbox backend package  (deps: 0.1, 0.2, 0.3)
-- [ ] 1.1 (M) `internal/host/tasksandbox`: backend interface
-        `Confine(ctx, Spec) (Wrapper, cleanup, error)` + `Probe()`. Spec =
-        {repoRoot, workspace, extraRW[], allowNet, claudeRuntime paths}.
-- [ ] 1.2 (M) bwrap backend: assemble argv from Spec using the 0.1 bind set;
-        temp/cleanup handling; chdir; net toggle.
-- [ ] 1.3 (S) Degraded backend: no-op confinement that reports
-        capability=degraded (so callers can WARN + record it).
-- [ ] 1.4 (M) Unit tests (no LLM): confine `/bin/sh -c` that (a) writes the repo
-        → denied (EROFS), (b) writes the workspace → ok, (c) python + sed
-        variants → denied; degraded backend returns unconfined + flag.
+## Phase 1 — Runtime substrate
+- [x] 1.1 Add `internal/host/agentruntime` interface, registry, capability probe,
+        and fake backend.
+- [x] 1.2 Implement `supervised` backend: env allowlist, temp HOME/XDG/cache,
+        process group, timeout/cancel, and final diff capture. Rlimits remain
+        a deferred backend-strength enhancement.
+- [x] 1.3 Emit `agent.runtime.start/end` from the sandboxed agent path.
+- [x] 1.4 Unit tests with fake agent scripts; no LLM and no external services.
 
-## Phase 2 — schema + load validation  (deps: 0.3; parallel with Phase 1)
-- [ ] 2.1 (S) Add `Sandbox` field to the task invoke in `internal/app/types.go`
-        (yaml `sandbox`), documented like `once`/`background`.
-- [ ] 2.2 (S) Loader invariants: `sandbox.workspace` non-empty; `override_decider`
-        (if named) resolves to a declared `decide` agent. Clear `ValidationError`
-        + `loader_sandbox_test.go`.
-- [ ] 2.3 (S) Schema docs: `docs/embedded/app-schema.md` invoke table row +
-        types.go comment.
+## Phase 2 — Linux filesystem confinement
+- [ ] 2.1 Implement `linux-landlock` backend behind build tags.
+- [ ] 2.2 Tests: fake agent attempts repo write, sibling-repo write, HOME write,
+        workspace write, temp write; only declared writes succeed.
+- [ ] 2.3 Add optional cgroup-v2 probe/application where available; record
+        degradation when unavailable.
 
-## Phase 3 — agent_task wiring (confinement only)  (deps: 1.x, 2.x)
-- [ ] 3.1 (M) In `agent_task.go` spawn (~:284): when `sandbox:` set, build the
-        Spec (templated workspace/extra_rw from args), `Confine`, and wrap the
-        claude-cli argv — composing with the existing `--mcp-config` validator
-        and `--allowedTools` flags.
-- [ ] 3.2 (S) Emit `TaskSandboxStart{backend, workspace, repo_ro}` (store event
-        + trace); WARN + degrade when no backend (never silently unconfined).
-- [ ] 3.3 (S) Replay/cassette: sandbox is a NO-OP in replay mode
-        (`agent_task_replay.go`) — confinement only on live runs; assert it.
-- [ ] 3.4 (M) Hermetic integration test (no real LLM): a FAKE `claude` binary
-        (a script) that attempts to write `cmd/kitsoki/web.go` → denied; a
-        workspace write → ok. Drives the real `agent_task` confinement path.
+## Phase 3 — Schema and host wiring
+- [x] 3.1 Add `sandbox:` schema/types/load validation.
+- [x] 3.2 Wrap `host.agent.task` launches after backend translation.
+- [x] 3.3 Wrap write-capable `host.agent.converse` launches where applicable.
+- [x] 3.4 Replay/cassette assertions: sandbox metadata replays; no live sandbox
+        or LLM is invoked.
 
-## Phase 4 — adopt design_author  (deps: Phase 3)  ← THE FIX SHIPS HERE
-- [ ] 4.1 (S) Add `sandbox:` to the `design_draft` task invoke
-        (workspace = `{{ world.design_workspace }}`, repo_ro, allow_net).
-        publish_design.py (outside the sandbox) still moves the result out —
-        unchanged.
-- [ ] 4.2 (S) Flow/integration: confirm the existing proposal flows stay green
-        and the sandboxed author cannot reach tracked source.
-- [ ] 4.3 (S, ONE LLM RUN) Live e2e: run the proposal flow with a model that
-        previously YOLO'd; confirm the attempt to implement is denied at the
-        kernel and only `005-proposal.md` is produced in the workspace.
-        Keep the prompt-hardening as belt-and-suspenders.
+## Phase 4 — Local platform backends
+- [ ] 4.1 Implement `darwin-local` best-effort backend or explicitly document
+        the unsupported pieces found in Phase 0.
+- [ ] 4.2 Add optional `linux-bwrap` backend if the `bwrap` binary is present.
+- [ ] 4.3 Document WSL2 and Lima as strong-local Linux runtime paths, without
+        making either required for normal startup.
 
-## Phase 5 — persist + override gate (DEFERRED slice; worktree-mutating tasks)
-- [ ] 5.1 (M) Post-task persist: diff the workspace, copy in-allowlist
-        (`persist:` globs) files into the repo; `TaskPersist{paths}` event.
-        (Not needed by design_author — its workspace is the gitignored scratch
-        and publish handles the move; this is for tasks whose output lands in
-        tracked paths.)
-- [ ] 5.2 (M) Reject-with-override: an out-of-allowlist persist is rejected;
-        a supplied `override_rationale` is judged by `agent.decide(override_
-        decider)` (default-deny, capped); `TaskPersistOverride{rationale,
-        verdict, confidence}` recorded.
-- [ ] 5.3 (M) Adopt for a worktree-mutating writer (bugfix implementer / impl
-        write_code) to confine it to its worktree. Likely spun into its own
-        proposal once Phase 4 proves the substrate.
+## Phase 5 — Adopt and prove
+- [x] 5.1 Adopt `sandbox:` in a high-risk write-agent path such as design
+        authoring or implementation worktrees.
+- [x] 5.2 Add flow fixtures with fake agents proving denied repo writes and
+        accepted workspace writes.
+- [ ] 5.3 Run one explicitly requested live e2e only after the no-LLM gates pass.
 
-## Phase 6 — backends, docs, lifecycle  (deps: Phase 4)
-- [ ] 6.1 (M) Additional backends behind the interface: Landlock (kernels with
-        the LSM enabled — lighter, in-process) and macOS `sandbox-exec`.
-- [ ] 6.2 (S) Docs: `docs/architecture/hosts.md` (agent.task sandbox), the
-        `kitsoki-story-authoring` skill (§5 + a sandbox note), state-machine.md.
-- [ ] 6.3 (S) Migrate the durable mechanism description into docs/; trim this
-        proposal to any remaining deferred slice (Phase 5) or delete it.
+## Phase 6 — Persist/override and hosted plugins
+- [ ] 6.1 Add optional persist allowlist from confined workspace to repo plus
+        `TaskPersist` trace events.
+- [ ] 6.2 Add out-of-allowlist persist override gate with recorded decision.
+- [ ] 6.3 Define external plugin contract for Firecracker/Kubernetes/nsjail
+        runtimes; proprietary implementations can live outside OSS core.
+- [ ] 6.4 Migrate shipped runtime semantics to docs and trim/delete this proposal.
 ```
-
-**Cross-cutting**
-
-- **Test strategy:** everything except 4.3 is hermetic — a fake `claude` script
-  stands in for the model so confinement is exercised with zero LLM spend; 4.3
-  is the single real-model run that proves the end-to-end fix.
-- **Degraded policy:** default warn-and-degrade (don't break unconfined CI/
-  containers) with a config knob to hard-fail a `sandbox:` task where
-  confinement is mandatory (2.2/3.2).
-- **Who implements:** a non-sandboxed engineer/agent builds this — do NOT route
-  it through the YOLO-prone `design_author` (it can't implement anyway once
-  it has no Bash + is sandboxed; noted to avoid the obvious irony).
-- **Sequencing recap:** `0.1 → {1, 2} → 3 → 4` ships the fix; `5` (needs 1+3)
-  and `6` follow. 0.1 is the only real unknown; if its bind set proves
-  intractable, fall back to tool-minimization + the degraded posture and
-  re-scope.
 
 ## Verification
 
-Core needs no LLM: drive a subprocess inside the backend and assert the
-repo-write fails (EROFS) while the workspace-write succeeds — exactly the PoC
-already run by hand (python + sed + redirect). The override-judge is the one
-LLM touch; stub it. The headline test: a stubbed sandboxed `design_author`
-that tries to write `cmd/kitsoki/web.go` is denied and only `005-proposal.md`
-persists.
+All required tests are no-LLM:
+
+- fake agent binary attempts writes to repo, sibling repo, HOME, `/tmp`, and
+  declared workspace;
+- fake agent forks a child and sleeps; cancellation kills the whole process tree;
+- fake agent exceeds file-size/process/timeout limits where the backend supports
+  them;
+- loader tests reject malformed `sandbox:` blocks;
+- replay tests assert recorded runtime policy without invoking a live backend;
+- flow fixtures cover the adopted story call site with cassettes/fakes.
+
+Live LLM verification is optional and gated. It should only run after the fake
+agent tests prove the boundary and should be explicitly requested because it
+incurs cost.
 
 ## Open questions
 
-1. **claude-cli bind set.** The exact RO/RW paths + network claude-cli needs
-   to run confined (node runtime location, `~/.claude`, `/tmp`, TLS certs).
-   This is the main implementation risk. *Action: enumerate empirically with a
-   minimal bwrap wrapper around a trivial task before building the schema.*
-2. **Backend portability + fallback severity.** When no kernel backend exists,
-   degrade-with-warning (lean) vs hard-fail a `sandbox:`-declared task (safer
-   but breaks unconfined CI)? *Lean: degrade + WARN + a config knob to make it
-   hard-fail in environments that require confinement.*
-3. **Mediated FS tools — still wanted?** With the kernel boundary *and* slice
-   2's tool allowlist, the earlier `mcp__taskfs__*` overlay is redundant. Keep
-   it only if we want the per-write recording / read-overlay UX; otherwise the
-   allowlist + kernel + persist step suffice. *Lean: drop it; revisit if
-   per-write telemetry is wanted.*
-4. **`host.run` from a sandboxed task** inherits the confinement (good), but a
-   task that needs to run tests writes build output — fold that into the
-   workspace or grant an explicit extra RW path? *Lean: explicit extra RW
-   paths in `sandbox:`.*
+1. **macOS native backend shape** — is filesystem sandboxing reliable enough to
+   advertise `fs_confined`, or should macOS default to `supervised` plus an
+   optional Lima runner for real confinement? *Lean: ship best-effort with honest
+   trace strength; recommend Lima for strong local isolation.*
+2. **Network policy v1** — can `model_only` be enforced locally without proxying
+   model calls through Kitsoki? *Lean: v1 supports `inherit` and `deny`; treat
+   `model_only` as future unless a backend proves it.*
+3. **Resource limits on developer machines** — should `memory`/`cpus` be hard
+   requirements or best-effort local policy? *Lean: hard when
+   `min_strength >= os_confined`; recorded best-effort for `supervised` and
+   `fs_confined`.*
+4. **Plugin boundary** — Go plugin, subprocess, or RPC for proprietary runtimes?
+   *Lean: subprocess/RPC contract so OSS binaries do not need Go plugin ABI
+   coupling.*
+5. **Default posture once stable** — should write-capable tasks warn when no
+   `sandbox:` is declared? *Lean: warn after toolbox/effect taxonomy lands, but
+   do not break existing stories immediately.*
 
 ## Non-goals
 
-- A general OS sandbox for all of kitsoki — this scopes only the
-  `write`/`external`-class agent subprocesses that opt in via `sandbox:`.
-- Network / secret isolation beyond an `allow_net` on/off (a task that needs
-  the model API keeps net).
-- Confining `pure`/`read`-class agents — slice 2's tool allowlist already
-  denies them every mutator, so they need no kernel jail. (Most `decide`/`ask`
-  agents are `read`; a write-capable `converse` would adopt `sandbox:` here.)
-- The classification (slice 1) and the tool-layer allowlist (slice 2) — this
-  slice consumes both and adds only the kernel boundary beneath them.
+- Docker as the default local runtime.
+- A general sandbox for the Kitsoki server process; this proposal scopes only
+  spawned agent subprocesses and their descendants.
+- Replacing `write_mode: read_only`; this proposal sits below it.
+- Full network egress policy in v1.
+- Shipping Firecracker/Kubernetes in OSS core.
+- Making Windows native a first-class backend; Windows support is through WSL2.

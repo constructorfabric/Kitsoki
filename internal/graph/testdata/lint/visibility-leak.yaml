@@ -1,0 +1,29 @@
+schema: project-object-graph/seed-catalog/v0
+type_registry:
+  - id: core-node
+    schema: graph-type/v0
+  - id: feature
+    schema: graph-type/v0
+    extends: core-node
+    edge_fields:
+      - id: requirements
+        target_type: requirement
+        cardinality: many
+        renders: true
+  - id: requirement
+    schema: graph-type/v0
+    extends: core-node
+nodes:
+  - schema: graph/feature/v0
+    id: feature-public
+    title: A public feature
+    status: active
+    visibility: public
+    edges:
+      requirements:
+        - req-internal
+  - schema: graph/requirement/v0
+    id: req-internal
+    title: An internal requirement leaked via a public edge
+    status: draft
+    visibility: internal

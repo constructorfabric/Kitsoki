@@ -1,0 +1,24 @@
+inputs:
+  stage:                 { type: string, required: true }
+  run_id:                { type: string, required: false }
+  run_dir:               { type: string, required: false }
+  journal_path:          { type: string, required: false }
+  journal_markdown_path: { type: string, required: false }
+  backlog:               { type: object, required: false }
+  results:               { type: object, required: false }
+  findings:              { type: object, required: false }
+  exceptions:            { type: object, required: false }
+  rollup:                { type: object, required: false }
+  deck_spec:             { type: object, required: false }
+  current_case:          { type: object, required: false }
+  case_index:            { type: int,    required: false }
+  cases_processed:       { type: int,    required: false }
+
+outputs:
+  run_id:                { type: string }
+  run_dir:               { type: string }
+  journal_path:          { type: string }
+  journal_markdown_path: { type: string }
+  journal_status:        { type: string }
+  journal_summary:       { type: string }
+  last_checkpoint:       { type: string }

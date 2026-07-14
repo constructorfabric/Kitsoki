@@ -5,8 +5,8 @@ aimed at regressions where Claude and Codex both complete a task, but only one
 backend exposes live agent activity such as thinking text or tool-use
 breadcrumbs in the TUI, web UI, or VS Code.
 
-The default `start` path runs no LLM and incurs no cost. It shells through
-`host.run` to `scripts/harness_parity_report.py`, which writes:
+The default `start` path runs no LLM and incurs no cost. It runs deterministic
+checks through `host.run`, then `host.starlark.run` writes:
 
 - `.context/harness-parity-qa.md`
 - `.artifacts/harness-parity-qa/summary.json`

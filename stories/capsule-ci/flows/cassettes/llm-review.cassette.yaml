@@ -1,0 +1,24 @@
+kind: host_cassette
+app_id: capsule-ci
+match_on: [handler, call]
+episodes:
+  - id: capsule_ci_review_passed
+    match:
+      handler: host.agent.decide
+      call: capsule_ci_review
+    replay: any
+    response:
+      data:
+        ok: true
+        submitted:
+          outcome: passed
+          summary: "Cassette review approved the sealed Capsule CI evidence."
+          evidence:
+            - capsule-ci:deterministic
+            - capsule-ci:sealed-envelope
+    agent:
+      verb: decide
+      agent: capsule-ci-reviewer
+      model: cassette
+      duration_ms: 1
+      response: "Approved sealed Capsule CI evidence."

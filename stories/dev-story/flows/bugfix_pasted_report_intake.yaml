@@ -1,0 +1,44 @@
+# bugfix_pasted_report_intake -- dev-story can start bugfix from a pasted report
+# without a filed ticket. The bugfix story owns the triager host call; this flow
+# proves the hub projects ticket_body/source fields across the import boundary.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world:
+  bugfix_mode: "triage"
+  judge_mode: "human"
+
+host_handlers:
+  host.agent.codeact:
+    data:
+      ok: true
+      terminated: "done"
+      payload:
+        verdict: "UNCLEAR"
+        confidence: 0.42
+        summary_title: "UNCLEAR - needs sharper reproduction"
+        evidence: "The pasted report reached triage as ticket_body."
+        summary_markdown: "The hub accepted a pasted report without requiring a ticket provider."
+        suggested_action: "ask for exact reproduction steps"
+        fixed_in_ref: null
+        involved_components: []
+      steps: []
+
+turns:
+  - intent:
+      name: bugfix_report
+      slots:
+        complaint: "After cleanup, the run list still shows deleted runs until the app is restarted."
+    expect_state: bf.triaging
+    expect_world:
+      bf__ticket_title: "Free-form bug report"
+      bf__ticket_source_mode: "freeform"
+      bf__ticket_source_ref: "operator complaint"
+      bf__ticket_body: "After cleanup, the run list still shows deleted runs until the app is restarted."
+    expect_events:
+      - kind: machine.say
+        effect:
+          text: "Bug report captured; entering bugfix with the inline complaint."
+
+expect_no_errors: true

@@ -1,0 +1,61 @@
+# Strict path requirements must inspect the committed candidate range, not just
+# a clean worktree. A matching receipt + both public source paths can advance.
+test_kind: flow
+app: ../app.yaml
+initial_state: testing
+initial_world:
+  ticket_id: "TKT-COMMITTED-CONTRACT"
+  ticket_title: "The public fix must update both named source paths."
+  thread: "TKT-COMMITTED-CONTRACT"
+  workdir: "/tmp/contract-stub"
+  acceptance_base_sha: "baseline"
+  bugfix_exit: "open-PR"
+  bugfix_mode: "quick"
+  judge_mode: "human"
+  acceptance_contract:
+    - id: captured-payload
+      description: "captured payload survives post-command failure"
+      required_paths: ["internal/host/agent_decide.go"]
+    - id: post-cmd-cwd
+      description: "post-command working directory reaches the sandbox"
+      required_paths: ["internal/host/validator_sandbox.go"]
+  propose_fix_artifact: { summary_title: "stub", summary_markdown: "stub" }
+host_handlers:
+  host.local:
+    data: { ok: true, passed: 1, failed: 0, log: "green" }
+  host.run:
+    data:
+      ok: true
+      exit_code: 0
+      stdout: "internal/host/agent_decide.go\ninternal/host/validator_sandbox.go\n"
+      stdout_json: { dirty: false, files: "" }
+  host.git:
+    data: { ok: true, sha: "abc" }
+  host.agent.decide:
+    data:
+      ok: true
+      exit_code: 0
+      submitted: { intent: "accept", reason: "stub", confidence: 0.9, verdict: "accept" }
+  host.agent.task:
+    data:
+      submitted:
+        summary_title: "Complete review"
+        summary_markdown: "Both public requirements have direct assertions."
+        status: "passed"
+        tests_added: ["internal/host/agent_decide_postcmd_repro_test.go"]
+        tests_run: { passed: 1, failed: 0, skipped: 0, log: "green" }
+        blockers: []
+        acceptance_coverage:
+          - { requirement_id: "captured-payload", test_path: "internal/host/agent_decide_postcmd_repro_test.go", assertion: "captured data remains returned" }
+          - { requirement_id: "post-cmd-cwd", test_path: "internal/host/agent_decide_postcmd_repro_test.go", assertion: "relative verifier runs from configured cwd" }
+turns:
+  - intent: { name: refine, slots: { feedback: "run committed range gate" } }
+    expect_state: testing
+    expect_world:
+      acceptance_gate:
+        ok: true
+        missing: []
+        summary: "all public acceptance requirements have direct assertion receipts"
+  - intent: { name: accept, slots: {} }
+    expect_state: done
+expect_no_errors: true

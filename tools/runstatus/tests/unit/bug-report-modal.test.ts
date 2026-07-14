@@ -45,6 +45,20 @@ function stubSource() {
 
 const deps = {
   snapshotEvents: () => [{ type: 2 }, { type: 3 }],
+  snapshotHar: () => ({
+    log: {
+      version: "1.2",
+      creator: { name: "test-browser", version: "1" },
+      entries: [
+        {
+          startedDateTime: "2026-07-08T00:00:00Z",
+          time: 4,
+          request: { method: "GET", url: "https://app.test/real-api" },
+          response: { status: 503 },
+        },
+      ],
+    },
+  }),
   recentConsole: () => [{ level: "warn", ts: 1, text: "heads up" }],
   gatherErrorInfo: () => ({
     errors: [{ message: "boom" }],
@@ -101,6 +115,9 @@ describe("BugReportModal", () => {
     expect(rows.length).toBe(2);
     expect(rows[0].textContent).toContain("POST");
     expect(rows[0].textContent).toContain("/rpc");
+    expect(source.bugPreview).toHaveBeenCalledWith({
+      har_json: JSON.stringify(deps.snapshotHar()),
+    });
 
     expect(document.querySelector('[data-testid="bug-modal-har-raw"]')).toBeNull();
     (
@@ -112,6 +129,47 @@ describe("BugReportModal", () => {
     const raw = document.querySelector('[data-testid="bug-modal-har-raw"]');
     expect(raw).not.toBeNull();
     expect(raw!.textContent).toContain("/rpc/events");
+  });
+
+  it("keeps the review modal visible while the privacy check is running", async () => {
+    const source = stubSource();
+    let resolveReport!: (value: { id: string; path: string }) => void;
+    source.reportBug.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveReport = resolve;
+        })
+    );
+    const store = await toReviewing(source);
+    mount(BugReportModal);
+    await flushPromises();
+
+    (
+      document.querySelector(
+        '[data-testid="bug-modal-submit"]'
+      ) as HTMLButtonElement
+    ).click();
+    await flushPromises();
+
+    expect(store.status).toBe("submitting");
+    expect(document.querySelector('[data-testid="bug-modal"]')).not.toBeNull();
+    const submit = document.querySelector(
+      '[data-testid="bug-modal-submit"]'
+    ) as HTMLButtonElement;
+    const cancel = document.querySelector(
+      '[data-testid="bug-modal-cancel"]'
+    ) as HTMLButtonElement;
+    expect(submit.disabled).toBe(true);
+    expect(cancel.disabled).toBe(true);
+    expect(submit.textContent).toContain("Checking privacy");
+    expect(
+      document.querySelector('[data-testid="bug-modal-submit-status"]')!
+        .textContent
+    ).toContain("Checking privacy before filing");
+
+    resolveReport({ id: "id-1", path: "issues/bugs/id-1.md" });
+    await flushPromises();
+    expect(store.status).toBe("filed");
   });
 
   it("submit files the held capture with description, console_logs, error_info", async () => {

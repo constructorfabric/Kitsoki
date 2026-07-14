@@ -1,0 +1,50 @@
+# A strict caller may publish public requirements without exposing any hidden
+# oracle. A green test review that omits one required assertion receipt must not
+# advance: the deterministic Starlark gate routes it back to implementation.
+test_kind: flow
+app: ../app.yaml
+initial_state: testing
+initial_world:
+  ticket_id: "TKT-CONTRACT"
+  ticket_title: "A visible failure message must reach the operator."
+  thread: "TKT-CONTRACT"
+  workdir: "/tmp/contract-stub"
+  base_branch: "main"
+  bugfix_mode: "quick"
+  judge_mode: "human"
+  acceptance_contract:
+    - { id: "failure-narration", description: "operator sees the failure narration" }
+  propose_fix_artifact: { summary_title: "stub", summary_markdown: "stub" }
+host_handlers:
+  host.local:
+    data: { ok: true, passed: 1, failed: 0, log: "green" }
+  host.run:
+    data:
+      ok: true
+      exit_code: 0
+      stdout: ""
+      stdout_json: { dirty: false, files: "" }
+  host.git:
+    data: { ok: true, sha: "abc", diff: "", files: [] }
+  host.agent.task:
+    data:
+      submitted:
+        summary_title: "Partial review"
+        summary_markdown: "The public suite is green but the required receipt is absent."
+        status: "passed"
+        tests_added: []
+        tests_run: { passed: 1, failed: 0, skipped: 0, log: "green" }
+        blockers: []
+turns:
+  - intent: { name: refine, slots: { feedback: "run strict gate" } }
+    expect_state: testing
+    expect_world:
+      acceptance_gate:
+        ok: false
+        missing: ["failure-narration"]
+        summary: "missing direct assertion receipts for: failure-narration"
+  - intent: { name: accept, slots: {} }
+    expect_state: implementing
+    expect_world:
+      refine_feedback: "Strict acceptance contract is incomplete: missing direct assertion receipts for: failure-narration"
+expect_no_errors: true

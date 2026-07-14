@@ -1,0 +1,88 @@
+# render_toolchain_error_no_agent — a real user entered "edit kitsoki-pitch",
+# the existing deck resolved correctly, but the local slidey toolchain failed
+# under Node 26 (`require is not defined` inside yargs). That is not a deck
+# defect, so the story must stop in a visible troubleshooting checkpoint and
+# must not dispatch fix_render.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  decks_dir: "docs/decks"
+  addressed: { items: [] }
+  refine_budget: 6
+  render_retry_budget: 2
+
+host_handlers:
+  # host.agent.task intentionally ABSENT — external renderer failures must not
+  # invoke the deck repair agent.
+
+  host.git_worktree:
+    by_call:
+      prepare_workspace:
+        data: { ok: true, path: ".capsules/workspaces/slidey-edit-flow" }
+
+  host.starlark.run:
+    by_call:
+      resolve_deck:
+        data:
+          source_deck:
+            spec_path: "docs/decks/kitsoki-pitch.slidey.json"
+            summary: "Existing slidey deck"
+            workspace_spec_path: "kitsoki-pitch.slidey.json"
+          deck:
+            spec_path: "docs/decks/kitsoki-pitch.slidey.json"
+            summary: "Existing slidey deck"
+            workspace_spec_path: "kitsoki-pitch.slidey.json"
+          workspace: "docs/decks"
+
+  host.slidey.render:
+    by_call:
+      render_deck:
+        error: |
+          host.slidey.render: spec validation failed: file:///Users/Brad.Smith/code/studio-slidey/node_modules/yargs/yargs:3
+          const {applyExtends, cjsPlatformShim, Parser, Yargs, processArgv} = require('./build/index.cjs')
+                                                                              ^
+
+          ReferenceError: require is not defined in ES module scope, you can use import instead
+              at file:///Users/Brad.Smith/code/studio-slidey/node_modules/yargs/yargs:3:69
+
+          Node.js v26.3.1
+
+turns:
+  - intent:
+      name: start
+      slots:
+        feedback: "edit kitsoki-pitch"
+    expect_state: checking_render_failure
+    expect_world:
+      deck:
+        spec_path: "docs/decks/kitsoki-pitch.slidey.json"
+        summary: "Existing slidey deck"
+        workspace_spec_path: "kitsoki-pitch.slidey.json"
+      workspace: "docs/decks"
+      deck_handle: ""
+      render_retries: 0
+      render_error_repairable: false
+      render_error_kind: ""
+    expect_host_calls:
+      - handler: host.starlark.run
+        args: { call: "resolve_deck" }
+      - handler: host.slidey.render
+        args: { call: "render_deck", spec_path: ".capsules/workspaces/slidey-edit-flow/docs/decks/kitsoki-pitch.slidey.json" }
+    expect_no_host_calls: [host.agent.task]
+
+  - intent:
+      name: troubleshoot
+      slots: {}
+    expect_state: checking_render_failure
+    expect_world:
+      deck_handle: ""
+      render_retries: 0
+      render_error_repairable: false
+      render_error_kind: toolchain
+    expect_no_host_calls: [host.agent.task]
+
+expect_terminal: false
+expect_no_host_calls: [host.agent.task]
+expect_no_errors: true

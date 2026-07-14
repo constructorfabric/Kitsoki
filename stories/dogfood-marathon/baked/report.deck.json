@@ -1,5 +1,5 @@
 {
-  "_comment": "Baked dogfood-marathon REPORT deck — a deterministic slidey scene spec so the slideshow room (host.slidey.render format:html) renders a real static-HTML report without a live author. A live drive overwrites this from the journaled run data via the kitsoki-mcp-driver; the structure here mirrors what build_deck.star encodes: title -> rollup -> per-case outcomes -> what-worked/what-didn't -> findings.",
+  "_comment": "Baked dogfood-marathon REPORT deck — deterministic fallback used by no-LLM flows. Live runs overwrite this from journaled run data via scripts/build_deck.star. The structure mirrors the real generator: title -> objective status -> scoreboard cards -> before/after affordance -> outcome table -> evidence.",
   "meta": {
     "title": "Dogfood marathon report",
     "resolution": { "width": 1920, "height": 1080 },
@@ -11,33 +11,82 @@
       "type": "title",
       "eyebrow": "Dogfood marathon",
       "title": "Backlog → pipeline → report",
-      "subtitle": "Outcomes · cost · what worked · what didn't",
-      "narration": "A backlog of cases driven through the inner pipeline, each deliverable independently verified, then decked."
+      "subtitle": "Before / after · result status · evidence · cost",
+      "narration": "A queue of cases is driven through the configured inner workflow, independently verified, then reported with scan-friendly before-after and result affordances."
+    },
+    {
+      "type": "objectives",
+      "title": "Run status at a glance",
+      "items": [
+        { "label": "Solved", "status": "done", "detail": "✅ independently verified solved cases are green." },
+        { "label": "Needs review", "status": "issue", "detail": "⚠ partial or needs-human cases stay orange and visible." },
+        { "label": "Failed", "status": "issue", "detail": "❌ failed oracle checks are red and never buried in prose." },
+        { "label": "Evidence decked", "status": "done", "detail": "Every recorded case gets a focused per-bug deck plus the aggregate table." }
+      ],
+      "caption": "Green check = solved. Orange warning = operator review. Red exclamation = failed verification."
     },
     {
       "type": "cards",
-      "variant": "grid",
-      "title": "Run rollup",
-      "narration": "Counts and totals rolled up across every processed case.",
+      "variant": "icon-row",
+      "columns": 3,
+      "title": "Outcome scoreboard",
       "cards": [
-        { "label": "solved", "sub": "independently verified", "style": "primary" },
-        { "label": "needs-human", "sub": "RED→GREEN gate-parked", "style": "secondary" },
-        { "label": "cost / tokens / time", "sub": "tokens primary, USD second", "style": "default" }
-      ]
+        { "icon": "✅", "label": "Solved", "sub": "green", "lines": ["independent verify passed", "fix shipped"], "style": "primary" },
+        { "icon": "⚠", "label": "Needs review", "sub": "orange", "lines": ["needs-human", "serious question"], "style": "secondary" },
+        { "icon": "❌", "label": "Failed", "sub": "red", "lines": ["oracle failed", "do not count as solved"], "style": "secondary" },
+        { "icon": "🧾", "label": "Per-bug decks", "sub": "one each", "lines": ["before-after", "result signals"] },
+        { "icon": "💰", "label": "Cost", "sub": "tokens first", "lines": ["USD if recorded", "wall time shown"] },
+        { "icon": "🧭", "label": "Source mix", "sub": "GitHub + local", "lines": ["issue links", "artifact tickets"] }
+      ],
+      "caption": "The scoreboard is designed to survive a sped-up recording: icon, color, short label, then detail."
     },
     {
-      "type": "narrative",
-      "eyebrow": "What worked",
-      "lede": "Structure is more thorough.",
-      "body": "Regression test, safe gate-parking, and the refine loop caught bad fixes a naive single prompt would have shipped.",
-      "narration": "Structure isn't automatically cheaper, but it's more thorough — and it catches bad fixes a naive prompt would ship."
+      "type": "cards",
+      "variant": "before-after",
+      "title": "How each bug deck reads",
+      "left": {
+        "label": "🔴 Before",
+        "sub": "what was broken",
+        "lines": [
+          "source issue or local ticket",
+          "baseline / RED repro command",
+          "triage verdict + evidence"
+        ],
+        "style": "secondary"
+      },
+      "right": {
+        "label": "🟢 After",
+        "sub": "what changed",
+        "lines": [
+          "driver exit + fix ref",
+          "independent verification",
+          "trace / worktree / cost"
+        ],
+        "style": "primary"
+      },
+      "caption": "The same before/after affordance appears in every per-bug deck."
     },
     {
-      "type": "narrative",
-      "eyebrow": "What didn't",
-      "lede": "Friction becomes findings.",
-      "body": "Every point of friction is captured as a finding and hardened generically — improve the pipeline for the general class, never overfit to one case.",
-      "narration": "Each friction point becomes a finding that hardens the pipeline for the general class, never for one case."
+      "type": "table",
+      "variant": "data",
+      "title": "Aggregate outcome table",
+      "columns": ["#", "Bug", "Before", "After", "Result"],
+      "rows": [
+        { "cells": ["1", "Issue #66", "RED: raw AskOffPath payload", "friendly TUI failure", "✅ solved · 🚢 shipped"], "highlight": 4 },
+        { "cells": ["2", "Kitsoku Issue #61", "Triage: credential UX scope", "parked for product/design", "⚠ partial · needs-human"], "highlight": 4 },
+        { "cells": ["3", "Issue #1196", "RED: mobile tour dead-end", "padding candidate failed", "❌ failed · shipped"], "highlight": 4 }
+      ],
+      "caption": "Concise scan view. Full source, trace, worktree, and fix evidence lives in each per-bug deck."
+    },
+    {
+      "type": "evidence",
+      "title": "Issues and findings stay visible",
+      "items": [
+        { "label": "Kitsoku Issue #61", "status": "issue", "detail": "Operator scope question is visible as a warning, not a fake confirmation.", "refType": "doc", "ref": "https://github.com/constructorfabric/Kitsoki/issues/61" },
+        { "label": "case trace", "status": "validated", "detail": "Trace links are explicit evidence rows.", "refType": "log", "ref": ".artifacts/dogfood-marathon/<run>/traces/case-05.jsonl" },
+        { "label": "finding", "status": "issue", "detail": "Friction feeds generic hardening work, not one-off overfitting.", "refType": "log", "ref": "journal" }
+      ],
+      "caption": "Warnings, traces, and findings get their own glyphs and references."
     }
   ]
 }

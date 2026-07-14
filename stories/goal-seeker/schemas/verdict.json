@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "GoalSeekerVerdict",
+  "description": "The evaluate gate's typed output: is the goal done, and if not what is the next dispatchable step? Kept small on purpose — the expensive evaluator emits only this, never a restatement of the preamble.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["verdict", "summary", "next_instruction"],
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "enum": ["done", "not_done", "blocked"],
+      "description": "done = every change integrated AND every wall-gate green; blocked = no ready change can proceed without human input; not_done = work remains and is dispatchable."
+    },
+    "summary": {
+      "type": "string",
+      "description": "One paragraph: where the goal stands and why this verdict. Summary-level; cite change ids, not inlined detail."
+    },
+    "next_instruction": {
+      "description": "Null when done. Otherwise one instruction (or an array for parallel disjoint dispatch). Each is directly dispatchable to a worker with no re-interpretation.",
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/definitions/instruction" },
+        { "type": "array", "items": { "$ref": "#/definitions/instruction" }, "minItems": 1 }
+      ]
+    }
+  },
+  "definitions": {
+    "instruction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["change_id", "action", "gate"],
+      "properties": {
+        "change_id": { "type": "string", "description": "The ledger id to work next (e.g. 0.1, WM.0)." },
+        "assignee": { "type": "string", "description": "worker | reviewer | integrator | human." },
+        "pipeline": { "type": "string", "description": "The kitsoki pipeline to drive: bugfix | implementation | docs." },
+        "worktree": { "type": "string", "description": ".worktrees/gu-<change_id>." },
+        "action": { "type": "string", "description": "What the worker does — imperative, self-contained." },
+        "gate": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["class"],
+          "properties": {
+            "class": { "type": "string", "enum": ["G-FLOW", "G-GOTEST", "G-SMOKE", "G-LINT", "G-LIVE+REPLAY"] },
+            "cmd": { "type": "string", "description": "The deterministic check whose exit code is the gate." },
+            "must": { "type": "string", "description": "The pass condition, e.g. 'exit 0'." }
+          }
+        }
+      }
+    }
+  }
+}

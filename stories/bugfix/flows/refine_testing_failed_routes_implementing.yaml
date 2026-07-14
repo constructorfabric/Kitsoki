@@ -1,0 +1,68 @@
+# refine_testing_failed_routes_implementing — a `refine` intent fired
+# while implement_review_artifact.status is failed/blocked must route
+# back to implementing (bumping implementing_cycle, clearing
+# implement_artifact so the implementer re-runs), NOT self-loop testing
+# re-running only test_author. Regression for the bug where refine was
+# status-blind and burned testing_budget re-reviewing the same unfixed
+# code without ever re-invoking the maker.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: testing
+initial_world:
+  ticket_id:        "TKT-140"
+  thread:           "TKT-140"
+  judge_mode:       "human"
+  implementing_budget: 3
+
+host_handlers:
+  host.append_to_file:
+    data: { ok: true, message_id: "msg-1" }
+  host.inbox.add:
+    data: { ok: true, id: "ib-1" }
+  host.capsule_workspace:
+    data: { ok: true, log: "" }
+  host.git:
+    data: { ok: true, sha: "abc", diff: "" }
+  host.local:
+    data: { ok: true, log: "FAIL", passed: 0, failed: 1 }
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Stub testing"
+        summary_markdown: "tests still failing against the applied fix"
+        status:           "failed"
+        tests_run:        { passed: 0, failed: 1, log: "FAIL" }
+
+  host.agent.ask:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Stub testing"
+        summary_markdown: "tests still failing against the applied fix"
+        status:           "failed"
+        tests_run:        { passed: 0, failed: 1, log: "FAIL" }
+
+  host.agent.decide:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Stub testing"
+        summary_markdown: "tests still failing against the applied fix"
+        status:           "failed"
+        tests_run:        { passed: 0, failed: 1, log: "FAIL" }
+
+turns:
+  - intent: { name: refine, slots: { feedback: "still red" } }
+    world_override:
+      implement_review_artifact:
+        status:           "failed"
+        summary_markdown: "tests still failing against the applied fix"
+    expect_state: implementing
+    expect_world:
+      implementing_cycle: 1
+      implement_review_artifact: {}
+
+expect_terminal: false
+expect_no_errors: true

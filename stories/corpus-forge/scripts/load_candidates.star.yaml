@@ -1,0 +1,4 @@
+inputs:
+  candidates: { type: list, required: true }
+outputs:
+  candidates: { type: list }

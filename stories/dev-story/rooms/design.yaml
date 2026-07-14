@@ -29,8 +29,10 @@ states:
           text:     "INTAKE"
           subtitle: "Describe your idea — search runs next"
           color:    "#10B981"
-      - template: "⚠ **Could not prepare a proposal name.** Send the idea again{{ world.design_idea != '' ? ': **' + world.design_idea + '**' : '' }}."
-        when: "world.last_error != ''"
+      - template: "⚠ **Could not prepare a proposal name.** Send the idea again: **{{ world.design_idea }}**."
+        when: "world.last_error != '' && world.design_idea != ''"
+      - template: "⚠ **Could not prepare a proposal name.** Send the idea again."
+        when: "world.last_error != '' && world.design_idea == ''"
       - prose: 'Seeded from your ideas backlog: **{{ world.design_seed_idea }}** — describe or expand it to start the search.'
         when: "world.design_seed_idea != ''"
       - prose: "Describe the change you want to propose — as rough or specific as you like. One message starts the pipeline: I'll search for prior art and relevant docs before we shape the brief.\n\nOptionally, point me at existing docs first with `see docs/…` — they'll be passed to the search."
@@ -39,7 +41,34 @@ states:
           pairs:
             Existing docs: '{{ world.design_existing_paths }}'
         when: "world.design_existing_paths != ''"
+    on_enter:
+      - when: "world.design_seed_idea != ''"
+        emit_intent: design_seeded_idea
     on:
+      # A landing feature idea is already a complete first intake message.
+      # Reuse the same slug/search path as `discuss`, but do not ask the
+      # operator to repeat it after the landing router has captured it.
+      design_seeded_idea:
+        - when: "world.design_seed_idea != ''"
+          target: design_search
+          effects:
+            - set:
+                design_idea: "{{ world.design_seed_idea }}"
+                design_seed_idea: ""
+                last_error: ""
+            - invoke: host.starlark.run
+              id: name_slug
+              with:
+                script: scripts/design_workspace.star
+                capabilities:
+                  fs:
+                    read: ["**"]
+                inputs:
+                  proposed: "{{ world.design_seed_idea }}"
+                  durable_path: "{{ world.design_durable_path }}"
+              bind:
+                design_slug: "slug"
+              on_error: design
       # Capture the idea → mint candidate slug → advance to search (the scout
       # gate). No workspace folder is created here.
       discuss:
@@ -49,15 +78,18 @@ states:
                 design_idea: "{{ world.design_seed_idea != '' ? world.design_seed_idea + ' — ' + slots.message : slots.message }}"
                 design_seed_idea: ""
                 last_error: ""
-            - invoke: host.run
+            - invoke: host.starlark.run
               id: name_slug
               with:
-                cmd: python3
-                args:
-                  - "stories/dev-story/scripts/design_workspace.py"
-                  - "{{ world.design_seed_idea != '' ? world.design_seed_idea + ' — ' + slots.message : slots.message }}"
+                script: scripts/design_workspace.star
+                capabilities:
+                  fs:
+                    read: ["**"]
+                inputs:
+                  proposed:     "{{ world.design_seed_idea != '' ? world.design_seed_idea + ' — ' + slots.message : slots.message }}"
+                  durable_path: "{{ world.design_durable_path }}"
               bind:
-                design_slug: "stdout_json.slug"
+                design_slug: "slug"
               on_error: design
             # NB: the workspace folder is deliberately NOT minted here. The
             # scout (design_search.on_enter) runs FIRST, so an idea that

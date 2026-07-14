@@ -1,0 +1,31 @@
+# persona-qa — story alias for @kitsoki/scenario-qa.
+#
+# "Persona QA" is the product name (docs/persona-qa.md); the story that
+# implements it is `scenario-qa`. This directory exists purely so
+# `kitsoki run @kitsoki/persona-qa` also works for an operator who only knows
+# the product name, without needing to already know the internal story name
+# `scenario-qa`. See docs/persona-qa.md's "Naming" section for the full map.
+#
+# It has no rooms, world, or hosts of its own: it imports scenario-qa under
+# alias `psy` with no projection/binding (the child is fully self-contained —
+# no host_interfaces requiring a binding, no world_in required) and roots
+# directly into it (root: psy), so `kitsoki run @kitsoki/persona-qa` behaves
+# identically to `kitsoki run @kitsoki/scenario-qa`: same rooms, same intents,
+# same world, same flows. `hosts:` defaults to `inherit`, so scenario-qa's
+# host allow-list folds in automatically.
+#
+# Keep this file thin. Any real behavior change belongs in
+# stories/scenario-qa/, not here — this is an alias, not a fork.
+
+app:
+  id: persona-qa
+  version: 0.1.0
+  title: "Persona QA (alias of scenario-qa)"
+  author: "Kitsoki"
+  license: "CC0"
+
+imports:
+  psy:
+    source: "@kitsoki/scenario-qa"
+
+root: psy

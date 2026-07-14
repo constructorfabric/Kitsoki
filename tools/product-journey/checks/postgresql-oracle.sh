@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO=${POSTGRESQL_REPO:-/Users/brad/code/postgresql}
+REPO=${POSTGRESQL_REPO:-${KITSOKI_PJ_REPOS_DIR:-$HOME/code}/postgresql}
 BASELINE_SHA=${POSTGRESQL_BASELINE_SHA:-62c09cdc16757da93c373a197ec51a52b14bc2b3}
 FIX_SHA=${POSTGRESQL_FIX_SHA:-64797ad97d6e0a476f809979df99e0013c1933b1}
 BASELINE_WORKTREE=${POSTGRESQL_BASELINE_WORKTREE:-/private/tmp/pg-oracle-baseline}
@@ -14,6 +14,7 @@ expected_path="src/test/isolation/expected/alter-domain-validate.out"
 
 if [[ ! -d "$REPO/.git" ]]; then
   echo "postgresql oracle: repo not found at $REPO" >&2
+  echo "postgresql oracle: set POSTGRESQL_REPO=/path/to/postgresql, or KITSOKI_PJ_REPOS_DIR=/parent/dir containing a postgresql/ checkout (default parent: \$HOME/code)" >&2
   exit 1
 fi
 

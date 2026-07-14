@@ -13,17 +13,19 @@ states:
       - set:
           verify_result: {}
           verify_status: ""
-      - invoke: host.run
+      - invoke: host.starlark.run
         id: "punch_verify-{{ world.current_item_id }}"
         with:
-          cmd: python3
-          args:
-            - "stories/punch-list/scripts/punch_verify.py"
-            - "{{ world.state_path }}"
-            - "{{ world.current_item_id }}"
+          script: "../../punch-list/scripts/punch_verify.star"
+          inputs:
+            state_path: "{{ world.state_path }}"
+            item_id: "{{ world.current_item_id }}"
+          capabilities:
+            host:
+              verbs: [host.punch.verify]
         bind:
-          verify_result: "stdout_json.verify_result"
-          verify_status: "stdout_json.verify_result.status"
+          verify_result: verify_result
+          verify_status: "verify_result.status"
         on_error: record
       - when: "world.verify_status != ''"
         emit_intent: verify_done

@@ -24,7 +24,11 @@
  */
 import { ref, watch, onMounted, onBeforeUnmount, computed } from "vue";
 import SpatialPicker from "./SpatialPicker.vue";
+import SemanticOverlay from "./SemanticOverlay.vue";
 import type { ResolvedElement } from "../lib/resolveElement.js";
+import type { SemanticMap } from "../lib/semanticPlugins.js";
+import { enrichSemanticMapFromDOM } from "../lib/semanticPlugins.js";
+import type { SemanticElementTarget } from "../lib/annotationAnchor.js";
 import type { RrwebEvent } from "../data/session-capture.js";
 
 const props = defineProps<{
@@ -34,6 +38,8 @@ const props = defineProps<{
   naturalWidth: number;
   /** The recording's intrinsic viewport height. */
   naturalHeight: number;
+  /** Optional producer-declared semantic fields to overlay on the replay DOM. */
+  semanticMap?: SemanticMap | null;
 }>();
 
 const emit = defineEmits<{
@@ -45,6 +51,7 @@ const emit = defineEmits<{
       element?: ResolvedElement;
     }
   ): void;
+  (e: "semantic-pick", target: SemanticElementTarget): void;
 }>();
 
 /** Minimal shape of rrweb's Replayer (same subset BugReportModal.vue drives). */
@@ -75,6 +82,12 @@ const aspectStyle = computed(() => ({
   // the iframe sizes (and the overlay has somewhere to live).
   aspectRatio: `${props.naturalWidth} / ${props.naturalHeight}`,
 }));
+
+const replaySemanticMap = computed<SemanticMap | null>(() =>
+  props.semanticMap
+    ? enrichSemanticMapFromDOM(props.semanticMap, replayRoot.value)
+    : null
+);
 
 async function mountPlayer(): Promise<void> {
   ready.value = false;
@@ -108,7 +121,7 @@ async function mountPlayer(): Promise<void> {
     // Wait a tick for rrweb to build the iframe DOM, then size + scale.
     await new Promise((r) => requestAnimationFrame(() => r(null)));
     scaleReplayToFit();
-    replayRoot.value = player.iframe.contentDocument;
+    await refreshReplayRoot();
     ready.value = true;
   } catch {
     player = null;
@@ -144,6 +157,39 @@ function destroyPlayer(): void {
   replayRoot.value = null;
 }
 
+async function refreshReplayRoot(): Promise<void> {
+  const doc = player?.iframe.contentDocument ?? null;
+  if (!doc) {
+    replayRoot.value = null;
+    return;
+  }
+  await waitForReplaySelectors(doc);
+  // Force Vue to recompute selector-enriched semantic maps even when the same
+  // iframe Document object is reused after rrweb finishes applying the snapshot.
+  replayRoot.value = null;
+  await Promise.resolve();
+  replayRoot.value = doc;
+}
+
+async function waitForReplaySelectors(doc: Document): Promise<void> {
+  const selectors = (props.semanticMap?.elements ?? [])
+    .map((el) => el.selector)
+    .filter((selector): selector is string => Boolean(selector));
+  if (selectors.length === 0) return;
+  for (let i = 0; i < 20; i++) {
+    if (selectors.some((selector) => selectorMatches(doc, selector))) return;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+}
+
+function selectorMatches(doc: Document, selector: string): boolean {
+  try {
+    return Boolean(doc.querySelector(selector));
+  } catch {
+    return false;
+  }
+}
+
 onMounted(mountPlayer);
 onBeforeUnmount(destroyPlayer);
 
@@ -154,6 +200,14 @@ watch(
     destroyPlayer();
     await Promise.resolve();
     await mountPlayer();
+  }
+);
+
+watch(
+  () => props.semanticMap,
+  async () => {
+    if (!ready.value) return;
+    await refreshReplayRoot();
   }
 );
 </script>
@@ -179,6 +233,13 @@ watch(
       :natural-height="naturalHeight"
       :root="replayRoot"
       @pick="(b) => emit('pick', b)"
+    />
+    <SemanticOverlay
+      v-if="ready && replaySemanticMap"
+      class="rf-semantic"
+      :style="{ width: renderW + 'px', height: renderH + 'px' }"
+      :map="replaySemanticMap"
+      @pick="(target) => emit('semantic-pick', target)"
     />
   </div>
 </template>
@@ -213,6 +274,12 @@ watch(
   top: 0;
   left: 0;
   z-index: 2;
+}
+.rf-semantic {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 3;
 }
 .rf-muted {
   color: #64748b;

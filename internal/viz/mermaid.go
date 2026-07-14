@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"kitsoki/internal/app"
+	"kitsoki/internal/storyauthoring"
 )
 
 // ExportMermaid streams a flat Mermaid stateDiagram-v2 for a to w (state
@@ -78,6 +79,9 @@ func emitStates(b *strings.Builder, states map[string]*app.State, prefix, indent
 			continue
 		}
 		fullPath := joinDot(prefix, name)
+		if storyauthoring.IsFrameworkRoom(fullPath) {
+			continue
+		}
 		id := mermaidStateID(fullPath)
 		label := fullPath
 
@@ -137,6 +141,9 @@ func emitStates(b *strings.Builder, states map[string]*app.State, prefix, indent
 func emitTransitions(b *strings.Builder, fromPath string, s *app.State) {
 	fromID := mermaidStateID(fromPath)
 	for _, intent := range sortedKeys(s.On) {
+		if storyauthoring.IsFrameworkTransition(fromPath, intent) {
+			continue
+		}
 		for _, tr := range s.On[intent] {
 			target := resolveMermaidTarget(fromPath, tr.Target)
 			if target == "" || strings.Contains(target, "{{") {

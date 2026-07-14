@@ -127,7 +127,7 @@ func issuesMigrateCmd() *cobra.Command {
 close it if resolved/wontfix, and write the new issue ref back into the file's
 external: frontmatter (so a re-run skips it). The local files are never deleted.
 
-Requires gh auth. --repo is the owner/repo to file into.`,
+Requires GitHub API auth via GH_TOKEN or GITHUB_TOKEN. --repo is the owner/repo to file into.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cmd.SilenceUsage = true
 			if strings.TrimSpace(repo) == "" {

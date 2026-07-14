@@ -11,8 +11,8 @@
 #                  (tour-popover in some frames AND banner/caption in others)
 #   --blank-scan   optional blank-scan.json (deterministic monochrome scan). Its
 #                  flags are ADVISORY (rendered, never block) unless --blank-strict.
-#   --edge-scan    optional edge-scan.json. Any flag blocks; content touching a
-#                  frame edge means text/UI is likely clipped in the final MP4.
+#   --edge-scan    optional edge-scan.json (deterministic frame-edge scan). Its
+#                  flags are ADVISORY (rendered, never block) unless --edge-strict.
 #   --pacing-scan  optional pacing-scan.json (deterministic chapter-duration scan).
 #                  Its flags are ADVISORY (rendered, never block) unless
 #                  --pacing-strict — a popover that flashes by too fast to read.
@@ -20,12 +20,13 @@
 #
 # Usage: report.sh <verdict.json> [--out report.md] [--strict]
 #          [--blank-scan blank-scan.json] [--blank-strict]
+#          [--edge-scan edge-scan.json] [--edge-strict]
 #          [--pacing-scan pacing-scan.json] [--pacing-strict]
 set -euo pipefail
 
 verdict="${1:?usage: report.sh <verdict.json> [--out report.md] [--strict]}"
 shift || true
-out="" strict=0 blank_scan="" blank_strict=0 edge_scan="" pacing_scan="" pacing_strict=0 rrweb_scan="" rrweb_strict=0 scroll_scan="" scroll_strict=0
+out="" strict=0 blank_scan="" blank_strict=0 edge_scan="" edge_strict=0 pacing_scan="" pacing_strict=0 rrweb_scan="" rrweb_strict=0 scroll_scan="" scroll_strict=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --out)           out="$2"; shift 2 ;;
@@ -33,6 +34,7 @@ while [ $# -gt 0 ]; do
     --blank-scan)    blank_scan="$2"; shift 2 ;;
     --blank-strict)  blank_strict=1; shift ;;
     --edge-scan)     edge_scan="$2"; shift 2 ;;
+    --edge-strict)   edge_strict=1; shift ;;
     --pacing-scan)   pacing_scan="$2"; shift 2 ;;
     --pacing-strict) pacing_strict=1; shift ;;
     --rrweb-scan)    rrweb_scan="$2"; shift 2 ;;
@@ -110,7 +112,7 @@ rrweb_n="$(jq '[ .clips[]?.flagged[]? ] | length' "$rf")"
 # scroll scan flag is per-clip boolean; count clips flagged unfollowable.
 scroll_n="$(jq '[ .clips[]? | select(.flagged==true) ] | length' "$sf")"
 blank_block=0;  [ "$blank_n"  -gt 0 ] && [ "$blank_strict"  -eq 1 ] && blank_block=1
-edge_block=0;   [ "$edge_n"   -gt 0 ] && edge_block=1
+edge_block=0;   [ "$edge_n"   -gt 0 ] && [ "$edge_strict" -eq 1 ] && edge_block=1
 pacing_block=0; [ "$pacing_n" -gt 0 ] && [ "$pacing_strict" -eq 1 ] && pacing_block=1
 rrweb_block=0;  [ "$rrweb_n"  -gt 0 ] && [ "$rrweb_strict"  -eq 1 ] && rrweb_block=1
 scroll_block=0; [ "$scroll_n" -gt 0 ] && [ "$scroll_strict" -eq 1 ] && scroll_block=1
@@ -126,6 +128,7 @@ done
 
 # --- Markdown report -------------------------------------------------------
 jq -r --argjson strict "$strict" --argjson blank_strict "$blank_strict" \
+      --argjson edge_strict "$edge_strict" \
       --argjson pacing_strict "$pacing_strict" --argjson rrweb_strict "$rrweb_strict" \
       --argjson scroll_strict "$scroll_strict" \
       --argjson gate_pass "$gate_pass" --argjson adv_block "$adv_block" \
@@ -140,6 +143,7 @@ jq -r --argjson strict "$strict" --argjson blank_strict "$blank_strict" \
   ( ($blank[0].flagged // []) ) as $bl |
   ( ($edge[0].flagged // []) ) as $ed |
   ( ($blank_strict==1) and (($bl|length) > 0) ) as $blank_block |
+  ( ($edge_strict==1) and (($ed|length) > 0) ) as $edge_block |
   ( ($pacing[0].flagged // []) ) as $pc |
   ( ($pacing_strict==1) and (($pc|length) > 0) ) as $pacing_block |
   ( [ ($rrweb[0].clips // [])[] as $c | ($c.flagged // [])[] | . + { clip: ($c.clip // "?") } ] ) as $rw |
@@ -151,8 +155,8 @@ jq -r --argjson strict "$strict" --argjson blank_strict "$blank_strict" \
   ( $gate_pass==1 ) as $pass |
   "# UI demo QA report",
   "",
-  ( if $pass then "**Gate: ✅ PASS**\([ (if ($bl|length)>0 then "\($bl|length) advisory blank-scan warning(s)" else empty end), (if ($pc|length)>0 then "\($pc|length) advisory pacing warning(s)" else empty end) ] | if length>0 then " — " + join(", ") else "" end)"
-    else "**Gate: ❌ FAIL** — \(($blockers|length)) blocking scenario(s), \(($vis|length)) visual issue(s), \(($ann|length)) annotation issue(s)\(if ($ed|length)>0 then ", \($ed|length) edge-clipping issue(s)" else "" end)\(if $adv_block==1 then ", adversarial verification incomplete" else "" end)\(if $blank_block then ", \($bl|length) blank-scan flag(s)" else "" end)\(if $pacing_block then ", \($pc|length) pacing flag(s)" else "" end)\(if $rrweb_block then ", \($rw|length) rrweb-pacing flag(s)" else "" end)\(if $scroll_block then ", \($sw|length) scroll-followability flag(s)" else "" end)" end ),
+  ( if $pass then "**Gate: ✅ PASS**\([ (if ($bl|length)>0 then "\($bl|length) advisory blank-scan warning(s)" else empty end), (if ($ed|length)>0 then "\($ed|length) advisory edge-clipping warning(s)" else empty end), (if ($pc|length)>0 then "\($pc|length) advisory pacing warning(s)" else empty end) ] | if length>0 then " — " + join(", ") else "" end)"
+    else "**Gate: ❌ FAIL** — \(($blockers|length)) blocking scenario(s), \(($vis|length)) visual issue(s), \(($ann|length)) annotation issue(s)\(if $edge_block then ", \($ed|length) edge-clipping issue(s)" else "" end)\(if $adv_block==1 then ", adversarial verification incomplete" else "" end)\(if $blank_block then ", \($bl|length) blank-scan flag(s)" else "" end)\(if $pacing_block then ", \($pc|length) pacing flag(s)" else "" end)\(if $rrweb_block then ", \($rw|length) rrweb-pacing flag(s)" else "" end)\(if $scroll_block then ", \($sw|length) scroll-followability flag(s)" else "" end)" end ),
   "",
   "| metric | n |",
   "|---|---|",
@@ -163,7 +167,7 @@ jq -r --argjson strict "$strict" --argjson blank_strict "$blank_strict" \
   "| visual issues | \($vis|length) |",
   "| annotation issues | \($ann|length) |",
   "| blank-scan warnings | \($bl|length)\(if $blank_strict==1 then " (blocking)" else " (advisory)" end) |",
-  "| edge-clipping issues | \($ed|length) (blocking) |",
+  "| edge-clipping issues | \($ed|length)\(if $edge_strict==1 then " (blocking)" else " (advisory)" end) |",
   "| pacing warnings | \($pc|length)\(if $pacing_strict==1 then " (blocking)" else " (advisory)" end) |",
   "| rrweb-pacing warnings | \($rw|length)\(if $rrweb_strict==1 then " (blocking)" else " (advisory)" end) |",
   "| scroll-followability warnings | \($sw|length)\(if $scroll_strict==1 then " (blocking)" else " (advisory)" end) |",
@@ -196,7 +200,7 @@ jq -r --argjson strict "$strict" --argjson blank_strict "$blank_strict" \
         "" )
     else empty end ),
   ( if ($ed|length) > 0 then
-      ( "## ❌ Edge-clipping issues (deterministic frame-edge scan)",
+      ( "## \(if $edge_strict==1 then "❌" else "⚠️" end) Edge-clipping issues (deterministic frame-edge scan\(if $edge_strict==1 then "" else " — advisory, review by eye" end))",
         "",
         "| frame | issue |",
         "|---|---|",
@@ -260,7 +264,11 @@ jq -r --argjson strict "$strict" --argjson blank_strict "$blank_strict" \
 # to run but did not complete (adversary.status present and != "ok") also blocks.
 [ "$vis_block"  -gt 0 ] && echo "gate: $vis_block visual issue(s) — blank/broken render where content was expected" >&2
 [ "$ann_block"  -gt 0 ] && echo "gate: $ann_block annotation issue(s) — mixed narration styles within one video" >&2
-[ "$edge_n"     -gt 0 ] && echo "gate: $edge_n edge-clipping issue(s) — content touches the rendered frame edge" >&2
+[ "$edge_n"     -gt 0 ] && {
+  [ "$edge_strict" -eq 1 ] \
+    && echo "gate: $edge_n edge-clipping issue(s) blocking (--edge-strict) — content touches the rendered frame edge" >&2 \
+    || echo "advisory: $edge_n edge-clipping issue(s) — content touches the rendered frame edge" >&2
+}
 if [ "$blank_n" -gt 0 ]; then
   [ "$blank_strict" -eq 1 ] \
     && echo "gate: $blank_n blank-scan flag(s) blocking (--blank-strict)" >&2 \
@@ -283,5 +291,5 @@ if [ "$scroll_n" -gt 0 ]; then
 fi
 [ "$adv_block" -eq 1 ] && echo "strict gate: adversarial verification did not complete (adversary.status=${adv_status:-absent})" >&2
 
-echo "wrote $out  (blocking scenarios: $blockers, visual issues: $vis_block, annotation issues: $ann_block, edge-clipping: $edge_n blocking, blank-scan: $blank_n$([ "$blank_strict" -eq 1 ] && echo ' blocking' || echo ' advisory'), pacing: $pacing_n$([ "$pacing_strict" -eq 1 ] && echo ' blocking' || echo ' advisory'), rrweb-pacing: $rrweb_n$([ "$rrweb_strict" -eq 1 ] && echo ' blocking' || echo ' advisory'), scroll-followability: $scroll_n$([ "$scroll_strict" -eq 1 ] && echo ' blocking' || echo ' advisory'))"
+echo "wrote $out  (blocking scenarios: $blockers, visual issues: $vis_block, annotation issues: $ann_block, edge-clipping: $edge_n$([ "$edge_strict" -eq 1 ] && echo ' blocking' || echo ' advisory'), blank-scan: $blank_n$([ "$blank_strict" -eq 1 ] && echo ' blocking' || echo ' advisory'), pacing: $pacing_n$([ "$pacing_strict" -eq 1 ] && echo ' blocking' || echo ' advisory'), rrweb-pacing: $rrweb_n$([ "$rrweb_strict" -eq 1 ] && echo ' blocking' || echo ' advisory'), scroll-followability: $scroll_n$([ "$scroll_strict" -eq 1 ] && echo ' blocking' || echo ' advisory'))"
 [ "$gate_pass" -eq 1 ] || exit 1

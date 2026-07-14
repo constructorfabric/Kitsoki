@@ -3,6 +3,7 @@ package starlark
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"sort"
 
 	"go.starlark.net/starlark"
@@ -10,32 +11,41 @@ import (
 )
 
 // buildCtx assembles the `ctx` value passed to main(ctx). It is a Starlark
-// struct with exactly five attributes — inputs, world, http, fs, probe — and
-// nothing else, which is what keeps the sandbox honest: a script cannot reach
-// any capability that buildCtx does not put here. http is the network boundary;
-// fs and probe are the read-only filesystem + allow-listed-process boundary
-// (see Inspector).
+// struct containing inputs plus exactly the attributes granted by the run's
+// CapabilitySpec. This keeps the sandbox honest: a script cannot even discover
+// a ctx capability that the orchestration metadata did not grant. http is the
+// network boundary; fs and probe are the filesystem + allow-listed-process
+// boundary (see Inspector); host is the narrow allow-listed engine-verb
+// boundary (see HostCaller/WithHost in host_proxy.go).
 //
-// ictx is the Go context carrying the injected HTTPClient and Inspector
-// (resolved lazily per call). inputs are the (already type-validated) effect
-// inputs. worldSnapshot is the read-only world map.
-func buildCtx(ictx context.Context, inputs, worldSnapshot map[string]any) (starlark.Value, error) {
+// ictx is the Go context carrying the injected HTTPClient, Inspector, and
+// HostCaller (resolved lazily per call). inputs are the (already
+// type-validated) effect inputs. worldSnapshot is the read-only world map.
+func buildCtx(ictx context.Context, inputs, worldSnapshot map[string]any, cap CapabilitySpec) (starlark.Value, error) {
 	inputsVal, err := goToStarlark(inputs)
 	if err != nil {
 		return nil, fmt.Errorf("convert inputs: %w", err)
 	}
 
-	worldVal := newWorldProxy(worldSnapshot)
-	httpVal := newHTTPProxy(ictx)
-	inspect := newInspectorProxy(ictx)
+	attrs := starlark.StringDict{"inputs": inputsVal}
+	if cap.World {
+		attrs["world"] = newWorldProxy(worldSnapshot)
+	}
+	if cap.NeedsHTTP() {
+		attrs["http"] = newHTTPProxy(ictx)
+	}
+	if cap.AllowsFS() {
+		inspect := newInspectorProxy(ictx)
+		attrs["fs"] = &fsValue{p: inspect}
+	}
+	if cap.AllowsProbe() {
+		attrs["probe"] = starlark.NewBuiltin("ctx.probe", newInspectorProxy(ictx).probe)
+	}
+	if cap.AllowsHost() {
+		attrs["host"] = newHostProxy(ictx)
+	}
 
-	return starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
-		"inputs": inputsVal,
-		"world":  worldVal,
-		"http":   httpVal,
-		"fs":     &fsValue{p: inspect},
-		"probe":  starlark.NewBuiltin("ctx.probe", inspect.probe),
-	}), nil
+	return starlarkstruct.FromStringDict(starlarkstruct.Default, attrs), nil
 }
 
 // ─── ctx.world ──────────────────────────────────────────────────────────────
@@ -135,7 +145,48 @@ func goToStarlark(v any) (starlark.Value, error) {
 		}
 		return d, nil
 	default:
-		return nil, fmt.Errorf("cannot convert Go value of type %T to Starlark", v)
+		// Go-native handlers (host stubs, wrapped CLI output split into
+		// lines, structured records, …) commonly produce concretely-typed
+		// slices/maps ([]string, []map[string]any, …) instead of routing
+		// through a JSON decode (which would yield the []any/map[string]any
+		// shapes handled above). Convert any slice/map reflectively rather
+		// than requiring every caller to re-wrap its values into JSON-ish
+		// shapes by hand.
+		rv := reflect.ValueOf(v)
+		switch rv.Kind() {
+		case reflect.Slice, reflect.Array:
+			elems := make([]starlark.Value, rv.Len())
+			for i := 0; i < rv.Len(); i++ {
+				ev, err := goToStarlark(rv.Index(i).Interface())
+				if err != nil {
+					return nil, err
+				}
+				elems[i] = ev
+			}
+			return starlark.NewList(elems), nil
+		case reflect.Map:
+			if rv.Type().Key().Kind() != reflect.String {
+				return nil, fmt.Errorf("cannot convert Go value of type %T to Starlark", v)
+			}
+			d := starlark.NewDict(rv.Len())
+			keys := make([]string, 0, rv.Len())
+			for _, k := range rv.MapKeys() {
+				keys = append(keys, k.String())
+			}
+			sort.Strings(keys)
+			for _, k := range keys {
+				ev, err := goToStarlark(rv.MapIndex(reflect.ValueOf(k).Convert(rv.Type().Key())).Interface())
+				if err != nil {
+					return nil, err
+				}
+				if err := d.SetKey(starlark.String(k), ev); err != nil {
+					return nil, err
+				}
+			}
+			return d, nil
+		default:
+			return nil, fmt.Errorf("cannot convert Go value of type %T to Starlark", v)
+		}
 	}
 }
 

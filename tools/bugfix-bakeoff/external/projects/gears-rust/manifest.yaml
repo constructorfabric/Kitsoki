@@ -13,7 +13,7 @@
 #
 # GATED: the arming check builds Rust (cargo) against a LOCAL checkout of a heavy,
 # PRIVATE repo — never cloned in `make test`. Run against a local mirror:
-#   GEARS_RUST_REPO=~/code/gears-rust make gears-bakeoff
+#   BUGFIX_BAKEOFF_REPO=/path/to/checkout make gears-bakeoff
 #   # or: go test -tags gearsbakeoff -run TestGearsBakeoff -count=1 -v ./tools/bugfix-bakeoff/external/
 # Set CARGO_TARGET_DIR to a persistent dir so deps cache across oracles.
 kind: bugfix_bakeoff_external
@@ -23,6 +23,8 @@ project:
   id: gears-rust
   repo: https://github.com/bsacrobatix/gears-rust.git   # private fork; arm via --repo-dir (local)
   local_only: true             # heavy + private: NOT cloned by the qsbakeoff loop; armed via the gearsbakeoff test against a local mirror
+  repo_envs: [BUGFIX_BAKEOFF_REPO, BUGFIX_BAKEOFF_META_REPO]
+  repo_subdir: src/cyberfabric/gears-rust  # when --repo-dir /path/to/meta-checkout is passed, resolve the submodule checkout here
   title: "gears-rust — Constructor 'gears' declarative service platform (Rust monorepo)"
   language: rust
   runner: cargo

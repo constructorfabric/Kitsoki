@@ -298,6 +298,14 @@ prints unchanged ids; `--json` emits a machine-readable diff
 referenced by any `Invoke:` in the app's effect graph (orphans). Orphans fail
 the lint by default. `--strict` also fails on warnings.
 
+Agent trace conformance is implemented as a deterministic substrate in
+`internal/agenteval/conformance`: it reads JSONL traces, pairs
+`agent.stream`/`agent.tool_call` tool-use events to their `agent.call.start`
+contract by `call_id`, and fails when recorded tools exceed the declared
+`allowed_tools`, `denied_tools`, or `effect` class. The current package-level
+tests include compliant and deliberately out-of-box fixtures; cassette lint can
+wire this checker when it starts validating recorded agent traces directly.
+
 **Orphan check is iface-blind.** The walker compares episode handlers against
 literal `Invoke:` strings only. An app that dispatches through an iface name
 (e.g. `Invoke: iface.scout.run` bound to `default: host.run`) will flag a

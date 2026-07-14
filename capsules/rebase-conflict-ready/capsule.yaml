@@ -1,0 +1,38 @@
+name: rebase-conflict-ready
+source:
+  synthetic: true
+  default_branch: main
+  steps:
+    - action: write
+      path: file.txt
+      content: |
+        base line
+    - action: commit
+      message: base
+    - action: checkout
+      branch: feature
+      create: true
+    - action: write
+      path: file.txt
+      content: |
+        feature change
+    - action: commit
+      message: feature edit
+    - action: checkout
+      branch: main
+    - action: write
+      path: file.txt
+      content: |
+        main change
+    - action: commit
+      message: main edit
+    - action: checkout
+      branch: feature
+network: none
+verify:
+  probes:
+    - name: checked-out-feature
+      run: test "$(git branch --show-current)" = feature
+      expect: zero
+scenario:
+  kind: git-flow

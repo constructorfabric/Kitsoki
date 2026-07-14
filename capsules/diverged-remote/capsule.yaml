@@ -1,0 +1,56 @@
+name: diverged-remote
+source:
+  synthetic: true
+  default_branch: main
+  steps:
+    - action: write
+      path: file.txt
+      content: |
+        base
+    - action: commit
+      message: base
+    - action: bare_remote
+      name: origin
+      path: peers/origin.git
+      branch: main
+    - action: git
+      args: [--git-dir, peers/origin.git, symbolic-ref, HEAD, refs/heads/main]
+    - action: write
+      path: file.txt
+      content: |
+        local
+    - action: commit
+      message: local diverges
+    - action: git
+      args: [clone, peers/origin.git, remote-work]
+    - action: git
+      dir: remote-work
+      args: [config, user.email, capsule@kitsoki.dev]
+    - action: git
+      dir: remote-work
+      args: [config, user.name, Kitsoki Capsule]
+    - action: write
+      path: remote-work/file.txt
+      content: |
+        remote
+    - action: git
+      dir: remote-work
+      args: [add, file.txt]
+    - action: git
+      dir: remote-work
+      args: [commit, --quiet, -m, remote diverges]
+    - action: git
+      dir: remote-work
+      args: [push, origin, main]
+    - action: remove
+      path: remote-work
+    - action: git
+      args: [fetch, origin, main:refs/remotes/origin/main]
+network: none
+verify:
+  probes:
+    - name: branch-diverged
+      run: test "$(git rev-list --left-right --count main...origin/main)" = "1	1"
+      expect: zero
+scenario:
+  kind: git-flow

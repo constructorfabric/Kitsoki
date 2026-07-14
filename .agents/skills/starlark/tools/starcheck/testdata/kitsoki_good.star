@@ -1,5 +1,5 @@
 # A well-formed kitsoki host.starlark.run script: defines main(ctx), reaches
-# only the narrow ctx surface plus the json/math stdlib, returns a dict.
+# only the narrow ctx surface plus the json/math/yaml stdlib, returns a dict.
 # Passes `starcheck -kitsoki testdata/kitsoki_good.star`.
 
 def main(ctx):

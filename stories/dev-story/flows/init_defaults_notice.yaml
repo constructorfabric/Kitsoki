@@ -1,0 +1,53 @@
+# init_defaults_notice -- onboarding states its measurable goal and tells the
+# operator exactly which defaults were used and where to correct them.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: init
+initial_world:
+  init_target_path: "/srv/repos/acme"
+  init_project_id: "acme"
+  init_project_title: "Acme"
+  init_stack: "go project"
+  init_profile_status: "draft"
+  init_goals:
+    onboarding:
+      statement: "Make this checkout ready for deterministic dev-story work."
+      postconditions:
+        - id: "tests-runnable"
+          statement: "Canonical project tests run deterministically."
+          gate: "required"
+          verification: "tests"
+          applicable: true
+    validation:
+      statement: "Prove and improve dev-story against a stable, independently verified corpus."
+      postconditions: []
+  init_repo_default_branch: "main"
+  init_repo_branch_pattern: "feature/{slug}"
+  init_repo_branch_issue_id: "optional"
+  init_ticket_provider: "informal"
+  init_ticket_repo: "pasted"
+  init_pr_provider: "local"
+  init_pr_repository: "local"
+  init_pr_base_branch: "main"
+  init_pr_template: "none"
+  init_default_notices:
+    - field: "repo.branch_pattern"
+      value: "feature/{slug}"
+      source: "default"
+      evidence: "No branch naming example was found."
+      update: ".kitsoki/project-profile.yaml#repo.branch_pattern"
+      notice: "Could not determine the branch naming policy; using feature/{slug}."
+
+turns:
+  - intent: { name: look, slots: {} }
+    expect_state: init
+    expect_view_matches: "Make this checkout ready"
+  - intent: { name: look, slots: {} }
+    expect_state: init
+    expect_view_matches: "Defaults used"
+  - intent: { name: look, slots: {} }
+    expect_state: init
+    expect_view_matches: ".kitsoki/project-profile.yaml#repo.branch_pattern"
+
+expect_no_errors: true

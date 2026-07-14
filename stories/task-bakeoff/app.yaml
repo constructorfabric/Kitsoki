@@ -1,27 +1,17 @@
-# task-bakeoff — orchestrate a matrix task comparison (the
-# `matrix-task-comparison` skill / `tools/bugfix-bakeoff/` reference harness) as a
-# drivable kitsoki workflow, and produce a baked static-HTML slidey report.
+# task-bakeoff — retired replay compatibility story. New matrix and task
+# optimization studies are run by Arena; this story must not grow a scheduler,
+# profiler, or report pipeline alongside tools/arena.
 #
 # Workflow:
 #   idle → configure → running → scoring → reporting → slideshow → done
 #
 #   idle        deterministic: park; `start` boots the bake-off with whatever
 #               manifest is loaded in world (defaults to tools/bugfix-bakeoff).
-#   configure   deterministic: declare the MATRIX — the tasks (cases), the
-#               candidates (harness/model axis), and the contenders (structure
-#               axis). The cell list = task × candidate × contender. We do NOT
-#               author the manifest here; the manifest is owned by the harness
-#               (tools/bugfix-bakeoff/external/projects/kitsoki/manifest.yaml). configure echoes the loaded
-#               matrix and computes the cell roster.
-#   running     ORCHESTRATION STUB. The cost-bearing run_cell.sh step is run
-#               MANUALLY, never in CI/auto (AGENTS.md no-LLM rule + the skill's
-#               "run cells" section). This room TRACKS the cell roster as a
-#               checklist and, where a host run-driver is wired, would call
-#               host.run → tools/bugfix-bakeoff/{prepare,run_cell}.sh per cell.
-#               In flow/no-LLM mode the cell results are supplied pre-computed
-#               (the committed results/cells/*.json the harness already wrote).
+#   configure   compatibility-only: echo a historical supplied matrix.
+#   running     historical stub: tracks a supplied legacy roster and never runs
+#               a provider or dispatches cells.
 #   scoring     deterministic: aggregate the per-cell results into a summary via
-#               host.run → tools/bugfix-bakeoff/aggregate.py (free, no LLM).
+#               host.starlark.run → host.bakeoff.run (free, no LLM).
 #   reporting   deterministic: assemble the comparison summary + build the slidey
 #               deck spec from the rollup (host.run → a deck-builder step; the
 #               baked deck.json is the no-LLM stand-in).
@@ -53,19 +43,20 @@ hosts:
   # host.run drives the deterministic harness scripts (aggregate / deck-build) and
   # — where wired — the cost-bearing prepare/run_cell per cell (manual only).
   - host.run
+  - host.starlark.run
+  - host.bakeoff.run
   # host.slidey.render + host.artifacts_dir produce the baked static-HTML report,
   # exactly like stories/slidey-edit/rooms/rendering.yaml.
   - host.slidey.render
   - host.artifacts_dir
 
 world:
-  # ── Harness wiring ───────────────────────────────────────────────────────────
-  # The bake-off is a thin orchestrator over tools/bugfix-bakeoff. harness_dir is
-  # the reference implementation; manifest_path is its matrix manifest. We never
-  # reimplement scoring/pricing — we call the scripts.
+  # ── Compatibility wiring ─────────────────────────────────────────────────────
+  # These values remain for replay fixtures only. New studies must use Arena's
+  # task-optimization manifest, preflight, plan, and review artifacts.
   harness_dir:   { type: string, default: "tools/bugfix-bakeoff" }
   manifest_path: { type: string, default: "tools/bugfix-bakeoff/external/projects/kitsoki/manifest.yaml" }
-  # generated_at is REQUIRED by aggregate.py / the report builder (the build bans
+  # generated_at is REQUIRED by the offline report tools (the build bans
   # implicit wall-clock timestamps). An operator/flow supplies a fixed value.
   generated_at:  { type: string, default: "1970-01-01T00:00:00Z" }
 
@@ -86,7 +77,7 @@ world:
 
   # ── Scoring / aggregation outputs ────────────────────────────────────────────
   # summary mirrors results/summary.json's shape (rollup by_treatment / by_candidate
-  # / by_cell_key). Bound from the aggregate.py run in `scoring`.
+  # / by_cell_key). Bound from the native bakeoff capability in `scoring`.
   summary:      { type: object, default: {} }
   summary_path: { type: string, default: "" }
 

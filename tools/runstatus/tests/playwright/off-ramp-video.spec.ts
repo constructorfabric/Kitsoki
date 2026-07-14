@@ -265,7 +265,7 @@ test.describe("agent off-ramp feature-spotlight (live, no-LLM replay+cassette)",
         }
         if (step.id === "or-pick") {
           // THE CONTRAST: a menu pick transitions normally. Dispatch the DOM
-          // click (overlay backdrop is up during the pre-step hook).
+          // click so the pre-step hook does not depend on browser hit-testing.
           const browseBtn = page.getByTestId("intent-btn-browse").first();
           await expect(browseBtn).toBeVisible({ timeout: 10000 });
           await browseBtn.evaluate((el) => (el as HTMLElement).click());

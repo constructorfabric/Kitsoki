@@ -1,0 +1,17 @@
+goal_slug: managed-delta-test
+changes:
+  - id: "WM.0"
+    wall: WM
+    goal_ref: [G6]
+    title: "Base goal-seeker"
+    kind: story
+    pipeline: implementation
+    depends_on: []
+    scope: ["stories/goal-seeker/**"]
+    acceptance: ["base exists"]
+    gate:
+      class: G-FLOW
+      red_now: "base missing"
+      green_when: "base green"
+      cmd: "true"
+    agent_brief: "Keep the base graph present."

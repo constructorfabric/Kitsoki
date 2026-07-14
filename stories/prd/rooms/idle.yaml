@@ -52,7 +52,7 @@ states:
           pairs:
             Turns:  "{{ world.idea_turns }}"
       # Informational only: where the PRD WILL be written. The slug + per-PRD
-      # workspace are not minted until the search gate (prd_slug.py), so name
+      # workspace are not minted until the search gate (prd_slug.star), so name
       # the shape generically rather than a concrete path. Rendered as prose
       # (not a kv .md value) so the web UI does not linkify it into a clickable
       # preview of a file that does not exist yet — the real draft lands at
@@ -165,5 +165,7 @@ states:
             - set:
                 abandon_reason: "abandoned_at_idle"
                 status:         "abandoned"
+      go_gitops:
+        - target: "@exit:gitops"
       look:
         - target: .

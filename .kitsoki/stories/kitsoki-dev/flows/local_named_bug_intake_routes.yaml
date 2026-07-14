@@ -1,0 +1,61 @@
+# local_named_bug_intake_routes -- an explicit "fix local bug <id>" request
+# carries the configured local source identity through the multi-source wrapper.
+# All hosts are stubbed; no filesystem mutation or LLM is used.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: core.landing
+initial_world:
+  core__bugfix_mode: "triage"
+  core__judge_mode: "human"
+
+host_handlers:
+  host.ticket_federation:
+    by_op:
+      get:
+        data:
+          id: "local-one"
+          title: "Local report selected by name"
+          body: "A heading-first local report."
+          status: open
+          type: bug
+          source: local
+          source_label: Local
+          source_kind: local
+          source_mode: local
+          source_repo: ""
+          ref: "local:local-one"
+          url: ".artifacts/issues/bugs/local-one.md"
+  host.agent.codeact:
+    data:
+      ok: true
+      terminated: done
+      payload:
+        verdict: STILL-LIVE
+        confidence: 0.9
+        summary_title: "STILL-LIVE - local report reached triage"
+        evidence: "The local source-qualified ref was resolved."
+        summary_markdown: "The named local intake reached bugfix."
+        suggested_action: "continue"
+        fixed_in_ref: null
+        involved_components: []
+      steps: []
+
+turns:
+  - intent:
+      name: core__landing_capture
+      slots: { request: "fix local bug local-one" }
+    expect_state: core.bf.triaging
+    expect_host_calls:
+      - handler: host.ticket_federation.get
+        args: { id: "local:local-one", ref: "local:local-one" }
+        times: 1
+    expect_world:
+      core__bf__ticket_id: "local-one"
+      core__bf__ticket_source: local
+      core__bf__ticket_source_mode: local
+      core__bf__ticket_source_ref: "local:local-one"
+      core__bf__ticket_url: ".artifacts/issues/bugs/local-one.md"
+      core__bf__thread: ".artifacts/issues/bugs/local-one.md"
+
+expect_no_errors: true

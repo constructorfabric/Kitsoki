@@ -31,9 +31,14 @@ func TestVisualAmbientFromParams_DecodesAnchor(t *testing.T) {
 		"anchor": map[string]any{
 			"kind": "semantic_element",
 			"semantic_element": map[string]any{
-				"plugin": "slidey",
-				"ref":    "scene-3.title",
-				"bbox":   []any{float64(1), float64(2), float64(3), float64(4)},
+				"plugin":        "html-data",
+				"ref":           "issue.status",
+				"semantic_kind": "field",
+				"label":         "Status",
+				"selector":      "[data-field=status]",
+				"text":          "Blocked",
+				"data":          map[string]any{"path": "issue.status"},
+				"bbox":          []any{float64(1), float64(2), float64(3), float64(4)},
 			},
 		},
 	})
@@ -45,8 +50,13 @@ func TestVisualAmbientFromParams_DecodesAnchor(t *testing.T) {
 	// The v2 anchor decodes, ref verbatim.
 	require.Equal(t, host.AnchorSemanticElement, v.Anchor.Kind)
 	require.NotNil(t, v.Anchor.SemanticElement)
-	assert.Equal(t, "slidey", v.Anchor.SemanticElement.Plugin)
-	assert.Equal(t, "scene-3.title", v.Anchor.SemanticElement.Ref)
+	assert.Equal(t, "html-data", v.Anchor.SemanticElement.Plugin)
+	assert.Equal(t, "issue.status", v.Anchor.SemanticElement.Ref)
+	assert.Equal(t, "field", v.Anchor.SemanticElement.SemanticKind)
+	assert.Equal(t, "Status", v.Anchor.SemanticElement.Label)
+	assert.Equal(t, "[data-field=status]", v.Anchor.SemanticElement.Selector)
+	assert.Equal(t, "Blocked", v.Anchor.SemanticElement.Text)
+	assert.Equal(t, map[string]any{"path": "issue.status"}, v.Anchor.SemanticElement.Data)
 	assert.Equal(t, [4]int{1, 2, 3, 4}, v.Anchor.SemanticElement.Bbox)
 }
 

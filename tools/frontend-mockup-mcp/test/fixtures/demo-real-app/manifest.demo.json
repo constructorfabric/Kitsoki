@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "sources": ["app-source.js"],
+  "states": ["a", "b"],
+  "deck": "deck.slidey.json",
+  "deckClipsRoot": "clips",
+  "slidey": "fake-slidey-ok",
+  "airSec": 1.5,
+  "target": { "launch": "true", "addr": "127.0.0.1:7799", "readyPath": "/app", "cwd": ".", "timeoutMs": 5000 },
+  "viewport": { "width": 800, "height": 600 },
+  "postersDir": "clips-real/posters",
+  "tours": [
+    { "tour": "tour-a.json", "out": "clips-real/tour-a.rrweb.json" },
+    { "tour": "tour-b.json", "out": "clips-real/tour-b.rrweb.json" }
+  ]
+}

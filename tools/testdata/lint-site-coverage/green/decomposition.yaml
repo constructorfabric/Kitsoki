@@ -1,0 +1,14 @@
+goal_slug: fixture
+changes:
+  - id: "X.1"
+    wall: WX
+    title: Widget X ships a live demo
+    demo_video: "a short tour of widget X actually working"
+    kind: feature
+    scope: ["widget/**"]
+  - id: "X.9"
+    wall: WX
+    title: Gizmo Y — not shipped yet, no site coverage expected
+    demo_video: "a tour of gizmo Y once it exists"
+    kind: feature
+    scope: ["gizmo/**"]

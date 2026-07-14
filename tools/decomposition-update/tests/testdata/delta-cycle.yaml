@@ -1,0 +1,39 @@
+trigger: corrupted-cycle
+provenance:
+  kind: trace
+  ref: trace://cycle-fixture
+operations:
+  - op: add_change
+    change:
+      id: "A"
+      wall: WS
+      goal_ref: [G3]
+      title: "Cycle A"
+      kind: runtime
+      pipeline: implementation
+      depends_on: ["B"]
+      scope: ["cycle/a/**"]
+      acceptance: ["a"]
+      gate:
+        class: G-GOTEST
+        red_now: "a red"
+        green_when: "a green"
+        cmd: "true"
+      agent_brief: "Cycle fixture A."
+  - op: add_change
+    change:
+      id: "B"
+      wall: WS
+      goal_ref: [G3]
+      title: "Cycle B"
+      kind: runtime
+      pipeline: implementation
+      depends_on: ["A"]
+      scope: ["cycle/b/**"]
+      acceptance: ["b"]
+      gate:
+        class: G-GOTEST
+        red_now: "b red"
+        green_when: "b green"
+        cmd: "true"
+      agent_brief: "Cycle fixture B."

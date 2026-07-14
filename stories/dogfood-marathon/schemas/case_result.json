@@ -8,7 +8,7 @@
     "case_id":       { "type": "string", "description": "The case identifier (ticket / bug id)." },
     "title":         { "type": "string", "description": "Human title of the case." },
     "triage":        { "type": "string", "enum": ["", "ALREADY-FIXED", "STILL-LIVE", "PARTIAL", "UNCLEAR"], "description": "The read-only triage verdict." },
-    "exit":          { "type": "string", "description": "The inner pipeline's terminal exit (shipped | needs-human | not-reproducible | abandoned | skipped)." },
+    "exit":          { "type": "string", "description": "The inner workflow's terminal exit (shipped | needs-human | not-reproducible | abandoned | skipped)." },
     "verify_status": { "type": "string", "enum": ["solved", "partial", "failed", "skipped"], "description": "The INDEPENDENT oracle outcome — the grade (never the maker's self-report)." },
     "verify_how":    { "type": "string", "description": "How the independent verify was performed." },
     "cost_usd":      { "type": "number", "description": "Summed trace cost (USD, secondary axis)." },

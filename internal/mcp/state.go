@@ -15,18 +15,36 @@ import (
 // malformed files yield zero values so the abandonment-recovery loop can
 // treat "no signal" as "treat as abandoned".
 func ReadStateFile(path string) (attempts, successfulSubmits int, lastError string) {
-	if path == "" {
-		return 0, 0, ""
-	}
-	data, err := os.ReadFile(path)
-	if err != nil || len(data) == 0 {
-		return 0, 0, ""
-	}
-	var st validatorState
-	if jErr := json.Unmarshal(data, &st); jErr != nil {
+	st, ok := readValidatorState(path)
+	if !ok {
 		return 0, 0, ""
 	}
 	return st.Attempts, st.SuccessfulSubmits, st.LastError
+}
+
+// ReadMaxInformationBits returns the richest parsed submission score persisted
+// by the validator. Missing or malformed state yields zero.
+func ReadMaxInformationBits(path string) float64 {
+	st, ok := readValidatorState(path)
+	if !ok {
+		return 0
+	}
+	return st.MaxInformationBits
+}
+
+func readValidatorState(path string) (validatorState, bool) {
+	if path == "" {
+		return validatorState{}, false
+	}
+	data, err := os.ReadFile(path)
+	if err != nil || len(data) == 0 {
+		return validatorState{}, false
+	}
+	var st validatorState
+	if jErr := json.Unmarshal(data, &st); jErr != nil {
+		return validatorState{}, false
+	}
+	return st, true
 }
 
 // ReadCapturedPayload returns the raw JSON written by the validator's

@@ -235,8 +235,12 @@ func RunContextRouteLLM(ctx context.Context, input, state string, allowedIntents
 		"additionalProperties": false,
 		"required":             []string{"class", "confidence"},
 		"properties": map[string]any{
-			"class":      map[string]any{"type": "string", "enum": classes},
-			"intent":     map[string]any{"type": "string"},
+			"class":  map[string]any{"type": "string", "enum": classes},
+			"intent": map[string]any{"type": "string"},
+			"slots": map[string]any{
+				"type":                 "object",
+				"additionalProperties": true,
+			},
 			"confidence": map[string]any{"type": "number"},
 			"reason":     map[string]any{"type": "string"},
 			// alternatives carries lower-confidence competing verdicts so the

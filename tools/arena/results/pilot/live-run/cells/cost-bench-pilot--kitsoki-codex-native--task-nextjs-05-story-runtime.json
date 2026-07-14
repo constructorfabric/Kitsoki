@@ -1,0 +1,23 @@
+{
+  "axis": {
+    "task": "nextjs-05-story-runtime"
+  },
+  "cell_id": "cost-bench-pilot--kitsoki-codex-native--task:nextjs-05-story-runtime",
+  "evidence_refs": [
+    "/Users/brad/code/Kitsoki/.worktrees/generalized-usage-rebase/tools/arena/corpus/cost-bench.manifest.yaml#nextjs-05-story-runtime",
+    "/Users/brad/code/Kitsoki/.worktrees/generalized-usage-rebase/.artifacts/arena/paired-task-work/nextjs-05-story-runtime--kitsoki--codex--gpt-5.5/packages/next/src/build/define-env.ts"
+  ],
+  "health": "model:result",
+  "job_type": "paired-task",
+  "metrics": {
+    "cost_usd": 1.568615,
+    "host": "local",
+    "tokens": 6227163,
+    "wall_s": 1370.004
+  },
+  "notes": "kitsoki bugfix pipeline via drive.sh+MCP; cost_usd=1.568615 (cache-aware estimate over REAL trace usage: 448906 fresh input + 5749376 cache-read input + 28881 output tokens; subscription auth reports no metered cost); oracle solved",
+  "target_id": "cost-bench-pilot",
+  "trace_ref": "",
+  "variant_id": "kitsoki-codex-native",
+  "verdict": "solved"
+}

@@ -1,0 +1,13 @@
+inputs:
+  fleet_briefs: { type: list, required: true }
+  mark_id: { type: string }
+  mark_status: { type: string }
+  mark_error: { type: string }
+outputs:
+  fleet_briefs: { type: list }
+  next_brief: { type: object }
+  has_pending: { type: bool }
+  route: { type: string }
+  shipped_count: { type: int }
+  parked_count: { type: int }
+  pending_count: { type: int }

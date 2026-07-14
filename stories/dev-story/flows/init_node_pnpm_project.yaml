@@ -1,0 +1,166 @@
+# init_node_pnpm_project -- a package.json checkout using pnpm should onboard
+# with pnpm commands and a generated @kitsoki/dev-story instance. Host calls are
+# stubbed; no LLM or real checkout mutation happens.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world:
+  workdir: "/tmp/kitsoki-init-fixtures/acme-web"
+  repo_root: "/tmp/kitsoki-init-fixtures/acme-web"
+
+host_handlers:
+  host.run:
+    by_call:
+      discover:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: '{"target_path":"/tmp/kitsoki-init-fixtures/acme-web","project_id":"acme-web","project_title":"Acme Web","stack":"node/vite project","dev_command":"pnpm run dev","test_command":"pnpm test","build_command":"pnpm run build","node_package_manager":"pnpm","conventions":"local defaults","tracker":"none","transcript_count":0,"transcript_sources":[],"mining_recommendation":{"status":"no-transcripts-found","sample":"recency","first_pass_sample":0,"transcript_count":0,"sources":[],"note":"No associated Claude/Codex transcripts were found during deterministic discovery."}}'
+          stdout_json:
+            target_path: "/tmp/kitsoki-init-fixtures/acme-web"
+            project_id: "acme-web"
+            project_title: "Acme Web"
+            stack: "node/vite project"
+            dev_command: "pnpm run dev"
+            test_command: "pnpm test"
+            build_command: "pnpm run build"
+            node_package_manager: "pnpm"
+            conventions: "local defaults"
+            tracker: "none"
+            transcript_count: 0
+            transcript_sources: []
+            mining_recommendation:
+              status: "no-transcripts-found"
+              sample: "recency"
+              first_pass_sample: 0
+              transcript_count: 0
+              sources: []
+              note: "No associated Claude/Codex transcripts were found during deterministic discovery."
+      apply:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: '{"status":"applied","config_path":"/tmp/kitsoki-init-fixtures/acme-web/.kitsoki.yaml","profile_path":"/tmp/kitsoki-init-fixtures/acme-web/.kitsoki/project-profile.yaml","instance_path":"/tmp/kitsoki-init-fixtures/acme-web/.kitsoki/stories/acme-web-dev/app.yaml","gitignore_path":"/tmp/kitsoki-init-fixtures/acme-web/.gitignore","profile_validation":{"ok":true,"warnings":[]},"writes":["/tmp/kitsoki-init-fixtures/acme-web/.kitsoki.yaml","/tmp/kitsoki-init-fixtures/acme-web/.kitsoki/project-profile.yaml","/tmp/kitsoki-init-fixtures/acme-web/.kitsoki/stories/acme-web-dev/app.yaml","/tmp/kitsoki-init-fixtures/acme-web/.kitsoki/stories/acme-web-dev/README.md"]}'
+          stdout_json:
+            status: "applied"
+            config_path: "/tmp/kitsoki-init-fixtures/acme-web/.kitsoki.yaml"
+            profile_path: "/tmp/kitsoki-init-fixtures/acme-web/.kitsoki/project-profile.yaml"
+            instance_path: "/tmp/kitsoki-init-fixtures/acme-web/.kitsoki/stories/acme-web-dev/app.yaml"
+            gitignore_path: "/tmp/kitsoki-init-fixtures/acme-web/.gitignore"
+            profile_validation:
+              ok: true
+              warnings: []
+            writes:
+              - "/tmp/kitsoki-init-fixtures/acme-web/.kitsoki.yaml"
+              - "/tmp/kitsoki-init-fixtures/acme-web/.kitsoki/project-profile.yaml"
+              - "/tmp/kitsoki-init-fixtures/acme-web/.kitsoki/stories/acme-web-dev/app.yaml"
+              - "/tmp/kitsoki-init-fixtures/acme-web/.kitsoki/stories/acme-web-dev/README.md"
+      install_tools:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: '{"target":"/tmp/kitsoki-init-fixtures/acme-web","skills":["kitsoki-story-authoring"],"agents":["kitsoki-mcp-driver.md"],"mcp_path":"/tmp/kitsoki-init-fixtures/acme-web/.mcp.json","mcp_written":true}'
+          stdout_json:
+            target: "/tmp/kitsoki-init-fixtures/acme-web"
+            skills: ["kitsoki-story-authoring"]
+            agents: ["kitsoki-mcp-driver.md"]
+            mcp_path: "/tmp/kitsoki-init-fixtures/acme-web/.mcp.json"
+            mcp_written: true
+  host.starlark.run:
+    by_call:
+      discover:
+        data:
+          result:
+            target_path: "/tmp/kitsoki-init-fixtures/acme-web"
+            project_id: "acme-web"
+            project_title: "Acme Web"
+            stack: "node/vite project"
+            dev_command: "pnpm run dev"
+            test_command: "pnpm test"
+            build_command: "pnpm run build"
+            node_package_manager: "pnpm"
+            conventions: "local defaults"
+            tracker: "none"
+            transcript_count: 0
+            transcript_sources: []
+            mining_recommendation:
+              status: "no-transcripts-found"
+              sample: "recency"
+              first_pass_sample: 0
+              transcript_count: 0
+              sources: []
+              note: "No associated Claude/Codex transcripts were found during deterministic discovery."
+      apply:
+        data:
+          result:
+            status: "applied"
+            config_path: "/tmp/kitsoki-init-fixtures/acme-web/.kitsoki.yaml"
+            profile_path: "/tmp/kitsoki-init-fixtures/acme-web/.kitsoki/project-profile.yaml"
+            instance_path: "/tmp/kitsoki-init-fixtures/acme-web/.kitsoki/stories/acme-web-dev/app.yaml"
+            gitignore_path: "/tmp/kitsoki-init-fixtures/acme-web/.gitignore"
+            profile_validation:
+              ok: true
+              warnings: []
+            writes:
+              - "/tmp/kitsoki-init-fixtures/acme-web/.kitsoki.yaml"
+              - "/tmp/kitsoki-init-fixtures/acme-web/.kitsoki/project-profile.yaml"
+              - "/tmp/kitsoki-init-fixtures/acme-web/.kitsoki/stories/acme-web-dev/app.yaml"
+              - "/tmp/kitsoki-init-fixtures/acme-web/.kitsoki/stories/acme-web-dev/README.md"
+      install_tools:
+        data:
+          result:
+            target: "/tmp/kitsoki-init-fixtures/acme-web"
+            skills: ["kitsoki-story-authoring"]
+            agents: ["kitsoki-mcp-driver.md"]
+            mcp_path: "/tmp/kitsoki-init-fixtures/acme-web/.mcp.json"
+            mcp_written: true
+
+turns:
+  - intent: { name: landing_capture, slots: { request: "onboard /tmp/kitsoki-init-fixtures/acme-web" } }
+    expect_state: init_discover
+    expect_world:
+      init_target_path: "/tmp/kitsoki-init-fixtures/acme-web"
+      init_project_id: "acme-web"
+      init_stack: "node/vite project"
+      init_dev_command: "pnpm run dev"
+      init_test_command: "pnpm test"
+      init_build_command: "pnpm run build"
+    expect_view_matches: "node/vite project"
+
+  - intent: { name: init_discovered, slots: {} }
+    expect_state: init
+    expect_world:
+      init_profile_status: "draft"
+      init_dev_command: "pnpm run dev"
+      init_test_command: "pnpm test"
+      init_build_command: "pnpm run build"
+    expect_view_matches: "pnpm run build"
+
+  - intent: { name: confirm_init, slots: {} }
+    expect_state: init_apply
+    expect_world:
+      init_profile_status: "applying"
+      init_apply_result:
+        status: "applied"
+        config_path: "/tmp/kitsoki-init-fixtures/acme-web/.kitsoki.yaml"
+        profile_path: "/tmp/kitsoki-init-fixtures/acme-web/.kitsoki/project-profile.yaml"
+        instance_path: "/tmp/kitsoki-init-fixtures/acme-web/.kitsoki/stories/acme-web-dev/app.yaml"
+        gitignore_path: "/tmp/kitsoki-init-fixtures/acme-web/.gitignore"
+        profile_validation:
+          ok: true
+          warnings: []
+        writes:
+          - "/tmp/kitsoki-init-fixtures/acme-web/.kitsoki.yaml"
+          - "/tmp/kitsoki-init-fixtures/acme-web/.kitsoki/project-profile.yaml"
+          - "/tmp/kitsoki-init-fixtures/acme-web/.kitsoki/stories/acme-web-dev/app.yaml"
+          - "/tmp/kitsoki-init-fixtures/acme-web/.kitsoki/stories/acme-web-dev/README.md"
+    expect_view_matches: "acme-web-dev"
+
+  - intent: { name: init_applied, slots: {} }
+    expect_state: init_done
+    expect_world:
+      init_profile_status: "applied"
+    expect_view_matches: "acme-web-dev"
+
+expect_no_errors: true

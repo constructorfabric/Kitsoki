@@ -34,7 +34,7 @@ comparator:
 examples:
   - name: docs-update-message
     args:
-      staged_diff_stat: "docs/architecture/harness-profiles.md | 12 +++++++++---"
+      staged_diff_stat: "docs/guide/agents/harness-profiles.md | 12 +++++++++---"
       current_branch: "docs/harness-profile-note"
       refactor_mode: false
       squash_mode: false

@@ -28,6 +28,7 @@ type localChatHandler struct {
 
 	mu         sync.Mutex
 	gotRequest chatRequest // last decoded request body (guard with mu)
+	gotAuth    string      // last Authorization header (guard with mu)
 }
 
 // lastRequest returns the most recently decoded request body. It is mutex-guarded
@@ -36,6 +37,14 @@ func (h *localChatHandler) lastRequest() chatRequest {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return h.gotRequest
+}
+
+// lastAuthHeader returns the most recently seen Authorization header value
+// ("" when none was sent). Mutex-guarded like lastRequest.
+func (h *localChatHandler) lastAuthHeader() string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.gotAuth
 }
 
 func (h *localChatHandler) RoundTrip(r *http.Request) (*http.Response, error) {
@@ -48,6 +57,7 @@ func (h *localChatHandler) RoundTrip(r *http.Request) (*http.Response, error) {
 	}
 	h.mu.Lock()
 	_ = json.NewDecoder(r.Body).Decode(&h.gotRequest)
+	h.gotAuth = r.Header.Get("Authorization")
 	h.mu.Unlock()
 
 	status := h.httpStatus

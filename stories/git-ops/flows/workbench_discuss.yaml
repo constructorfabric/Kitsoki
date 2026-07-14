@@ -1,0 +1,56 @@
+# workbench_discuss — the machine-level invariant under the conversational
+# lane: driving the synthesized `main_ops_discuss` intent through the bare
+# machine takes the no-op self-arc and leaves the hub resting exactly where
+# it was.
+#
+# On LIVE surfaces (web / TUI / MCP) this intent never reaches the machine:
+# the orchestrator diverts it to a persistent per-room converse turn
+# (ModeOffPath — no transition, no world mutation, no room re-render), with
+# the room's purpose/commands/relevant world composed into the agent's
+# prompt by the engine. That converse behavior is the genuinely-LLM step and
+# is exercised by internal/orchestrator/offramp_conversation_test.go, not by
+# a flow fixture — the same split dev-story's landing_off_ramp.yaml
+# documents. What a flow CAN pin — and this one does — is the floor the lane
+# rests on: a conversational turn is structurally incapable of corrupting
+# the room.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: main_ops
+initial_world:
+  integration_branch: main
+  current_branch:     main
+  on_integration:     true
+  working_dir:        "."
+  commits_ahead:      0
+  commits_behind:     0
+
+host_handlers:
+  host.run:
+    by_call:
+      refresh_main:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            branch:             main
+            main_worktree_path: "."
+            worktree_list:      { raw: "" }
+            commits_ahead:      0
+            commits_behind:     0
+            has_uncommitted:    false
+            merge_in_progress:  false
+            no_common_ancestor: false
+            upstream_tracking:  true
+
+turns:
+  # The synthesized conversational intent self-loops the hub — the machine
+  # never mutates world off it (the on_enter refresh re-binds the same
+  # stubbed git state), and the room's menu is intact for the next turn.
+  - intent:
+      name: main_ops_discuss
+      slots:
+        message: "fix it - i just want to rebase main again"
+    expect_state: main_ops
+
+expect_no_errors: true

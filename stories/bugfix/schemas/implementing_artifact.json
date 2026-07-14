@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title":   "implementing_artifact",
-  "description": "Artifact produced by the implementing room: a record of the edits the agent applied to the bugfix worktree.",
+  "description": "Artifact produced by the implementing room: a record of the edits the agent applied to the bugfix workspace.",
   "type":    "object",
   "required": ["summary_title", "summary_markdown", "files_changed", "applied"],
   "properties": {
@@ -12,13 +12,18 @@
     },
     "summary_markdown": {
       "type": "string",
-      "minLength": 80,
-      "description": "Markdown narrative of the edits applied — what changed in each file and why. Posted to the transport at the testing checkpoint."
+      "minLength": 1,
+      "description": "Compact checkpoint note. The durable implementation narrative lives at report_path."
+    },
+    "report_path": {
+      "type": "string",
+      "minLength": 4,
+      "description": "Workspace-relative report written during implementation, under .artifacts/bugfix/."
     },
     "files_changed": {
       "type": "array",
       "minItems": 1,
-      "description": "Every file path the agent actually edited (or attempted to edit), relative to the worktree.",
+      "description": "Every file path the agent actually edited (or attempted to edit), relative to the workspace.",
       "items": {
         "type": "string",
         "pattern": "^[^/].+\\..+$"
@@ -32,6 +37,11 @@
       "type": "array",
       "items": { "type": "string" },
       "description": "Populated when applied=false. Each entry describes one reason an edit couldn't be made (file not found, conflict, ambiguous match, etc)."
+    },
+    "fallback_reason": {
+      "type": "string",
+      "enum": ["capability_missing", "task_not_decomposable"],
+      "description": "Optional typed reason for the strict decomposed fallback treatment. The story retries only when this exact value is on the current work item's allowlist."
     },
     "notes": {
       "type": "string",

@@ -1,7 +1,8 @@
-# decide — phase 3/5. Rank ENRICH/GAP items; select what to ticket.
+# decide — phase 4/6. Rank actionable items; select what to apply.
 #
 # The `ranker` persona (read-only ask) ranks by (# intents × mechanicalness)
-# and selects the top item; `selected_theme` is pinned for the author phase.
+# and selects the top item; `selected_theme` / `selected_artifact_kind` are
+# pinned for the author phase.
 # This is the gate the operator most cares about — which mined decision to
 # install next — so in human mode the operator IS the decider, and the
 # judge gate only confirms the ranking is sound.
@@ -9,24 +10,25 @@
 states:
 
   decide:
-    description: "Rank the ENRICH/GAP items and pick the gate to author next."
+    description: "Rank actionable Kitsoki improvements and pick one to author next."
     view:
       - banner:
           text:     "DECIDE"
-          subtitle: "Phase 3 / 5  ·  rank by (#intents × mechanicalness), pick one"
+          subtitle: "Phase 4 / 6  -  rank by usage, mechanicalness, adoption leverage"
           color:    "#8B5CF6"
-      - prose: "{{ world.job }} · cycle {{ world.cycle }} · judge {{ world.judge_mode }}"
+      - prose: "{{ world.job }} - judge {{ world.judge_mode }}"
       - kv:
           pairs:
             Selected: '{{ world.selected_theme|default:"(pending)" }}'
+            Kind:     '{{ world.selected_artifact_kind|default:"(pending)" }}'
       - heading: "Decision"
-      - code: '{{ world.decide_artifact.summary_markdown|default:"(pending — ranker has not returned yet)" }}'
+      - template: '{{ world.decide_artifact.summary_markdown|default:"(pending - ranker has not returned yet)" }}'
       - choice:
           mode: single
           prompt: "Actions"
           items:
             - label:  "continue"
-              hint:   "accept the selection and author the gate"
+              hint:   "accept the selection and author the improvement"
               intent: accept
             - label:  "refine"
               hint:   "re-rank with feedback (e.g. prefer the ENRICH)"
@@ -42,7 +44,7 @@ states:
             - label:  "look"
               hint:   "re-render"
               intent: look
-    relevant_world: [job, judge_mode, judge_confidence_threshold, map_artifact, decide_artifact, selected_theme, llm_verdict, refine_feedback, cycle]
+    relevant_world: [job, judge_mode, judge_confidence_threshold, source_plan_artifact, map_artifact, decide_artifact, selected_theme, selected_artifact_kind, llm_verdict, refine_feedback, cycle]
     on_enter:
       - invoke: host.agent.ask
         once: true
@@ -51,11 +53,13 @@ states:
           schema: schemas/decide_artifact.json
           prompt: prompts/decide_executing.md
           args:
-            themes:          "{{ world.map_artifact.themes }}"
+            opportunities:   "{{ world.map_artifact.opportunities ?? world.map_artifact.themes }}"
+            source_plan:     "{{ world.source_plan_artifact }}"
             refine_feedback: "{{ world.refine_feedback }}"
         bind:
           decide_artifact: submitted
           selected_theme:  "submitted.selected[0].theme"
+          selected_artifact_kind: "submitted.selected[0].artifact_kind"
         on_error: idle
       - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
         invoke: host.agent.decide
@@ -67,7 +71,7 @@ states:
             phase:          "decide"
             artifact_title: "selection: {{ world.selected_theme }}"
             artifact_body:  "{{ world.decide_artifact.summary_markdown }}"
-            criterion:      "The top selection is the highest (#intents × mechanicalness) item; an ENRICH with a deterministic validator is preferred over a new-room GAP unless clearly higher value."
+            criterion:      "The top selection is the highest (#intents × mechanicalness × Kitsoki-adoption leverage) item; prefer improvements that can start L2 or climb to L3 with a deterministic validator."
             threshold:      "{{ world.judge_confidence_threshold }}"
         bind:
           llm_verdict: submitted
@@ -83,7 +87,7 @@ states:
       accept:
         - target: author
           effects:
-            - say: "Selected '{{ world.selected_theme }}' — authoring the gate + flow fixture."
+            - say: "Selected '{{ world.selected_theme }}' ({{ world.selected_artifact_kind }}). Authoring the improvement, diff, and no-LLM coverage now."
             - set: { refine_feedback: "" }
       refine:
         - when: "world.decide_cycle >= world.decide_budget"
@@ -98,10 +102,11 @@ states:
                 cycle:           "{{ world.cycle + 1 }}"
                 decide_artifact: {}
                 selected_theme:  ""
+                selected_artifact_kind: ""
       restart_from:
-        - target: map
+        - target: mapping
           effects:
-            - set: { refine_feedback: "", decide_cycle: 0, map_artifact: {}, decide_artifact: {}, selected_theme: "" }
+            - set: { refine_feedback: "", decide_cycle: 0, map_artifact: {}, decide_artifact: {}, selected_theme: "", selected_artifact_kind: "" }
       quit:
         - target: "@exit:abandoned"
           effects:

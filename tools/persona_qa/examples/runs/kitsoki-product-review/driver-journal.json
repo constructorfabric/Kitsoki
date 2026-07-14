@@ -1,0 +1,15 @@
+{
+  "run_id": "persona-qa-kitsoki-product-review",
+  "items": [
+    {
+      "event_id": "kitsoki-001",
+      "scenario": "explain-delivery-loop",
+      "summary": "Opened Kitsoki UI playback and attached the delivery-loop clip."
+    },
+    {
+      "event_id": "kitsoki-002",
+      "scenario": "verify-ui-evidence",
+      "summary": "Compared the verification clip against the review gate."
+    }
+  ]
+}

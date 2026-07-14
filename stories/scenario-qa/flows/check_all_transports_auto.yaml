@@ -1,0 +1,194 @@
+# check_all_transports_auto — pause=auto is the DEFAULT: a transport=all
+# check resolves to FOUR legs and the whole run drains to report.md in ONE
+# turn, with no "next transport" / next_leg turn in between. This is the P0
+# "auto-advance legs" target UX: `check bugfix on all transports` → a single
+# report. See check_all_transports.yaml for the pause=each-leg (opt-out)
+# manual-ceremony sibling — same stubs, same run, different pause value.
+#
+# recording.yaml self-emits `next_leg` from its own on_enter (guarded on
+# `world.pause != 'each-leg'`) — the SAME `on: next_leg:` handler the manual
+# "next transport" choice/intent uses — so this fixture is also proof that
+# self-emitted and operator-submitted `next_leg` share one code path.
+#
+# host.starlark.run's pick_leg / record_leg_result stubs are static per call
+# id (the flow harness stubs by invoke id, not by loop iteration), so this
+# flow asserts the LOOP MECHANICS (all four legs drive, judge, and record
+# within a single turn, landing on `report`) rather than asserting
+# fabricated per-leg accumulation content.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.product_journey.run:
+    by_call:
+      emit_scenario_qa_run:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            run_id: scenario-qa-run-all-auto
+            run_dir: /repo/.artifacts/product-journey/scenario-qa-run-all-auto
+            driver_plan_path: /repo/.artifacts/product-journey/scenario-qa-run-all-auto/driver-plan.md
+            execution_plan_path: /repo/.artifacts/product-journey/scenario-qa-run-all-auto/execution-plan.md
+            agent_brief_path: /repo/.artifacts/product-journey/scenario-qa-run-all-auto/agent-brief.md
+      build_scenario_qa_deck:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: scenario_qa_deck_built
+            run_dir: /repo/.artifacts/product-journey/scenario-qa-run-all-auto
+            deck_path: /repo/.artifacts/product-journey/scenario-qa-run-all-auto/deck.slidey.json
+            leg_count: 4
+            pass_count: 3
+            fail_count: 0
+            degraded_count: 1
+            summary: "3 / 4 transport checks passed, 1 degraded-evidence."
+
+  host.starlark.run:
+    by_call:
+      plan_legs:
+        data:
+          legs:
+            items:
+              - leg_id: "bugfix::tui"
+                scenario: "bugfix"
+                transport: "tui"
+                visual_surface: "tui"
+                evidence_dir: "evidence/gears-rust--core-maintainer/bugfix"
+                transport_evidence_contract:
+                  primary_tool: "render.tui_png"
+                  evidence_kind: "rendered_tui_frame"
+                  level: "frame-level"
+              - leg_id: "bugfix::web"
+                scenario: "bugfix"
+                transport: "web"
+                visual_surface: "web"
+                evidence_dir: "evidence/gears-rust--core-maintainer/bugfix"
+                transport_evidence_contract:
+                  primary_tool: "visual.snapshot"
+                  evidence_kind: "browser_screenshot"
+                  level: "frame-level"
+              - leg_id: "bugfix::vscode"
+                scenario: "bugfix"
+                transport: "vscode"
+                visual_surface: "vscode"
+                evidence_dir: "evidence/gears-rust--core-maintainer/bugfix"
+                transport_evidence_contract:
+                  primary_tool: "visual.open (kind=vscode)"
+                  evidence_kind: "screenshot_or_tui_png"
+                  level: "bridge-level"
+              - leg_id: "bugfix::cli"
+                scenario: "bugfix"
+                transport: "cli"
+                visual_surface: "cli"
+                evidence_dir: "evidence/gears-rust--core-maintainer/bugfix"
+                transport_evidence_contract:
+                  primary_tool: "command transcript"
+                  evidence_kind: "command_output"
+                  level: "terminal-level"
+          leg_count: 4
+          driver_agent: ".agents/agents/product-journey-qa-driver.md"
+          run_dir_rel: ".artifacts/product-journey/scenario-qa-run-all-auto"
+          plan_status: { resolved: true }
+      pick_leg:
+        data:
+          current_leg:
+            leg_id: "bugfix::tui"
+            scenario: "bugfix"
+            transport: "tui"
+            visual_surface: "tui"
+          current_leg_id: "bugfix::tui"
+      record_leg_result:
+        data:
+          leg_results:
+            items:
+              - { leg_id: "bugfix::tui", scenario: "bugfix", transport: "tui", evidence_level: "frame-level", driver_status: "captured", verdict: "pass", verdict_summary: "ok" }
+              - { leg_id: "bugfix::web", scenario: "bugfix", transport: "web", evidence_level: "frame-level", driver_status: "captured", verdict: "pass", verdict_summary: "ok" }
+              - { leg_id: "bugfix::vscode", scenario: "bugfix", transport: "vscode", evidence_level: "bridge-level", driver_status: "degraded-evidence", verdict: "degraded-evidence", verdict_summary: "vscode bridge JSON-degraded" }
+              - { leg_id: "bugfix::cli", scenario: "bugfix", transport: "cli", evidence_level: "terminal-level", driver_status: "captured", verdict: "pass", verdict_summary: "command transcript captured" }
+          pass_count: 3
+          fail_count: 0
+          degraded_count: 1
+      build_report:
+        data:
+          report_path: ".artifacts/product-journey/scenario-qa-run-all-auto/report.md"
+          report_summary: "3 / 4 transport checks passed, 1 degraded-evidence."
+
+  host.agent.task:
+    by_call:
+      drive_leg:
+        data:
+          ok: true
+          submitted:
+            status: "captured"
+            evidence_refs: ["evidence-1"]
+            frames_dir: "evidence/gears-rust--core-maintainer/bugfix"
+            summary: "Captured evidence for this leg."
+      judge_leg:
+        data:
+          ok: true
+          submitted:
+            verdict: "pass"
+            summary: "Evidence supports the scenario."
+            cited_frames: ["frame-1.png"]
+
+turns:
+  # `check bugfix on all transports` (pause left at its "auto" default) —
+  # execute → judge → recording repeats for all four legs and lands on
+  # `report` in this ONE turn. No next_leg turn anywhere in this fixture.
+  - intent:
+      name: check
+      slots:
+        scenario: bugfix
+        transport: all
+        persona: core-maintainer
+        target: gears-rust
+        seed: story-flow-all-auto
+    expect_state: report
+    expect_world:
+      mode: catalog
+      pause: auto
+      run_id: scenario-qa-run-all-auto
+      leg_count: 4
+      leg_index: 3
+      report_path: ".artifacts/product-journey/scenario-qa-run-all-auto/report.md"
+      report_summary: "3 / 4 transport checks passed, 1 degraded-evidence."
+      deck_path: "/repo/.artifacts/product-journey/scenario-qa-run-all-auto/deck.slidey.json"
+    expect_host_calls:
+      - handler: host.product_journey.run
+        args: { call: emit_scenario_qa_run }
+      - handler: host.starlark.run
+        args: { call: plan_legs }
+      - handler: host.starlark.run
+        args: { call: pick_leg }
+      - handler: host.agent.task
+        args: { call: drive_leg }
+      - handler: host.agent.task
+        args: { call: judge_leg }
+      - handler: host.starlark.run
+        args: { call: record_leg_result }
+      - handler: host.starlark.run
+        args: { call: build_report }
+      - handler: host.product_journey.run
+        args: { call: build_scenario_qa_deck }
+    expect_view_matches: "SCENARIO QA REPORT[\\s\\S]*3 / 4 transport checks passed, 1 degraded-evidence[\\s\\S]*Summary report:[\\s\\S]*report.md[\\s\\S]*vscode \\[bridge-level\\] verdict=degraded-evidence driver=degraded-evidence[\\s\\S]*cli \\[terminal-level\\] verdict=pass driver=captured"
+
+  # A stray `next_leg` after a fully-drained auto run is rejected — the loop
+  # is already at `report`, not `recording`; there is nothing to advance.
+  - intent: { name: next_leg, slots: {} }
+    expect_error:
+      code: INTENT_NOT_ALLOWED_IN_STATE
+    expect_state: report
+    expect_world_unchanged: true
+
+  - intent: { name: report, slots: {} }
+    expect_state: report
+    expect_world:
+      report_path: ".artifacts/product-journey/scenario-qa-run-all-auto/report.md"
+
+# false, not true: turn 2 deliberately proves a stray next_leg is rejected
+# (expect_error), which the runner still counts as a session-level error.
+expect_no_errors: false

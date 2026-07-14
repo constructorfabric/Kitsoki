@@ -1,0 +1,49 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.product_journey.run:
+    by_call:
+      capture_product_journey_preflight:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: passed
+            preflight_id: preflight-123
+            preflight_dir: .artifacts/product-journey/preflights/preflight-123
+            preflight_path: .artifacts/product-journey/preflights/preflight-123/preflight.json
+            markdown_path: .artifacts/product-journey/preflights/preflight-123/preflight.md
+            webshot_output: .artifacts/product-journey/preflights/preflight-123/webshot-smoke.png
+            passed: 6
+            failed: 0
+            checks:
+              - { id: webshot-helper, status: passed, summary: tools/runstatus/web-shot.ts }
+              - { id: webshot-flow, status: passed, summary: testdata/apps/choice_smoke/flows/intro_begin.yaml }
+              - { id: webshot-command, status: passed, summary: exit_code=0 }
+              - { id: webshot-output, status: passed, summary: webshot-smoke.png }
+              - { id: studio-ping, status: passed, summary: exit_code=0 }
+              - { id: quota-window, status: passed, summary: no active cooldown }
+
+steps:
+  - intent:
+      name: capture_preflight
+      slots:
+        seed: capture-flow
+    expect_state: idle
+    expect_world:
+      status: capture_preflight_checked
+      seed: capture-flow
+      capture_preflight_status: passed
+      capture_preflight_id: preflight-123
+      capture_preflight_dir: .artifacts/product-journey/preflights/preflight-123
+      capture_preflight_path: .artifacts/product-journey/preflights/preflight-123/preflight.json
+      capture_preflight_markdown_path: .artifacts/product-journey/preflights/preflight-123/preflight.md
+      capture_preflight_webshot_output: .artifacts/product-journey/preflights/preflight-123/webshot-smoke.png
+      capture_preflight_passed: 6
+      capture_preflight_failed: 0
+    expect_view_matches: "Capture preflight[\\s\\S]*passed"
+    expect_host_calls:
+      - handler: host.product_journey.run
+        args: { call: capture_product_journey_preflight }

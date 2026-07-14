@@ -5,7 +5,7 @@
 #   tools/bugfix-bakeoff/external/drive_cell.sh \
 #       --project <project> --bug <bug> --candidate <candidate> --score
 #
-# which prepares the baseline worktree, drives the kitsoki bugfix pipeline LIVE
+# which prepares a native pinned Capsule baseline, drives the kitsoki bugfix pipeline LIVE
 # under the candidate's harness profile (the worker model), grades the fix against
 # the hidden oracle, and writes .artifacts/external-bakeoff/results/cells/
 # <project>-<bug>-<candidate>-kitsoki.json by default.
@@ -40,13 +40,12 @@ states:
               intent: quit
     on_enter:
       - when: "world.repo_dir == ''"
-        invoke: host.run
+        invoke: host.bakeoff.run
         id: drive_plan
         once: true
         with:
-          cmd: python3
+          op: bench
           args:
-            - "bench.py"
             - "drive-plan"
             - "--project"
             - "{{ world.project }}"
@@ -59,13 +58,12 @@ states:
           cell_commands_markdown: stdout_json.markdown
         on_error: .
       - when: "world.repo_dir != ''"
-        invoke: host.run
+        invoke: host.bakeoff.run
         id: drive_plan_local
         once: true
         with:
-          cmd: python3
+          op: bench
           args:
-            - "bench.py"
             - "drive-plan"
             - "--project"
             - "{{ world.project }}"

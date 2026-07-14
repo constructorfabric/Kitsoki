@@ -36,6 +36,13 @@ func harnessProfilesFromConfig(cfg webconfig.WebConfig) (map[string]orchestrator
 	return out, cfg.DefaultProfile
 }
 
+func agentLaunchPolicyFromConfig(cfg webconfig.WebConfig) host.AgentLaunchPolicy {
+	if cfg.AgentLaunchPolicy == nil {
+		return host.AgentLaunchPolicy{}
+	}
+	return cfg.AgentLaunchPolicy.Normalized()
+}
+
 func hostQuotaFromConfig(q webconfig.QuotaControl) host.QuotaControl {
 	return host.QuotaControl{
 		Window:          q.Window,

@@ -49,6 +49,7 @@ import {
   ChapterRecorder,
   writeChapters,
   demoAddr,
+  maybeInstallAutoRrwebCapture,
   type WebServer,
 } from "./_helpers/server.js";
 import { cameraContext } from "./_helpers/camera.js";
@@ -171,6 +172,7 @@ test("mockup-video /review feedback-mode feature-spotlight (no-LLM, REAL render,
     await expect(page.getByTestId("review-page")).toBeVisible({ timeout: 15000 });
     await expect(page.getByTestId("rp-player")).toBeVisible({ timeout: 15000 });
     await expect(page.getByTestId("chapter-timeline")).toBeVisible({ timeout: 15000 });
+    await maybeInstallAutoRrwebCapture(page);
     mark("on /review");
 
     // ── Inject the tour ON /review and lift the curtain ──────────────────────

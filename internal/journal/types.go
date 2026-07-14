@@ -226,6 +226,36 @@ type ArtifactEvent struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// ---- routing feedback (WS-C C4: routing-dissatisfaction substrate) --------
+
+// KindRoutingFeedback records an operator up/down verdict on a routed turn's
+// outcome — the routing-tuning cold-start signal (see
+// docs/testing/routing-tuning.md and
+// .context/dev-workflows-surface-matrix-plan.md WS-C C4). A standalone,
+// out-of-band journal write (like KindTimeoutArmed): it is not tied to any
+// machine transition, so it carries no world/state effect and never appears
+// in a replay's event stream — only in the journal, for mining.
+//
+// Body shape (RoutingFeedbackEvent):
+//
+//	{phrase, state, intent, tier, verdict}
+const KindRoutingFeedback = "routing.feedback"
+
+// RoutingFeedbackEvent is the body shape for KindRoutingFeedback entries.
+type RoutingFeedbackEvent struct {
+	// Phrase is the operator's original free-text input that was routed.
+	Phrase string `json:"phrase"`
+	// State is the state path the turn routed FROM.
+	State string `json:"state"`
+	// Intent is the resolved intent name.
+	Intent string `json:"intent"`
+	// Tier is the routing tier that resolved it: "deterministic" | "semantic"
+	// | "local-llm" | "main-llm" | "" (unknown/not captured).
+	Tier string `json:"tier,omitempty"`
+	// Verdict is "up" (correct route) or "down" (misroute/dissatisfaction).
+	Verdict string `json:"verdict"`
+}
+
 // ---- IDE link tracing -------------------------------------------------------
 
 // KindIDEContextCaptured records one host.ide.get_* pull whose result feeds a

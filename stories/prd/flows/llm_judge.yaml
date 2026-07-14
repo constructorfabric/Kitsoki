@@ -21,6 +21,9 @@ initial_world:
   workdir:     "."
   output_path: ".artifacts/prd.md"
   judge_mode:  "llm"
+  publish_durable_path: "/tmp/kitsoki-prd-fixtures"
+
+starlark_inspect_cassette: ../cassettes/slug_a_cli_for_x_that_helps.inspect.yaml
 
 host_handlers:
   # The brief room opens the editable brief in the editor on entry.
@@ -30,14 +33,6 @@ host_handlers:
     data: { ok: true, chat_id: "chat-1", title: "PRD idea discovery", is_new: true }
   host.agent.converse:
     data: { ok: true, answer: "A CLI for X that helps developers do Y.", chat_id: "chat-1", claude_session_id: "sess-1" }
-  # search-confirm mints the per-PRD workspace.
-  host.run:
-    by_call:
-      mint_workspace:
-        data:
-          ok: true
-          exit_code: 0
-          stdout_json: { slug: "a-cli-for-x", workspace: ".artifacts/prd/a-cli-for-x" }
   # One stub, two call sites — addressed by the invoke `id:`.
   # references on_enter runs the optional semantic pre-seed; empty hits = no embeddings.
   host.agent.search:

@@ -1,0 +1,102 @@
+{
+  "_comment": "Deck source for docs/research/reduced-system-prompt-five-bug-study.md. Source only; no bundled HTML requested.",
+  "meta": {
+    "title": "Reduced System Prompt Five-Bug Study",
+    "resolution": { "width": 1920, "height": 1080 },
+    "theme": "rose-pine-moon",
+    "narration": { "voice": "en-AU-NatashaNeural", "rate": "+0%" }
+  },
+  "scenes": [
+    {
+      "type": "title",
+      "eyebrow": "Live prompt-cost study",
+      "title": "Reduced System Prompt Five-Bug Study",
+      "subtitle": "One clean live result, nine runner-pending cells, no causal A/B yet",
+      "narration": "This deck reports what the live run actually produced: one hidden-oracle-scored model result, plus runner failures that prevent a causal prompt comparison today."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "Question",
+      "lede": "Does the focused replacement prompt cut cost without hurting bug-fix quality?",
+      "body": "The causal comparison is narrow: old-append-default at 822f3584 versus focused-replace at e2c2c150, same bugs, same GLM-5.2 profile, same Kitsoki pipeline, same hidden oracles. The prompt path should be the only product variable.",
+      "narration": "The research question is unchanged. The comparison must hold the bug, model, treatment, and oracle constant, changing only the prompt path."
+    },
+    {
+      "type": "table",
+      "title": "Preflight passed before spend",
+      "columns": ["Project", "Bugs", "Fixture status"],
+      "rows": [
+        { "cells": ["query-string", "qs1, qs2, qs3", "RED at baseline, GREEN at real fix"] },
+        { "cells": ["kitsoki", "bug9, bug14", "RED at baseline, GREEN at real fix"] }
+      ],
+      "variant": "data",
+      "caption": "The corpus was armed. The later failures are runner failures, not degenerate fixtures."
+    },
+    {
+      "type": "table",
+      "title": "The one valid live result",
+      "columns": ["Variant", "Bug", "Oracle", "Quality", "Cost", "Calls"],
+      "rows": [
+        { "cells": ["old-append-default", "query-string/qs1", "pass", "solved", "$1.3704", "10"] }
+      ],
+      "variant": "data",
+      "caption": "Trace: .artifacts/reduced-system-prompt-five-bug-study/clean-2026-07-06/old-append/traces/query-string-qs1-glm-5.2.jsonl"
+    },
+    {
+      "type": "cards",
+      "variant": "grid",
+      "title": "What made that cell count",
+      "cards": [
+        { "label": "Live GLM-5.2", "sub": "metered trace with native USD", "style": "primary" },
+        { "label": "Hidden oracle", "sub": "bench.py scored oracle pass", "style": "primary" },
+        { "label": "Terminal trace", "sub": "10 agent calls completed", "style": "default" },
+        { "label": "No artifact reads", "sub": "scan found no prior bakeoff paths", "style": "default" }
+      ],
+      "narration": "The single valid cell is real evidence. It is live, metered, terminal, hidden-oracle-scored, and the trace did not read prior bakeoff artifacts."
+    },
+    {
+      "type": "table",
+      "title": "The attempted A/B matrix",
+      "columns": ["Variant", "Solved", "Pending infra", "Model failures"],
+      "rows": [
+        { "cells": ["old-append-default", "1", "4", "0"] },
+        { "cells": ["focused-replace", "0", "5", "0"] }
+      ],
+      "variant": "data",
+      "caption": "Pending cells failed before trace creation: health class infra:no-trace."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "Blocker",
+      "lede": "The live driver did not preserve the no-trace startup error.",
+      "body": "After the first solved cell, nine cells failed before session_new wrote a trace. Their drive stderr/stdout logs were empty. Those rows cannot be counted as prompt failures, model failures, or cost data.",
+      "narration": "The blocker is in the runner. No trace means no model result, and empty driver logs mean the underlying startup error was lost."
+    },
+    {
+      "type": "table",
+      "title": "Runner fixes discovered during live spend",
+      "columns": ["Issue", "Disposition"],
+      "rows": [
+        { "cells": ["validator submit permission", "added BAKEOFF_CLAUDE_ALLOW_VALIDATOR per-cell allowlist"] },
+        { "cells": ["prior artifact contamination", "ran clean cells in /tmp/kitsoki-rsp-study, copied review artifacts to .artifacts/reduced-system-prompt-five-bug-study/clean-2026-07-06, and scanned traces"] },
+        { "cells": ["no-trace failures", "still blocking; preserve orchestrator startup error next"] }
+      ],
+      "variant": "data",
+      "caption": "These are harness findings, not evidence for or against the reduced prompt."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "Conclusion",
+      "lede": "There is still no causal prompt-savings result.",
+      "body": "The honest result is narrower: GLM-5.2 solved old-append/query-string/qs1 for $1.3704 across 10 agent calls. The five-bug A/B remains blocked until the remaining nine cells produce trace-backed model results.",
+      "narration": "The conclusion is not that focused replacement saves money. The conclusion is that one real cell solved, and the live runner is not reliable enough yet to publish the A/B."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "Next gate",
+      "lede": "Fix no-trace observability, then rerun the missing cells.",
+      "body": "drive_cell.sh or drive.sh must preserve the orchestrator startup error whenever no session trace is created. Once that is fixed, rerun the nine pending cells under the same /tmp isolation and publish only cells with trace-backed model results.",
+      "narration": "The next gate is not another deck. It is a runner fix, then rerunning the missing cells under the same isolation standard."
+    }
+  ]
+}

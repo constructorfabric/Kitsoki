@@ -1,0 +1,46 @@
+app:
+  id: tour-demo
+  version: 0.1.0
+  title: "On-demand Tour Serving Loop Demo"
+  author: "kitsoki"
+  license: "CC0"
+
+# Demonstrates the browser-MCP + click-through-tour brief's P5 serving loop
+# (.context/2026-07-12-browser-mcp-tour-implementation-brief.md): ask ->
+# plan -> validate -> push (the existing SSE/notification channel a room's
+# own turn already rides — see rooms/dispatch.yaml) -> play (the EXISTING
+# tools/runstatus tour overlay, via its v1 step format — no frontend change
+# needed; host.tour.validate hands back v1-shaped steps).
+#
+# No LLM anywhere: WHICH feature answers a question is resolved by the
+# caller (a feature_id slot stands in for kitsoki's existing intent/
+# semroute NLU, which already does this routing for other stories) —
+# host.tour.plan/host.tour.validate are pure, deterministic functions over
+# the on-disk feature catalog (features/*.yaml). This is the brief's "cheap
+# path"; escalating to live LLM authoring via tools/browser-mcp when the
+# baked catalog can't cover a question is out of scope here.
+
+hosts:
+  - host.tour.plan
+  - host.tour.validate
+
+world:
+  tour_v2:       { type: object, default: {} }
+  tour_v1_steps: { type: object, default: {} }
+  plan_error:    { type: string, default: "" }
+
+intents:
+  ask:
+    description: "Ask how to do something; plans and validates a tour for the matching feature."
+    examples: ["how do I use agent actions", "how do I export a report", "show me how"]
+    slots:
+      feature_id: { type: string, required: true }
+  tour_ready:
+    description: "Internal routing: a tour was planned and validated; leave idle for planned."
+    examples: []
+    priority: 95
+
+root: idle
+
+include:
+  - rooms/*.yaml

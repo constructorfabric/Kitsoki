@@ -3,9 +3,9 @@
 A "story" is a directory the engine loads as one app: `app.yaml` (the
 manifest), `rooms/*.yaml` (state definitions, glued in via `include:`),
 `prompts/*.md` (LLM templates), `views/*.pongo` (typed-element base
-templates), `flows/*.yaml` (Mode-2 deterministic tests), optional
-`schemas/*.json` (typed-JSON contracts for `decide`/`task`/`ask`), and an
-optional `README.md`.
+templates), `scripts/*.star` + `scripts/*.star.yaml` (deterministic Starlark
+glue), `flows/*.yaml` (Mode-2 deterministic tests), optional `schemas/*.json`
+(typed-JSON contracts for `decide`/`task`/`ask`), and an optional `README.md`.
 
 The gold-standard reference stories live in this repo. Read them in
 this order — most authoring questions resolve by mimicking the closest
@@ -37,6 +37,8 @@ stories/<name>/
 ├── views/                    optional; typed-element base templates
 │   ├── base.pongo            block contract: status / heading / body / choices / footer
 │   └── partials/             reusable {% include %}-able fragments
+├── scripts/*.star             deterministic glue for ad hoc scripting
+├── scripts/*.star.yaml        sidecar contracts for each Starlark script
 ├── schemas/*.json            JSON-schema contracts for decide/task/ask
 ├── flows/*.yaml              Mode-2 deterministic test fixtures
 ├── scenarios/*.yaml          optional; warp bases for operator smoke tests
@@ -272,19 +274,126 @@ Rules:
   `on_complete:` (an effect list) for the completion turn. Result lands
   in `world.last_job_result` only inside `on_complete:`.
 
+### Default scripting choice: Starlark first
+
+For ad hoc procedural glue, make `host.starlark.run` the default choice. It is
+the smallest escape hatch between declarative YAML effects and bespoke Go host
+code: deterministic, sandboxed, sidecar-typed, trace-visible, and flow-testable
+without an LLM, network, or local shell. Use it for parsing, shaping data,
+branching on structured host/API responses, generating small review artifacts,
+or replacing fragile inline shell/Pongo logic.
+
+Reach for the alternatives only when their capability is specifically needed:
+
+- Use `set`/`increment`/guards when the work is a trivial world update.
+- Use `host.agent.codeact` when the code is not known yet and an agent should
+  explore, but every action must still be a bounded Starlark snippet over an
+  explicit `with.capabilities` grant. CodeAct is narrower than
+  `host.agent.task`: no open Claude Code tool loop and no `with.sandbox:`.
+- Use `host.run` only for real local commands or repo/tool execution. Do not use
+  shell as the general scripting language for string munging, JSON shaping, or
+  HTTP glue; it is harder to sandbox, trace, and cassette.
+- Add a Go host handler when the behavior is shared infrastructure, needs strong
+  Go types, or belongs behind a stable provider-neutral interface.
+- Use `host.oracle.*` only when the step genuinely requires an LLM. Automated
+  tests must stub or cassette those calls; they must not spend tokens.
+
+The canonical shape is:
+
+```yaml
+hosts:
+  - host.starlark.run
+
+# ...
+- invoke: host.starlark.run
+  id: derive_widget
+  with:
+    script: scripts/derive_widget.star
+    inputs:
+      widget_id: "{{ world.widget_id }}"
+      mode: "{{ world.mode }}"
+  bind:
+    summary: summary
+    artifact_path: artifact_path
+  on_error: needs_human
+  once: true
+```
+
+Every script travels with a same-path sidecar, e.g.
+`scripts/derive_widget.star.yaml`, declaring the authoritative `inputs:` and
+`outputs:` contract. Validate with:
+
+```sh
+.agents/skills/starlark/tools/validate.sh stories/<name>/scripts/derive_widget.star -kitsoki
+kitsoki test flows stories/<name>/app.yaml --flows flows/<case>.yaml --v
+```
+
+If the script calls HTTP, add a flow fixture with `starlark_http_cassette:` so
+the real script runs against replayed responses. Starlark HTTP summaries appear
+in trace events under `__http_exchanges`; bodies stay in the cassette. For the
+full contract and pitfalls, use the `starlark` skill and
+`.agents/skills/starlark/reference/kitsoki.md`.
+
+For the full Starlark experience — deterministic glue scripts, CodeAct snippets,
+stdlib, `ctx` capabilities, sandbox layering, and promotion from CodeAct to a
+checked-in script — see `docs/architecture/starlark.md`.
+
 The built-in handlers (full reference in `docs/architecture/hosts.md`):
 
 | Handler | Use for |
 |---|---|
 | `host.run` | Shell out (argv mode preferred when args come from world). Returns `{stdout, exit_code, ok, stdout_json}`. |
+| `host.starlark.run` | Primary ad hoc scripting/glue path. Runs `scripts/*.star` with a typed sidecar, sandboxed inputs, cassette-backed HTTP, and trace summaries. |
 | `host.oracle.extract` | Tiered resolver: synonyms → slot_template → llm. Returns typed JSON + `resolved_by`. |
 | `host.oracle.decide` | Typed LLM verdict; schema required; `submit` auto-attached; read-only tools. The canonical pattern for "Claude produces a structured artifact." |
 | `host.oracle.ask` | Read-only one-shot prose call; schema optional. |
+| `host.agent.codeact` | Bounded agent loop that emits capability-scoped Starlark snippets, then `done(payload)`. Use before `task` when Starlark capabilities are enough. |
 | `host.oracle.task` | Agentic write call with acceptance loop (schema required). |
 | `host.oracle.converse` | Conversational, optionally chat-aware via `chat_id`. |
 | `host.transport.post` | Post a message to a registered transport (tui / jira / bitbucket). |
 | `host.inbox.add` | Mirror an artifact into the operator's local inbox. |
 | `host.chat.*` | Persistent multi-turn chat threads scoped by `(app, room, scope_key)`. |
+
+For risky `host.agent.task` / write-capable `host.agent.converse` calls, add
+`with.sandbox` at the effect call site. `sandbox:` is separate from an agent's
+toolbox/effect: toolbox/effect says what tools the model may request; sandbox
+selects the subprocess runtime boundary and records `agent.runtime.start/end`
+events. Current OSS strength is `supervised` (process/env/timeout/diff capture);
+it records filesystem/network policy as degraded unless a stronger backend is
+available. Do **not** put `sandbox:` on `host.agent.codeact`: the loader rejects
+it because CodeAct's sandbox is the bounded Starlark loop plus
+`with.capabilities`, not an external-agent subprocess filesystem policy.
+
+### Operator questions and MCP-aware asking
+
+When a story needs human input mid-flow, prefer the runtime/operator-aware ask
+path whenever one is available. The important constraint is that the ask remains
+part of the story graph: questions are data in `world`, the ask is an `invoke:`
+with an `id:`, answers are bound through ordinary effects, and flow fixtures can
+stub the same call.
+
+Use this shape for clarification gates:
+
+- Generate questions with an analyst/decide call or deterministic script, then
+  bind them into `world`.
+- Invoke the story-level operator ask host (for example `host.operator.ask`, once
+  available) only when questions remain unanswered. A live web/TUI/MCP Studio
+  surface answers through the shared `OperatorPrompter` seam; MCP Studio uses MCP
+  elicitation when possible and a `session.answer` fallback otherwise.
+- Treat no attached operator as a normal result, not a failure: stay in the same
+  clarification room, show the questions, and let the operator answer through the
+  ordinary typed intents, skip, regenerate, or exit needs-human.
+- Add flow coverage for both `answered` and `no_operator`/fallback results by
+  stubbing the ask call by `id:`. Cassettes should record/replay that same host
+  call shape.
+
+Do **not** hide story behavior in agent-only prompt instructions. In particular,
+never rely on Claude Code's `AskUserQuestion`: dispatched agents run headless,
+the tool auto-resolves with empty answers, and kitsoki hard-denies it. Likewise,
+do not make a branch that only exists when `mcp__operator__ask` is attached to an
+agent. If MCP-aware asking changes the outcome, expose it as a story-visible
+host/effect so headless, flows, cassettes, web, TUI, and MCP Studio exercise the
+same transition.
 
 ## 6. Views (the typed-element form)
 
@@ -318,6 +427,13 @@ rendering instead of `{% if %}` inside a `view: |` string.
 - [ ] Actions are a `list:` with `hint:` for cost/consequence.
 - [ ] Empty / pending values use the lowercase parenthetical placeholders
       (`(pending)`, `(none)`, `(not yet chosen)`, `(empty — type X to search)`).
+- [ ] First-turn messaging is explicit for free-form captures, routers,
+      imports, workbenches, and long-running invokes: interpreted input,
+      selected path, mode/consequence, next action.
+- [ ] `say:` acknowledgements are one sentence and flow-tested with
+      `expect_events`; durable interpretations are also visible in the view.
+- [ ] The room interrupts only for required input, real choice, or side-effect
+      approval. One safe forward path is auto-advance, not a confirmation turn.
 - [ ] `look` is the last action and `target: .`.
 - [ ] The view renders to ≥ 1 visible line against an empty world `{}`.
       Action menu / reply prompt is unconditional.
@@ -326,6 +442,11 @@ rendering instead of `{% if %}` inside a `view: |` string.
 - [ ] The intent name IS the label — no backticks, no paraphrase.
 - [ ] `look` needs no hint. `quit` always reads `"abandon the pipeline"`
       or similar.
+- [ ] If this room, flow, or demo is being claimed as product-journey scenario
+      coverage, update `tools/product-journey/scenarios.json` and
+      `stories/scenario-qa` fixtures so the universal scenario run owns the case
+      list, transport contract, and evidence routes. A bespoke recorder is only a
+      capture adapter.
 
 ### Action-menu availability — two standard shapes
 
@@ -361,6 +482,33 @@ state's `on:` bindings + each transition's first arm's guard +
 - **Operator-facing** — dev-story, bugfix, implementation, kitsoki-dev.
   Terse, declarative. "Bug-fix pipeline parked. Waiting for `start`."
   not "The bug glares at you menacingly."
+
+### User messaging: orient, then proceed
+
+For operator-facing stories, high-quality messaging starts before the first
+agent/host handoff. Any free-form capture, contextual router, imported story
+entry, workbench dispatch, or long-running `invoke:` must surface four facts:
+
+- what the story understood (captured text, proposal path, ticket, slots);
+- which story/state/workbench it selected;
+- the mode/consequence (read-only/write-capable, branch/workspace, external
+  post, destructive action, cost);
+- what happens next, or what the operator must do now.
+
+Use `kv:` in the view for facts that must survive `look`. Use a one-sentence
+`say:` for the transcript acknowledgement when the transition immediately
+starts another room or agent:
+
+```yaml
+- set: { landing_request: "{{ slots.request }}" }
+- say: "Request captured for story_authoring; starting read-only intake."
+```
+
+Interrupt only when the operator must choose, provide missing data, or approve
+a real side effect. If the interpretation is clear and safe, show it and keep
+moving. Add flow coverage for the message (`expect_events` on `machine.say`)
+and the durable view (`expect_view_matches`). Full standard:
+`docs/stories/story-style.md` §3.4.
 
 ### Placeholder vocabulary
 
@@ -440,6 +588,31 @@ swaps in the concrete dispatcher. The host registry's prefix-fallback
 means one handler at `host.git` satisfies `iface.vcs.commit`,
 `iface.vcs.push`, etc., unless you register per-op handlers.
 
+### Workbench rooms under imports
+
+Prefer the `workbench:` primitive for free-form work floors instead of
+hand-authoring `write_mode`, `agent_off_ramp`, `on_enter host.agent.task`, and
+`default_intent` in parallel. The macro owns its generated wiring:
+
+- It auto-declares the request world key (`<room>_request`, or `capture_slot`)
+  and note world key (`<room>_note`) if the story did not declare them.
+- It auto-declares the capture intent (`<room>_capture`) and installs it as the
+  room's `default_intent` unless the room already hand-authored that arc.
+- When imported, those generated world keys and intents are alias-prefixed like
+  any other child-local surface (`core__landing_request`,
+  `core__landing_note`, `core__landing_capture`). Do not manually spell parent
+  prefixes in the child story.
+- `context_args:` is the only workbench field that may point at arbitrary extra
+  world keys. Declare those extra keys normally; `kitsoki validate` rejects a
+  `context_args` reference to an undeclared key after import expansion.
+
+For import-sensitive workbench changes, validate both surfaces:
+
+```sh
+kitsoki validate stories/<story>/app.yaml
+kitsoki validate .kitsoki/stories/<project-instance>/app.yaml
+```
+
 Every importable story needs a `README.md` documenting entry state,
 exits + `requires:`, `world_in:` contract, intent export/import surface,
 `host_interfaces:` contract, and host requirements. `stories/robbery/README.md`
@@ -470,6 +643,11 @@ Checklist when adding/editing a prompt:
 - [ ] An overlay extends the base via `{% extends "@story/<path>" %}` — never
       duplicate the base prompt.
 - [ ] Verify the surface: `kitsoki prompts spec <app.yaml>`.
+- [ ] For a long-running write-capable agent, give it a deterministic
+      `.artifacts/<run>/...report.md` destination, require an early write plus
+      incremental updates, and return `report_path` with only a compact
+      checkpoint note. Do not require its full prose report in the final schema
+      response; add a no-LLM flow that proves the path reaches the view.
 
 When a request is about a project-specific gap a `spec_` section covers, fix it
 by **specializing that block in an overlay** (`--prompt-overlay` or the
@@ -532,6 +710,12 @@ of hand-rolling retry caps.
 Every non-trivial room deserves at least one flow fixture under
 `flows/`. They run intent-only (no LLM, no harness) — fast, hermetic,
 checkable in CI.
+
+If the story path is part of a product-journey scenario or scenario-QA proof,
+also add/update the scenario catalog entry and a `stories/scenario-qa/flows/*`
+fixture. The flow should prove the scenario wrapper can plan, drive, judge, and
+report the leg without relying on a Playwright/xterm/rrweb recorder as the
+source of truth.
 
 ```yaml
 test_kind: flow
@@ -667,12 +851,25 @@ The renderer / runtime traps — invisible until a user hits them:
   renders blank — the operator sees a featureless dead-end (and an
   `@exit:needs-human` with `requires:[last_error]` is "satisfied" by `""`). Always
   capture a non-empty diagnostic on failure: exit code + a note, never blank.
+- **Using shell as the default ad hoc scripting language.** If the logic is data
+  shaping, validation, HTTP glue, small artifact generation, or branching that
+  does not need a real local command, use `host.starlark.run` instead. Starlark
+  gives you a typed sidecar, sandboxed capabilities, deterministic replay,
+  trace-visible HTTP summaries, and no-LLM flow coverage. Shell belongs at the
+  boundary where the story really needs an external command.
+- **Forgetting the Starlark sidecar or cassette.** The `.star.yaml` sidecar is
+  the enforced interface; in-script comments or `INPUTS`/`OUTPUTS` dicts are not
+  authoritative. If the script uses `ctx.http`, the proof should include a
+  `starlark_http_cassette:` flow so `kitsoki test flows` runs the real script
+  without network.
 - **Trusting a flow fixture to test logic INSIDE a `host.run` script.** Flow
   fixtures mock `host.run` WHOLESALE — the whole call returns a canned result — so
   they cannot exercise what the script body computes (which template var lands in
   which shell var, what a `grep`/`jq` decides). To guard logic inside the script,
-  assert on the RENDERED script text (a structural test) or run it for real against
-  a temp fixture; a green mocked flow is NOT coverage of the script body.
+  prefer moving that logic into `host.starlark.run`, where flow fixtures execute
+  the real script. If shell is truly required, assert on the RENDERED script text
+  (a structural test) or run it for real against a temp fixture; a green mocked
+  flow is NOT coverage of the script body.
 - **A maker-style loop that hands off a DIRTY worktree.** If you author a loop
   whose terminal handoff is "the branch is ready to integrate," it must COMMIT the
   work first — a dirty worktree has no commit for an integrator to rebase/merge.
@@ -687,7 +884,12 @@ The order most authors settle into:
 
 1. **Sketch the graph** in `app.yaml` + `rooms/`. Placeholder views are
    fine; typed `extends: "base"` from the start saves migration work.
-2. **`kitsoki turn`** to probe one state-shape at a time. Stateless,
+2. **Move ad hoc procedural glue into Starlark early.** If a room starts to grow
+   inline shell, dense Pongo, JSON munging, HTTP glue, or computed artifacts,
+   add `scripts/<name>.star` plus `scripts/<name>.star.yaml`, invoke it through
+   `host.starlark.run`, and bind declared outputs back into world. Validate it
+   with `.agents/skills/starlark/tools/validate.sh ... -kitsoki`.
+3. **`kitsoki turn`** to probe one state-shape at a time. Stateless,
    JSON output, no DB:
    ```sh
    kitsoki turn stories/<name>/app.yaml \
@@ -695,12 +897,14 @@ The order most authors settle into:
      --intent <intent_name> \
      --world '@/tmp/world.json'
    ```
-3. **Write a flow fixture** for the path you just probed; lock it with
-   `kitsoki test flows`.
-4. **`kitsoki viz stories/<name>/app.yaml`** to sanity-check the graph
+4. **Write a flow fixture** for the path you just probed; lock it with
+   `kitsoki test flows`. For `host.starlark.run`, assert the bound outputs and
+   include `starlark_http_cassette:` for any `ctx.http` use so the real script is
+   exercised deterministically.
+5. **`kitsoki viz stories/<name>/app.yaml`** to sanity-check the graph
    shape (or `kitsoki viz --mermaid`).
-5. **`kitsoki render -o APP.md`** for review-friendly docs.
-6. **`kitsoki run stories/<name>/app.yaml`** to play it for real.
+6. **`kitsoki render -o APP.md`** for review-friendly docs.
+7. **`kitsoki run stories/<name>/app.yaml`** to play it for real.
    Hot-reload picks up edits as you go.
 
 If a user reports a runtime misbehaviour (silent bounce, wrong target,

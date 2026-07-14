@@ -1,10 +1,15 @@
 # Epic: Conversation-driven development (CDD)
 
-**Status:** Draft v1. Methodology + slice sketch for review. Nothing
-implemented; the slices are scoped below but not yet cut into child
-proposals — cutting them is the first task after this epic is reviewed.
+**Status:** Draft v1. Methodology + slice sketch for review. Slice 1
+(conversation cases from mining) is absorbed by
+[`scenario-foundry.md`](scenario-foundry.md) under the `usable-kitsoki`
+epic, which ships it against concrete session-mining/harness plumbing
+rather than the feature-catalog codegen. Slices 2–4 (mockup demo
+binding, corpus expansion loop, build handoff) stand as scoped below;
+nothing implemented; cutting the remaining child proposals is still the
+first task after this epic is reviewed.
 **Kind:**   epic
-**Slices:** 4 (0/4 shipped; not yet cut)
+**Slices:** 4 (0/4 shipped; slice 1 absorbed elsewhere, not cut here)
 
 ## Why
 
@@ -152,7 +157,7 @@ Not yet cut into child files; one-line scopes below are the cutting guide.
 
 | # | Slice | Kind | Scope (one line) | Depends on | Status |
 |---|---|---|---|---|---|
-| 1 | Conversation cases in the catalog | tooling | `kind: conversation` + `stage:` + turn vocabulary in the schema; codegen derives tour skeleton + `qa.scenarios` from turns; funnel in `features-index` | — | Not cut |
+| 1 | Conversation cases in the catalog | tooling | Absorbed by [`scenario-foundry.md`](scenario-foundry.md) (`usable-kitsoki` epic) — mined `kind: conversation` scenarios compiled from real sessions, not catalog codegen | — | Absorbed |
 | 2 | Mockup demo binding | tooling | Record a case with no engine: static-trace posture into the real SPA (extend `_helpers/artifact.ts`), HTML mockup scenes via the shipped `mockup-video` story where surfaces don't exist; same `demo-feature` / `feature-qa` rails | 1 | Not cut |
 | 3 | Corpus expansion loop | process | Wire mining / research / `/review` flags to emit case diffs; cadence + review discipline; seed corpus authored | 1 (2 for flag-on-demo) | Not cut |
 | 4 | Conversation→build handoff | story / process | `accepted` case pre-fills the design pipeline intake; ship flips the binding with turns unchanged; live QA becomes the regression gate | 1 | Not cut |
@@ -242,7 +247,7 @@ the full loop end-to-end.
   the design pipeline and decomposition with humans at the gates; the case
   changes what enters that pipeline, not the pipeline.
 - **General usability auditing.** [`kitsoki-ui-review`](../skills/kitsoki-ui-review/SKILL.md)
-  (heuristic audit) and the [`story-qa-agent`](story-qa-agent.md) epic
+  (heuristic audit) and the [`story-qa`](../stories/story-qa.md) skill
   (TUI persona walks) keep their roles; CDD's gate asks only "does the
   product hold this conversation."
 - **Replacing proposals.** Cases specify *conversations*; engine/runtime

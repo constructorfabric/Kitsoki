@@ -19,6 +19,19 @@ import (
 	"strings"
 )
 
+// ifaceTerminalName returns the terminal capability segment of a
+// (possibly alias-prefixed) host_interface name — the part after the
+// final `__`. For an unprefixed name (no `__`) it returns the name
+// unchanged. Used by import folding to let an importer's base-name
+// host_binding (e.g. `ticket`) cascade to every transitively-lifted
+// `<alias>__ticket` iface that has no explicit prefixed override.
+func ifaceTerminalName(name string) string {
+	if idx := strings.LastIndex(name, "__"); idx >= 0 {
+		return name[idx+2:]
+	}
+	return name
+}
+
 // ifaceEntry captures a resolved (binding, allowed-op-set) pair for one
 // host_interface, used by the deferred resolver.
 type ifaceEntry struct {

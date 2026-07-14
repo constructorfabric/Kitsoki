@@ -1,0 +1,92 @@
+# get_started_actions — verifies advertised landing quick actions remain wired and
+# do not dead-end into a broken state when no ticket is selected.
+#
+# The ticket-launch quick actions are no-ticket guarded. `drive` and the
+# implementation/cypilot/refinement routes bounce to landing, while `go_bugfix`
+# intentionally enters `bugfix_intake` so the next message can still be captured as a
+# bug fix intake.
+# The navigating quick actions
+# (go_ticket_search, go_init/onboard) reach their room and return via go_main.
+#
+# No LLM: landing's on_enter agent turn is guarded on landing_request != '',
+# left empty here, so re-entering landing on a bounce fires no host.agent.task.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world:
+  ticket_id: ""
+  landing_request: ""
+  judge_mode: "human"
+
+host_handlers:
+  host.local_files.ticket:
+    data: { tickets: [] }
+  host.run:
+    by_call:
+      run_initial:
+        data: { exit_code: 0, ok: true, stdout: "ok\n" }
+        delay: "10ms"
+      full_verify_run:
+        data: { exit_code: 0, ok: true, stdout: "ok\tfull suite\n" }
+        delay: "10ms"
+  host.agent.decide:
+    by_call:
+      review-0:
+        data:
+          submitted:
+            pass: true
+            reason: "No diff to review and the command is green."
+            functionality_preserved: true
+            tests_not_weakened: true
+            findings: []
+            fixes: []
+  host.append_to_file:
+    data: { ok: true, message_id: "msg-0" }
+  host.inbox.add:
+    data: { ok: true, id: "ib-0" }
+
+turns:
+  # look — re-render the workbench (the cited dead action must be real).
+  - intent: { name: look, slots: {} }
+    expect_state: landing
+
+  # Ticket-launch quick actions: no ticket selected → each is HANDLED and
+  # are verified here as explicit no-ticket routes, not a fallthrough.
+  - intent: { name: drive, slots: {} }
+    expect_state: landing
+    expect_world:
+      last_error: |
+        No ticket selected — pick one before entering the pipeline.
+
+        Suggestions:
+        - `tickets` — search and pick a ticket
+        - `workspaces` — resume an in-progress workspace
+
+  - intent: { name: go_bugfix, slots: {} }
+    expect_state: bugfix_intake
+  - intent: { name: quit, slots: {} }
+    expect_state: landing
+  - intent: { name: go_fix_tests, slots: {} }
+    advance_clock: "1s"
+    expect_state: landing
+  - intent: { name: go_implementation, slots: {} }
+    expect_state: landing
+  - intent: { name: go_cypilot, slots: {} }
+    expect_state: landing
+  - intent: { name: go_pr_refinement, slots: {} }
+    expect_state: landing
+
+  # Navigating quick actions: reach their room (proving the intent is real),
+  # then return to landing via go_main.
+  - intent: { name: go_ticket_search, slots: {} }
+    expect_state: ticket_search
+  - intent: { name: go_main, slots: {} }
+    expect_state: landing
+
+  # onboard — the cited dead action. Advertised label "onboard" -> intent
+  # go_init -> the project-onboarding room.
+  - intent: { name: go_init, slots: {} }
+    expect_not_state: landing
+
+expect_no_errors: true

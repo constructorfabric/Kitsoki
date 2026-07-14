@@ -31,6 +31,7 @@ func TestProviders_ParsedAndSubstituted(t *testing.T) {
 	yaml := providersAppHeader + `
 providers:
   local_llm:
+    backend: codex
     model: h200/gpt-oss-120b
     env:
       ANTHROPIC_BASE_URL: https://local-llm.example.com
@@ -50,6 +51,9 @@ agents:
 	}
 	if p.Model != "h200/gpt-oss-120b" {
 		t.Errorf("model: got %q", p.Model)
+	}
+	if p.Backend != "codex" {
+		t.Errorf("backend: got %q", p.Backend)
 	}
 	if p.Env["ANTHROPIC_AUTH_TOKEN"] != "sk-secret" {
 		t.Errorf("env.ANTHROPIC_AUTH_TOKEN not substituted: got %q", p.Env["ANTHROPIC_AUTH_TOKEN"])
@@ -179,6 +183,33 @@ providers:
 	}
 	if def.Providers["effort_only"].Effort != "high" {
 		t.Errorf("provider.effort: got %q", def.Providers["effort_only"].Effort)
+	}
+}
+
+func TestProviderBackend_OnlyBackendAccepted(t *testing.T) {
+	yaml := providersAppHeader + `
+providers:
+  codex_native:
+    backend: codex
+`
+	def, err := app.LoadBytes([]byte(yaml))
+	if err != nil {
+		t.Fatalf("LoadBytes: %v", err)
+	}
+	if def.Providers["codex_native"].Backend != "codex" {
+		t.Errorf("provider.backend: got %q", def.Providers["codex_native"].Backend)
+	}
+}
+
+func TestProviderBackend_InvalidRejected(t *testing.T) {
+	yaml := providersAppHeader + `
+providers:
+  strange:
+    backend: not-a-backend
+`
+	_, err := app.LoadBytes([]byte(yaml))
+	if err == nil || !strings.Contains(err.Error(), "not-a-backend") {
+		t.Fatalf("expected invalid provider-backend error naming not-a-backend; got %v", err)
 	}
 }
 

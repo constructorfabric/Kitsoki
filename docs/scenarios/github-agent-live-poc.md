@@ -1,7 +1,7 @@
 # Live GitHub Agent POC Scenario
 
 **Status:** Active scenario.
-**Owner docs:** [`docs/proposals/kitsoki-github-agent.md`](../proposals/kitsoki-github-agent.md), [`docs/architecture/github-app-setup.md`](../architecture/github-app-setup.md)
+**Owner docs:** [`docs/proposals/kitsoki-github-agent.md`](../proposals/kitsoki-github-agent.md), [`docs/guide/integrations/github-app-setup.md`](../guide/integrations/github-app-setup.md)
 **Primary command:** `scripts/run-gh-agent-live-poc.sh`
 **Primary artifact:** `.artifacts/github-agent-live/live-github-agent.slidey.json`
 
@@ -170,7 +170,7 @@ Slidey deck.
 When the live POC flow changes:
 
 1. Update this scenario first.
-2. Update `docs/architecture/github-app-setup.md` if operator commands changed.
+2. Update `docs/guide/integrations/github-app-setup.md` if operator commands changed.
 3. Update `scripts/run-gh-agent-live-poc.sh` and
    `scripts/verify-gh-agent-live-poc.mjs` to enforce the new contract.
 4. Update `.agents/skills/kitsoki-ui-demo/SKILL.md` or

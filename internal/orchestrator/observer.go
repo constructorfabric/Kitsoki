@@ -36,9 +36,10 @@ type SessionObserver interface {
 	// OnBackgroundTurn fires after handleJobTerminal has applied the
 	// on_complete chain, committed the synthetic turn to the event log,
 	// and posted the inbox notification.  outcome carries the post-
-	// background state path, the rendered view text, and the refreshed
-	// allowed-intents list so a TUI consumer can re-render its main
-	// transcript without re-reading the database.
+	// background state path, the rendered view text, the typed view payload
+	// when the landed room has one, and the refreshed allowed-intents list so
+	// a TUI consumer can re-render its main transcript without re-reading the
+	// database.
 	//
 	// outcome.Mode is ModeTransitioned (or ModeCompleted if the new
 	// state is terminal — though terminal-state on_complete is unusual).

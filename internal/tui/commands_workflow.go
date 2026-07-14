@@ -276,5 +276,12 @@ func renderWorkflowReceiptBlock(m RootModel, receipt *dynamicworkflow.Receipt) s
 		sb.WriteString(receipt.ExportReportPath)
 		sb.WriteString("\n")
 	}
+	if receipt.ExportReport != nil {
+		if summary := dynamicworkflow.FormatStarterFlowReplay(receipt.ExportReport.StarterFlowReplay); summary != "" {
+			sb.WriteString("starter flow replay: ")
+			sb.WriteString(summary)
+			sb.WriteString("\n")
+		}
+	}
 	return strings.TrimRight(sb.String(), "\n")
 }

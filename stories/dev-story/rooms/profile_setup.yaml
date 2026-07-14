@@ -1,0 +1,603 @@
+# profile_setup -- first-run local harness profile setup.
+#
+# This flow is deterministic and no-LLM:
+#   landing -> profile_setup_discover -> profile_setup_review
+#   profile_setup_review -> profile_setup_apply -> profile_setup_done
+#
+# Discovery reports credential source/presence and safe CLI auth-status probes
+# through the native host.dev.profile_setup capability.
+# Apply writes only the gitignored `.kitsoki.local.yaml`, after the operator
+# confirms the reviewed patch preview.
+
+states:
+
+  profile_setup_discover:
+    description: "Discover local harness profiles, installed backends, and credential sources before any writes happen."
+    relevant_world:
+      - profile_setup_target_path
+      - profile_setup_status
+      - profile_setup_discovery
+      - profile_setup_default_profile
+      - profile_setup_effective_profiles
+      - profile_setup_warnings
+      - workdir
+      - repo_root
+    view:
+      - banner:
+          text:     "LOCAL HARNESS PROFILE"
+          subtitle: "discovering local setup"
+          color:    "#0EA5E9"
+      - kv:
+          pairs:
+            Target: "{{ world.profile_setup_target_path|default:world.repo_root|default:world.workdir|default:'.' }}"
+            Status: "{{ world.profile_setup_status }}"
+      - prose: "Inspecting checked-in and local Kitsoki config, backend binaries, credential sources, and safe auth-status probes. No model calls run."
+      - prose: "{{ world.profile_setup_discovery.error|default:'' }}"
+        when: "(world.profile_setup_discovery.error ?? '') != ''"
+      - kv:
+          pairs:
+            Config: "{{ world.profile_setup_discovery.config_path|default:'(pending)' }}"
+            Local override: "{{ world.profile_setup_discovery.local_config_path|default:'(pending)' }}"
+            Default profile: "{{ world.profile_setup_discovery.default_profile|default:'(none)' }}"
+        when: "world.profile_setup_discovery.status == 'ok'"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "continue"
+              hint:   "review the discovered profile state and patch"
+              intent: profile_setup_discovered
+              when:   "world.profile_setup_discovery.status == 'ok'"
+            - label:  "retry"
+              hint:   "rerun local discovery"
+              intent: profile_setup_discovered
+              when:   "world.profile_setup_discovery.status != 'ok'"
+            - label:  "skip"
+              hint:   "leave without writing local config"
+              intent: skip_profile_setup
+            - label:  "quit"
+              hint:   "back to the workbench"
+              intent: quit
+            - label:  "look"
+              hint:   "re-render"
+              intent: look
+    on_enter:
+      - invoke: host.starlark.run
+        once: true
+        id: profile_setup_discover
+        with:
+          script: scripts/profile_setup.star
+          inputs:
+            op: discover
+            target_path: "{{ world.profile_setup_target_path }}"
+            workdir: "{{ world.workdir }}"
+            repo_root: "{{ world.repo_root }}"
+          capabilities:
+            host:
+              verbs: [host.dev.profile_setup]
+        bind:
+          profile_setup_discovery: "result"
+          profile_setup_target_path: "result.target_path"
+          profile_setup_default_profile: "result.default_profile"
+          profile_setup_effective_profiles: "result.profiles"
+          profile_setup_warnings: "result.warnings"
+          profile_setup_candidate_action: "result.candidate_action"
+          profile_setup_candidate_profile: "result.candidate_profile"
+          profile_setup_patch_preview: "result.patch_preview"
+          profile_setup_error: "result.error"
+        on_error: profile_setup_discover_failed
+    on:
+      profile_setup_discovered:
+        - when: "world.profile_setup_discovery.status == 'ok'"
+          target: profile_setup_review
+          effects:
+            - set:
+                profile_setup_status: "review"
+                last_error: ""
+        - default: true
+          target: profile_setup_discover_failed
+          effects:
+            - set:
+                profile_setup_status: "discovery-failed"
+                last_error: "local harness profile discovery failed"
+      skip_profile_setup:
+        - target: landing
+          effects:
+            - set:
+                profile_setup_status: "skipped"
+                last_error: "local harness profile setup skipped"
+                prev_state: "profile_setup_discover"
+      quit:
+        - target: landing
+          effects:
+            - set:
+                profile_setup_status: "abandoned"
+                last_error: "local harness profile setup closed"
+                prev_state: "profile_setup_discover"
+      look:
+        - target: .
+
+  profile_setup_discover_failed:
+    description: "Local harness profile discovery failed before a reviewable patch was available."
+    relevant_world:
+      - profile_setup_target_path
+      - profile_setup_status
+      - profile_setup_discovery
+      - profile_setup_error
+    view:
+      - banner:
+          text:     "LOCAL HARNESS PROFILE"
+          subtitle: "discovery failed"
+          color:    "#EF4444"
+      - prose: "Discovery did not produce a usable local harness report. No files were written."
+      - kv:
+          pairs:
+            Target: "{{ world.profile_setup_target_path }}"
+            Status: "{{ world.profile_setup_status }}"
+            Error:  "{{ world.profile_setup_error|default:world.last_error|default:'(none)' }}"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "retry"
+              hint:   "rerun local discovery"
+              intent: profile_setup_discovered
+            - label:  "quit"
+              hint:   "back to the workbench"
+              intent: quit
+            - label:  "look"
+              hint:   "re-render"
+              intent: look
+    on:
+      profile_setup_discovered:
+        - target: profile_setup_discover
+          effects:
+            - set:
+                profile_setup_status: "discovering"
+                profile_setup_discovery: {}
+                profile_setup_effective_profiles: []
+                profile_setup_default_profile: ""
+                profile_setup_candidate_action: ""
+                profile_setup_candidate_profile: {}
+                profile_setup_patch_preview: ""
+                profile_setup_warnings: []
+                profile_setup_error: ""
+                last_error: ""
+      quit:
+        - target: landing
+          effects:
+            - set:
+                profile_setup_status: "abandoned"
+                last_error: "local harness profile setup closed"
+                prev_state: "profile_setup_discover_failed"
+      look:
+        - target: .
+
+  profile_setup_review:
+    description: "Review discovered harness state and choose the local profile patch before writing."
+    relevant_world:
+      - profile_setup_target_path
+      - profile_setup_status
+      - profile_setup_discovery
+      - profile_setup_effective_profiles
+      - profile_setup_default_profile
+      - profile_setup_candidate_action
+      - profile_setup_candidate_profile
+      - profile_setup_patch_preview
+      - profile_setup_warnings
+    view:
+      - banner:
+          text:     "LOCAL HARNESS PROFILE"
+          subtitle: "review before writes"
+          color:    "#0EA5E9"
+      - prose: "Review the local harness setup. Confirming writes only `.kitsoki.local.yaml`; `.kitsoki.yaml` stays the shared baseline."
+      - kv:
+          pairs:
+            Target: "{{ world.profile_setup_target_path }}"
+            Config: "{{ world.profile_setup_discovery.config_path|default:'(none)' }}"
+            Local override: "{{ world.profile_setup_discovery.local_config_path|default:'(will create)' }}"
+            Current default: "{{ world.profile_setup_default_profile|default:'(none)' }}"
+            Candidate: "{{ world.profile_setup_candidate_profile.name|default:'(not yet chosen)' }}"
+            Action: "{{ world.profile_setup_candidate_action|default:'(not yet chosen)' }}"
+      - heading: "Profiles"
+        when: "world.profile_setup_effective_profiles"
+      - template: |
+          {% for p in world.profile_setup_effective_profiles %}- {{ p.name }} [{{ p.source }}]: backend={{ p.backend|default:'(default claude)' }} plugin={{ p.plugin|default:'(none)' }} model={{ p.model|default:'(none)' }} readiness={{ p.readiness|default:'unknown' }}
+          {% endfor %}
+        when: "world.profile_setup_effective_profiles"
+      - heading: "Backends"
+      - template: |
+          {% for b in world.profile_setup_discovery.backend_sources %}- {{ b.backend }}: installed={{ b.installed }} logged_in={{ b.logged_in }} source={{ b.path_source|default:'(none)' }} auth={{ b.auth_summary|default:'none' }}
+          {% endfor %}
+      - heading: "Credential Env"
+      - template: |
+          {% for e in world.profile_setup_discovery.env_sources %}- {{ e.name }}: {{ e.present }}
+          {% endfor %}
+      - heading: "Warnings"
+        when: "world.profile_setup_warnings"
+      - template: |
+          {% for warning in world.profile_setup_warnings %}- {{ warning }}
+          {% endfor %}
+        when: "world.profile_setup_warnings"
+      - heading: "Patch Preview"
+        when: "world.profile_setup_patch_preview != ''"
+      - code: "{{ world.profile_setup_patch_preview }}"
+        when: "world.profile_setup_patch_preview != ''"
+      - prose: "No patch is selected yet. Choose an existing profile, configure an OpenAI-compatible profile, configure a local LLM profile, or skip."
+        when: "world.profile_setup_patch_preview == ''"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "apply"
+              hint:   "write the reviewed patch to .kitsoki.local.yaml"
+              intent: confirm_profile_setup
+              when:   "world.profile_setup_candidate_action != ''"
+            - label:  "use existing"
+              hint:   "set default_profile to a discovered profile"
+              intent: use_existing_profile
+              param:
+                slot: profile
+                type: string
+                placeholder: "profile name"
+                required: true
+            - label:  "openai profile"
+              hint:   "type configure_openai_profile with profile_name/env_var/model"
+              intent: configure_openai_profile
+            - label:  "local llm"
+              hint:   "type configure_local_llm_profile with profile_name/model"
+              intent: configure_local_llm_profile
+            - label:  "rediscover"
+              hint:   "rerun local discovery"
+              intent: profile_setup_discovered
+            - label:  "skip"
+              hint:   "leave without writing local config"
+              intent: skip_profile_setup
+            - label:  "quit"
+              hint:   "back to the workbench"
+              intent: quit
+            - label:  "look"
+              hint:   "re-render"
+              intent: look
+    on:
+      use_existing_profile:
+        - target: .
+          effects:
+            - set:
+                profile_setup_candidate_action: "set_default"
+                profile_setup_candidate_profile:
+                  action: "set_default"
+                  name: "{{ slots.profile }}"
+                profile_setup_patch_preview: |
+                  default_profile: {{ slots.profile }}
+                last_error: ""
+            - say: "Selected existing profile {{ slots.profile }} as the local default."
+      configure_openai_profile:
+        - target: .
+          effects:
+            - set:
+                profile_setup_candidate_action: "upsert_openai"
+                profile_setup_candidate_profile:
+                  action: "upsert_openai"
+                  name: "{{ slots.profile_name }}"
+                  backend: "codex"
+                  model: "{{ slots.model }}"
+                  models:
+                    - "{{ slots.model }}"
+                  env_var: "{{ slots.env_var }}"
+                  base_url: "{{ slots.base_url }}"
+                  models_endpoint: "{{ slots.models_endpoint }}"
+                profile_setup_patch_preview: |
+                  default_profile: {{ slots.profile_name }}
+                  harness_profiles:
+                    {{ slots.profile_name }}:
+                      backend: codex
+                      model: {{ slots.model }}
+                      models: [{{ slots.model }}]
+                      models_endpoint: {{ slots.models_endpoint }}
+                      env:
+                        OPENAI_BASE_URL: {{ slots.base_url }}
+                        OPENAI_API_KEY: {{ "$" }}{{ "{" }}{{ slots.env_var }}{{ "}" }}
+                last_error: ""
+            - say: "Prepared an OpenAI-compatible profile that references env var {{ slots.env_var }}."
+      configure_local_llm_profile:
+        - target: .
+          effects:
+            - set:
+                profile_setup_candidate_action: "upsert_local_llm"
+                profile_setup_candidate_profile:
+                  action: "upsert_local_llm"
+                  name: "{{ slots.profile_name }}"
+                  plugin: "builtin.local_llm"
+                  model: "{{ slots.model }}"
+                profile_setup_patch_preview: |
+                  default_profile: {{ slots.profile_name }}
+                  harness_profiles:
+                    {{ slots.profile_name }}:
+                      plugin: builtin.local_llm
+                      model: {{ slots.model }}
+                last_error: ""
+            - say: "Prepared a builtin.local_llm profile for {{ slots.model }}."
+      confirm_profile_setup:
+        - when: "world.profile_setup_candidate_action != ''"
+          target: profile_setup_apply
+          effects:
+            - set:
+                profile_setup_status: "applying"
+                profile_setup_apply_result: {}
+                profile_setup_apply_ok: false
+                profile_setup_apply_output: ""
+                profile_setup_error: ""
+                last_error: ""
+        - default: true
+          target: .
+          guard_hint: "Choose a profile patch before applying."
+          effects:
+            - set:
+                last_error: "Choose a profile patch before applying."
+      profile_setup_discovered:
+        - target: profile_setup_discover
+          effects:
+            - set:
+                profile_setup_status: "discovering"
+                profile_setup_discovery: {}
+                profile_setup_effective_profiles: []
+                profile_setup_default_profile: ""
+                profile_setup_candidate_action: ""
+                profile_setup_candidate_profile: {}
+                profile_setup_patch_preview: ""
+                profile_setup_warnings: []
+                profile_setup_error: ""
+                last_error: ""
+      skip_profile_setup:
+        - target: landing
+          effects:
+            - set:
+                profile_setup_status: "skipped"
+                last_error: "local harness profile setup skipped"
+                prev_state: "profile_setup_review"
+      quit:
+        - target: landing
+          effects:
+            - set:
+                profile_setup_status: "abandoned"
+                last_error: "local harness profile setup closed"
+                prev_state: "profile_setup_review"
+      look:
+        - target: .
+
+  profile_setup_apply:
+    description: "Write the reviewed local harness profile patch."
+    relevant_world:
+      - profile_setup_target_path
+      - profile_setup_status
+      - profile_setup_candidate_profile
+      - profile_setup_patch_preview
+      - profile_setup_apply_result
+      - profile_setup_apply_output
+    view:
+      - banner:
+          text:     "LOCAL HARNESS PROFILE"
+          subtitle: "applying local override"
+          color:    "#0EA5E9"
+      - kv:
+          pairs:
+            Target: "{{ world.profile_setup_target_path }}"
+            Status: "{{ world.profile_setup_status }}"
+            Profile: "{{ world.profile_setup_candidate_profile.name|default:'(not yet chosen)' }}"
+            Local override: "{{ world.profile_setup_apply_result.local_config_path|default:world.profile_setup_discovery.local_config_path|default:'(pending)' }}"
+      - prose: "Writing `.kitsoki.local.yaml` only. No provider calls run in this step."
+        when: "world.profile_setup_apply_result.status != 'applied'"
+      - kv:
+          pairs:
+            Default profile: "{{ world.profile_setup_apply_result.default_profile|default:'(pending)' }}"
+            Writes: "{{ world.profile_setup_apply_result.writes|default:'[]' }}"
+        when: "world.profile_setup_apply_result.status == 'applied'"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "continue"
+              hint:   "show the applied local profile result"
+              intent: profile_setup_applied
+              when:   "world.profile_setup_apply_result.status == 'applied'"
+            - label:  "retry"
+              hint:   "rerun apply"
+              intent: profile_setup_applied
+              when:   "world.profile_setup_apply_result.status != 'applied'"
+            - label:  "quit"
+              hint:   "back to the workbench"
+              intent: quit
+            - label:  "look"
+              hint:   "re-render"
+              intent: look
+    on_enter:
+      - invoke: host.starlark.run
+        once: true
+        id: profile_setup_apply
+        with:
+          script: scripts/profile_setup.star
+          inputs:
+            op: apply
+            target_path: "{{ world.profile_setup_target_path }}"
+            candidate: "{{ world.profile_setup_candidate_profile }}"
+            workdir: "{{ world.workdir }}"
+            repo_root: "{{ world.repo_root }}"
+          capabilities:
+            host:
+              verbs: [host.dev.profile_setup]
+        bind:
+          profile_setup_apply_ok: "ok"
+          profile_setup_apply_output: "result.error"
+          profile_setup_apply_result: "result"
+          profile_setup_default_profile: "result.default_profile"
+          profile_setup_effective_profiles: "result.profiles"
+          profile_setup_error: "result.error"
+        on_error: profile_setup_apply_failed
+      - when: "world.profile_setup_apply_result.status == 'failed'"
+        emit_intent: profile_setup_applied
+    on:
+      profile_setup_applied:
+        - when: "world.profile_setup_apply_result.status == 'applied'"
+          target: profile_setup_done
+          effects:
+            - set:
+                profile_setup_status: "configured"
+                last_error: ""
+            - say: "Local harness profile applied."
+        - default: true
+          target: profile_setup_apply_failed
+          effects:
+            - set:
+                profile_setup_status: "apply-failed"
+                last_error: "local harness profile apply failed"
+      quit:
+        - target: landing
+          effects:
+            - set:
+                profile_setup_status: "abandoned"
+                last_error: "local harness profile setup closed"
+                prev_state: "profile_setup_apply"
+      look:
+        - target: .
+
+  profile_setup_apply_failed:
+    description: "Local harness profile apply failed."
+    relevant_world:
+      - profile_setup_target_path
+      - profile_setup_status
+      - profile_setup_apply_result
+      - profile_setup_apply_output
+      - profile_setup_patch_preview
+      - profile_setup_error
+    view:
+      - banner:
+          text:     "LOCAL HARNESS PROFILE"
+          subtitle: "apply failed"
+          color:    "#EF4444"
+      - prose: "Apply did not complete successfully. No raw secret values are accepted; use env-var names such as OPENAI_API_KEY."
+      - kv:
+          pairs:
+            Target: "{{ world.profile_setup_target_path }}"
+            Status: "{{ world.profile_setup_status }}"
+            Error:  "{{ world.profile_setup_error|default:world.profile_setup_apply_result.error|default:world.last_error|default:'(none)' }}"
+      - heading: "Output"
+        when: "world.profile_setup_apply_output != ''"
+      - code: "{{ world.profile_setup_apply_output }}"
+        when: "world.profile_setup_apply_output != ''"
+      - heading: "Patch Preview"
+        when: "world.profile_setup_patch_preview != ''"
+      - code: "{{ world.profile_setup_patch_preview }}"
+        when: "world.profile_setup_patch_preview != ''"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "retry"
+              hint:   "rerun apply with the same reviewed patch"
+              intent: confirm_profile_setup
+            - label:  "review"
+              hint:   "return to patch review"
+              intent: profile_setup_discovered
+            - label:  "quit"
+              hint:   "back to the workbench"
+              intent: quit
+            - label:  "look"
+              hint:   "re-render"
+              intent: look
+    on:
+      confirm_profile_setup:
+        - target: profile_setup_apply
+          effects:
+            - set:
+                profile_setup_status: "applying"
+                profile_setup_apply_result: {}
+                profile_setup_apply_ok: false
+                profile_setup_apply_output: ""
+                profile_setup_error: ""
+                last_error: ""
+      profile_setup_discovered:
+        - target: profile_setup_review
+          effects:
+            - set:
+                profile_setup_status: "review"
+                last_error: ""
+      quit:
+        - target: landing
+          effects:
+            - set:
+                profile_setup_status: "abandoned"
+                last_error: "local harness profile setup closed"
+                prev_state: "profile_setup_apply_failed"
+      look:
+        - target: .
+
+  profile_setup_done:
+    description: "Show the applied local harness profile status."
+    relevant_world:
+      - profile_setup_target_path
+      - profile_setup_status
+      - profile_setup_apply_result
+      - profile_setup_effective_profiles
+      - profile_setup_default_profile
+    view:
+      - banner:
+          text:     "LOCAL HARNESS PROFILE"
+          subtitle: "configured"
+          color:    "#22C55E"
+      - kv:
+          pairs:
+            Target: "{{ world.profile_setup_target_path }}"
+            Status: "{{ world.profile_setup_status }}"
+            Local override: "{{ world.profile_setup_apply_result.local_config_path|default:'' }}"
+            Default profile: "{{ world.profile_setup_default_profile|default:world.profile_setup_apply_result.default_profile|default:'(none)' }}"
+      - heading: "Effective Profiles"
+        when: "world.profile_setup_effective_profiles"
+      - template: |
+          {% for p in world.profile_setup_effective_profiles %}- {{ p.name }} [{{ p.source }}]: backend={{ p.backend|default:'(default claude)' }} plugin={{ p.plugin|default:'(none)' }} model={{ p.model|default:'(none)' }} readiness={{ p.readiness|default:'unknown' }}
+          {% endfor %}
+        when: "world.profile_setup_effective_profiles"
+      - heading: "Writes"
+        when: "world.profile_setup_apply_result.writes"
+      - template: |
+          {% for path in world.profile_setup_apply_result.writes %}- {{ path }}
+          {% endfor %}
+        when: "world.profile_setup_apply_result.writes"
+      - prose: "Use `/provider`, `/model`, or the web header picker in a live session to switch profiles. Traces record profile/model/effort, not env secret values."
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "workbench"
+              hint:   "return to the dev-story workbench"
+              intent: go_main
+            - label:  "rediscover"
+              hint:   "run local harness discovery again"
+              intent: profile_setup_discovered
+            - label:  "look"
+              hint:   "re-render"
+              intent: look
+    on:
+      go_main:
+        - target: landing
+          effects:
+            - set:
+                prev_state: "profile_setup_done"
+                last_error: "local harness profile configured"
+      profile_setup_discovered:
+        - target: profile_setup_discover
+          effects:
+            - set:
+                profile_setup_status: "discovering"
+                profile_setup_discovery: {}
+                profile_setup_effective_profiles: []
+                profile_setup_candidate_action: ""
+                profile_setup_candidate_profile: {}
+                profile_setup_patch_preview: ""
+                profile_setup_apply_result: {}
+                profile_setup_apply_ok: false
+                profile_setup_apply_output: ""
+                profile_setup_error: ""
+                last_error: ""
+      look:
+        - target: .

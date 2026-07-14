@@ -22,10 +22,18 @@
         v-model="rawDraft"
         class="input-bar__input"
         data-testid="composer-input"
-        placeholder="Type a message…"
+        :placeholder="rawPlaceholder('Type a message…')"
         :disabled="pending"
+        @keydown.tab="onRawTab"
         @keydown.enter.exact.prevent="sendRaw"
       />
+      <span
+        v-if="rawActionHint"
+        class="input-bar__raw-hint"
+        :class="{ 'input-bar__raw-hint--warning': hasWarningContext }"
+      >
+        Enter: {{ rawActionHint.label }}
+      </span>
       <button
         v-if="hasControls"
         type="button"
@@ -45,7 +53,7 @@
         class="input-bar__send"
         type="submit"
         data-testid="composer-send"
-        :disabled="pending || !rawDraft.trim()"
+        :disabled="pending || !canSubmitRaw"
       >
         Send
       </button>
@@ -64,7 +72,10 @@
           v-for="item in buttonChoiceItems"
           :key="item.Intent + '|' + JSON.stringify(item.Slots)"
           class="input-bar__action-btn"
-          :class="{ 'input-bar__action-btn--primary': isPrimary(item) }"
+          :class="{
+            'input-bar__action-btn--primary': isPrimary(item),
+            'input-bar__action-btn--warning-default': isWarningPrimary(item),
+          }"
           type="button"
           :disabled="pending"
           :data-testid="`intent-btn-${item.Intent}`"
@@ -72,6 +83,7 @@
           :title="item.Hint || undefined"
           @click="fireChoiceItem(item)"
         >
+          <span v-if="hasWarningContext && isPrimary(item)" class="input-bar__btn-badge">recommended</span>
           <span class="input-bar__btn-label">{{ item.Label }}</span>
           <span v-if="item.Hint" class="input-bar__btn-hint">{{ item.Hint }}</span>
         </button>
@@ -190,16 +202,24 @@
           v-autogrow
           class="input-bar__textarea"
           data-testid="composer-input"
-          placeholder="Type anything — the router handles the rest…"
+          :placeholder="rawPlaceholder('Type anything — the router handles the rest…')"
           rows="2"
           :disabled="pending"
+          @keydown.tab="onRawTab"
           @keydown.enter.exact.prevent="sendRaw"
         />
+        <span
+          v-if="rawActionHint"
+          class="input-bar__raw-hint"
+          :class="{ 'input-bar__raw-hint--warning': hasWarningContext }"
+        >
+          Enter: {{ rawActionHint.label }}
+        </span>
         <button
           class="input-bar__send"
           type="submit"
           data-testid="composer-send"
-          :disabled="pending || !rawDraft.trim()"
+          :disabled="pending || !canSubmitRaw"
         >
           Send
         </button>
@@ -213,12 +233,14 @@
           v-for="intent in actionIntents"
           :key="intent.name"
           class="input-bar__action-btn input-bar__action-btn--primary"
+          :class="{ 'input-bar__action-btn--warning-default': isWarningPrimaryIntent(intent) }"
           type="button"
           :disabled="pending"
           :data-testid="`intent-btn-${intent.name}`"
           :title="intent.description || undefined"
           @click="fireIntent(intent)"
         >
+          <span v-if="hasWarningContext && isPrimaryIntent(intent)" class="input-bar__btn-badge">recommended</span>
           <span class="input-bar__btn-label">{{ intent.title || humanizeIntent(intent.name) }}</span>
           <span v-if="intent.description" class="input-bar__btn-hint">{{ intent.description }}</span>
         </button>
@@ -261,16 +283,24 @@
         v-autogrow
         class="input-bar__textarea"
         data-testid="text-floor-input"
-        placeholder="…or type a message instead"
+        :placeholder="rawPlaceholder('…or type a message instead')"
         rows="1"
         :disabled="pending"
+        @keydown.tab="onRawTab"
         @keydown.enter.exact.prevent="sendRaw"
       />
+      <span
+        v-if="rawActionHint"
+        class="input-bar__raw-hint"
+        :class="{ 'input-bar__raw-hint--warning': hasWarningContext }"
+      >
+        Enter: {{ rawActionHint.label }}
+      </span>
       <button
         class="input-bar__send"
         type="submit"
         data-testid="text-floor-send"
-        :disabled="pending || !rawDraft.trim()"
+        :disabled="pending || !canSubmitRaw"
       >
         Send
       </button>
@@ -321,7 +351,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import type { IntentInfo, View, ChoiceItem, ChoiceField } from "../types.js";
 import { humanizeIntent } from "../lib/intent.js";
 
@@ -361,6 +391,7 @@ const props = defineProps<{
    */
   defaultIntent?: string;
   pending?: boolean;
+  initialRawDraft?: string;
 }>();
 
 const emit = defineEmits<{
@@ -398,6 +429,17 @@ const buttonChoiceItems = computed<ChoiceItem[]>(() => choiceItems.value.filter(
 
 /** Choice items with a Param — rendered as text-input forms below the buttons. */
 const formChoiceItems = computed<ChoiceItem[]>(() => choiceItems.value.filter(i => !!i.Param));
+
+const hasWarningContext = computed<boolean>(() => {
+  const elements = props.typedView?.Elements ?? [];
+  return elements.some((element) => {
+    if (element.Kind !== "banner") return false;
+    const color = (element.Color ?? "").toLowerCase();
+    if (color === "warn" || color === "warning" || color === "amber") return true;
+    const text = `${element.Source ?? ""} ${element.Subtitle ?? ""} ${element.Marker ?? ""}`;
+    return /\b(warn|warning|stale|changed|removed)\b/i.test(text);
+  });
+});
 
 // ── Form-mode choice ──────────────────────────────────────────────────────────
 
@@ -457,6 +499,9 @@ const firstPrimaryIntent = computed<string>(() => {
 function isPrimary(item: ChoiceItem): boolean {
   return (item.Intent + "|" + JSON.stringify(item.Slots ?? {})) === firstPrimaryIntent.value;
 }
+function isWarningPrimary(item: ChoiceItem): boolean {
+  return hasWarningContext.value && isPrimary(item);
+}
 
 // Per-item free-text drafts (keyed by intent+slots to handle duplicate intent names)
 const paramDrafts = ref<Record<string, string>>({});
@@ -481,6 +526,19 @@ function fireChoiceParam(item: ChoiceItem, text: string) {
 const actionIntents = computed(() =>
   props.intents.filter((i) => !i.text_slot && !i.has_slots),
 );
+
+const firstPrimaryActionIntent = computed<string>(() => {
+  for (const intent of actionIntents.value) {
+    if (!navIntents.has(intent.name)) return intent.name;
+  }
+  return actionIntents.value[0]?.name ?? "";
+});
+function isPrimaryIntent(intent: IntentInfo): boolean {
+  return intent.name === firstPrimaryActionIntent.value;
+}
+function isWarningPrimaryIntent(intent: IntentInfo): boolean {
+  return hasWarningContext.value && isPrimaryIntent(intent);
+}
 
 // Intent names already covered by a choice-item — suppress the legacy
 // text-slot textarea to avoid rendering the same intent twice.
@@ -592,9 +650,97 @@ const draft = ref("");
 // Free-text draft for semantic routing rooms.
 const rawDraft = ref("");
 
+interface RawAction {
+  label: string;
+  hint?: string;
+  intent: string;
+  slots: Record<string, unknown>;
+  displayLabel?: string;
+  aliases: string[];
+}
+
+function normalizeActionText(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function rawActionAliases(label: string, intent: string, hint?: string): string[] {
+  return [label, intent, humanizeIntent(intent), hint ?? ""]
+    .map(normalizeActionText)
+    .filter(Boolean);
+}
+
+const rawActions = computed<RawAction[]>(() => {
+  if (!hasWarningContext.value) return [];
+  const actions: RawAction[] = [];
+  for (const item of buttonChoiceItems.value) {
+    actions.push({
+      label: item.Label,
+      hint: item.Hint,
+      intent: item.Intent,
+      slots: (item.Slots as Record<string, unknown>) ?? {},
+      displayLabel: item.Label,
+      aliases: rawActionAliases(item.Label, item.Intent, item.Hint),
+    });
+  }
+  for (const intent of actionIntents.value) {
+    const label = intent.title || humanizeIntent(intent.name);
+    actions.push({
+      label,
+      hint: intent.description,
+      intent: intent.name,
+      slots: {},
+      aliases: rawActionAliases(label, intent.name, intent.description),
+    });
+  }
+  return actions;
+});
+
+const recommendedRawAction = computed<RawAction | undefined>(() => {
+  const preferred = rawActions.value.find((action) => !navIntents.has(action.intent));
+  return preferred ?? rawActions.value[0];
+});
+
+function matchRawAction(text: string): RawAction | undefined {
+  const query = normalizeActionText(text);
+  if (!query) return undefined;
+  const exact = rawActions.value.find((action) => action.aliases.some((alias) => alias === query));
+  if (exact) return exact;
+  return rawActions.value.find((action) =>
+    action.aliases.some((alias) => alias.startsWith(query))
+  );
+}
+
+const rawActionHint = computed<RawAction | undefined>(() =>
+  matchRawAction(rawDraft.value) ?? (rawDraft.value.trim() ? undefined : recommendedRawAction.value)
+);
+
+function rawPlaceholder(defaultText: string): string {
+  if (recommendedRawAction.value) {
+    return `Recommended: ${recommendedRawAction.value.label} — Enter follows, Tab fills`;
+  }
+  return defaultText;
+}
+
+const canSubmitRaw = computed<boolean>(() => rawDraft.value.trim().length > 0 || !!recommendedRawAction.value);
+
+function acceptRawActionHint(): void {
+  if (props.pending || !rawActionHint.value) return;
+  rawDraft.value = rawActionHint.value.label;
+}
+
+function onRawTab(event: KeyboardEvent): void {
+  if (props.pending || !rawActionHint.value) return;
+  event.preventDefault();
+  acceptRawActionHint();
+}
+
 function fireIntent(intent: IntentInfo) {
   if (props.pending) return;
   emit("intent", intent.name, {});
+}
+
+function fireRawAction(action: RawAction): void {
+  emit("intent", action.intent, action.slots, action.displayLabel);
 }
 
 function send() {
@@ -607,7 +753,14 @@ function send() {
 
 function sendRaw() {
   const text = rawDraft.value.trim();
-  if (props.pending || !text) return;
+  if (props.pending) return;
+  const action = text ? matchRawAction(text) : recommendedRawAction.value;
+  if (action) {
+    fireRawAction(action);
+    rawDraft.value = "";
+    return;
+  }
+  if (!text) return;
   emit("send", text, "");
   rawDraft.value = "";
 }
@@ -629,6 +782,42 @@ const compact = ref(false);
 const expanded = ref(false);
 const manualCollapsed = ref(false);
 let ro: ResizeObserver | null = null;
+
+function focusRawDraftInput(): void {
+  const schedule = globalThis.requestAnimationFrame ?? ((fn: FrameRequestCallback) => setTimeout(fn, 0));
+  void nextTick(() => schedule(() => {
+    const el = rootEl.value?.querySelector<HTMLTextAreaElement | HTMLInputElement>(
+      '[data-testid="text-floor-input"], [data-testid="composer-input"]'
+    );
+    el?.focus();
+    if (el) {
+      const end = el.value.length;
+      el.setSelectionRange(end, end);
+    }
+  }));
+}
+
+function applyInitialRawDraft(value?: string): void {
+  if (!value || rawDraft.value) return;
+  rawDraft.value = value;
+  focusRawDraftInput();
+}
+
+watch(
+  () => props.initialRawDraft,
+  (value) => applyInitialRawDraft(value),
+  { immediate: true },
+);
+
+watch(
+  () => [showTextFloor.value, isSemanticRoom.value, textIntents.value.length],
+  () => {
+    if (props.initialRawDraft && rawDraft.value === props.initialRawDraft) {
+      focusRawDraftInput();
+    }
+  },
+  { flush: "post" }
+);
 
 function applyHeight(h: number): void {
   // Test mounts and transient hidden hosts can report 0px. Treat that as
@@ -781,6 +970,36 @@ onUnmounted(() => {
   opacity: 0.8;
 }
 
+.input-bar__action-btn--warning-default {
+  background: #431407;
+  border-color: #fb923c;
+  color: #fed7aa;
+  box-shadow: 0 0 0 1px rgba(251, 146, 60, 0.24);
+}
+
+.input-bar__action-btn--warning-default:hover:not(:disabled) {
+  background: #7c2d12;
+  border-color: #fdba74;
+  color: #fff7ed;
+}
+
+.input-bar__action-btn--warning-default .input-bar__btn-hint {
+  color: #fed7aa;
+}
+
+.input-bar__btn-badge {
+  align-self: flex-start;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  padding: 1px 6px;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1.2;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.8;
+}
+
 .input-bar__action-btn:disabled,
 .input-bar__send:disabled,
 .input-bar__input:disabled,
@@ -902,6 +1121,28 @@ onUnmounted(() => {
 
 .input-bar__textarea:focus {
   border-color: var(--k-border-focus, #2563eb);
+}
+
+.input-bar__raw-hint {
+  align-self: center;
+  flex: 0 0 auto;
+  max-width: 12rem;
+  color: var(--k-fg-muted, #94a3b8);
+  border: 1px solid var(--k-border-subtle, #2a2f3a);
+  background: var(--k-bg-input, #1f2530);
+  border-radius: 999px;
+  padding: 0.25rem 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.input-bar__raw-hint--warning {
+  color: #fed7aa;
+  border-color: #fb923c;
+  background: #431407;
 }
 
 /* The param composer (refine / regenerate / any slot-form) is a wrapping,

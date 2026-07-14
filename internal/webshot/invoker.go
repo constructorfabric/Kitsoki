@@ -48,9 +48,11 @@ func (ExecRunner) Run(ctx context.Context, dir, name string, args ...string) err
 	return nil
 }
 
-// Capture shells `pnpm exec tsx web-shot.ts --url … --out … --viewport WxH`
-// under RepoRoot/tools/runstatus. pnpm exec resolves tsx + @playwright/test
-// from that workspace package, matching how the skills run their specs.
+// Capture shells `node_modules/.bin/tsx web-shot.ts --url … --out … --viewport
+// WxH` under RepoRoot/tools/runstatus. Calling the local binary directly avoids
+// pnpm's workspace temp-file writes, which fail when the Kitsoki checkout is
+// protected read-only, while still resolving tsx + @playwright/test from the
+// runstatus package's installed dependencies.
 func (n *NodeInvoker) Capture(ctx context.Context, req CaptureRequest) error {
 	if n.RepoRoot == "" {
 		return fmt.Errorf("webshot: NodeInvoker.RepoRoot is required")
@@ -60,8 +62,9 @@ func (n *NodeInvoker) Capture(ctx context.Context, req CaptureRequest) error {
 		runner = ExecRunner{}
 	}
 	dir := filepath.Join(n.RepoRoot, "tools", "runstatus")
+	tsx := filepath.Join(dir, "node_modules", ".bin", "tsx")
 	args := []string{
-		"exec", "tsx", "web-shot.ts",
+		"web-shot.ts",
 		"--url", req.URL,
 		"--out", req.OutPath,
 		"--viewport", req.Viewport.String(),
@@ -90,7 +93,7 @@ func (n *NodeInvoker) Capture(ctx context.Context, req CaptureRequest) error {
 	for _, text := range req.AssertText {
 		args = append(args, "--assert-text", text)
 	}
-	return runner.Run(ctx, dir, "pnpm", args...)
+	return runner.Run(ctx, dir, tsx, args...)
 }
 
 // tempPNGPath returns a fresh temp .png path the invoker writes to and Shot

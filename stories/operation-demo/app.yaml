@@ -1,0 +1,44 @@
+app:
+  id: operation-demo
+  version: 0.1.0
+  title: "Operation Handles Demo"
+  author: "kitsoki"
+  license: "CC0"
+
+# A minimal no-LLM story for the operation-handles feature spotlight. The
+# `start` intent creates an autonomous background operation, then a delayed
+# flow-stubbed host.run completes it so the Web UI can capture both the running
+# handle and the terminal artifact affordance.
+
+hosts:
+  - host.run
+
+world:
+  last_job_id:    { type: string, default: "" }
+  status:         { type: string, default: "idle" }
+  result_summary: { type: string, default: "" }
+  result_path:    { type: string, default: "" }
+
+intents:
+  start:
+    description: "Start the background operation."
+    examples: ["start", "run operation", "go"]
+  check:
+    description: "Inspect the current operation state."
+    examples: ["look", "check"]
+
+operations:
+  background_task:
+    title: "Background task"
+    mode: autonomous
+    execution_mode: one-shot
+    run_in_background: true
+    stop_on: [host-error]
+    terminal_artifact: result_path
+    phase_summary:
+      from: [last_job_id, result_summary, result_path]
+
+root: idle
+
+include:
+  - rooms/*.yaml

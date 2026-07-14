@@ -3,6 +3,17 @@
 You are validating the applied fix for **{{ args.ticket_id }}** —
 *{{ args.ticket_title }}* against the full environment.
 
+{% if args.ticket_body %}## Public ticket details
+
+```markdown
+{{ args.ticket_body }}
+```
+
+Reject a result whose public compatibility/API terms are not evidenced by the
+committed change and focused tests.
+
+{% endif %}
+
 The review found:
 
 > {{ args.review_body }}
@@ -12,6 +23,20 @@ The build / deploy / validation run produced:
 ```
 {{ args.build_log }}
 ```
+
+{% if args.ide_connected %}The attached editor reports **{{ args.ide_diagnostics_count }}** diagnostic(s)
+in its Problems panel:
+
+```
+{{ args.ide_diagnostics }}
+```
+
+Weigh these alongside the build log — a clean build with live editor
+diagnostics still open is not a clean pass.
+{% else %}No editor is attached (`host.ide.get_diagnostics` reports
+`connected: false`) — diagnostics are unavailable for this run; judge on the
+build log and review alone.
+{% endif %}
 
 {% if args.refine_feedback %}## ⚠ Operator refinement directive (cycle {{ args.cycle }})
 
@@ -44,7 +69,13 @@ Before submitting:
 ## Outcomes
 
 - `pass` — the bug's reproduction now produces the expected outcome and
-  no other regressions surfaced.
+  no other regressions surfaced. Before choosing `pass`, independently read
+  the ticket and the regression test: enumerate every observable promise in
+  `summary_markdown` and cite the assertion/evidence for each. A passing test
+  that verifies only one symptom is `fail_short`, with the unasserted promise
+  named in `next_action_hint`; do not let a refreshed state/view stand in for a
+  required user-visible message, transcript, side effect, persisted value, or
+  terminal state.
 - `fail_short` — a minor adjustment to the implementation will fix it
   (control returns to `implementing`).
 - `fail` — the fix is wrong; the proposal needs to be redrafted (control

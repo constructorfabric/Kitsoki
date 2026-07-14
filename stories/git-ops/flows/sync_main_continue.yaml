@@ -1,0 +1,57 @@
+# sync_main_continue - after manual conflict resolution, git-ops can run the
+# sync helper's --continue path without exposing the shell command in recipes.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: main_ops
+initial_world:
+  integration_branch: main
+  current_branch:     main
+  on_integration:     true
+  working_dir:        "."
+  main_worktree_path: "."
+
+host_handlers:
+  host.run:
+    by_call:
+      refresh_main:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            branch:             main
+            main_worktree_path: "."
+            worktree_list:      { raw: "" }
+            commits_ahead:      0
+            commits_behind:     0
+            has_uncommitted:    false
+            merge_in_progress:  false
+            no_common_ancestor: false
+            upstream_tracking:  false
+      sync_main_exec:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            outcome:  prepared
+            branch:   sync/main-origin-main-20260704T010203Z
+            worktree: /repo/.worktrees/sync-main-origin-main-20260704T010203Z
+            output:   "Integration branch: sync/main-origin-main-20260704T010203Z\nIntegration worktree: /repo/.worktrees/sync-main-origin-main-20260704T010203Z"
+            ok:       true
+
+turns:
+  - intent:
+      name: sync_main
+      slots:
+        continue_branch: sync/main-origin-main-20260704T010203Z
+    expect_state: sync_main
+    expect_world:
+      sync_continue_branch: sync/main-origin-main-20260704T010203Z
+      sync_result:
+        outcome:  prepared
+        branch:   sync/main-origin-main-20260704T010203Z
+        worktree: /repo/.worktrees/sync-main-origin-main-20260704T010203Z
+        output:   "Integration branch: sync/main-origin-main-20260704T010203Z\nIntegration worktree: /repo/.worktrees/sync-main-origin-main-20260704T010203Z"
+        ok:       true
+
+expect_no_errors: true

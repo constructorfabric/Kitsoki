@@ -1,0 +1,28 @@
+states:
+  produce:
+    description: "Producing via host.run"
+    on_enter:
+      # $MATERIALIZE_HOST_TEST_OUT is set by the test; writing through an
+      # env var keeps the fixture free of absolute paths.
+      - invoke: host.run
+        id: run_producer
+        with:
+          cmd: "sh"
+          args:
+            - "-c"
+            - "printf produced > \"$MATERIALIZE_HOST_TEST_OUT\""
+            - "sh"
+        bind: { produce_ok: ok }
+      - set: { status: "produced" }
+    view: "Producing for {{ world.node_id }}."
+    on:
+      next:
+        - target: done
+      look:
+        - target: produce
+  done:
+    description: "Done"
+    view: "Done ({{ world.status }})."
+    on:
+      look:
+        - target: done

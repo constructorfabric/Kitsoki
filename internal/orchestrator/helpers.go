@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	"kitsoki/internal/app"
@@ -348,7 +347,7 @@ func (o *Orchestrator) RunIntentWithInput(ctx context.Context, sid app.SessionID
 		// synthetic "[intent] <name>" marker is not free text), so pass that;
 		// an empty displayInput makes maybeOffRamp inert. Inert for every
 		// non-no-match code flowing through here.
-		if outcome, ok := o.maybeOffRamp(ctx, sid, journey.State, displayInput, ve.Code, call.Confidence, allowedNames, turnNum); ok {
+		if outcome, ok := o.maybeOffRamp(ctx, sid, journey.State, journey.World, displayInput, ve.Code, call.Confidence, allowedNames, turnNum); ok {
 			return outcome, nil
 		}
 
@@ -396,6 +395,12 @@ func (o *Orchestrator) RunIntentWithInput(ctx context.Context, sid app.SessionID
 		Turn:      turnNum,
 		StatePath: result.NewState,
 	})
+	// dispatchState is the room whose on_enter host calls are about to fire —
+	// captured before hostRedirect can reassign result.NewState, so
+	// transitionedTurnEndWithGateSignal's usable-kitsoki-gate signal
+	// (room-workbench Task 1.4(b)) attributes this turn's dispatch to the
+	// room that actually owned it, not wherever an on_error redirect lands.
+	dispatchState := result.NewState
 	hostEvents, hostWorld, hostView, hostRedirect, hostErr := o.dispatchHostCalls(ctx, sid, result.HostCalls, result.World, result.NewState)
 	if hostErr != nil {
 		tl.Debug(ctx, trace.EvHarnessError, slog.String("host_dispatch_error", hostErr.Error()))
@@ -407,13 +412,12 @@ func (o *Orchestrator) RunIntentWithInput(ctx context.Context, sid app.SessionID
 			result.View = hostView
 		}
 	}
+	dispatchFailed := hostRedirect != ""
 	if hostRedirect != "" {
 		result.NewState = hostRedirect
-		if msg, ok := result.World.Vars["last_error"].(string); ok && msg != "" {
-			if !strings.Contains(result.View, msg) {
-				result.View = appendErrorBanner(result.View, msg)
-			}
-		}
+		// The never-silent banner is applied once, upstream, by
+		// dispatchHostCalls's shared applyErrorBannerSeam seam
+		// (host_dispatch.go) — result.View already carries it here.
 	}
 
 	// Post-bind emit_intent dispatch — see settlePostBindEmits doc.
@@ -436,7 +440,7 @@ func (o *Orchestrator) RunIntentWithInput(ctx context.Context, sid app.SessionID
 
 	successEvents := append([]store.Event{inputEvent, startEvent, acceptedEvent}, result.Events...)
 	endEvent := newOrchestratorEvent(store.TurnEnded,
-		transitionedTurnEnd(result.NewState, result.View), turnNum)
+		transitionedTurnEndWithGateSignal(o.def, result.NewState, result.View, dispatchState, dispatchFailed, result.World.Vars), turnNum)
 	successEvents = append(successEvents, endEvent)
 	for i := range successEvents {
 		successEvents[i].Turn = turnNum

@@ -1,6 +1,6 @@
 # refine_budget_exhaust_validating — validating_cycle hits validating_budget;
 # next refine routes to @exit:abandoned. This is the late-pipeline budget
-# bail; mirrors cyber-repo's phase_9_7 cycle-budget arcs.
+# bail; mirrors focused-engineering's phase_9_7 cycle-budget arcs.
 
 test_kind: flow
 app: ../app.yaml
@@ -16,7 +16,7 @@ host_handlers:
     data: { ok: true, message_id: "msg-1" }
   host.inbox.add:
     data: { ok: true, id: "ib-1" }
-  host.git_worktree:
+  host.capsule_workspace:
     data: { ok: true, log: "" }
   host.git:
     data: { ok: true, sha: "abc", diff: "" }

@@ -1,0 +1,79 @@
+# The optional proposal plan is compiled by the real Starlark glue, without an
+# LLM or filesystem access. It proves ordered dependencies become bounded,
+# per-item CodeAct capability grants without changing legacy execution modes.
+
+test_kind: flow
+app: ../app.yaml
+# Seed one state before proposing so the fixture exercises the real
+# reproducing -> proposing transition. Flow fixtures seed their initial state
+# without running its on_enter effects; starting directly in proposing would
+# test only the view, not the compiler invocation.
+initial_state: proposing
+initial_world:
+  implementation_mode: codeact_decomposed
+  judge_mode: human
+  propose_fix_artifact:
+    summary_title: "Split parser repair from regression assertion"
+    summary_markdown: "A sufficiently detailed proposal fixture used to prove that the optional decomposed CodeAct implementation plan is compiled deterministically before any write-capable action is dispatched."
+    fix_description: "Correct parser state handling and add the focused regression assertion."
+    root_cause: "The parser accepts an invalid state because a transition branch omits the terminal guard."
+    affected_files: [internal/parser/state.go, internal/parser/state_test.go]
+    confidence: 0.8
+    reasoning: "The reproducer identifies the missing guard, and the two edits have a clear dependency: repair the state machine before asserting the fixed transition."
+    implementation_plan:
+      - id: repair-state
+        depends_on: []
+        objective: "Reject invalid parser transitions."
+        evidence_refs: ["reproduction: invalid transition accepted"]
+        read_paths: [internal/parser/state.go]
+        write_paths: [internal/parser/state.go]
+        invariants: [Valid parser transitions remain accepted.]
+        acceptance_commands: [go test ./internal/parser -run TestTransition -count=1]
+        expected_artifacts: [internal/parser/state.go]
+        max_steps: 4
+        fallback_reason_allowlist: [capability_missing]
+      - id: add-regression
+        depends_on: [repair-state]
+        objective: "Assert the invalid transition is rejected."
+        evidence_refs: ["reproduction: invalid transition accepted"]
+        read_paths: [internal/parser/state.go, internal/parser/state_test.go]
+        write_paths: [internal/parser/state_test.go]
+        invariants: [Existing valid transition coverage remains intact.]
+        acceptance_commands: [go test ./internal/parser -run TestInvalidTransition -count=1]
+        expected_artifacts: [internal/parser/state_test.go]
+        max_steps: 3
+        fallback_reason_allowlist: [task_not_decomposable]
+
+# `host_handlers` selects the orchestrator-backed flow path, which is where
+# the real registered host.starlark.run handler executes. The legacy machine
+# path intentionally renders effects but has no host registry.
+host_handlers:
+  host.inbox.add:
+    data: { ok: true }
+
+turns:
+  - intent: { name: accept, slots: {} }
+    expect_state: implementing
+    expect_world:
+      implementation_capability_manifest:
+        version: bugfix-implementation-plan/v1
+        items:
+          - id: repair-state
+            capabilities:
+              world: read
+              fs:
+                read: [internal/parser/state.go]
+                write: [internal/parser/state.go]
+                max_bytes: 65536
+              vcs: read
+          - id: add-regression
+            capabilities:
+              world: read
+              fs:
+                read: [internal/parser/state.go, internal/parser/state_test.go]
+                write: [internal/parser/state_test.go]
+                max_bytes: 65536
+              vcs: read
+    expect_host_calls: [{ handler: host.starlark.run, call: compile_implementation_plan }]
+
+expect_no_errors: true

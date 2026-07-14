@@ -1,0 +1,44 @@
+{
+  "run_id": "persona-qa-kitsoki-product-review",
+  "summary": {
+    "strength": 2,
+    "weakness": 1,
+    "issue": 0,
+    "fix": 1,
+    "blocked": 0
+  },
+  "items": [
+    {
+      "id": "kitsoki-strength-source-bundle",
+      "kind": "strength",
+      "title": "Deck has a source bundle",
+      "severity": "low",
+      "status": "open",
+      "scenario": "explain-delivery-loop"
+    },
+    {
+      "id": "kitsoki-strength-playback",
+      "kind": "strength",
+      "title": "Playback evidence survives into the deck",
+      "severity": "low",
+      "status": "open",
+      "scenario": "verify-ui-evidence"
+    },
+    {
+      "id": "kitsoki-weakness-gallery-bundle",
+      "kind": "weakness",
+      "title": "Published examples must keep bundle viewers in sync",
+      "severity": "medium",
+      "status": "fixed",
+      "scenario": "verify-ui-evidence"
+    },
+    {
+      "id": "kitsoki-fix-deterministic-deck",
+      "kind": "fix",
+      "title": "Add persona-qa deck regeneration command",
+      "severity": "low",
+      "status": "fixed",
+      "scenario": "explain-delivery-loop"
+    }
+  ]
+}

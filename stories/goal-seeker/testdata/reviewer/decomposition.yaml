@@ -1,0 +1,18 @@
+goal_slug: reviewer-test
+changes:
+  - id: "C1"          # worker self-reports gate green — must be IGNORED
+    wall: WT
+    title: "Worker self-green"
+    pipeline: implementation
+    scope: ["c1/**"]
+    depends_on: []
+    acceptance: ["x"]
+    gate: { class: G-FLOW, cmd: "true" }
+  - id: "C2"          # reviewer reports gate green — counts
+    wall: WT
+    title: "Reviewer green"
+    pipeline: implementation
+    scope: ["c2/**"]
+    depends_on: []
+    acceptance: ["x"]
+    gate: { class: G-FLOW, cmd: "true" }

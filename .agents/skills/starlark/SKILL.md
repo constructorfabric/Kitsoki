@@ -17,13 +17,14 @@ Two layers, two readerships:
 - **The kitsoki `host.starlark.run` surface** (the `main(ctx)` contract, the
   sidecar, `ctx.inputs`/`world`/`http`, cassettes) — start at
   [`reference/kitsoki.md`](reference/kitsoki.md), whose authoritative contract
-  reference is [`docs/architecture/hosts.md#hoststarlarkrun`](../../architecture/hosts.md#hoststarlarkrun).
+  reference is [`docs/architecture/hosts.md#hoststarlarkrun`](../../../docs/architecture/hosts.md#hoststarlarkrun).
 
 ## Reference (read on demand)
 
 | File | When you need it |
 |---|---|
 | [`reference/kitsoki.md`](reference/kitsoki.md) | **Authoring a kitsoki glue script**: the `main(ctx) -> dict` contract, the `.star.yaml` sidecar, the `ctx` surface, `fail()` → `on_error:`, the no-LLM validation loop |
+| [`reference/stdlib.md`](reference/stdlib.md) | Kitsoki's deterministic Starlark stdlib: exact `json`, `math`, and decode-only `yaml` module surfaces, examples, and missing modules |
 | [`reference/language.md`](reference/language.md) | Language semantics + the **Python-3 → Starlark divergence cheatsheet** (the gotchas) |
 | [`reference/go-runtime.md`](reference/go-runtime.md) | Embedding API: `Thread`, `ExecFileOptions`, `Value`/custom types, exposing Go builtins, dialect flags, running untrusted code safely |
 | [`reference/validation.md`](reference/validation.md) | The validation toolchain — buildifier, `starcheck` (incl. the `-kitsoki` profile), the `starlark` CLI, `kitsoki test flows` |
@@ -63,7 +64,7 @@ go run . -r scripts/                          # a whole tree
 go run . -predeclared=world,http,secret f.star # only these builtins are granted
 
 # 2b. kitsoki glue script — pins the EXACT host.starlark.run sandbox surface
-#     (predeclared={json,math}, strict dialect, requires def main(ctx)):
+#     (predeclared={json,math,yaml}, strict dialect, requires def main(ctx)):
 go run . -kitsoki scripts/derive.star
 
 # format + starcheck over a path in one shot:
@@ -125,11 +126,15 @@ language gotchas above:
 1. **The sidecar is law.** Every declared output must be returned and every
    returned key must be declared, or the run is an `on_error:` domain failure.
    The `INPUTS`/`OUTPUTS` dicts some scripts write are documentation only.
-2. **`ctx` is the whole world.** Exactly `ctx.inputs` (dict), `ctx.world.get(k)`
-   (read-only), `ctx.http.get/post`. No `set`, no fs, no env, no clock, no
-   random — `ctx.world` can't be written; outputs go through the return dict.
-3. **Only `json` + `math`** are predeclared. No `time`, no `random` (they'd
-   break determinism). `starcheck -kitsoki` enforces exactly this set.
+2. **`ctx` is the whole world, and external surfaces are opt-in.** `ctx.inputs`
+   (dict) and `ctx.world.get(k)` (read-only) are available by default; `ctx.http`,
+   `ctx.fs`, `ctx.probe`, and `ctx.host` appear only when
+   `with.capabilities` grants them. No world `set`, no env, no clock, no random
+   — world outputs go through the return dict.
+3. **Only `json` + `math` + decode-only `yaml`** are predeclared. No `time`, no
+   `random` (they'd break determinism). `starcheck -kitsoki` enforces this
+   default set; [`reference/stdlib.md`](reference/stdlib.md) lists the exact
+   functions.
 4. **`fail()` is your error channel.** There are no exceptions; `fail(msg)` sets
    `world.last_error` and fires the effect's `on_error:` arc. Validate up front.
 5. **Test with a cassette, never a live call.** A flow fixture replays the
@@ -138,8 +143,10 @@ language gotchas above:
 
 Authoring contract, sidecar types, the `ctx` surface, error mapping, and the
 HTTP-cassette format are documented authoritatively in
-[`docs/architecture/hosts.md#hoststarlarkrun`](../../architecture/hosts.md#hoststarlarkrun);
+[`docs/architecture/hosts.md#hoststarlarkrun`](../../../docs/architecture/hosts.md#hoststarlarkrun);
 the skill-side authoring + validation loop is [`reference/kitsoki.md`](reference/kitsoki.md).
+The broader Starlark experience, including CodeAct and sandbox layering, is
+[`docs/architecture/starlark.md`](../../../docs/architecture/starlark.md).
 Runnable examples: [`stories/starlark-enrich/`](../../../stories/starlark-enrich/)
 (minimal) and [`stories/weather-report/`](../../../stories/weather-report/)
 (two chained HTTP calls, branch on mode, table outputs).

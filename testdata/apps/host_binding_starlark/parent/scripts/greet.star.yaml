@@ -1,0 +1,12 @@
+# Sidecar for greet.star — see internal/host/starlark/doc.go. Declares `op`
+# so the load-time input-shape check (loader.go: validateStarlarkEffects) has
+# a type to vet against IF an author ever wires `op` explicitly; the
+# StarlarkBindingHandler injection path (internal/host/starlark_binding.go)
+# supplies it at runtime regardless of whether it's declared here — declaring
+# it is just good sidecar hygiene since the script reads it.
+inputs:
+  name: { type: string, required: true }
+  op:   { type: string, required: false }
+
+outputs:
+  message: { type: string }

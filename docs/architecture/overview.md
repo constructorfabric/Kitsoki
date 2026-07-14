@@ -158,6 +158,13 @@ The system goes out of its way to keep the user out of that branch.
 It also goes out of its way to never let the LLM **cause** something
 the author didn't declare.
 
+A related **never-silent invariant** covers `on_error:` redirects
+(a story-declared fallback room, distinct from the retry/human-escape
+path above): whichever room an error redirect lands in, the rendered
+view always carries a visible trace of the failure before the turn
+ends, enforced once in a shared seam every dispatch path routes
+through. See [state-machine.md](../stories/state-machine.md#on_error-redirects-and-the-recursion-cap).
+
 An optional **semantic routing** stack — author-declared synonyms,
 synonym templates that capture typed slots, and a per-session
 turncache — can sit between the deterministic menu match and the LLM
@@ -181,6 +188,12 @@ and stops at the first that resolves:
    Cost: per-template NFA walk plus per-slot parse, all <100 µs in
    practice. Confidence: 0.80 (all slots filled) or 0.65 (some named
    but unparseable).
+   A verdict strictly between 0 and the mid-bar is a **near-miss**: it
+   never auto-resolves to the closest intent (the source of
+   adjacent-command misroutes) — it is recorded on the trace
+   (`turn.near_miss`) and falls through to the next tier, escalating
+   to the S1 workbench once that exists. See
+   [semantic-routing.md](semantic-routing.md#13-synonym-templates).
 4. **Turn-result cache** (`tryTurnCache`) — keyed by `(app, app_hash,
    state_path, lex.Signature(input))`. A hit re-runs `Machine.Validate`
    against the live world; on success it short-circuits via
@@ -497,7 +510,7 @@ The conceptual model above is realised by a small set of Go packages
 under `internal/`. This section is for someone working on kitsoki
 itself; if you're an application author or a user, you can stop
 here and head to [`authoring.md`](../stories/authoring.md) or
-[`developer-guide.md`](developer-guide.md).
+[`developer-guide.md`](../guide/development/developer-guide.md).
 
 ### 11.1 Layered view
 
@@ -893,7 +906,7 @@ runs `kitsoki turn` or other kitsoki subcommands as tools.
 - **Authoring an app** → [`authoring.md`](../stories/authoring.md) and
   `kitsoki docs app-schema`.
 - **State machine vocabulary** → [`state-machine.md`](../stories/state-machine.md).
-- **Building or contributing** → [`developer-guide.md`](developer-guide.md).
+- **Building or contributing** → [`developer-guide.md`](../guide/development/developer-guide.md).
 - **Testing** → [`testing.md`](../tracing/testing.md).
 - **Background jobs** → [`background-jobs/`](../stories/background-jobs/README.md).
 - **Hosts and transports** → [`hosts.md`](hosts.md), [`transports.md`](transports.md).

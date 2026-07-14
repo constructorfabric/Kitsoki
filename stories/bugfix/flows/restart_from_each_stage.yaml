@@ -1,4 +1,4 @@
-# restart_from_each_stage — port of cyber-repo's
+# restart_from_each_stage — port of focused-engineering's
 # stories/bugfix/flows/restart_from_each_stage.yaml.
 #
 # The done room's restart_from arc has a when:-ladder across each
@@ -29,7 +29,7 @@ host_handlers:
     data: { ok: true, message_id: "msg-1" }
   host.inbox.add:
     data: { ok: true, id: "ib-1" }
-  host.git_worktree:
+  host.capsule_workspace:
     data: { ok: true, log: "" }
   host.git:
     data: { ok: true, sha: "abc", diff: "" }
@@ -88,7 +88,7 @@ host_handlers:
     data: { ok: true, message_id: "msg-1" }
   host.inbox.add:
     data: { ok: true, id: "ib-1" }
-  host.git_worktree:
+  host.capsule_workspace:
     data: { ok: true, log: "" }
   host.git:
     data: { ok: true, sha: "abc", diff: "" }
@@ -140,7 +140,7 @@ host_handlers:
     data: { ok: true, message_id: "msg-1" }
   host.inbox.add:
     data: { ok: true, id: "ib-1" }
-  host.git_worktree:
+  host.capsule_workspace:
     data: { ok: true, log: "" }
   host.git:
     data: { ok: true, sha: "abc", diff: "" }
@@ -192,7 +192,7 @@ host_handlers:
     data: { ok: true, message_id: "msg-1" }
   host.inbox.add:
     data: { ok: true, id: "ib-1" }
-  host.git_worktree:
+  host.capsule_workspace:
     data: { ok: true, log: "" }
   host.git:
     data: { ok: true, sha: "abc", diff: "" }
@@ -244,7 +244,7 @@ host_handlers:
     data: { ok: true, message_id: "msg-1" }
   host.inbox.add:
     data: { ok: true, id: "ib-1" }
-  host.git_worktree:
+  host.capsule_workspace:
     data: { ok: true, log: "" }
   host.git:
     data: { ok: true, sha: "abc", diff: "" }

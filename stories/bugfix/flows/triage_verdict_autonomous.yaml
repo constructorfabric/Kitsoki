@@ -21,10 +21,11 @@ initial_world:
 host_handlers:
   host.append_to_file: { data: { ok: true } }
   host.inbox.add:      { data: { ok: true } }
-  host.agent.task:
+  host.agent.codeact:
     data:
       ok: true
-      submitted:
+      terminated: "done"
+      payload:
         verdict:          "ALREADY-FIXED"
         confidence:       0.92
         summary_title:    "ALREADY-FIXED — severity sort landed in localfiles_ticket.go"
@@ -34,6 +35,9 @@ host_handlers:
         fixed_in_ref:     "localfiles_ticket.go:328"
         involved_components:
           - { name: "internal/host/localfiles_ticket.go", reason: "sort + summary field fixed" }
+      steps:
+        - snippet: "def main(ctx):\n    return {'seen': ctx.world.get('ticket_id')}"
+          observation: { seen: "TKT-TRIAGE-1" }
 
 turns:
   # triage → triaging.on_enter binds the verdict → auto-accept → @exit:triaged.

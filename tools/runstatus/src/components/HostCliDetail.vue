@@ -250,11 +250,11 @@ const cmdLine = computed((): string => {
       const name = str(m["name"]);
       const id = str(m["id"]);
       const base = str(m["base"]);
-      return `git worktree add -b ${name} .worktrees/${id} ${base}`;
+      return `scripts/dev-workspace.sh create --id ${id} --branch ${name} --base ${base}`;
     }
     case "host.git_worktree.sync": {
       const id = str(m["id"]);
-      return `git pull --ff-only  (worktree: ${id})`;
+      return `scripts/dev-workspace.sh status ${id}`;
     }
     default:
       return props.namespace;

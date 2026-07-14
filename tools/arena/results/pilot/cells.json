@@ -1,0 +1,146 @@
+{
+  "cost-bench-pilot--kitsoki-codex-native--task:nextjs-05-story-runtime": {
+    "exit_code": 0,
+    "stdout": {
+      "verdict": "solved",
+      "cost_usd": 0.62,
+      "tokens": 62000,
+      "wall_s": 188.4,
+      "evidence_refs": ["tools/arena/corpus/cost-bench.manifest.yaml#nextjs-05-story-runtime", "pilot/oracles/nextjs-05-story-runtime/kitsoki-codex-native.json"],
+      "trace_ref": "pilot/traces/nextjs-05-story-runtime/kitsoki-codex-native.jsonl",
+      "notes": "oracle GREEN; paired pilot replay payload"
+    }
+  },
+  "cost-bench-pilot--kitsoki-codex-native--task:query-string-qs1-bugfix-test-repair": {
+    "exit_code": 0,
+    "stdout": {
+      "verdict": "solved",
+      "cost_usd": 0.74,
+      "tokens": 74000,
+      "wall_s": 211.2,
+      "evidence_refs": ["tools/arena/corpus/cost-bench.manifest.yaml#query-string-qs1-bugfix-test-repair", "pilot/oracles/query-string-qs1-bugfix-test-repair/kitsoki-codex-native.json"],
+      "trace_ref": "pilot/traces/query-string-qs1-bugfix-test-repair/kitsoki-codex-native.jsonl",
+      "notes": "oracle GREEN; paired pilot replay payload"
+    }
+  },
+  "cost-bench-pilot--kitsoki-codex-native--task:vscode-01-docs-site-release": {
+    "exit_code": 0,
+    "stdout": {
+      "verdict": "solved",
+      "cost_usd": 0.38,
+      "tokens": 38000,
+      "wall_s": 94.6,
+      "evidence_refs": ["tools/arena/corpus/cost-bench.manifest.yaml#vscode-01-docs-site-release", "pilot/oracles/vscode-01-docs-site-release/kitsoki-codex-native.json"],
+      "trace_ref": "pilot/traces/vscode-01-docs-site-release/kitsoki-codex-native.jsonl",
+      "notes": "oracle GREEN; paired pilot replay payload"
+    }
+  },
+  "cost-bench-pilot--kitsoki-synthetic-claude--task:nextjs-05-story-runtime": {
+    "exit_code": 0,
+    "stdout": {
+      "verdict": "solved",
+      "cost_usd": 0.11,
+      "tokens": 59000,
+      "wall_s": 172.8,
+      "evidence_refs": ["tools/arena/corpus/cost-bench.manifest.yaml#nextjs-05-story-runtime", "pilot/oracles/nextjs-05-story-runtime/kitsoki-synthetic-claude.json"],
+      "trace_ref": "pilot/traces/nextjs-05-story-runtime/kitsoki-synthetic-claude.jsonl",
+      "notes": "oracle GREEN; synthetic replay payload"
+    }
+  },
+  "cost-bench-pilot--kitsoki-synthetic-claude--task:query-string-qs1-bugfix-test-repair": {
+    "exit_code": 0,
+    "stdout": {
+      "verdict": "partial",
+      "cost_usd": 0.13,
+      "tokens": 71000,
+      "wall_s": 226.5,
+      "evidence_refs": ["tools/arena/corpus/cost-bench.manifest.yaml#query-string-qs1-bugfix-test-repair", "pilot/oracles/query-string-qs1-bugfix-test-repair/kitsoki-synthetic-claude.json"],
+      "trace_ref": "pilot/traces/query-string-qs1-bugfix-test-repair/kitsoki-synthetic-claude.jsonl",
+      "notes": "oracle GREEN but suite signal partial; synthetic replay payload"
+    }
+  },
+  "cost-bench-pilot--kitsoki-synthetic-claude--task:vscode-01-docs-site-release": {
+    "exit_code": 0,
+    "stdout": {
+      "verdict": "solved",
+      "cost_usd": 0.08,
+      "tokens": 36000,
+      "wall_s": 88.0,
+      "evidence_refs": ["tools/arena/corpus/cost-bench.manifest.yaml#vscode-01-docs-site-release", "pilot/oracles/vscode-01-docs-site-release/kitsoki-synthetic-claude.json"],
+      "trace_ref": "pilot/traces/vscode-01-docs-site-release/kitsoki-synthetic-claude.jsonl",
+      "notes": "oracle GREEN; synthetic replay payload"
+    }
+  },
+  "cost-bench-pilot--single-briefed-codex-native--task:nextjs-05-story-runtime": {
+    "exit_code": 0,
+    "stdout": {
+      "verdict": "partial",
+      "cost_usd": 0.49,
+      "tokens": 49000,
+      "wall_s": 161.9,
+      "evidence_refs": ["tools/arena/corpus/cost-bench.manifest.yaml#nextjs-05-story-runtime", "pilot/oracles/nextjs-05-story-runtime/single-briefed-codex-native.json"],
+      "trace_ref": "pilot/traces/nextjs-05-story-runtime/single-briefed-codex-native.jsonl",
+      "notes": "oracle GREEN but secondary checks incomplete; paired pilot replay payload"
+    }
+  },
+  "cost-bench-pilot--single-briefed-codex-native--task:query-string-qs1-bugfix-test-repair": {
+    "exit_code": 0,
+    "stdout": {
+      "verdict": "failed",
+      "cost_usd": 0.53,
+      "tokens": 53000,
+      "wall_s": 177.4,
+      "evidence_refs": ["tools/arena/corpus/cost-bench.manifest.yaml#query-string-qs1-bugfix-test-repair", "pilot/oracles/query-string-qs1-bugfix-test-repair/single-briefed-codex-native.json"],
+      "trace_ref": "pilot/traces/query-string-qs1-bugfix-test-repair/single-briefed-codex-native.jsonl",
+      "notes": "oracle RED; paired pilot replay payload"
+    }
+  },
+  "cost-bench-pilot--single-briefed-codex-native--task:vscode-01-docs-site-release": {
+    "exit_code": 0,
+    "stdout": {
+      "verdict": "solved",
+      "cost_usd": 0.27,
+      "tokens": 27000,
+      "wall_s": 76.2,
+      "evidence_refs": ["tools/arena/corpus/cost-bench.manifest.yaml#vscode-01-docs-site-release", "pilot/oracles/vscode-01-docs-site-release/single-briefed-codex-native.json"],
+      "trace_ref": "pilot/traces/vscode-01-docs-site-release/single-briefed-codex-native.jsonl",
+      "notes": "oracle GREEN; paired pilot replay payload"
+    }
+  },
+  "cost-bench-pilot--single-briefed-synthetic-claude--task:nextjs-05-story-runtime": {
+    "exit_code": 0,
+    "stdout": {
+      "verdict": "failed",
+      "cost_usd": 0.07,
+      "tokens": 47000,
+      "wall_s": 148.3,
+      "evidence_refs": ["tools/arena/corpus/cost-bench.manifest.yaml#nextjs-05-story-runtime", "pilot/oracles/nextjs-05-story-runtime/single-briefed-synthetic-claude.json"],
+      "trace_ref": "pilot/traces/nextjs-05-story-runtime/single-briefed-synthetic-claude.jsonl",
+      "notes": "oracle RED; synthetic replay payload"
+    }
+  },
+  "cost-bench-pilot--single-briefed-synthetic-claude--task:query-string-qs1-bugfix-test-repair": {
+    "exit_code": 0,
+    "stdout": {
+      "verdict": "failed",
+      "cost_usd": 0.09,
+      "tokens": 56000,
+      "wall_s": 198.7,
+      "evidence_refs": ["tools/arena/corpus/cost-bench.manifest.yaml#query-string-qs1-bugfix-test-repair", "pilot/oracles/query-string-qs1-bugfix-test-repair/single-briefed-synthetic-claude.json"],
+      "trace_ref": "pilot/traces/query-string-qs1-bugfix-test-repair/single-briefed-synthetic-claude.jsonl",
+      "notes": "oracle RED; synthetic replay payload"
+    }
+  },
+  "cost-bench-pilot--single-briefed-synthetic-claude--task:vscode-01-docs-site-release": {
+    "exit_code": 0,
+    "stdout": {
+      "verdict": "partial",
+      "cost_usd": 0.05,
+      "tokens": 24000,
+      "wall_s": 63.1,
+      "evidence_refs": ["tools/arena/corpus/cost-bench.manifest.yaml#vscode-01-docs-site-release", "pilot/oracles/vscode-01-docs-site-release/single-briefed-synthetic-claude.json"],
+      "trace_ref": "pilot/traces/vscode-01-docs-site-release/single-briefed-synthetic-claude.jsonl",
+      "notes": "oracle GREEN but doc anchor review incomplete; synthetic replay payload"
+    }
+  }
+}

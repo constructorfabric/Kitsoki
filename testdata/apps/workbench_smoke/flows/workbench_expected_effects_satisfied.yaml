@@ -1,0 +1,25 @@
+# workbench_expected_effects_satisfied — room-workbench S6 projection: proves
+# internal/orchestrator/workbench_gate_signal.go's real expected_effects join
+# computes candidate_completed = true when the workbench's own bound
+# close-out note (bench_note, via host_cassette) actually covers every entry
+# in bench_expected_effects (seeded here via initial_world) — not a
+# hardcoded value. Companion to workbench_expected_effects_unsatisfied.yaml,
+# which pins the honest-incomplete case.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: bench
+initial_world:
+  bench_expected_effects: ["ran the flaky test", "filed a ticket"]
+
+host_cassette: workbench_expected_effects_satisfied_cassette.yaml
+
+turns:
+  - intent: { name: bench_capture, slots: { request: "fix the flaky test and file a ticket" } }
+    expect_state: bench
+    expect_world:
+      bench_request: "fix the flaky test and file a ticket"
+      bench_note:
+        summary: "Ran the flaky test until it passed, then filed a ticket to track the root cause."
+
+expect_no_errors: false

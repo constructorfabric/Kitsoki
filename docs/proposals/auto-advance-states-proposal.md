@@ -1,6 +1,6 @@
 # Proposal — Auto-advancing states (default-on)
 
-**Status:** Not implemented. Motivated by the cyber-repo bugfix
+**Status:** Not implemented. Motivated by the focused-engineering bugfix
 pipeline's e2e validation (May 2026), where most state transitions are
 deterministic compute-then-route and the external driver (loop.py) has
 to fire `done` repeatedly just to walk the FSM forward.
@@ -191,7 +191,7 @@ today's foreground/background separation.)
 
 ---
 
-## 4. Cyber-repo bugfix migration
+## 4. Bugfix Migration
 
 After kitsoki ships, `stories/bugfix/app.yaml` updates:
 

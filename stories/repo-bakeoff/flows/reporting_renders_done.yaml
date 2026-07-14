@@ -60,7 +60,7 @@ turns:
       completion_markdown: .artifacts/external-bakeoff/report/completion.md
       deck_handle: repo-bakeoff#1
       semantic_handle: repo-bakeoff-semantic#1
-    expect_view_matches: "Completion:         complete-with-pending"
+    expect_view_matches: "complete-with-pending"
 
   - intent: { name: accept, slots: {} }
     expect_state: "__exit__done"

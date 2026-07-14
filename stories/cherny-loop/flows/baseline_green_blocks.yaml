@@ -8,8 +8,8 @@ app: ../app.yaml
 initial_state: configuring
 
 host_handlers:
-  # Worktree minted at launch (iface.workspace.create -> host.git_worktree).
-  host.git_worktree: { data: { ok: true, path: ".worktrees/cherny-loop" } }
+  # Worktree minted at launch (iface.workspace.create -> host.capsule_workspace).
+  host.capsule_workspace: { data: { ok: true, path: ".capsules/workspaces/cherny-loop" } }
   host.run: { data: { ok: true, exit_code: 0, stdout: "ok  kitsoki  0.4s" } }
 
 turns:

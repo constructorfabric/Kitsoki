@@ -1,0 +1,29 @@
+schema: kit/v1
+kit: pog
+namespace: kitsoki
+version: 0.1.0
+title: POG bootstrap kit
+summary: |
+  Initializes a POG-tracked product repository from a short brief through the
+  brief.intake, repo.plan, operator.consent, repo.apply, repo.verify, and
+  handoff story rooms.
+requires:
+  kitsoki: ">=0.0.0"
+parameters:
+  brief:
+    type: string
+    required: true
+    description: Source brief markdown path.
+  custody:
+    type: string
+    default: personal-private
+    description: Initial custody assumption.
+  remote:
+    type: string
+    default: none
+    description: Remote mode; defaults to local-only.
+provides:
+  stories: [init]
+  onboarding: init.brief.intake
+conformance:
+  flows: []

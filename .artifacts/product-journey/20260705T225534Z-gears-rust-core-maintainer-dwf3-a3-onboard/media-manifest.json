@@ -1,0 +1,34 @@
+{
+  "items": [
+    {
+      "evidence_kind": "session_trace",
+      "media_kind": "trace",
+      "notes": "Recording notes summarizing the live session (real trace kept locally at ~/.kitsoki/sessions/dev-story/7ea0fa8e-local-gears-onboard.jsonl; not committed, 4.4MB and machine-local paths).",
+      "path": ".context/dwf3-a3-recording-notes.md",
+      "playback": false,
+      "scenario": "project-onboarding",
+      "source": "local",
+      "status": "captured"
+    },
+    {
+      "evidence_kind": "flow-fixture",
+      "media_kind": "document",
+      "notes": "Real recorded onboard of a fresh gears-rust clone, converted via kitsoki trace to-flow; replays no-LLM via kitsoki test flows stories/dev-story/app.yaml --flows stories/dev-story/flows/onboard_gears_rust.yaml",
+      "path": "stories/dev-story/flows/onboard_gears_rust.yaml",
+      "playback": false,
+      "scenario": "project-onboarding",
+      "source": "local",
+      "status": "captured"
+    }
+  ],
+  "run_id": "20260705T225534Z-gears-rust-core-maintainer-dwf3-a3-onboard",
+  "summary": {
+    "artifact": 0,
+    "document": 1,
+    "image": 0,
+    "playback_items": 0,
+    "total": 2,
+    "trace": 1,
+    "video": 0
+  }
+}

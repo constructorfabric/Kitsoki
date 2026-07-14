@@ -1,0 +1,52 @@
+# route_sync_main_origin - the recipe/routing entry can invoke sync_main
+# through the branch-agnostic intercept hub.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: intercept
+initial_world:
+  integration_branch: main
+  current_branch:     main
+  on_integration:     true
+  working_dir:        "."
+  main_worktree_path: "."
+
+host_handlers:
+  host.run:
+    by_call:
+      refresh_intercept:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            branch:             main
+            main_worktree_path: "."
+            commits_ahead:      0
+            commits_behind:     0
+            has_uncommitted:    false
+            on_integration:     true
+            no_common_ancestor: false
+      sync_main_exec:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            outcome:  up_to_date
+            branch:   ""
+            worktree: ""
+            output:   "main already contains origin/main"
+            ok:       true
+
+turns:
+  - intent: { name: sync_main, slots: { remote: origin } }
+    expect_state: sync_main
+    expect_world:
+      sync_remote:  origin
+      sync_result:
+        outcome:  up_to_date
+        branch:   ""
+        worktree: ""
+        output:   "main already contains origin/main"
+        ok:       true
+
+expect_no_errors: true

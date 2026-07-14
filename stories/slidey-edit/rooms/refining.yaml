@@ -38,6 +38,9 @@ states:
         once: true
         with:
           script: scripts/resolve_scene.star
+          capabilities:
+            fs:
+              read: ["**"]
           # inputs to host.starlark.run are NOT expr-evaluated by the host — the
           # machine resolves each value first, and ONLY strings wrapping the whole
           # value in `{{ }}` are evaluated (a sole `{{ expr }}` preserves the typed
@@ -61,13 +64,14 @@ states:
         once: true
         with:
           agent: reviser
-          working_dir: "{{ world.workspace }}"
+          working_dir: "{{ hasPrefix(world.workspace, '/') ? world.workspace : (world.workdir != '' ? world.workdir + '/' + world.workspace : world.workspace) }}"
           acceptance:
             schema: schemas/deck.json
           context:
             prompt: prompts/refine_deck.md
             args:
               workspace:       "{{ world.workspace }}"
+              workdir:         "{{ world.workdir }}"
               deck:            "{{ world.deck }}"
               annotation:      "{{ world.annotation }}"
               refine_feedback: "{{ world.refine_feedback }}"
@@ -142,6 +146,9 @@ states:
                 deck_path:       ""
                 semantic_path:   ""
                 render_retries:  0   # fresh deck — reset the auto-fix budget
+                render_error_repairable: false
+                render_error_kind: ""
+                render_error_summary: ""
                 # Clear the once: bind + the consumed annotation + scene targeting
                 # so the NEXT refine re-resolves the slide freshly.
                 refine_result:   {}

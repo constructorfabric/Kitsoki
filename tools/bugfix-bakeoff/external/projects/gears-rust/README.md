@@ -50,9 +50,9 @@ gears-rust is heavy + private, so it is **not** network-cloned (the manifest mar
 `local_only: true`, and the `qsbakeoff` loop skips it). Arm it against a LOCAL checkout:
 
 ```sh
-GEARS_RUST_REPO=~/code/gears-rust make gears-bakeoff
+BUGFIX_BAKEOFF_REPO=/path/to/checkout make gears-bakeoff
 # or:
-GEARS_RUST_REPO=~/code/gears-rust \
+BUGFIX_BAKEOFF_REPO=/path/to/checkout \
   go test -tags gearsbakeoff -run TestGearsBakeoff -count=1 -v ./tools/bugfix-bakeoff/external/
 ```
 
@@ -60,7 +60,7 @@ The gated test clones a throwaway `--local --no-checkout` mirror (so the grader'
 fix-source checkout never dirties your working tree). `bench.py` isolates the cargo
 target cache **per fixture** — a shared one cross-contaminates different baselines of
 the same workspace (a newer baseline's rlib would falsely turn an older baseline's RED
-oracle GREEN). Skips cleanly when `GEARS_RUST_REPO` is unset.
+oracle GREEN). Skips cleanly when `BUGFIX_BAKEOFF_REPO` is unset.
 
 ## Add / promote a fixture
 

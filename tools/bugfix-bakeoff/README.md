@@ -1,4 +1,13 @@
-# Bug-fix benchmark — one harness
+# Bug-fix evaluation adapter — not Capsule CI
+
+> **Status: retained evaluation substrate, deprecated lifecycle/runtime.** This
+> directory keeps real-issue manifests, hidden-oracle RED/GREEN arming,
+> deterministic grading, cost accounting, and offline reports. It is not a
+> second CI engine, workspace manager, or general coding-agent surface. Native
+> pinned Capsule workspaces own source materialization, lifecycle, hygiene, and
+> trace/receipt custody; normal project validation should start with Capsule CI.
+> Arena is the preferred comparison/orchestration surface as its remaining
+> consolidation lands.
 
 A single, repo-agnostic harness that answers, for **any** project:
 
@@ -23,7 +32,7 @@ OSS repos with the same contract.
 tools/bugfix-bakeoff/
   external/
     bench.py                 # deterministic grader + fixture verifier + cost (no LLM)
-    drive_cell.sh            # run ONE cell live (COST): prep worktree → drive → score
+    drive_cell.sh            # run ONE cell live (COST): prepare native Capsule → drive → score
     escalate.sh              # run a project's bugs up a cheap→expensive ladder (COST)
     candidates.yaml          # the model/effort axis + named escalation ladders
     projects/<name>/
@@ -79,16 +88,16 @@ Then **arm every fixture before spending a cent** (RED@baseline, GREEN@real-fix)
 
 ```sh
 python3 external/bench.py verify --project <name>           # remote repo
-# local/private repo: verify against a throwaway mirror so it never dirties HEAD:
-git clone --local --no-checkout . /tmp/mir/<name>
-python3 external/bench.py verify --project <name> --repo-dir /tmp/mir/<name>
+# local/private repo: verify against a disposable, read-only native Capsule
+# workspace or other explicitly managed checkout; never mutate a primary HEAD.
+python3 external/bench.py verify --project <name> --repo-dir <managed-capsule-path>
 ```
 
 ## Run one cell (COST — operator-only, never CI)
 
 ```sh
 external/drive_cell.sh --project <name> --bug <id> --candidate glm-5.2 --score
-#   --no-drive   prepare worktree + print prompt only (free, for review)
+#   --no-drive   prepare native Capsule + print prompt only (free, for review)
 ```
 
 ## Escalate cheap→expensive (the onboarding answer)
@@ -108,14 +117,13 @@ param), so a ladder rung is just a candidate row pointing at a profile with that
 The result is `.artifacts/qs-bakeoff/results/escalation-<project>.tsv`:
 the cheapest solving rung per bug.
 
-> **`local_only` projects (kitsoki-self, gears-rust) drive too.** They run against
-> a `git worktree` of THIS checkout at the bug's baseline — no clone, no JS
-> install (the Go/cargo toolchain is already local; a node sub-package like
-> `runstatus` installs at score time via the manifest's `oracle.setup`). So
-> `escalate.sh --project kitsoki --ladder default` works the same way; the cell
-> worktree lands under `.artifacts/qs-bakeoff/cells/`. You can still grade
-> deterministically without a drive via `bench.py verify`/`score` against a
-> `git clone --local` mirror.
+> **`local_only` projects (kitsoki-self, gears-rust) drive too.** They run from
+> an artifact-local, pinned native Capsule under
+> `.capsules/projects/external-bakeoff/`, never a raw worktree or clone. The
+> cell source is disposable after deterministic grading; prompts, traces,
+> scores, and close receipts remain under `.artifacts`. You can still grade
+> without a live drive through `bench.py verify`/`score` against an explicitly
+> managed Capsule checkout.
 
 ## Report + deterministic slidey deck (offline, zero re-spend)
 

@@ -1,0 +1,119 @@
+states:
+  # bootstrap — the init step (goal.py:init). Ensures the log exists (fresh on reset),
+  # then advance to the lint gate. (The structural lint lives in `lint_check`, entered
+  # via a real advance turn, because a room reached through the init cascade does not
+  # re-run its on_enter host.starlark.run binds — only a room entered by an explicit
+  # transition does. The loop is driven one turn at a time.)
+  bootstrap:
+    description: "Initialize the goal work_dir."
+    relevant_world: [goal_slug, work_dir, reset_log, workdir, base_branch]
+    on_enter:
+      # gs_resolve FIRST — derive the goal's execution context (workdir / base
+      # worktree / base branch) from the decomposition's declared `runtime:` block,
+      # so opening the goal-seeker needs no operator workdir seed. Runs before
+      # gs_init on purpose: its workdir bind is visible to gs_init's world snapshot
+      # (a later on_enter host call sees earlier binds), so gs_init — and next turn
+      # gs_lint — root at the goal's worktree. An explicit workdir seed still wins
+      # (gs_resolve echoes it back). See scripts/gs_resolve.star.
+      - invoke: host.starlark.run
+        id: gs_resolve
+        with:
+          script: scripts/gs_resolve.star
+          capabilities:
+            fs:
+              read: ["**"]
+          inputs:
+            goal_dir:           "{{ world.goal_dir }}"
+            workdir:            "{{ world.workdir }}"
+            main_worktree_path: "{{ world.main_worktree_path }}"
+            base_branch:        "{{ world.base_branch }}"
+        bind:
+          workdir:            workdir
+          main_worktree_path: main_worktree_path
+          base_branch:        base_branch
+        on_error: needs_human
+      - invoke: host.starlark.run
+        id: gs_init
+        with:
+          script: scripts/gs_init.star
+          capabilities:
+            fs:
+              read: ["**"]
+              write: ["**"]
+          inputs:
+            work_dir: "{{ world.work_dir }}"
+            goal_dir: "{{ world.goal_dir }}"
+            reset: "{{ world.reset_log }}"
+        bind:
+          init_log_path: log_path
+        on_error: needs_human
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "Initializing goal {{ world.goal_slug }} at {{ world.work_dir }}."
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - { label: "advance", hint: "lint the decomposition" }
+                - { label: "look" }
+    on:
+      advance:
+        - target: lint_check
+      look:
+        - target: .
+      "*":
+        - default: true
+          target: .
+          effects:
+            - say: "Advance to lint the decomposition."
+
+  # lint_check — the structural gate (goal.py:cmd_lint). Reached via a real advance
+  # turn, so gs_lint's route bind settles across the next turn boundary; `advance`
+  # routes on the SETTLED verdict: fail → needs_human (the loop never starts on a bad
+  # decomposition); ok → evaluate.
+  lint_check:
+    description: "Lint — is the decomposition structurally safe to drive?"
+    relevant_world: [lint_route, lint_error]
+    on_enter:
+      - invoke: host.starlark.run
+        id: gs_lint
+        with:
+          script: scripts/gs_lint.star
+          capabilities:
+            fs:
+              read: ["**"]
+          inputs:
+            goal_dir: "{{ world.goal_dir }}"
+        bind:
+          lint_route: route
+          lint_error: error
+        on_error: needs_human
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "Lint: {{ world.lint_route|default:'(pending)' }}"
+          - prose: "{{ world.lint_error }}"
+            when: "world.lint_route == 'fail'"
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - { label: "advance", hint: "begin the loop (if lint passed)" }
+                - { label: "look" }
+    on:
+      advance:
+        - when: "world.lint_route == 'fail'"
+          target: needs_human
+          effects:
+            - set: { last_error: "{{ world.lint_error }}" }
+        - target: evaluate
+      look:
+        - target: .
+      "*":
+        - default: true
+          target: .
+          effects:
+            - say: "Advance to begin the loop."

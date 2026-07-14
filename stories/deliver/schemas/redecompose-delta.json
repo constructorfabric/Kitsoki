@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "RedecomposeDeltaConfirmation",
+  "description": "Confirmation submitted by the decomposer agent after it WRITES a managed delta document (trigger/provenance/operations, tools/decomposition-update/apply_delta.py's format) to delta_path. The delta itself is the transaction input; this is a lightweight bind for the story to log and cross-check against the applied result.",
+  "type": "object",
+  "required": ["trigger", "added"],
+  "additionalProperties": false,
+  "properties": {
+    "trigger": {
+      "type": "string",
+      "minLength": 1,
+      "description": "One-line reason this re-decompose is happening, copied into the delta's own 'trigger' field (e.g. 'epic revised: added rate-limit requirement')."
+    },
+    "added": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": [],
+      "description": "Brief ids the delta adds via add_change operations — must match the delta document written to delta_path."
+    }
+  }
+}

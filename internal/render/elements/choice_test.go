@@ -69,6 +69,60 @@ func TestChoice_Single_TwoColumnAlignment(t *testing.T) {
 	}
 }
 
+func TestChoice_RenderLinesFitWidth(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		c    Choice
+	}{
+		{
+			name: "single",
+			c: Choice{
+				Mode: "single",
+				Items: []app.ChoiceItem{
+					{Label: "prd", Hint: "author a PRD, then carry it into design without wrapping the row", Intent: "go_prd"},
+					{Label: "very long action label that should not force wrapping", Hint: "long hint", Intent: "go_long"},
+				},
+			},
+		},
+		{
+			name: "multi",
+			c: Choice{
+				Mode:   "multi",
+				Intent: "choose",
+				Slot:   "items",
+				Items: []app.ChoiceItem{
+					{Label: "coverage", Value: "coverage", Hint: "add deterministic regression coverage before shipping"},
+					{Label: "docs", Value: "docs", Hint: "update narrative documentation after landing"},
+				},
+			},
+		},
+		{
+			name: "form",
+			c: Choice{
+				Mode:     "form",
+				Intent:   "submit",
+				Template: "Submit {summary}",
+				Fields: []app.ChoiceField{
+					{Name: "summary", Type: "string", Placeholder: "a concise summary with too many words"},
+				},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			const width = 40
+			out, err := tc.c.Render(width, expr.Env{}, nil)
+			if err != nil {
+				t.Fatalf("Render: %v", err)
+			}
+			for i, line := range strings.Split(out, "\n") {
+				if got := visibleLen(line); got > width {
+					t.Fatalf("line %d exceeds width %d (got %d): %q\n%s", i, width, got, line, out)
+				}
+			}
+		})
+	}
+}
+
 func TestChoice_Single_ItemWithParamAppendsPlaceholder(t *testing.T) {
 	c := Choice{
 		Mode: "single",

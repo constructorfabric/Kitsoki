@@ -5,12 +5,12 @@
  * `semantic_element` anchor target on click (mirrors the Go semantic-sidecar
  * contract in internal/host/semantic_sidecar.go).
  *
- * This is the slidey (and any sidecar-bearing media) counterpart to
- * SpatialPicker's DOM resolution: a slideshow has no reconstructed DOM to
- * elementFromPoint, so the producer declares its named elements + boxes in the
- * sidecar instead. Each element's box (in the media's natural pixel space) is
- * positioned as a percent of natural so it tracks the media at any CSS scale —
- * the same scale-independent trick SpatialPicker uses.
+ * This is the producer-declared counterpart to SpatialPicker's DOM resolution:
+ * a mockup, object view, image, replay, or slideshow can declare named fields
+ * and boxes in the sidecar instead of relying only on `elementFromPoint`. Each
+ * element's box (in the media's natural pixel space) is positioned as a percent
+ * of natural so it tracks the media at any CSS scale — the same
+ * scale-independent trick SpatialPicker uses.
  *
  * Labels go through the client plugin registry (lib/semanticPlugins): a
  * registered plugin customizes the marker label; an absent one falls back to the
@@ -62,7 +62,13 @@ function onPick(el: SemanticElement): void {
     ref: el.ref,
     bbox,
     id: el.ref,
+    ...(el.kind ? { semantic_kind: el.kind } : {}),
     label: label(el),
+    ...(el.description ? { description: el.description } : {}),
+    ...(el.selector ? { selector: el.selector } : {}),
+    ...(el.text ? { text: el.text } : {}),
+    ...(el.value ? { value: el.value } : {}),
+    ...(el.data ? { data: el.data } : {}),
     point: { x: bbox.x, y: bbox.y },
   });
 }

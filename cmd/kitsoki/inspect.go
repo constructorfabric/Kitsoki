@@ -1,5 +1,5 @@
 // inspect.go — implements the `kitsoki inspect` subcommand: a read-only JSON
-// snapshot of a stored session. See docs/architecture/developer-guide.md §6.2.
+// snapshot of a stored session. See docs/guide/development/developer-guide.md §6.2.
 //
 // Like `tmux attach` but read-only and structured: take an app.yaml + a
 // session id, replay its event log, render the current view, and dump

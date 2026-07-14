@@ -1,0 +1,4 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+expect_no_errors: true

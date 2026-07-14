@@ -1,0 +1,110 @@
+# self_host_autonomous_smoke — autonomous pickup chain through TWO
+# nested import boundaries (kitsoki-dev/core → dev-story/bf →
+# bugfix). With the §W6.6 #1 fix, the LLM-judge's bare `accept`
+# verdict resolves through the chained alias map
+# (`accept` → `core__bf__accept`) at every checkpoint, so the flow
+# advances autonomously past reproducing + proposing before stopping
+# at implementing (which has no judge in on_enter and thus no
+# emit_intent step to exercise).
+#
+# Contrast with pickup_autonomous_then_bail.yaml — same shape, but
+# this fixture exercises the autonomous chain in one user turn
+# (core__go_bugfix cascades all the way to implementing because the
+# autonomous-emit chain runs in each merged room's on_enter).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: core.landing
+initial_world:
+  # Opt out of bf's auto_triage pre-flight (default on): these fixtures test
+  # the downstream bugfix walk, not triage. core-level key — the bf import
+  # wrapper re-seeds bf__auto_triage on entry from dev-story's world_in
+  # projection of (core__)auto_triage. Pre-flight contract:
+  # stories/bugfix/flows/preflight_triage_*.yaml.
+  core__auto_triage: false
+  core__ticket_id:      "TKT-AUTO"
+  core__ticket_title:   "Two-layer autonomous-advance smoke"
+  core__thread:         "TKT-AUTO"
+  core__workdir:        ".capsules/workspaces/auto"
+  core__workspace_id:   "ws-auto"
+  core__base_branch:    "main"
+  core__feature_branch: "fix/auto"
+  core__bf__bugfix_mode: "full"
+  # Autonomous defaults at every nesting depth (mirrors
+  # pickup_autonomous_then_bail's seeding strategy — the flow runner's
+  # initial_state set-path skips wrapper compounds' OnEnter so we
+  # pre-seed the projected keys directly).
+  judge_mode:                       "llm_then_human"
+  judge_confidence_threshold:       0.8
+  core__judge_mode:                 "llm_then_human"
+  core__judge_confidence_threshold: 0.8
+  core__bf__judge_mode:             "llm_then_human"
+  core__bf__judge_confidence_threshold: 0.8
+  core__pr__judge_mode:             "llm_then_human"
+  core__pr__judge_confidence_threshold: 0.8
+  core__merge_strategy:             "squash"
+
+host_handlers:
+  host.append_to_file:
+    data: { ok: true, message_id: "msg-1" }
+  host.inbox.add:
+    data: { ok: true, id: "ib-1" }
+  host.capsule_workspace:
+    data: { ok: true, log: "synced" }
+  host.git:
+    data: { ok: true, sha: "abc123", diff: "", url: "https://example/pr/auto", pr_id: "auto", state: "success", checks: "", comments: "" }
+  host.local:
+    data: { ok: true, log: "PASS: 12 tests", passed: 12, failed: 0, state: "success" }
+  host.ticket_federation:
+    data: { ok: true, tickets: [], source_groups: [], provider_errors: [] }
+  # Confident verdict at every checkpoint. The `intent: "accept"`
+  # field is the BARE name a real LLM produces; the dispatcher's
+  # resolveEmittedIntentName resolves it through the leaf state's
+  # IntentAliases entry to `core__bf__accept` for bf-internal
+  # checkpoints (and through pr's analogous chain when the flow
+  # reaches that compound).
+  host.agent.decide:
+    data: &agent_stub
+      ok: true
+      submitted:
+        summary_title:    "Autonomous regression artifact"
+        summary_markdown: "Confident artifact; dispatcher should auto-advance."
+        bug_verified:     true
+        involved_components: [{ name: "machine" }]
+        fix_description:  "Cross-boundary emit_intent resolution."
+        root_cause:       "Dispatcher used bare name; rewriter renamed the arc."
+        affected_files:   ["internal/machine/machine.go"]
+        confidence:       0.92
+        reasoning:        "Trace + IntentAliases map both confirm."
+        status:           "passed"
+        tests_run:        { passed: 12, failed: 0, log: "PASS" }
+        outcome:          "pass"
+        evidence:         { build: "ok" }
+        lessons:
+          - { category: "imports", description: "Need IntentAliases at dispatch.", severity: "low" }
+        verdict:    "pass"
+        intent:     "accept"      # BARE name — proves the fix
+        reason:     "Confident; advance autonomously."
+
+  # host.agent.task — bf reproducing/implementing/testing/validating
+  # rooms generate their artifact via the `task` verb (judge steps use
+  # `decide`). Same stub payload as decide (shared anchor); the artifact
+  # schema's additionalProperties tolerates the judge fields.
+  host.agent.task:
+    data: *agent_stub
+
+turns:
+  # core.landing → core.bf.implementing in one user turn.
+  #
+  # bf.idle's on_enter auto-emits `start` when entered with a ticket
+  # loaded and no reproduction artifact yet, dropping into reproducing.
+  # reproducing.on_enter binds the artifact, runs the judge (returns
+  # confident accept), and emit_intent("accept") resolves through
+  # IntentAliases at core.bf.reproducing to `core__bf__accept`; the
+  # accept arc advances to proposing, whose on_enter cascades the
+  # same way. The cascade stops at implementing because implementing
+  # has no judge in on_enter, so no emit_intent fires.
+  - intent: { name: core__go_bugfix, slots: {} }
+    expect_state: core.bf.implementing
+
+expect_no_errors: true

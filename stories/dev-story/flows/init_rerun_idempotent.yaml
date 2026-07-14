@@ -1,0 +1,106 @@
+# init_rerun_idempotent -- an applied no-change result is explicit, and the
+# reoptimize action clears cached discovery before entering discovery again.
+# Byte-for-byte filesystem idempotence is covered in dev_onboarding_test.go.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: init_done
+initial_world:
+  workdir: "/srv/repos/acme"
+  repo_root: "/srv/repos/acme"
+  init_request: "/srv/repos/acme"
+  init_target_path: "/srv/repos/acme"
+  init_project_id: "acme"
+  init_project_title: "Acme"
+  init_profile_status: "applied"
+  init_discovery: { stale: true }
+  init_apply_result:
+    status: "applied"
+    profile_path: "/srv/repos/acme/.kitsoki/project-profile.yaml"
+    instance_path: "/srv/repos/acme/.kitsoki/stories/acme-dev/app.yaml"
+    writes: []
+    unchanged:
+      - "/srv/repos/acme/.kitsoki/project-profile.yaml"
+    preserved_overrides:
+      - "commands.test"
+
+host_handlers:
+  host.starlark.run:
+    by_call:
+      discover:
+        data:
+          result:
+            target_path: "/srv/repos/acme"
+            project_id: "acme"
+            project_title: "Acme"
+            stack: "go project"
+            dev_command: ""
+            test_command: "make test"
+            build_command: "make build"
+            repo_vcs: "git"
+            repo_default_branch: "main"
+            repo_remote: ""
+            repo_branch_pattern: "feature/{slug}"
+            repo_branch_issue_id: "optional"
+            conventions: "project"
+            tracker: "informal"
+            ticket_repo: "pasted"
+            pr_provider: "local"
+            pr_repository: "local"
+            pr_base_branch: "main"
+            pr_template: "none"
+            goals: {}
+            resolutions: []
+            default_notices: []
+            story_pack: "focused-engineering"
+            story_pack_title: "Focused engineering starter"
+            story_pack_summary: "Focused first-run set."
+            story_packs: []
+            starter_stories: []
+            transcript_count: 0
+            transcript_sources: []
+            mining_recommendation: {}
+
+turns:
+  - intent: { name: look, slots: {} }
+    expect_state: init_done
+    expect_view_matches: "Preserved operator fields"
+  - intent: { name: init_discovered, slots: {} }
+    expect_state: init_discover
+    expect_world:
+      init_discovery:
+        target_path: "/srv/repos/acme"
+        project_id: "acme"
+        project_title: "Acme"
+        stack: "go project"
+        dev_command: ""
+        test_command: "make test"
+        build_command: "make build"
+        repo_vcs: "git"
+        repo_default_branch: "main"
+        repo_remote: ""
+        repo_branch_pattern: "feature/{slug}"
+        repo_branch_issue_id: "optional"
+        conventions: "project"
+        tracker: "informal"
+        ticket_repo: "pasted"
+        pr_provider: "local"
+        pr_repository: "local"
+        pr_base_branch: "main"
+        pr_template: "none"
+        goals: {}
+        resolutions: []
+        default_notices: []
+        story_pack: "focused-engineering"
+        story_pack_title: "Focused engineering starter"
+        story_pack_summary: "Focused first-run set."
+        story_packs: []
+        starter_stories: []
+        transcript_count: 0
+        transcript_sources: []
+        mining_recommendation: {}
+      init_profile_status: "discovering"
+      init_test_command: "make test"
+      init_build_command: "make build"
+
+expect_no_errors: true

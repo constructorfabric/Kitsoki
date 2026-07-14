@@ -28,6 +28,7 @@ import (
 	"kitsoki/internal/host"
 	"kitsoki/internal/machine"
 	"kitsoki/internal/orchestrator"
+	"kitsoki/internal/render/elements"
 	"kitsoki/internal/store"
 )
 
@@ -87,4 +88,51 @@ func TestTurnIntoBindingOnEnterPreservesTypedView(t *testing.T) {
 	}
 	require.True(t, sawChoice, "room's choice element must survive in the typed view")
 	require.True(t, sawProse, "room's prose element must survive in the typed view")
+}
+
+func TestSameRoomBindingRefreshesPreBindTypedView(t *testing.T) {
+	t.Parallel()
+	def, err := app.LoadBytes([]byte(`
+app: { id: same-room-bind, version: 0.1.0 }
+root: room
+hosts: [host.test.scan]
+world:
+  scan_result: { type: string, default: "old" }
+intents:
+  refresh: { title: Refresh }
+states:
+  room:
+    view:
+      - heading: Results
+      - prose: "Scan said: {{ world.scan_result }}"
+    on_enter:
+      - invoke: host.test.scan
+        bind: { scan_result: summary }
+    on:
+      refresh:
+        - target: room
+`))
+	require.NoError(t, err)
+	m, err := machine.New(def)
+	require.NoError(t, err)
+	s, err := store.OpenMemory()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+	reg := host.NewRegistry()
+	reg.Register("host.test.scan", func(_ context.Context, _ map[string]any) (host.Result, error) {
+		return host.Result{Data: map[string]any{"summary": "fresh"}}, nil
+	})
+	orch := orchestrator.New(def, m, s, nil, orchestrator.WithHostRegistry(reg))
+	sid, err := orch.NewSession(context.Background())
+	require.NoError(t, err)
+
+	out, err := orch.SubmitDirect(context.Background(), sid, "refresh", nil)
+	require.NoError(t, err)
+	require.Contains(t, out.View, "fresh")
+	require.NotNil(t, out.TypedView)
+	evaluated, err := elements.EvalElements(*out.TypedView, out.RenderEnv, out.Renderer)
+	require.NoError(t, err)
+	require.Len(t, evaluated.Elements, 2)
+	require.Equal(t, "Scan said: fresh", evaluated.Elements[1].Source,
+		"same-room binding must not return the pre-bind typed view")
 }

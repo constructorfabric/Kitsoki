@@ -1,0 +1,38 @@
+# Same query-string bugfix job as bugfix-query-string.yaml, but PLACED on a VM.
+#
+# Placement is orthogonal to the job: the cell is still a container, it just runs
+# on a remote docker host (`vm-1`, a docker context over SSH) instead of the
+# local daemon. The VM executes the container — there is no separate code path.
+#
+# Prereqs on the VM (one-time): a kitsoki checkout carrying the bakeoff harness,
+# and the repo-runtime image tagged `kitsoki-arena-repo/query-string:latest`.
+# Register the context locally:
+#   docker context create vm-1 --docker "host=ssh://root@<vm-ip>"
+#
+#   python3 tools/arena/arena.py run --spec tools/arena/specs/bugfix-query-string-vm.yaml \
+#       --out .artifacts/arena/qs-vm
+
+job_type: bugfix
+
+targets:
+  - id: query-string
+    label: "sindresorhus/query-string"
+    repo: https://github.com/sindresorhus/query-string.git
+    stack: javascript
+
+variants:
+  - id: kitsoki-gpt-5.5
+    backend: codex
+    model: gpt-5.5
+    effort: medium
+
+axes:
+  bug: [qs1, qs2, qs3]
+
+placement:
+  hosts: [vm-1]
+  concurrency: 2
+  retry: 1
+  # The checkout path ON the VM's daemon (remote `-v` source resolves there).
+  host_repo:
+    vm-1: /opt/bakeoff/repos/kitsoki

@@ -35,6 +35,13 @@ states:
         once: true
         with:
           id: "{{ world.ticket_id }}"
+          ref: "{{ world.ticket_source_ref }}"
+          source: "{{ world.ticket_source }}"
+          sources: "{{ world.ticket_sources }}"
+          # repo pins host.gh.ticket to the configured GitHub issue repo;
+          # local_files ignores it.
+          repo: "{{ world.ticket_source_repo != '' ? world.ticket_source_repo : world.ticket_repo }}"
+          root: "{{ world.repo_root }}"
           thread: "{{ world.thread }}"
           body: |
             Kitsoki autonomous bugfix stopped for human review.

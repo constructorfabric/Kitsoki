@@ -1,0 +1,19 @@
+inputs:
+  state_path:  { type: string, required: true }
+  mark_id:     { type: string }
+  mark_status: { type: string }
+  mark_error:  { type: string }
+outputs:
+  items:           { type: list }
+  results:         { type: object }
+  next_item:       { type: object }
+  next_item_id:    { type: string }
+  route:           { type: string }
+  has_pending:     { type: bool }
+  processed_count: { type: int }
+  passed_count:    { type: int }
+  partial_count:   { type: int }
+  failed_count:    { type: int }
+  skipped_count:   { type: int }
+  pending_count:   { type: int }
+  count_summary:   { type: string }

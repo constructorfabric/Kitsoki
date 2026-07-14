@@ -1,0 +1,54 @@
+# A caller-prepared checkout remains authoritative when a reproducer retries.
+# The refinement arc deliberately clears bf_autostart_attempted to re-enter
+# idle; workspace_prepared must still prevent idle from deriving/creating a
+# second workspace from the ticket id.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: reproducing
+initial_world:
+  ticket_id: "TKT-PREPARED-REFINE"
+  ticket_title: "Prepared benchmark checkout survives a reproduction retry"
+  thread: ".artifacts/issues/bugs/TKT-PREPARED-REFINE.md"
+  bugfix_mode: "full"
+  judge_mode: "human"
+  workspace_id: ""
+  workspace_prepared: true
+  feature_branch: "paired-task-prepared-refine"
+  base_branch: "paired-task-prepared-refine"
+  workdir: "/tmp/prepared-paired-cell"
+  reproduction_artifact:
+    summary_title: "First reproduction was too broad"
+    summary_markdown: "A first deterministic test was too broad; retry against the same caller-prepared checkout."
+    bug_verified: true
+    involved_components: []
+
+host_handlers:
+  host.append_to_file: { data: { ok: true, message_id: "msg-1" } }
+  host.inbox.add: { data: { ok: true, id: "ib-1" } }
+  # Deliberately no workspace host: any accidental workspace.create fails this flow.
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary_title: "Retried reproduction"
+        summary_markdown: "The retry runs against the original caller-prepared checkout."
+        bug_verified: true
+        involved_components: []
+
+turns:
+  - intent: { name: refine, slots: { feedback: "Narrow the test and retry." } }
+    expect_state: reproducing
+    expect_world:
+      bf_autostart_attempted: true
+      workspace_id: ""
+      workspace_prepared: true
+      feature_branch: "paired-task-prepared-refine"
+      workdir: "/tmp/prepared-paired-cell"
+    expect_host_calls:
+      - handler: host.agent.task
+        args:
+          working_dir: "/tmp/prepared-paired-cell"
+
+expect_terminal: false
+expect_no_errors: true

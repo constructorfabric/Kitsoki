@@ -1,0 +1,36 @@
+{
+  "run_id": "persona-qa-kitsoki-product-review",
+  "items": [
+    {
+      "scenario": "explain-delivery-loop",
+      "evidence_kind": "key_interaction_video",
+      "media_kind": "video",
+      "path": "",
+      "status": "blocked",
+      "source": "demo",
+      "proof": false,
+      "notes": "No proof-grade Kitsoki UI capture is attached. The earlier placeholder rrweb clip was removed instead of being presented as evidence.",
+      "playback": false
+    },
+    {
+      "scenario": "verify-ui-evidence",
+      "evidence_kind": "key_interaction_video",
+      "media_kind": "video",
+      "path": "",
+      "status": "blocked",
+      "source": "demo",
+      "proof": false,
+      "notes": "No proof-grade verification capture is attached. The deck must show this as missing evidence, not as playback.",
+      "playback": false
+    }
+  ],
+  "summary": {
+    "total": 2,
+    "playback_items": 0,
+    "video": 0,
+    "image": 0,
+    "trace": 0,
+    "document": 0,
+    "artifact": 0
+  }
+}

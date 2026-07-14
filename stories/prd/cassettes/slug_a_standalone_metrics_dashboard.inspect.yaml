@@ -1,0 +1,8 @@
+kind: inspect_cassette
+interactions:
+  - op: exists
+    target: .artifacts/prd/a-standalone-metrics-dashboard
+    out: "false"
+  - op: exists
+    target: /tmp/kitsoki-prd-fixtures/a-standalone-metrics-dashboard.md
+    out: "false"

@@ -40,6 +40,10 @@ def main(ctx):
 		Script:  "widget.star",
 		Source:  script,
 		Sidecar: sidecar,
+		Capabilities: starlarkhost.CapabilitySpec{
+			World: true,
+			HTTP:  starlarkhost.HTTPCapability{Enabled: true},
+		},
 	})
 	if err != nil {
 		t.Fatalf("Run: %v", err)

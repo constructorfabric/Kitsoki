@@ -30,6 +30,7 @@ host_handlers:
           stdout_json:
             conflict_files: "main.go "
             gosum_only:     false
+            conflict_scan_done: true
       rebase_continue_cmd:
         data:
           ok:        true
@@ -68,9 +69,10 @@ host_handlers:
         reason:             null
 
 turns:
-  # guide re-enters conflict (fires on_enter): agent resolves → rebase_continue
-  # → build ok → conflict_resolved (conflict_origin=pull) → main_ops
   - intent: { name: guide, slots: { intent: "use upstream" } }
+    expect_state: conflict
+
+  - intent: { name: conflict_ready, slots: {} }
     expect_state: main_ops
     expect_world:
       rebase_done: true

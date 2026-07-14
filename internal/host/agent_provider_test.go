@@ -96,6 +96,20 @@ func TestApplyProvider_ExplicitModelWins(t *testing.T) {
 	require.Equal(t, "claude-opus-4-8", gotAgent.Model)
 }
 
+// TestApplyProvider_ExplicitCallProviderWinsModelEffortAndBackend proves
+// per-invoke provider selection can route one call independently of the
+// session/agent defaults.
+func TestApplyProvider_ExplicitCallProviderWinsModelEffortAndBackend(t *testing.T) {
+	ctx := WithProviders(context.Background(), map[string]Provider{
+		"codex_eval": {Backend: "codex", Model: "gpt-5.5", Effort: "high"},
+	})
+	agent := Agent{Provider: "claude_eval", Model: "opus", Effort: "medium"}
+	gotCtx, gotAgent := applyProvider(ctx, map[string]any{"provider": "codex_eval"}, agent)
+	require.Equal(t, "gpt-5.5", gotAgent.Model)
+	require.Equal(t, "high", gotAgent.Effort)
+	require.Equal(t, "codex", AgentBackendFromContext(gotCtx).Name())
+}
+
 // TestApplyProvider_EffectArgWinsOverAgent proves the effect's with.provider
 // overrides the agent-declared provider (precedence mirrors system_prompt/tools).
 func TestApplyProvider_EffectArgWinsOverAgent(t *testing.T) {

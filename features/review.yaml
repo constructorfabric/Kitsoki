@@ -3,12 +3,15 @@ id: review
 kind: feature
 title: Video review and feedback
 tagline: Chaptered playback with frame-anchored feedback flags.
-summary: "The /review surface for produced videos: a chapter timeline synced to playback, a flag list for frame-anchored feedback, and a detail pane per flag — the feedback half of the produce → review → refine loop."
+summary: 'The /review surface for produced videos: a chapter timeline synced to playback, a flag list for frame-anchored feedback, and a detail pane per flag — the feedback half of the produce → review → refine loop.'
 promo:
   order: 70
+docs:
+  - docs/tui/video-review.md
 related:
   - mockup-video
 demo:
+  format: rrweb
   spec: tests/playwright/review-video.spec.ts
   artifactDir: review-video
   videoBase: review-video-demo
@@ -30,7 +33,7 @@ tour:
       route: any
       target: review-page
       title: The /review feedback surface
-      body: "The /review surface opens on a session that rendered a real walkthrough video. Two columns: the player, chapter timeline and flags on the left; the selected flag's detail on the right."
+      body: 'The /review surface opens on a session that rendered a real walkthrough video. Two columns: the player, chapter timeline and flags on the left; the selected flag''s detail on the right.'
       placement: right
       kind: explain
       advance: next
@@ -70,7 +73,7 @@ tour:
       route: any
       target: fd-still
       title: The captured still
-      body: "The flag's detail pane shows the grabbed frame — proof the frame seam ran end-to-end: video handle → ffmpeg grab at t → recorded PNG handle → served back into the panel."
+      body: 'The flag''s detail pane shows the grabbed frame — proof the frame seam ran end-to-end: video handle → ffmpeg grab at t → recorded PNG handle → served back into the panel.'
       placement: left
       kind: explain
       advance: next
@@ -100,7 +103,7 @@ tour:
       route: any
       target: fd-send-refine
       title: Send to refine
-      body: "Dispatch the note via runstatus.feedback.add: it carries the source_ref, the time range, the captured frame handle, and the instruction. The panel captures and dispatches — it never edits a spec itself."
+      body: 'Dispatch the note via runstatus.feedback.add: it carries the source_ref, the time range, the captured frame handle, and the instruction. The panel captures and dispatches — it never edits a spec itself.'
       placement: left
       kind: explain
       advance: next

@@ -1,0 +1,38 @@
+# report_plan_evolution - WM.7 plan-evolution events surface in PM artifacts.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: start
+initial_world:
+  goal_slug: report-events-test
+  goal_dir:  stories/goal-seeker/testdata/report-events
+  work_dir:  .artifacts/goal/flow-report-events
+  reset_log: true
+
+host_handlers:
+  host.run: { by_call: {} }
+  host.agent.decide: { by_call: {} }
+
+turns:
+  - intent: { name: advance, slots: {} }
+    expect_state: bootstrap
+  - intent: { name: advance, slots: {} }
+    expect_state: lint_check
+  - intent: { name: advance, slots: {} }
+    expect_state: evaluate
+    expect_world:
+      remaining: 0
+  - intent: { name: report, slots: {} }
+    expect_state: report
+    expect_world:
+      report_status: written
+      report_change_count: 1
+    expect_view_matches: "exec-"
+
+expect_files:
+  - path: ../../../.artifacts/goal/flow-report-events/reports/exec-summary.md
+    content_matches: "session-fold-in"
+  - path: ../../../.artifacts/goal/flow-report-events/reports/exec-summary.slidey.json
+    content_matches: '"Trigger":"session-fold-in"'
+
+expect_no_errors: true

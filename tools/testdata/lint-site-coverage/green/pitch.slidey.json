@@ -1,0 +1,18 @@
+{
+  "meta": {"mode": "pitch", "title": "Fixture"},
+  "scenes": [
+    {
+      "type": "evidence",
+      "title": "Shipped and live",
+      "items": [
+        {
+          "label": "Widget X",
+          "status": "validated",
+          "detail": "widget X ships today",
+          "refType": "path",
+          "ref": "features/widget-x.yaml"
+        }
+      ]
+    }
+  ]
+}

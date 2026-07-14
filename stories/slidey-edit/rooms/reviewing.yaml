@@ -42,9 +42,12 @@ states:
           # (instead of a generic off-path note that never touches the deck).
           annotate_intent: refine
           annotate_feedback_slot: feedback
+          annotate_url: '{{ world.web_base_url }}/#/s/{{ world.session_id }}/chat?visual_annotate=1'
         when: "world.deck_handle != ''"
+      - prose: "⚠️  Render failed — there's no deck to show. The renderer reported:\n\n    {{ world.last_error }}\n\nThis looks like an external renderer/toolchain failure, not a deck-spec issue. Fix the slidey/Node environment, then `rerender` to try again."
+        when: "world.deck_handle == '' && world.last_error != '' && world.render_error_kind == 'toolchain'"
       - prose: "⚠️  Render failed — there's no deck to show. The renderer reported:\n\n    {{ world.last_error }}\n\nFix the render, then `rerender` to try again (or `refine` to edit the spec first)."
-        when: "world.deck_handle == '' && world.last_error != ''"
+        when: "world.deck_handle == '' && world.last_error != '' && world.render_error_kind != 'toolchain'"
       - prose: "(no deck rendered yet — `rerender` to render the current spec)"
         when: "world.deck_handle == '' && world.last_error == ''"
       - prose: "Use **Open in review** on the deck above to point at a scene element, draw a region, or drop a point, leave an instruction, and dispatch it — then `refine` here to edit the exact scene you pointed at."
@@ -128,6 +131,9 @@ states:
                 deck_path:       ""
                 semantic_path:   ""
                 render_retries:  0
+                render_error_repairable: false
+                render_error_kind: ""
+                render_error_summary: ""
                 # Clear stale refine-only context so the next cycle is clean.
                 annotation:      {}
                 current_scene:   ""
@@ -148,6 +154,9 @@ states:
                 deck_path:       ""
                 semantic_path:   ""
                 render_retries:  0   # fresh attempt — reset the auto-fix budget
+                render_error_repairable: false
+                render_error_kind: ""
+                render_error_summary: ""
       quit:
         - target: "@exit:abandoned"
           effects:

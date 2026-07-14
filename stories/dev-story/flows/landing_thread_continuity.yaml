@@ -30,7 +30,7 @@ turns:
   # sets the new request, clears landing_note to re-arm, and the on_enter
   # landing_agent runs (stubbed) and binds the fresh note.
   - intent:
-      name: work
+      name: landing_capture
       slots: { request: "ok go ahead" }
     expect_state: landing
     expect_world:

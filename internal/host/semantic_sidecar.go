@@ -49,8 +49,17 @@ type SemanticSidecar struct {
 	Plugin string `json:"plugin"`
 	// SchemaVersion versions the sidecar shape so a producer can evolve it.
 	SchemaVersion int `json:"schema_version"`
+	// Viewport optionally declares the natural coordinate space for DOM-backed
+	// artifacts (html/rrweb) whose rendered media has no image/video dimensions.
+	Viewport *SemanticViewport `json:"viewport,omitempty"`
 	// Elements are the addressable elements the producer declared.
 	Elements []SemanticElement `json:"elements"`
+}
+
+// SemanticViewport is the natural coordinate space for element bboxes.
+type SemanticViewport struct {
+	Width  int `json:"width"`
+	Height int `json:"height"`
 }
 
 // SemanticElement is one producer-declared addressable element. Ref is the only
@@ -62,8 +71,18 @@ type SemanticElement struct {
 	Ref string `json:"ref"`
 	// Label is a human-readable name for the element (picker affordance text).
 	Label string `json:"label,omitempty"`
+	// Kind is a producer/category hint such as "field", "control", or
+	// "layout-node". It is context only; kitsoki does not branch on it.
+	Kind string `json:"kind,omitempty"`
+	// Description is optional prose for what this element represents.
+	Description string `json:"description,omitempty"`
 	// Selector is an optional DOM/CSS selector when the artifact is html/rrweb.
 	Selector string `json:"selector,omitempty"`
+	// Text/Value are optional field context for DOM/data renderings.
+	Text  string `json:"text,omitempty"`
+	Value string `json:"value,omitempty"`
+	// Data is optional structured producer context for the picked field/object.
+	Data map[string]any `json:"data,omitempty"`
 	// Bbox is the element's box [x,y,w,h] in frame pixels, when the producer
 	// supplied one (lets the picker draw the overlay without resolving anything).
 	Bbox [4]int `json:"bbox,omitempty"`
@@ -167,8 +186,23 @@ func (sc SemanticSidecar) asMap() map[string]any {
 		if e.Label != "" {
 			m["label"] = e.Label
 		}
+		if e.Kind != "" {
+			m["kind"] = e.Kind
+		}
+		if e.Description != "" {
+			m["description"] = e.Description
+		}
 		if e.Selector != "" {
 			m["selector"] = e.Selector
+		}
+		if e.Text != "" {
+			m["text"] = e.Text
+		}
+		if e.Value != "" {
+			m["value"] = e.Value
+		}
+		if len(e.Data) > 0 {
+			m["data"] = e.Data
 		}
 		if e.Bbox != ([4]int{}) {
 			m["bbox"] = bboxSlice(e.Bbox)
@@ -178,11 +212,15 @@ func (sc SemanticSidecar) asMap() map[string]any {
 		}
 		els = append(els, m)
 	}
-	return map[string]any{
+	out := map[string]any{
 		"plugin":         sc.Plugin,
 		"schema_version": sc.SchemaVersion,
 		"elements":       els,
 	}
+	if sc.Viewport != nil && sc.Viewport.Width > 0 && sc.Viewport.Height > 0 {
+		out["viewport"] = map[string]any{"width": sc.Viewport.Width, "height": sc.Viewport.Height}
+	}
+	return out
 }
 
 // AsMap exposes the template-/web-facing rendering of the sidecar (see asMap).

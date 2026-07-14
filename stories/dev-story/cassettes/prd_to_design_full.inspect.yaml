@@ -1,0 +1,38 @@
+kind: inspect_cassette
+interactions:
+  - op: exists
+    target: .artifacts/prd/a-self-serve-tour-subcommand-so
+    out: "false"
+  - op: exists
+    target: .artifacts/prd/a-self-serve-tour-subcommand-so.md
+    out: "false"
+  - op: exists
+    target: .artifacts/prd/tour-subcommand/004-prd.md
+    out: "true"
+  - op: read
+    target: .artifacts/prd/tour-subcommand/004-prd.md
+    out: |
+      ## PRD: Tour Subcommand
+
+      A sufficiently long summary body to satisfy the schema minimum length for the prd_artifact summary_markdown field, covering problem, actors, goals, and metrics for the binary-native tour renderer.
+  - op: exists
+    target: /tmp/kitsoki-prd-fixtures/tour-subcommand.md
+    out: "false"
+  - op: write
+    target: /tmp/kitsoki-prd-fixtures/tour-subcommand.md
+    out: |
+      ## PRD: Tour Subcommand
+
+      A sufficiently long summary body to satisfy the schema minimum length for the prd_artifact summary_markdown field, covering problem, actors, goals, and metrics for the binary-native tour renderer.
+  - op: exists
+    target: docs/proposals/.workspace/tour-subcommand
+    out: "false"
+  - op: exists
+    target: docs/proposals/tour-subcommand.md
+    out: "false"
+  - op: exists
+    target: docs/proposals/.workspace/tour-subcommand
+    out: "false"
+  - op: exists
+    target: docs/proposals/tour-subcommand.md
+    out: "false"

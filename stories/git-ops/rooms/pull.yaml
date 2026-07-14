@@ -12,15 +12,15 @@ states:
       - kv:
           pairs:
             Branch:               '{{ world.current_branch|default:"(unknown)" }}'
-            "Upstream tracking":  '{% if world.upstream_tracking %}yes{% else %}no{% endif %}'
+            "Upstream tracking":  '{% if world.upstream_tracking ?? false %}yes{% else %}no{% endif %}'
       - heading: "No upstream tracking ref"
         when: "world.last_op_outcome == 'no_tracking'"
       - prose: "This branch has no upstream tracking ref. Set one with git push -u origin {{ world.current_branch }} first."
         when: "world.last_op_outcome == 'no_tracking'"
       - heading: "Pull output"
         when: "world.last_op_output != ''"
-      - template: '{{ world.last_op_output }}'
-        when: "world.last_op_output != ''"
+      - template: '{{ world.last_op_output ?? "" }}'
+        when: "(world.last_op_output ?? '') != ''"
       - choice:
           mode: single
           prompt: "Actions"
@@ -74,24 +74,32 @@ states:
                 --arg output "$OUTPUT" \
                 --argjson ok "$([ $EXIT -eq 0 ] && echo true || echo false)" \
                 --argjson conflict "$CONFLICT" \
-                '{output:$output, ok:$ok, conflict:$conflict}'
+                '{output:$output, ok:$ok, conflict:$conflict,
+                  route:(if $ok then "pull_done" else "pull_conflict" end),
+                  conflict_origin:(if $ok then "" else "pull" end),
+                  conflict_files:"",
+                  conflict_scan_done:false,
+                  conflict_agent_ready:false,
+                  conflict_verdict:{},
+                  conflict_intent_guidance:""}'
           cwd: "{{ world.working_dir }}"
         bind:
-          last_op_output: "stdout_json.output"
-          last_op_ok:     "stdout_json.ok"
+          last_op_output:           "stdout_json.output"
+          last_op_ok:               "stdout_json.ok"
+          route:                    "stdout_json.route"
+          conflict_origin:          "stdout_json.conflict_origin"
+          conflict_files:           "stdout_json.conflict_files"
+          conflict_scan_done:       "stdout_json.conflict_scan_done"
+          conflict_agent_ready:     "stdout_json.conflict_agent_ready"
+          conflict_verdict:         "stdout_json.conflict_verdict"
+          conflict_intent_guidance: "stdout_json.conflict_intent_guidance"
         on_error: pull
-      - when: "world.upstream_tracking == true && world.last_op_ok == true"
+      - when: "world.upstream_tracking == true && world.route == 'pull_done'"
         set:
           last_op_outcome: ""
-      - when: "world.upstream_tracking == true && world.last_op_ok == true"
+      - when: "world.upstream_tracking == true && world.route == 'pull_done'"
         emit_intent: pull_done
-      - when: "world.upstream_tracking == true && world.last_op_ok == false"
-        set:
-          conflict_origin:          "pull"
-          conflict_files:           ""
-          conflict_verdict:         {}
-          conflict_intent_guidance: ""
-      - when: "world.upstream_tracking == true && world.last_op_ok == false"
+      - when: "world.upstream_tracking == true && world.route == 'pull_conflict'"
         emit_intent: pull_conflict
     on:
       pull_done:

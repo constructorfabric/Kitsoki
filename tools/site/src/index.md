@@ -17,23 +17,51 @@ hero:
       link: /download.html
     - theme: alt
       text: Watch the proof
-      link: /features/
+      link: /proof.html
 ---
 
 <HeroDemo />
 
-## Why kitsoki
+## Pick your next question
 
-**Control inversion.** In most agent systems, the model owns the plan and the runtime executes its tool calls. Kitsoki flips that: the runtime is a YAML state machine, and the model is called only for declared sub-tasks with typed returns.
+<div class="kpath-grid">
+  <a class="kpath" href="proof.html">
+    <strong>Can the workflow control the agent?</strong>
+    <span>Start with the proof path: runtime rejection, trace replay, operator handoff, and a real repo workflow.</span>
+  </a>
+  <a class="kpath" href="guide/evaluate-kitsoki.html">
+    <strong>Is this different from a coding agent?</strong>
+    <span>Compare Kitsoki with agentic CLIs, graph orchestrators, durable workflow engines, and scripts.</span>
+  </a>
+  <a class="kpath" href="guide/getting-started.html">
+    <strong>Can I try it in my repo?</strong>
+    <span>Install the binary, run <code>onboard .</code>, review the profile, and commit the setup Kitsoki writes.</span>
+  </a>
+  <a class="kpath" href="guide/">
+    <strong>How do I author and test stories?</strong>
+    <span>Use the docs by task: story authoring, replay without live LLM spend, debugging, and architecture.</span>
+  </a>
+  <a class="kpath" href="library/">
+    <strong>What extensions and stories ship today?</strong>
+    <span>Browse the build-time library generated from package sidecars, story manifests, and deterministic flow metadata.</span>
+  </a>
+</div>
 
-**Fewer guesses, better evidence.** Deterministic turns route with no model call. Ambiguous turns, agent calls, host calls, world mutations, and guardrail retries land in a structured trace you can inspect instead of trusting a chat transcript.
+## What changes
 
-**One story, every surface.** The same `app.yaml` drives the web UI, terminal UI, MCP studio surface, headless runs, docs-driven demos, and replay fixtures. The product surface is not a mockup of the workflow; it is the workflow.
+Kitsoki is for workflows that repeat, need human gates, or have to be defended
+after the run. The runtime owns the state machine. The model is called only at
+declared decision points and returns a typed result. Deterministic turns route
+without a model call; ambiguous turns, host calls, guardrail retries, and world
+mutations land in a structured trace.
 
-**Testable like software, because it is.** Flow fixtures replay whole conversations with zero LLM cost; cassettes pin agent responses byte-for-byte; the demos on this site are generated from those same deterministic runs.
+The same `app.yaml` drives the web UI, terminal UI, MCP studio surface,
+headless runs, docs-driven demos, and replay fixtures. The product surface is
+not a mockup of the workflow; it is the workflow.
 
-## The features
+## Start with the proof
 
-Start with the proof demos: the runtime rejecting and nudging a model mid-call, a turn that routes without any model call, operator questions that block instead of silently defaulting, and real bug-fix runs replayed from cassettes. Then browse the full catalog.
+These are the demos a curious developer should watch first. The full feature
+and story catalog is still available from [Demos and features](/features/).
 
-<FeatureGrid :kinds="['feature', 'product-tour']" :promo-only="true" />
+<FeatureGrid :ids="['agent-actions', 'meta-improvement', 'trace-introspection', 'operator-ask', 'dev-story-bugfix', 'stranger-install']" />

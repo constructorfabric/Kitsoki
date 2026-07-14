@@ -1,0 +1,43 @@
+# done_navigation - quitting git-ops lands on a visible choice screen rather
+# than a dead-end, and back returns to the git hub.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: push_main
+initial_world:
+  integration_branch: main
+  current_branch:     main
+  on_integration:     true
+  working_dir:        "."
+  main_worktree_path: "."
+
+host_handlers:
+  host.run:
+    by_call:
+      refresh_main:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            branch:             main
+            main_worktree_path: "."
+            worktree_list:      { raw: "" }
+            commits_ahead:      0
+            commits_behind:     0
+            has_uncommitted:    false
+            merge_in_progress:  false
+            no_common_ancestor: false
+            upstream_tracking:  true
+
+turns:
+  - intent: { name: back, slots: {} }
+    expect_state: main_ops
+
+  - intent: { name: quit, slots: {} }
+    expect_state: done
+    expect_view_matches: "Where do you want to go next\\?[\\s\\S]*back[\\s\\S]*return to the git-ops hub[\\s\\S]*main_room[\\s\\S]*parent story's main room"
+
+  - intent: { name: back, slots: {} }
+    expect_state: main_ops
+
+expect_no_errors: true

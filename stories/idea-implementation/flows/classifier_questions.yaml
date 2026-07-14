@@ -1,0 +1,31 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: intake
+initial_world:
+  base_branch: main
+
+host_handlers:
+  host.agent.decide:
+    by_call:
+      classify_idea:
+        data:
+          ok: true
+          submitted:
+            route: needs_human
+            confidence: 0.66
+            reason: "The feature request lacks a deterministic completion gate."
+            questions:
+              - "Which command should prove this feature is complete?"
+              - "What observable behavior should the gate assert?"
+
+turns:
+  - intent:
+      name: implement
+      slots:
+        idea: "Make the app feel more polished."
+    expect_state: needs_human
+    expect_world:
+      status: needs-human
+      last_error: "The feature request lacks a deterministic completion gate."
+
+expect_no_errors: true

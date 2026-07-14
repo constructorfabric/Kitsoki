@@ -1,0 +1,9 @@
+{% comment %}
+On-demand Tour Serving Loop Demo — app-wide base view. Minimal chrome;
+rooms override body and choices.
+{% endcomment %}
+{% block status %}Tour Demo{% endblock %}
+{% block heading %}{{ state.description }}{% endblock %}
+{% block body %}{% endblock %}
+{% block choices %}{% endblock %}
+{% block footer %}{% endblock %}

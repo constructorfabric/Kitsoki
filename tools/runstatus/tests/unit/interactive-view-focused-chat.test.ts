@@ -49,6 +49,18 @@ const dataSource = {
         turn_number: 1,
       }),
   ),
+  driveOperation: vi.fn(
+    (): Promise<TurnResult> =>
+      Promise.resolve({
+        mode: "completed",
+        state: "__exit__done",
+        view: "Done",
+        typed_view: { Source: "", Elements: [] },
+        allowed_intents: [],
+        intents: [],
+        turn_number: 2,
+      }),
+  ),
   listWork: vi.fn().mockResolvedValue({
     summary: {
       items: 1,
@@ -83,6 +95,7 @@ const dataSource = {
     skipped: 0,
     items: [],
   }),
+  artifactUrl: vi.fn((handle: string): string => `/artifact/${encodeURIComponent(handle)}`),
 };
 
 vi.mock("../../src/data/source.js", () => ({
@@ -129,6 +142,8 @@ describe("InteractiveView focused chat context", () => {
     setActivePinia(createPinia());
     showChat.mockReset();
     dataSource.submit.mockClear();
+    dataSource.driveOperation.mockClear();
+    dataSource.artifactUrl.mockClear();
     dataSource.listWork.mockClear();
     dataSource.syncGitHubInbox.mockClear();
     showChat.mockResolvedValue({
@@ -162,6 +177,8 @@ describe("InteractiveView focused chat context", () => {
       ],
     });
     replace.mockReset();
+    dataSource.getTrace.mockReset();
+    dataSource.getTrace.mockResolvedValue({ events: [], last_turn: 0 });
     route.query = { chat: "chat-1" };
     sessionStorage.clear();
   });
@@ -185,6 +202,212 @@ describe("InteractiveView focused chat context", () => {
 
     await wrapper.find('[data-testid="focused-chat-close"]').trigger("click");
     expect(replace).toHaveBeenCalledWith({ path: "/s/s1/chat", query: {} });
+    wrapper.unmount();
+  });
+
+  it("renders an operation banner from the trace operation handle", async () => {
+    route.query = {};
+    dataSource.getTrace.mockResolvedValueOnce({
+      last_turn: 1,
+      events: [
+        {
+          time: "2026-01-01T00:00:01Z",
+          level: "info",
+          msg: "world.update",
+          session_id: "s1",
+          turn: 1,
+          state_path: "idle",
+          attrs: {
+            set: {
+              operation_run: {
+                operation_id: "bf__capsule_demo",
+                policy_id: "bf__capsule_demo",
+                title: "Capsule bugfix",
+                status: "running",
+                mode: "autonomous",
+                execution_mode: "one-shot",
+                phase: "reproduce_bug",
+                from: "idle",
+                to: "bugfix.reproduce",
+                run_in_background: true,
+              },
+            },
+          },
+        },
+      ],
+    });
+
+    const wrapper = mount(InteractiveView, mountOpts);
+    await flushPromises();
+
+    const banner = wrapper.find('[data-testid="operation-run-banner"]');
+    expect(banner.exists()).toBe(true);
+    expect(wrapper.find('[data-testid="operation-run-title"]').text()).toBe("Capsule bugfix");
+    expect(wrapper.find('[data-testid="operation-run-status"]').text()).toBe("running in background");
+    expect(banner.text()).toContain("phase reproduce bug");
+    const summary = wrapper.find('[data-testid="operation-run-summary"]');
+    expect(summary.text()).toContain("mode autonomous");
+    expect(summary.text()).toContain("execution one-shot");
+    expect(summary.text()).toContain("phase reproduce bug");
+    expect(summary.text()).toContain("route idle -> bugfix.reproduce");
+    expect(wrapper.find('[data-testid="operation-run-drive"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("drives a running operation from the in-session banner", async () => {
+    route.query = {};
+    dataSource.getTrace
+      .mockResolvedValueOnce({
+        last_turn: 1,
+        events: [
+          {
+            time: "2026-01-01T00:00:01Z",
+            level: "info",
+            msg: "world.update",
+            session_id: "s1",
+            turn: 1,
+            state_path: "idle",
+            attrs: {
+              set: {
+                operation_run: {
+                  operation_id: "bf__capsule_demo",
+                  policy_id: "bf__capsule_demo",
+                  title: "Capsule bugfix",
+                  status: "running",
+                  mode: "supervised",
+                  phase: "run_regression",
+                  run_in_background: true,
+                },
+              },
+            },
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        last_turn: 3,
+        events: [
+          {
+            time: "2026-01-01T00:00:03Z",
+            level: "info",
+            msg: "operation.completed",
+            session_id: "s1",
+            turn: 3,
+            state_path: "__exit__done",
+            attrs: {
+              operation_id: "bf__capsule_demo",
+              policy_id: "bf__capsule_demo",
+              title: "Capsule bugfix",
+              status: "completed",
+              terminal_state: "__exit__done",
+              terminal_artifact: "artifacts/qa-report.md",
+              terminal_artifact_handle: "qa-report#abc123",
+            },
+          },
+        ],
+      });
+    dataSource.driveOperation.mockResolvedValueOnce({
+      mode: "completed",
+      state: "__exit__done",
+      view: "Done",
+      typed_view: { Source: "", Elements: [] },
+      allowed_intents: [],
+      intents: [],
+      turn_number: 3,
+    });
+
+    const wrapper = mount(InteractiveView, mountOpts);
+    await flushPromises();
+
+    await wrapper.find('[data-testid="operation-run-drive"]').trigger("click");
+    await flushPromises();
+
+    expect(dataSource.driveOperation).toHaveBeenCalledWith("s1");
+    expect(dataSource.getTrace).toHaveBeenLastCalledWith("s1", { since_turn: 2 });
+    expect(wrapper.find('[data-testid="current-state"]').text()).toBe("__exit__done");
+    expect(wrapper.find('[data-testid="operation-run-drive"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="operation-run-status"]').text()).toBe("completed");
+    expect(wrapper.find('[data-testid="operation-run-artifact"]').text()).toContain("artifacts/qa-report.md");
+    const openArtifact = wrapper.find('[data-testid="operation-run-artifact-open"]');
+    expect(openArtifact.exists()).toBe(true);
+    expect(openArtifact.attributes("href")).toBe("/artifact/qa-report%23abc123");
+    expect(openArtifact.attributes("target")).toBe("_blank");
+    wrapper.unmount();
+  });
+
+  it("does not render Drive for interactive running operations", async () => {
+    route.query = {};
+    dataSource.getTrace.mockResolvedValueOnce({
+      last_turn: 1,
+      events: [
+        {
+          time: "2026-01-01T00:00:01Z",
+          level: "info",
+          msg: "world.update",
+          session_id: "s1",
+          turn: 1,
+          state_path: "review",
+          attrs: {
+            set: {
+              operation_run: {
+                operation_id: "guided_review",
+                policy_id: "guided_review",
+                title: "Guided review",
+                status: "running",
+                mode: "interactive",
+                run_in_background: true,
+              },
+            },
+          },
+        },
+      ],
+    });
+
+    const wrapper = mount(InteractiveView, mountOpts);
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="operation-run-status"]').text()).toBe("running in background");
+    expect(wrapper.find('[data-testid="operation-run-drive"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("renders waiting operation details from the trace operation handle", async () => {
+    route.query = {};
+    dataSource.getTrace.mockResolvedValueOnce({
+      last_turn: 2,
+      events: [
+        {
+          time: "2026-01-01T00:00:01Z",
+          level: "info",
+          msg: "world.update",
+          session_id: "s1",
+          turn: 2,
+          state_path: "__exit__needs-human",
+          attrs: {
+            set: {
+              operation_run: {
+                operation_id: "bf__capsule_demo",
+                policy_id: "bf__capsule_demo",
+                title: "Capsule bugfix",
+                status: "waiting",
+                terminal_state: "__exit__needs-human",
+                stop_reason: "needs-human",
+                stop_detail: "Regression gate was never RED.",
+              },
+            },
+          },
+        },
+      ],
+    });
+
+    const wrapper = mount(InteractiveView, mountOpts);
+    await flushPromises();
+
+    const banner = wrapper.find('[data-testid="operation-run-banner"]');
+    expect(banner.attributes("data-operation-status")).toBe("waiting");
+    expect(wrapper.find('[data-testid="operation-run-status"]').text()).toBe("waiting for needs-human");
+    expect(wrapper.find('[data-testid="operation-run-detail"]').text()).toContain("Regression gate was never RED.");
+    expect(banner.text()).toContain("parked at __exit__needs-human");
+    expect(wrapper.find('[data-testid="operation-run-drive"]').exists()).toBe(false);
     wrapper.unmount();
   });
 

@@ -16,6 +16,8 @@ states:
           prompt: "Actions"
           items:
             - { label: "score", intent: score, hint: "run offline scoring and write artifacts" }
+            - { label: "campaign review", intent: campaign_review, hint: "materialize an offline Arena plan and Slidey deck" }
+            - { label: "campaign arm", intent: campaign_arm, hint: "require explicit live gate; records no provider dispatch" }
             - { label: "quit", intent: quit, hint: "abandon the workflow" }
             - { label: "look", intent: look }
     on:
@@ -33,6 +35,28 @@ states:
                 report_json: ""
                 report_markdown: ""
                 report_deck: ""
+      campaign_review:
+        - target: campaign_review
+          effects:
+            - set:
+                campaign_study: "{{ slots.study ?? world.campaign_study }}"
+                campaign_output_dir: "{{ slots.output_dir ?? world.campaign_output_dir }}"
+                campaign_repeat_phase: "{{ slots.repeat_phase ?? world.campaign_repeat_phase }}"
+                campaign_status: ""
+                campaign_error: ""
+                campaign_plan: ""
+                campaign_markdown: ""
+                campaign_deck: ""
+      campaign_arm:
+        - target: campaign_arm
+          effects:
+            - set:
+                campaign_study: "{{ slots.study ?? world.campaign_study }}"
+                campaign_output_dir: "{{ slots.output_dir ?? world.campaign_output_dir }}"
+                campaign_repeat_phase: "{{ slots.repeat_phase ?? world.campaign_repeat_phase }}"
+                campaign_status: ""
+                campaign_error: ""
+                campaign_arm_receipt: ""
       quit:
         - target: "@exit:abandoned"
       look:

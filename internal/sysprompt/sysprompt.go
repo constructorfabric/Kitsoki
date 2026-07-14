@@ -23,6 +23,7 @@ const (
 	Extract       Verb = "extract"        // host.agent.extract
 	AskWithMCP    Verb = "ask_with_mcp"   // host.agent.ask_with_mcp
 	AskStructured Verb = "ask_structured" // host.agent.ask_structured
+	Codeact       Verb = "codeact"        // host.agent.codeact
 )
 
 //go:embed templates/kitsoki.md
@@ -55,6 +56,8 @@ func verbContract(v Verb) string {
 		return "This call performs scoped agentic work in a working directory. Use your tools to accomplish exactly the stated task and nothing beyond it."
 	case Converse:
 		return "This is a turn in a bounded conversation. Stay in character and in scope; advance the exchange without taking on work outside it."
+	case Codeact:
+		return "This call runs a bounded code-acting loop. Emit Starlark snippets against the declared capability allowlist, observe each structured result, and terminate by calling done() with output conforming to the provided schema."
 	case Route:
 		// Routing supplies its own Intent Library + Tool Contract in the task
 		// layer; a generic contract here would only be redundant.

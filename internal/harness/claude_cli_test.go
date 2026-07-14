@@ -2,6 +2,8 @@ package harness_test
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -322,6 +324,76 @@ func TestClaudeCLIHarness_ExecPlumbing(t *testing.T) {
 	intent, slots, _ := harness.ParseTransitionArgsForTest(params)
 	assert.Equal(t, "go", intent)
 	assert.Equal(t, "south", slots["direction"])
+}
+
+func TestClaudeCLIHarness_RunStructuredUsesCallerSchema(t *testing.T) {
+	exe, err := os.Executable()
+	require.NoError(t, err)
+
+	callerSchema := json.RawMessage(`{
+		"type":"object",
+		"additionalProperties":false,
+		"required":["class","confidence"],
+		"properties":{
+			"class":{"type":"string","enum":["intent","help","room_request","meta_edit"]},
+			"intent":{"type":"string"},
+			"confidence":{"type":"number"}
+		}
+	}`)
+	var seenPrompt string
+	var seenSchema []byte
+	exec := func(_ context.Context, _ string, args []string, stdin, _ string) (string, error) {
+		seenPrompt = stdin
+		configPath := flagValue(args, "--mcp-config")
+		raw, err := os.ReadFile(configPath)
+		if err != nil {
+			return "", err
+		}
+		var cfg struct {
+			MCPServers map[string]struct {
+				Args []string `json:"args"`
+			} `json:"mcpServers"`
+		}
+		if err := json.Unmarshal(raw, &cfg); err != nil {
+			return "", err
+		}
+		for _, server := range cfg.MCPServers {
+			schemaPath := flagValue(server.Args, "--schema")
+			outputPath := flagValue(server.Args, "--output")
+			if schemaPath == "" || outputPath == "" {
+				continue
+			}
+			seenSchema, err = os.ReadFile(schemaPath)
+			if err != nil {
+				return "", err
+			}
+			payload := []byte(`{"class":"intent","intent":"root__bugfix_report","confidence":0.95}`)
+			if err := os.WriteFile(outputPath, payload, 0o600); err != nil {
+				return "", err
+			}
+			return `{"type":"result","subtype":"success","result":"ok"}`, nil
+		}
+		return "", errors.New("validator schema/output args missing")
+	}
+
+	h, err := harness.NewClaudeCLI(&app.AppDef{App: app.AppMeta{ID: "structured"}}, harness.ClaudeCLIConfig{
+		ClaudeBin:  exe,
+		KitsokiBin: exe,
+		Exec:       exec,
+	})
+	require.NoError(t, err)
+	payload, err := h.RunStructured(context.Background(), harness.StructuredInput{
+		SessionID:  "session",
+		TurnNumber: 1,
+		StatePath:  "root.landing",
+		Prompt:     "classify the operator's bug report",
+		SchemaJSON: callerSchema,
+	})
+	require.NoError(t, err)
+	assert.JSONEq(t, string(callerSchema), string(seenSchema),
+		"structured execution must attach the caller schema verbatim, not an empty transition enum")
+	assert.Equal(t, "classify the operator's bug report", seenPrompt)
+	assert.JSONEq(t, `{"class":"intent","intent":"root__bugfix_report","confidence":0.95}`, string(payload))
 }
 
 // TestClaudeCLIHarness_NoSubmitError verifies the harness returns a

@@ -1,0 +1,37 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: configure
+initial_world:
+  campaign_study: tools/arena/specs/fixture-study.yaml
+  campaign_output_dir: .artifacts/task-optimization
+host_handlers:
+  host.run:
+    by_call:
+      model_task_campaign_plan:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json: { status: planned, error: "" }
+      model_task_campaign_deck:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json: { status: reviewed, error: "" }
+      model_task_campaign_arm:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json: { status: armed, error: "" }
+turns:
+  - intent:
+      name: campaign_review
+    expect_state: campaign_review
+    expect_world:
+      campaign_root: .artifacts/task-optimization/fixture-study
+      campaign_plan: .artifacts/task-optimization/fixture-study/plan.json
+      campaign_markdown: .artifacts/task-optimization/fixture-study/plan.md
+      campaign_deck: .artifacts/task-optimization/fixture-study/plan-deck.slidey.json
+      campaign_status: reviewed
+  - intent:
+      name: done
+    expect_state: "__exit__campaign_done"

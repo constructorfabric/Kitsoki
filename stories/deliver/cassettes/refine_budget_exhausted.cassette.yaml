@@ -1,0 +1,40 @@
+# Cassette for flows/refine_budget_exhausted.yaml — the reviewer NEVER
+# accepts (replay: any reuses the single revise episode on every entry), so
+# with the flow's seeded refine_budget: 1 the second revise trips the
+# shared budget check → @exit:needs-human.
+
+kind: host_cassette
+app_id: deliver
+generated_at: 2026-07-05T00:00:00Z
+match_on: [handler, call]
+
+episodes:
+  - id: decomposer_call
+    match:
+      handler: host.agent.task
+      call: decomposer
+    response:
+      data:
+        ok: true
+        submitted:
+          briefs:
+            - id: slice-1
+              brief: "Implement slice 1 so that go test ./... passes."
+              gate_command: "go test ./..."
+              deps: []
+    replay: any
+
+  - id: review_always_revise
+    match:
+      handler: host.agent.decide
+      call: review
+    response:
+      data:
+        ok: true
+        submitted:
+          verdict: revise
+          reason: "A single brief with no acceptance criteria and no coverage_note is not a convincing completeness claim."
+          questions:
+            - "Add acceptance criteria to slice-1."
+            - "Add a coverage_note explaining what the epic needs beyond this one brief."
+    replay: any

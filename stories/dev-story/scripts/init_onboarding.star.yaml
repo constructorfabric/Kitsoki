@@ -1,0 +1,9 @@
+inputs:
+  op: {type: string, required: true}
+  request: {type: string}
+  workdir: {type: string}
+  repo_root: {type: string}
+  data: {type: object}
+  profile_json: {type: string}
+outputs:
+  result: {type: object, required: true}

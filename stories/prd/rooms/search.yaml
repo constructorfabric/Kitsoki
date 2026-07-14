@@ -21,8 +21,8 @@
 #     a free-form fallback handles the rare case of more). Selecting one
 #     fires `change_existing` with the path pre-bound (→ clarifying, the
 #     amend target captured in prd_change_target); `override_new` is the
-#     discouraged escape hatch. `confirm` is guarded and bounces while
-#     overlaps remain.
+#     discouraged escape hatch. `confirm` is hidden while overlaps remain, and
+#     a typed confirm bounces with visible feedback instead of a silent no-op.
 #   - no overlaps → `confirm` advances to clarifying cleanly.
 #   - `regenerate` discards the scan and re-fires on_enter.
 #   - `quit` abandons via @exit:abandoned.
@@ -31,7 +31,7 @@
 # A /reload that lands here with the scan already done skips the call.
 #
 # Workspace minting (Gap #4): committing to the pipeline (confirm /
-# change_existing / override_new) runs scripts/prd_slug.py via host.run to
+# change_existing / override_new) runs scripts/prd_slug.star via host.starlark.run to
 # mint a unique per-PRD slug + workspace (.artifacts/prd/<slug>) from the
 # distilled idea. Every downstream artifact (001-brief, 003-references,
 # 004-prd.md) then lands under that workspace instead of colliding at flat
@@ -39,7 +39,7 @@
 # workspace into a durable docs home. The mint is a small deterministic
 # script (no LLM) so it lives in the commit arcs' effects, not on_enter — it
 # fires exactly once per pipeline commit. prd_change_target (the amend doc) is
-# still captured for the publish step (prd_publish.py reuses it in place).
+# still captured for the publish step (prd_publish.star reuses it in place).
 
 states:
 
@@ -92,6 +92,8 @@ states:
         when: "len(world.prd_existing_state.overlaps ?? []) >= 3"
       - prose: "→ Select the matching draft below to amend it — the `AMEND`-tagged one is recommended. Only use `override_new` if you are certain none applies."
         when: "len(world.prd_existing_state.overlaps ?? []) > 0"
+      - template: "⚠ **Overlap gate still active** — {{ world.prd_overlap_feedback }}"
+        when: "world.prd_overlap_feedback != ''"
       # ── No overlap: clean path ──────────────────────────────────────────
       - prose: "No overlapping work found — `confirm` to proceed to clarifying questions."
         when: "len(world.prd_existing_state.overlaps ?? []) == 0 && world.prd_existing_state.roadmap_fit != ''"
@@ -134,6 +136,7 @@ states:
             - label:  "confirm"
               hint:   "no overlap — proceed to clarifying"
               intent: confirm
+              when: "len(world.prd_existing_state.overlaps ?? []) == 0"
             - label:  "override_new"
               hint:   "start a NEW PRD despite the overlap (discouraged)"
               intent: override_new
@@ -146,7 +149,7 @@ states:
             - label:  "look"
               hint:   "re-render"
               intent: look
-    relevant_world: [idea, prd_existing_state, prd_overlap_decision, prd_change_target, prd_slug, prd_workspace, upstream_paths, workdir, last_error]
+    relevant_world: [idea, prd_existing_state, prd_overlap_decision, prd_overlap_feedback, prd_change_target, prd_slug, prd_workspace, upstream_paths, workdir, last_error]
     on_enter:
       # Scout: check for overlapping PRDs + roadmap fit. THE EARLY GATE —
       # runs before any artifact is written. once: keyed off prd_existing_state.
@@ -173,28 +176,31 @@ states:
           target: .
           effects:
             - set:
-                prd_overlap_decision: ""
+                prd_overlap_decision: "blocked_confirm"
+                prd_overlap_feedback: "An overlapping PRD was found. Choose an existing document to amend, or use override_new if you intentionally want a separate PRD."
         - target: clarifying
           effects:
             # Mint the per-PRD workspace from the distilled idea (deterministic
             # slug + uniquify). Binds prd_slug + prd_workspace; downstream rooms
             # write their numbered artifacts under prd_workspace. on_error holds
             # the operator in search so the failure is visible (last_error).
-            - invoke: host.run
+            - invoke: host.starlark.run
               id: mint_workspace
               with:
-                cmd: python3
-                args:
-                  - "stories/prd/scripts/prd_slug.py"
-                  - "{{ world.idea }}"
-                  - "{{ world.workdir }}"
-                  - "{{ world.publish_durable_path }}"
+                script: scripts/prd_slug.star
+                capabilities:
+                  fs:
+                    read: ["**"]
+                inputs:
+                  idea: "{{ world.idea }}"
+                  durable_path: "{{ world.publish_durable_path }}"
               bind:
-                prd_slug:      stdout_json.slug
-                prd_workspace: stdout_json.workspace
+                prd_slug:      slug
+                prd_workspace: workspace
               on_error: search
             - set:
                 prd_overlap_decision: "new"
+                prd_overlap_feedback: ""
                 prd_change_target:    ""
                 # Leaving cleanly → clear any stale error so it doesn't leak
                 # into clarifying's view.
@@ -209,22 +215,24 @@ states:
           effects:
             # Even on the amend path a workspace is minted to hold the check
             # artifacts (001-brief, 003-references); publish reuses the amend
-            # target in place (prd_publish.py) rather than moving 004-prd.md.
-            - invoke: host.run
+            # target in place (prd_publish.star) rather than moving 004-prd.md.
+            - invoke: host.starlark.run
               id: mint_workspace
               with:
-                cmd: python3
-                args:
-                  - "stories/prd/scripts/prd_slug.py"
-                  - "{{ world.idea }}"
-                  - "{{ world.workdir }}"
-                  - "{{ world.publish_durable_path }}"
+                script: scripts/prd_slug.star
+                capabilities:
+                  fs:
+                    read: ["**"]
+                inputs:
+                  idea: "{{ world.idea }}"
+                  durable_path: "{{ world.publish_durable_path }}"
               bind:
-                prd_slug:      stdout_json.slug
-                prd_workspace: stdout_json.workspace
+                prd_slug:      slug
+                prd_workspace: workspace
               on_error: search
             - set:
                 prd_overlap_decision: "change_existing"
+                prd_overlap_feedback: ""
                 prd_change_target:    "{{ slots.target }}"
                 last_error:           ""
 
@@ -232,21 +240,23 @@ states:
       override_new:
         - target: clarifying
           effects:
-            - invoke: host.run
+            - invoke: host.starlark.run
               id: mint_workspace
               with:
-                cmd: python3
-                args:
-                  - "stories/prd/scripts/prd_slug.py"
-                  - "{{ world.idea }}"
-                  - "{{ world.workdir }}"
-                  - "{{ world.publish_durable_path }}"
+                script: scripts/prd_slug.star
+                capabilities:
+                  fs:
+                    read: ["**"]
+                inputs:
+                  idea: "{{ world.idea }}"
+                  durable_path: "{{ world.publish_durable_path }}"
               bind:
-                prd_slug:      stdout_json.slug
-                prd_workspace: stdout_json.workspace
+                prd_slug:      slug
+                prd_workspace: workspace
               on_error: search
             - set:
                 prd_overlap_decision: "new"
+                prd_overlap_feedback: ""
                 prd_change_target:    ""
                 last_error:           ""
 
@@ -258,6 +268,7 @@ states:
             - set:
                 prd_existing_state:   {}
                 prd_overlap_decision: ""
+                prd_overlap_feedback: ""
 
       quit:
         - target: "@exit:abandoned"

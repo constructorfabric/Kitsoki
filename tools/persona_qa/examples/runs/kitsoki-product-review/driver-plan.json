@@ -1,0 +1,30 @@
+{
+  "run_id": "persona-qa-kitsoki-product-review",
+  "scenarios": [
+    {
+      "scenario": "explain-delivery-loop",
+      "harness": "rrweb-replay",
+      "visual_surface": "kitsoki web",
+      "quality_gate": {
+        "minimum_evidence": [
+          "key_interaction_video",
+          "session_trace",
+          "review_summary"
+        ],
+        "done_when": "An architect can replay the delivery-loop evidence from the deck."
+      }
+    },
+    {
+      "scenario": "verify-ui-evidence",
+      "harness": "rrweb-replay",
+      "visual_surface": "kitsoki web",
+      "quality_gate": {
+        "minimum_evidence": [
+          "key_interaction_video",
+          "review_summary"
+        ],
+        "done_when": "The deck shows before/after playback and a review verdict."
+      }
+    }
+  ]
+}

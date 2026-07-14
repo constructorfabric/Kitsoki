@@ -1,0 +1,78 @@
+# view_render_gap — minimal app proving the flow harness fails a turn whose
+# post-bind view render errors, even when the fixture carries no
+# expect_view_matches assertion (the G-VIEW gate, internal/testrunner/flows.go).
+#
+# `broken`'s on_enter invokes a BINDING host call (bind: scan_result), so
+# machine.Turn's fast-path render is skipped entirely (hostCallsWillBind —
+# see machine.go) to avoid rendering a bound-field template against the
+# still-nil pre-bind world. The only renders left are:
+#   - orchestrator.dispatchHostCalls's post-bind re-render, which SWALLOWS a
+#     render error (logs orchestrator.render_after_bind_failed and leaves the
+#     view empty/stale — see docs/stories/story-style.md "never silent"), and
+#   - the flow harness rig's own post-turn re-render (flows.go), which
+#     BEFORE this change also dropped the error and fell back to whatever
+#     view the machine/orchestrator result already carried.
+#
+# `broken`'s view references the bound field through a pongo2 filter that
+# does not exist ("nosuchfilter"), so even a successful bind still leaves
+# the template broken — proving the gate fires on the post-bind render path
+# specifically, not just the direct/no-bind fast path.
+#
+# No LLM: host.test.scan is stubbed via the flow fixture's host_handlers.
+
+app:
+  id: view-render-gap-demo
+  version: 0.1.0
+  title: "View Render Gap Demo"
+
+hosts:
+  - host.test.scan
+
+world:
+  scan_result: { type: string, default: "" }
+
+intents:
+  go_bad:
+    title: "Go to the broken (post-bind) view"
+    description: "Transition into a state whose on_enter binds, then fails to render."
+    examples: ["go bad", "break it"]
+  go_good:
+    title: "Go to the healthy (post-bind) view"
+    description: "Transition into a state whose on_enter binds and renders fine."
+    examples: ["go good", "keep it working"]
+
+root: lobby
+
+states:
+  lobby:
+    description: "Lobby — choose a path."
+    view: |
+      Lobby. Type 'go bad' or 'go good'.
+    on:
+      go_bad:
+        - target: broken
+      go_good:
+        - target: fine
+
+  # Deliberately broken: pongo2 has no filter named "nosuchfilter", so
+  # rendering this view raises a template error. Because on_enter binds,
+  # this error can ONLY surface via the post-bind render path.
+  broken:
+    terminal: true
+    description: "Broken — the post-bind view template does not compile."
+    on_enter:
+      - invoke: host.test.scan
+        bind:
+          scan_result: summary
+    view: |
+      Scan said: {{ world.scan_result | nosuchfilter }}
+
+  fine:
+    terminal: true
+    description: "Healthy — the post-bind view template renders cleanly."
+    on_enter:
+      - invoke: host.test.scan
+        bind:
+          scan_result: summary
+    view: |
+      Made it, all good.

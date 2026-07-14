@@ -29,7 +29,7 @@ test.describe.configure({ mode: "serial" });
 
 test.beforeAll(() => prepareVideoDir(VIDEO_DIR));
 
-test("records the Claude-Code → kitsoki-mcp terminal demo", async ({ browser }) => {
+test("records a kitsoki xterm terminal demo", async ({ browser }) => {
   test.setTimeout(180_000);
   const cast = resolveCast();
   const shot = makeShot(ARTIFACT_DIR);
@@ -42,14 +42,19 @@ test("records the Claude-Code → kitsoki-mcp terminal demo", async ({ browser }
 
   try {
     // Title curtain hides the (trivial) goto/resize staging, then lifts on camera.
-    await installCurtain(page, "Claude Code  ·  kitsoki mcp");
+    await installCurtain(page, cast.curtainTitle ?? cast.title);
     await page.goto(PLAYER_URL);
     await page.waitForFunction(() => (window as unknown as { __ready?: boolean }).__ready === true);
-    await page.evaluate(([title, cols, rows]) => {
-      const w = window as unknown as { __title: (t: string) => void; __resize: (c: number, r: number) => Promise<void> };
+    await page.evaluate(([title, cols, rows, footer, badge]) => {
+      const w = window as unknown as {
+        __title: (t: string) => void;
+        __meta: (m: { title?: string; footer?: string; badge?: string }) => void;
+        __resize: (c: number, r: number) => Promise<void>;
+      };
+      w.__meta({ title: title as string, footer: footer as string, badge: badge as string });
       w.__title(title as string);
       return w.__resize(cols as number, rows as number);
-    }, [cast.title, cast.cols, cast.rows] as const);
+    }, [cast.title, cast.cols, cast.rows, cast.footer ?? "", cast.badge ?? "MCP"] as const);
     const caption = await makeCaption(page, 4000);
     await liftCurtain(page);
 
@@ -72,6 +77,8 @@ test("records the Claude-Code → kitsoki-mcp terminal demo", async ({ browser }
         }
       }
 
+      await page.evaluate(() => document.getElementById("demo-caption")?.classList.remove("show"));
+      await dwell(page, 550);
       await shot(page, beat.id);
       await dwell(page, beat.holdMs ?? 4000);
       chapters.close();
@@ -81,8 +88,9 @@ test("records the Claude-Code → kitsoki-mcp terminal demo", async ({ browser }
     // terminal painted the agent's closing line and the rendered TUI room.
     const text = await page.evaluate(() => document.querySelector(".xterm")?.textContent ?? "");
     expect(cast.beats.length).toBeGreaterThanOrEqual(6);
-    expect(text).toContain("kitsoki");
-    expect(text.toLowerCase()).toContain("confirm");
+    for (const expected of cast.assertText ?? ["kitsoki"]) {
+      expect(text.toLowerCase()).toContain(expected.toLowerCase());
+    }
   } catch (err) {
     onThrow(err);
     await shot(page, "ERROR");

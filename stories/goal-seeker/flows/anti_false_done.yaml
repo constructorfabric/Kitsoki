@@ -1,0 +1,53 @@
+# anti_false_done — DETERMINISM GUARANTEE 1: a decide `done` is REJECTED when the
+# ledger disagrees. verdict=done is never taken from the LLM; it is the deterministic
+# fact remaining==0 (gs_ledger). Here the ledger has an open change (C1), so even
+# though the decide gate returns verdict=done with a null next_instruction, the loop
+# refuses to terminate: it dispatches the ledger's ready_id (C1) and continues.
+#
+# Asserts the loop does NOT reach retrospective; it reaches the punch-list drive for C1.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: bootstrap
+initial_world:
+  goal_slug: goal-seeker-test
+  goal_dir:  stories/goal-seeker/testdata/goal
+  work_dir:  .artifacts/goal/flow-anti
+  reset_log: true
+
+host_handlers:
+  # The decide FALSELY claims done while C1 is still open. The loop must reject it.
+  host.agent.decide:
+    by_call:
+      evaluate:
+        data:
+          ok: true
+          submitted:
+            verdict: done
+            summary: "I think we're done."
+            next_instruction: null
+  host.run:
+    by_call:
+      redcheck: { data: { ok: false, exit_code: 1, stdout: "FAIL" } }
+
+turns:
+  - intent: { name: look, slots: {} }
+    expect_state: bootstrap
+  - intent: { name: advance, slots: {} }        # bootstrap → lint_check
+    expect_state: lint_check
+  - intent: { name: advance, slots: {} }        # lint ok → evaluate
+    expect_state: evaluate
+    expect_world: { remaining: 1, ready_id: "C1" }
+  - intent: { name: advance, slots: {} }        # evaluate → deciding
+    expect_state: deciding
+  # The decide returns done — but remaining>0, so it is REJECTED: the loop dispatches
+  # the ledger's ready change (C1) instead of terminating at retrospective.
+  - intent: { name: advance, slots: {} }
+    expect_state: dispatch
+    expect_not_state: retrospective
+    expect_world:
+      verdict: "done"
+      next_change_id: "C1"
+      remaining: 1
+
+expect_no_errors: true

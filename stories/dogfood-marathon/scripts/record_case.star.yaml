@@ -3,7 +3,13 @@ inputs:
   triage_verdict: { type: object, required: false }
   drive_result:   { type: object, required: false }
   verify_result:  { type: object, required: false }
+  exception_policy: { type: string, required: false }
 
 outputs:
-  results:  { type: object }
-  findings: { type: object }
+  results:           { type: object }
+  last_result:       { type: object }
+  findings:          { type: object }
+  exceptions:        { type: object }
+  exception_pending: { type: string }
+  exception_summary: { type: string }
+  record_status:     { type: string }

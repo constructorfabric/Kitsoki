@@ -1,7 +1,12 @@
 package orchestrator
 
 import (
+	"context"
+	"path/filepath"
 	"testing"
+
+	"kitsoki/internal/app"
+	"kitsoki/internal/host"
 )
 
 // profiles mirrors the .kitsoki.yaml example: a claude-native, a synthetic-claude
@@ -107,6 +112,53 @@ func TestSetSelection_Effort(t *testing.T) {
 	}
 }
 
+func TestSetSelectionClearsStickyLadderFallback(t *testing.T) {
+	profiles := map[string]HarnessProfile{
+		"claude-native":   {Name: "claude-native", Backend: "claude"},
+		"synthetic-codex": {Name: "synthetic-codex", Backend: "codex"},
+	}
+	o := &Orchestrator{agentBackendName: "claude", ladderSession: host.NewLadderSessionState()}
+	WithHarnessProfiles(profiles, "claude-native")(o)
+
+	cfg := host.LadderConfig{
+		Models: []host.LadderModel{
+			{Backend: "claude", Provider: "claude-native", Model: "opus"},
+			{Backend: "codex", Provider: "synthetic-codex", Model: "gpt-5.5"},
+		},
+		Efforts:   []string{"low"},
+		StatePath: filepath.Join(t.TempDir(), "ladder-state.json"),
+	}
+	ctx := host.WithLadderSessionState(context.Background(), o.ladderSession)
+	first := func(ctx context.Context, _ map[string]any) (host.Result, error) {
+		rung, _ := host.LadderRungFromContext(ctx)
+		if rung.Provider == "claude-native" {
+			return host.Result{Error: "claude unavailable", FailureKind: host.FailureInfra}, nil
+		}
+		return host.Result{}, nil
+	}
+	if _, err, summary := host.RunLadder(ctx, cfg, nil, first); err != nil || summary.Winner == nil || summary.Winner.Provider != "synthetic-codex" {
+		t.Fatalf("setup fallback failed: err=%v summary=%+v", err, summary)
+	}
+
+	if err := o.SetSelection("synthetic-codex", "", ""); err != nil {
+		t.Fatalf("SetSelection should accept synthetic-codex: %v", err)
+	}
+
+	cfg.StatePath = filepath.Join(t.TempDir(), "fresh-ladder-state.json")
+	var attempts []string
+	afterReset := func(ctx context.Context, _ map[string]any) (host.Result, error) {
+		rung, _ := host.LadderRungFromContext(ctx)
+		attempts = append(attempts, rung.Provider)
+		return host.Result{}, nil
+	}
+	if _, err, summary := host.RunLadder(ctx, cfg, nil, afterReset); err != nil || summary.Winner == nil {
+		t.Fatalf("post-selection ladder call failed: err=%v summary=%+v", err, summary)
+	}
+	if len(attempts) != 1 || attempts[0] != "claude-native" {
+		t.Fatalf("SetSelection should clear sticky fallback and restart at the first provider, got %v", attempts)
+	}
+}
+
 // With no profiles declared, every path falls through to the static backend and a
 // no-op active profile — today's behavior, byte-for-byte.
 func TestResolveSelection_LegacyNoProfiles(t *testing.T) {
@@ -123,6 +175,33 @@ func TestResolveSelection_LegacyNoProfiles(t *testing.T) {
 	}
 	if err := o.SetSelection("anything", "", ""); err == nil {
 		t.Fatalf("SetSelection should error when no profiles declared")
+	}
+}
+
+func TestProvidersForDispatchIncludesHarnessProfiles(t *testing.T) {
+	o := newProfileOrch(t, "claude-native")
+	o.def = &app.AppDef{
+		Providers: map[string]*app.ProviderDecl{
+			"synthetic-codex": {
+				Model: "story-model",
+				Env:   map[string]string{"OPENAI_BASE_URL": "story-wins"},
+			},
+			"story-only": {
+				Model: "story-only-model",
+				Env:   map[string]string{"STORY_ONLY": "1"},
+			},
+		},
+	}
+
+	providers := o.providersForDispatch()
+	if providers["synthetic-claude"].Env["ANTHROPIC_BASE_URL"] != "https://api.synthetic.new/anthropic" {
+		t.Fatalf("synthetic-claude harness profile env not merged: %+v", providers["synthetic-claude"])
+	}
+	if got := providers["synthetic-codex"].Env["OPENAI_BASE_URL"]; got != "story-wins" {
+		t.Fatalf("story provider should win profile name collision, got %q", got)
+	}
+	if got := providers["story-only"].Model; got != "story-only-model" {
+		t.Fatalf("story-only provider missing: %+v", providers["story-only"])
 	}
 }
 

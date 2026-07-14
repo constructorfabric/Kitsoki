@@ -62,7 +62,7 @@ func TestCodexLiveSmoke(t *testing.T) {
 		// Bypass flag required: codex exec auto-cancels MCP tool calls without
 		// it, so the validator submit tool would never execute. Mirrors the
 		// translator's base args (see agent_backend_codex.go).
-		"--json", "--skip-git-repo-check", "--dangerously-bypass-approvals-and-sandbox",
+		"--json", "--skip-git-repo-check", "--dangerously-bypass-approvals-and-sandbox", "--disable=apps",
 		"-c", "mcp_servers."+serverName+".command="+tomlString(kitsokiBin),
 		"-c", "mcp_servers."+serverName+".args="+argsTOML,
 	)

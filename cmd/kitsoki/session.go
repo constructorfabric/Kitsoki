@@ -20,7 +20,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -690,23 +689,6 @@ If no lock row exists, exits 0 with {"detached":false}.`,
 	return cmd
 }
 
-// pidAlive uses signal 0 to check whether a process with the given PID is
-// alive on this host. Mirrors the logic in internal/store/external_keys.go.
-func pidAlive(pid int) bool {
-	if pid <= 0 {
-		return false
-	}
-	err := syscall.Kill(pid, 0)
-	if err == nil {
-		return true
-	}
-	if errors.Is(err, syscall.EPERM) {
-		// EPERM means the process exists but we lack permission to signal it.
-		return true
-	}
-	return false
-}
-
 // ─── session create ───────────────────────────────────────────────────────────
 
 func sessionCreateCmd() *cobra.Command {
@@ -768,18 +750,20 @@ func sessionCreateCmd() *cobra.Command {
 
 func sessionContinueCmd() *cobra.Command {
 	var (
-		appPath       string
-		dbPath        string
-		key           string
-		idFlag        string
-		intentName    string
-		slotsFlag     string
-		rawText       string
-		harnessType   string
-		claudeModel   string
-		recordingPath string
-		tracePath     string // --trace override; "" = use default JSONL path when key is known
-		execModeFlag  string
+		appPath          string
+		dbPath           string
+		key              string
+		idFlag           string
+		intentName       string
+		slotsFlag        string
+		rawText          string
+		harnessType      string
+		claudeModel      string
+		recordingPath    string
+		tracePath        string // --trace override; "" = use default JSONL path when key is known
+		execModeFlag     string
+		drainTimeoutFlag string
+		driveOperation   bool
 	)
 	cmd := &cobra.Command{
 		Use:   "continue",
@@ -796,6 +780,13 @@ text to one of the current state's allowed intents using each intent's
 examples and slot schema. Use this for free-form replies (Jira/Bitbucket
 comment bodies).
 
+After each accepted inbound turn, background operation handles
+(` + "`run_in_background: true`" + `) continue automatically using the same safe
+driver as ` + "`kitsoki drive`" + ` and stop at terminal/waiting handles,
+clarification/rejection, manual-only policies, or no safe next intent.
+--drive-operation forces the same driver for any active autonomous/supervised
+operation handle, even when it is not marked background.
+
 The session writer lock is held for the duration of one turn. If
 another process holds it, this command exits 75 (EX_TEMPFAIL).`,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -804,6 +795,13 @@ another process holds it, this command exits 75 (EX_TEMPFAIL).`,
 			}
 			if (key == "") == (idFlag == "") {
 				return fmt.Errorf("exactly one of --key or --id must be set")
+			}
+			drainTimeout, err := time.ParseDuration(drainTimeoutFlag)
+			if err != nil || drainTimeout <= 0 {
+				if err == nil {
+					err = fmt.Errorf("must be greater than zero")
+				}
+				return fmt.Errorf("--drain-timeout: %w", err)
 			}
 
 			def, err := loadAppWithEnv(appPath)
@@ -860,6 +858,7 @@ another process holds it, this command exits 75 (EX_TEMPFAIL).`,
 
 			hostReg := host.NewRegistry()
 			host.RegisterBuiltins(hostReg)
+			host.RegisterStarlarkBindings(hostReg, def.StarlarkHostBindings)
 			if err := hostReg.ValidateAllowList(def.Hosts); err != nil {
 				return fmt.Errorf("validate hosts: %w", err)
 			}
@@ -1009,6 +1008,7 @@ another process holds it, this command exits 75 (EX_TEMPFAIL).`,
 			}
 
 			var outcome *orchestrator.TurnOutcome
+			var operationDrive *driveOperationFrame
 			lockErr := s.WithWriterLock(ctx, sid, func() error {
 				var inner error
 				if intentName != "" {
@@ -1026,6 +1026,28 @@ another process holds it, this command exits 75 (EX_TEMPFAIL).`,
 						turnOpts = append(turnOpts, orchestrator.WithSupplementSlots(slotVals))
 					}
 					outcome, inner = orch.Turn(ctx, sid, rawText, turnOpts...)
+				}
+				if shouldDriveOperationAfterTurn(outcome, inner) {
+					var drive *orchestrator.OperationDriveOutcome
+					var driveErr error
+					if driveOperation {
+						drive, driveErr = orch.DriveOperation(ctx, sid)
+					} else {
+						drive, driveErr = orch.DriveBackgroundOperation(ctx, sid)
+					}
+					if drive != nil {
+						operationDrive = &driveOperationFrame{
+							Turns:      drive.Turns,
+							StopReason: drive.StopReason,
+							LastIntent: drive.LastIntent,
+						}
+						if drive.Final != nil {
+							outcome = drive.Final
+						}
+					}
+					if driveErr != nil {
+						inner = driveErr
+					}
 				}
 				return inner
 			})
@@ -1048,7 +1070,6 @@ another process holds it, this command exits 75 (EX_TEMPFAIL).`,
 			// genuinely-broken story.
 			if jobScheduler != nil {
 				const maxDrainPasses = 8
-				const drainTimeout = 10 * time.Minute
 				for pass := 0; pass < maxDrainPasses; pass++ {
 					drainCtx, drainCancel := context.WithTimeout(ctx, drainTimeout)
 					schedErr := jobScheduler.WaitIdle(drainCtx)
@@ -1096,7 +1117,7 @@ another process holds it, this command exits 75 (EX_TEMPFAIL).`,
 				}
 			}
 
-			return writeJSON(cmd.OutOrStdout(), turnOutcomeView(sid, outcome))
+			return writeJSON(cmd.OutOrStdout(), turnOutcomeView(sid, outcome, operationDrive))
 		},
 	}
 	cmd.Flags().StringVar(&appPath, "app", "", "path to app.yaml (required)")
@@ -1107,11 +1128,13 @@ another process holds it, this command exits 75 (EX_TEMPFAIL).`,
 	cmd.Flags().StringVar(&slotsFlag, "slots", "", "intent slots as JSON or @file. With --intent: full slot set passed to SubmitDirect. With --raw: supplemental slots merged into the harness-resolved intent (existing keys are preserved).")
 	cmd.Flags().StringVar(&rawText, "raw", "", "raw inbound reply body, routed through the harness")
 	cmd.Flags().StringVar(&execModeFlag, "mode", "one-shot", `execution mode: "one-shot" (auto-advance, default) or "staged" (stop at decision gates)`)
+	cmd.Flags().StringVar(&drainTimeoutFlag, "drain-timeout", "10m", "maximum idle wait per background-job drain pass (for long-running one-shot workflows)")
 	cmd.Flags().StringVar(&harnessType, "harness", "", "harness for --raw: claude|live|replay (default auto)")
 	cmd.Flags().StringVar(&claudeModel, "claude-model", "", "model passed to claude -p --model")
 	cmd.Flags().StringVar(&recordingPath, "recording", "", "recording YAML for --harness replay")
 	cmd.Flags().StringVar(&tracePath, "trace", "",
 		"JSONL trace file for event writes; default: ~/.kitsoki/sessions/<app>/<sha8>-<slug>.jsonl (derived from --key)")
+	cmd.Flags().BoolVar(&driveOperation, "drive-operation", false, "after the inbound turn, force-drive any active autonomous/supervised operation until it rests")
 	_ = cmd.MarkFlagRequired("app")
 	return cmd
 }
@@ -1571,9 +1594,13 @@ func loadBitbucketToken() string {
 
 // turnOutcomeView projects a TurnOutcome into a stable JSON shape suitable
 // for orchestrators to ingest.
-func turnOutcomeView(sid app.SessionID, o *orchestrator.TurnOutcome) map[string]any {
+func turnOutcomeView(sid app.SessionID, o *orchestrator.TurnOutcome, operationDrive *driveOperationFrame) map[string]any {
 	if o == nil {
-		return map[string]any{"session_id": string(sid)}
+		out := map[string]any{"session_id": string(sid)}
+		if operationDrive != nil {
+			out["operation_drive"] = operationDrive
+		}
+		return out
 	}
 	out := map[string]any{
 		"session_id":      string(sid),
@@ -1594,6 +1621,9 @@ func turnOutcomeView(sid app.SessionID, o *orchestrator.TurnOutcome) map[string]
 		if o.GuardHint != "" {
 			out["guard_hint"] = o.GuardHint
 		}
+	}
+	if operationDrive != nil {
+		out["operation_drive"] = operationDrive
 	}
 	return out
 }

@@ -79,6 +79,7 @@ host_handlers:
       submitted:
         applied: true
         summary: "Documented --bar in §2 of docs/foo.md."
+        report_path: ".artifacts/docs-review/deadbeef-fix-report.md"
         files_changed:
           - path: "docs/foo.md"
             change: "added --bar flag row to §2 table"

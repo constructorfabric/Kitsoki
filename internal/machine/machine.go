@@ -2,10 +2,13 @@ package machine
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"path/filepath"
 	"reflect"
 	"sort"
@@ -14,11 +17,13 @@ import (
 	"sync/atomic"
 
 	"kitsoki/internal/app"
+	"kitsoki/internal/effect"
 	"kitsoki/internal/expr"
 	"kitsoki/internal/intent"
 	"kitsoki/internal/render"
 	"kitsoki/internal/render/elements"
 	"kitsoki/internal/store"
+	"kitsoki/internal/storyauthoring"
 	"kitsoki/internal/trace"
 	"kitsoki/internal/world"
 )
@@ -214,6 +219,12 @@ type Machine interface {
 	// where the chain landed.
 	RunEffectsAndState(ctx context.Context, state app.StatePath, w world.World, effects []app.Effect) (app.StatePath, world.World, []HostInvocation, string, []store.Event, error)
 	RunEffectsAndStateWithOptions(ctx context.Context, state app.StatePath, w world.World, effects []app.Effect, opts RunEffectsOptions) (app.StatePath, world.World, []HostInvocation, string, []store.Event, error)
+
+	// SettleActiveOperationRun applies the operation-run phase/completion checks
+	// that normally run at the end of Turn/DispatchPostBindEmits to a state/world
+	// pair advanced by an external synthetic transition, such as a background
+	// job's on_complete target dispatch.
+	SettleActiveOperationRun(state app.StatePath, w world.World) (world.World, []store.Event)
 
 	// DispatchPostBindEmits re-evaluates the emit_intent: effects on
 	// the entered state's on_enter chain against a post-bind world
@@ -762,22 +773,32 @@ func (m *machineImpl) Turn(ctx context.Context, cur app.StatePath, w world.World
 	if par := parseParallel(string(cur)); par.IsParallel {
 		return m.turnParallel(ctx, par, w, call)
 	}
+	var operationPrelude []store.Event
+	if opID, ok := m.operationForState(string(cur)); ok && (w.Operation == nil || w.Operation.State != string(cur)) {
+		parentWorldHash := worldSnapshotHash(w)
+		w = w.StartOperation(opID, string(cur))
+		operationPrelude = append(operationPrelude, newEvent(store.OperationStarted, map[string]any{
+			"operation_id":      w.Operation.ID,
+			"state":             string(cur),
+			"parent_world_hash": parentWorldHash,
+		}))
+	}
 
 	// 1. Validate first.
 	vr := m.Validate(cur, w, call)
 	if !vr.OK {
+		events := append([]store.Event{}, operationPrelude...)
+		events = append(events, newEvent(store.ValidationFailed, map[string]any{
+			"code":    string(vr.Err.Code),
+			"message": vr.Err.Message,
+			"intent":  call.Intent,
+			"state":   string(cur),
+		}))
 		return TurnResult{
 			NewState:        cur,
 			World:           w,
 			ValidationError: vr.Err,
-			Events: []store.Event{
-				newEvent(store.ValidationFailed, map[string]any{
-					"code":    string(vr.Err.Code),
-					"message": vr.Err.Message,
-					"intent":  call.Intent,
-					"state":   string(cur),
-				}),
-			},
+			Events:          events,
 		}, nil
 	}
 	call = vr.Accepted
@@ -808,20 +829,22 @@ func (m *machineImpl) Turn(ctx context.Context, cur app.StatePath, w world.World
 			Message:   fmt.Sprintf("no transition matched for intent %q in state %q", call.Intent, cur),
 			GuardHint: hint,
 		}
+		events := append([]store.Event{}, operationPrelude...)
+		events = append(events, newEvent(store.ValidationFailed, map[string]any{
+			"code":       string(intent.ErrGuardFailed),
+			"intent":     call.Intent,
+			"state":      string(cur),
+			"guard_hint": hint,
+		}))
 		return TurnResult{
 			NewState:        cur,
 			World:           w,
 			ValidationError: ve,
-			Events: []store.Event{
-				newEvent(store.ValidationFailed, map[string]any{
-					"code":       string(intent.ErrGuardFailed),
-					"intent":     call.Intent,
-					"state":      string(cur),
-					"guard_hint": hint,
-				}),
-			},
+			Events:          events,
 		}, nil
 	}
+	operationExitReason := strings.TrimSpace(winningTr.tr.OperationExit)
+	operationExitPolicyPrefix := strings.TrimSpace(winningTr.tr.OperationExitPolicyPrefix)
 
 	// 4. Resolve the target state path.
 	// Target may be a template expression like "{{ world.prev_state }}"; evaluate it first.
@@ -841,6 +864,25 @@ func (m *machineImpl) Turn(ctx context.Context, cur app.StatePath, w world.World
 	resolvedTarget, err := m.resolveInitialAware(targetPath, env)
 	if err != nil {
 		return TurnResult{}, fmt.Errorf("resolve initial for %q: %w", targetPath, err)
+	}
+	isReEntry := resolvedTarget == string(cur) && strings.TrimSpace(rawTarget) != "." && strings.TrimSpace(rawTarget) != ""
+	if opID, ok := m.operationForState(resolvedTarget); ok && (w.Operation == nil || w.Operation.State != resolvedTarget || isReEntry) {
+		if w.Operation != nil {
+			operationPrelude = append(operationPrelude, newEvent(store.OperationAbandoned, map[string]any{
+				"operation_id":    w.Operation.ID,
+				"reason":          "reenter",
+				"discarded_patch": w.OverlayPatch(),
+			}))
+			w = w.DiscardOperation()
+		}
+		parentWorldHash := worldSnapshotHash(w)
+		w = w.StartOperation(opID, resolvedTarget)
+		env.World = w.Vars
+		operationPrelude = append(operationPrelude, newEvent(store.OperationStarted, map[string]any{
+			"operation_id":      w.Operation.ID,
+			"state":             resolvedTarget,
+			"parent_world_hash": parentWorldHash,
+		}))
 	}
 
 	// emit machine.transition before applying effects
@@ -879,7 +921,6 @@ func (m *machineImpl) Turn(ctx context.Context, cur app.StatePath, w world.World
 	// never re-fired and the artifact text stayed identical. The user
 	// described it as "the refinement came back immediately and didn't
 	// change the artifact text."
-	isReEntry := resolvedTarget == string(cur) && strings.TrimSpace(rawTarget) != "." && strings.TrimSpace(rawTarget) != ""
 	if resolvedTarget != string(cur) || isReEntry {
 		var entered []string
 		if isReEntry {
@@ -935,7 +976,13 @@ func (m *machineImpl) Turn(ctx context.Context, cur app.StatePath, w world.World
 		// style anaphora on slotted intents like propose_purchase.
 		"slots": map[string]any(call.Slots),
 	}))
+	operationRunID := strings.TrimSpace(winningTr.tr.Operation)
+	if updatedWorld, operationEvents := m.startOperationRun(operationRunID, string(cur), resolvedTarget, call.Intent, false, newWorld); len(operationEvents) > 0 {
+		newWorld = updatedWorld
+		events = append(events, operationEvents...)
+	}
 
+	events = append(events, operationPrelude...)
 	events = append(events, effectEvents...)
 
 	// Emit StateExited for each level of the old path that is not shared.
@@ -976,6 +1023,41 @@ func (m *machineImpl) Turn(ctx context.Context, cur app.StatePath, w world.World
 			saySB.WriteString(dssb)
 		}
 		events = append(events, devs...)
+	}
+	if updatedWorld, operationEvents := m.advanceActiveOperationRunPhaseProgress(finalState, newWorld); len(operationEvents) > 0 {
+		newWorld = updatedWorld
+		events = append(events, operationEvents...)
+	}
+	if updatedWorld, operationEvents := m.completeActiveOperationRunForExit(operationExitReason, operationExitPolicyPrefix, newWorld); len(operationEvents) > 0 {
+		newWorld = updatedWorld
+		events = append(events, operationEvents...)
+	}
+	if updatedWorld, operationEvents := m.completeActiveOperationRunForOperationClose(effectEvents, finalState, newWorld); len(operationEvents) > 0 {
+		newWorld = updatedWorld
+		events = append(events, operationEvents...)
+	}
+	if updatedWorld, operationEvents := m.failActiveOperationRunForOperationAbandon(effectEvents, finalState, newWorld); len(operationEvents) > 0 {
+		newWorld = updatedWorld
+		events = append(events, operationEvents...)
+	}
+	if updatedWorld, operationEvents := m.completeActiveOperationRun(finalState, newWorld); len(operationEvents) > 0 {
+		newWorld = updatedWorld
+		events = append(events, operationEvents...)
+	}
+	if newWorld.Operation != nil && newWorld.Operation.State != finalState {
+		op := newWorld.Operation
+		discarded := newWorld.OverlayPatch()
+		newWorld = newWorld.DiscardOperation()
+		abandoned := newEvent(store.OperationAbandoned, map[string]any{
+			"operation_id":    op.ID,
+			"reason":          "exit",
+			"discarded_patch": discarded,
+		})
+		events = append(events, abandoned)
+		if updatedWorld, operationEvents := m.failActiveOperationRunForOperationAbandon([]store.Event{abandoned}, finalState, newWorld); len(operationEvents) > 0 {
+			newWorld = updatedWorld
+			events = append(events, operationEvents...)
+		}
 	}
 
 	// 7. Render view. When the target is parallel-encoded, compose region
@@ -1206,7 +1288,6 @@ func (m *machineImpl) dispatchEmittedIntents(ctx context.Context, curState strin
 			continue
 		}
 
-
 		// Resolve the emitted name through the import alias map of the
 		// active state's ancestor chain. When the LLM-judge emits a
 		// bare intent name (e.g. `accept`) inside an imported child
@@ -1234,7 +1315,8 @@ func (m *machineImpl) dispatchEmittedIntents(ctx context.Context, curState strin
 		if winningTr == nil {
 			return "", world.World{}, nil, "", nil, fmt.Errorf("emit_intent %q at %q: no transition arm matched (intent has no on: handler, or all guards failed)", emit.Name, state)
 		}
-
+		operationExitReason := strings.TrimSpace(winningTr.tr.OperationExit)
+		operationExitPolicyPrefix := strings.TrimSpace(winningTr.tr.OperationExitPolicyPrefix)
 
 		// Resolve target.
 		rawTarget := winningTr.tr.Target
@@ -1271,9 +1353,34 @@ func (m *machineImpl) dispatchEmittedIntents(ctx context.Context, curState strin
 		}
 
 		// Fire on_enter of newly-entered ancestors. Mirror Turn's logic.
+		//
+		// Self-transition (resolvedTarget == state): normally an emit that loops
+		// back to the same state does NOT re-fire on_enter — a passive `look`
+		// (target: ., no effects) must not re-run side effects. But a self-arc
+		// that CHANGED the world (has effects) is the kitsoki idiom for "I just
+		// enabled the next on_enter step" — e.g. git-ops's conflict room sets
+		// conflict_agent_ready=true via a `conflict_ready` self-arc precisely so
+		// the re-entered on_enter dispatches the resolver host.agent.task. Without
+		// re-firing on_enter here, that resolver never runs and DriveToRest stalls
+		// at `conflict`. Re-firing is bounded: `once:` invokes skip via
+		// allBindTargetsSet, the guard that fired this emit flips false after its
+		// effect, and EmitIntentMaxDepth / OrchestratorPostBindMaxDepth cap any
+		// residual loop.
 		var enterEmits []emittedIntent
-		if resolvedTarget != state {
-			entered := stateEnterPathsAware(state, resolvedTarget)
+		// Self-reentry is scoped to a synchronous intercept drive (DriveToRest):
+		// a normal operator turn / flow drive must still REST at an
+		// `intercept_drive: rest` room (e.g. git-ops's conflict room shows the
+		// scan and waits), so re-firing its on_enter only happens when the
+		// orchestrator is driving the room THROUGH to a real rest.
+		selfReentry := resolvedTarget == state && len(winningTr.tr.Effects) > 0 &&
+			InterceptDriveActive(ctx)
+		if resolvedTarget != state || selfReentry {
+			var entered []string
+			if selfReentry {
+				entered = []string{resolvedTarget}
+			} else {
+				entered = stateEnterPathsAware(state, resolvedTarget)
+			}
 			for _, enteredPath := range entered {
 				cs, ok := m.states[enteredPath]
 				if !ok || cs.s == nil || len(cs.s.OnEnter) == 0 {
@@ -1297,7 +1404,17 @@ func (m *machineImpl) dispatchEmittedIntents(ctx context.Context, curState strin
 					hopSay.WriteString(sb3.String())
 				}
 				ev2 = append(ev2, ev3...)
-				enterEmits = append(enterEmits, em3...)
+				// On a self-reentry we want the newly-eligible on_enter HOST CALLS
+				// (e.g. the conflict resolver) to dispatch, but NOT its emit_intents:
+				// those must be re-evaluated FRESH by the orchestrator's post-bind
+				// settle recursion after those host calls bind their results.
+				// Collecting them here instead snapshots them against the pre-host
+				// world and can leak a stale guard (e.g. conflict's `rebase_stuck`
+				// when conflict_files is momentarily empty) that then fires at the
+				// wrong state. Real (non-self) entries keep the original behaviour.
+				if !selfReentry {
+					enterEmits = append(enterEmits, em3...)
+				}
 			}
 		}
 
@@ -1318,6 +1435,11 @@ func (m *machineImpl) dispatchEmittedIntents(ctx context.Context, curState strin
 			"slots":     map[string]any(slotBag),
 			"synthetic": true,
 		}))
+		operationRunID := strings.TrimSpace(winningTr.tr.Operation)
+		if updatedWorld, operationEvents := m.startOperationRun(operationRunID, state, resolvedTarget, dispatchName, true, newWorld); len(operationEvents) > 0 {
+			newWorld = updatedWorld
+			events = append(events, operationEvents...)
+		}
 		events = append(events, ev2...)
 		for _, p := range stateExitPathsAware(state, resolvedTarget) {
 			events = append(events, newEvent(store.StateExited, map[string]any{"state": p}))
@@ -1350,9 +1472,684 @@ func (m *machineImpl) dispatchEmittedIntents(ctx context.Context, curState strin
 			}
 			events = append(events, subEvs...)
 		}
+		if updatedWorld, operationEvents := m.advanceActiveOperationRunPhaseProgress(state, newWorld); len(operationEvents) > 0 {
+			newWorld = updatedWorld
+			events = append(events, operationEvents...)
+		}
+		if updatedWorld, operationEvents := m.completeActiveOperationRunForExit(operationExitReason, operationExitPolicyPrefix, newWorld); len(operationEvents) > 0 {
+			newWorld = updatedWorld
+			events = append(events, operationEvents...)
+		}
+		if updatedWorld, operationEvents := m.completeActiveOperationRunForOperationClose(ev2, state, newWorld); len(operationEvents) > 0 {
+			newWorld = updatedWorld
+			events = append(events, operationEvents...)
+		}
+		if updatedWorld, operationEvents := m.failActiveOperationRunForOperationAbandon(ev2, state, newWorld); len(operationEvents) > 0 {
+			newWorld = updatedWorld
+			events = append(events, operationEvents...)
+		}
+		if updatedWorld, operationEvents := m.completeActiveOperationRun(state, newWorld); len(operationEvents) > 0 {
+			newWorld = updatedWorld
+			events = append(events, operationEvents...)
+		}
 	}
 
 	return state, newWorld, hostCalls, saySB.String(), events, nil
+}
+
+func (m *machineImpl) startOperationRun(policyID, from, to, intentName string, synthetic bool, w world.World) (world.World, []store.Event) {
+	policyID = strings.TrimSpace(policyID)
+	if policyID == "" || m.appDef == nil {
+		return w, nil
+	}
+	policy, ok := m.appDef.Operations[policyID]
+	if !ok || policy == nil {
+		return w, nil
+	}
+	payload := operationRunRunningPayload(policyID, policy, from, to, intentName, synthetic)
+	events := []store.Event{newEvent(store.OperationRunStarted, payload)}
+	if phasePayload, ok := operationRunPhasePayload(policyID, policy, 0, "running"); ok {
+		for k, v := range phasePayload {
+			payload[k] = v
+		}
+		events = append(events, newEvent(store.OperationRunPhaseStarted, phasePayload))
+	}
+	next := w.Clone()
+	next.SetDurable(app.OperationRunWorldKey, cloneMapAny(payload))
+	events = append(events, operationRunWorldUpdateEvent(payload))
+	return next, events
+}
+
+func operationRunRunningPayload(policyID string, policy *app.OperationPolicy, from, to, intentName string, synthetic bool) map[string]any {
+	payload := operationRunPolicyPayload(policy, true)
+	payload["operation_id"] = policyID
+	payload["policy_id"] = policyID
+	payload["status"] = "running"
+	payload["from"] = from
+	payload["to"] = to
+	payload["entry_intent"] = intentName
+	if synthetic {
+		payload["synthetic"] = true
+	}
+	return payload
+}
+
+func operationRunPhasePayload(policyID string, policy *app.OperationPolicy, phaseIndex int, phaseStatus string) (map[string]any, bool) {
+	phases := operationRunPhaseSummaryKeys(policy)
+	if phaseIndex < 0 || phaseIndex >= len(phases) {
+		return nil, false
+	}
+	phase := phases[phaseIndex]
+	if phase == "" {
+		return nil, false
+	}
+	return map[string]any{
+		"operation_id": policyID,
+		"policy_id":    policyID,
+		"status":       "running",
+		"phase":        phase,
+		"phase_index":  phaseIndex,
+		"phase_status": phaseStatus,
+		"artifact_key": phase,
+	}, true
+}
+
+func applyOperationRunPhasePayload(handle map[string]any, payload map[string]any) {
+	for _, key := range []string{"phase", "phase_index", "phase_status", "artifact_key"} {
+		if value, ok := payload[key]; ok {
+			handle[key] = value
+		}
+	}
+}
+
+func operationRunPhaseSummaryKeys(policy *app.OperationPolicy) []string {
+	if policy == nil || len(policy.PhaseSummary.From) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(policy.PhaseSummary.From))
+	seen := map[string]struct{}{}
+	for _, raw := range policy.PhaseSummary.From {
+		phase := strings.TrimSpace(raw)
+		if phase == "" {
+			continue
+		}
+		if _, ok := seen[phase]; ok {
+			continue
+		}
+		seen[phase] = struct{}{}
+		out = append(out, phase)
+	}
+	return out
+}
+
+func (m *machineImpl) SettleActiveOperationRun(state app.StatePath, w world.World) (world.World, []store.Event) {
+	var events []store.Event
+	if updatedWorld, operationEvents := m.advanceActiveOperationRunPhaseProgress(string(state), w); len(operationEvents) > 0 {
+		w = updatedWorld
+		events = append(events, operationEvents...)
+	}
+	if updatedWorld, operationEvents := m.completeActiveOperationRun(string(state), w); len(operationEvents) > 0 {
+		w = updatedWorld
+		events = append(events, operationEvents...)
+	}
+	return w, events
+}
+
+func (m *machineImpl) completeActiveOperationRun(terminalState string, w world.World) (world.World, []store.Event) {
+	if m.appDef == nil || !m.isTerminalState(terminalState) {
+		return w, nil
+	}
+	return m.finishActiveOperationRun(terminalState, "", w)
+}
+
+func (m *machineImpl) completeActiveOperationRunForExit(exitReason, policyPrefix string, w world.World) (world.World, []store.Event) {
+	exitReason = strings.TrimSpace(exitReason)
+	policyPrefix = strings.TrimSpace(policyPrefix)
+	if m.appDef == nil || exitReason == "" || policyPrefix == "" {
+		return w, nil
+	}
+	terminalState := exitReason
+	if !strings.HasPrefix(terminalState, "__exit__") {
+		terminalState = "__exit__" + terminalState
+	}
+	return m.finishActiveOperationRun(terminalState, policyPrefix, w)
+}
+
+func (m *machineImpl) completeActiveOperationRunForOperationClose(events []store.Event, state string, w world.World) (world.World, []store.Event) {
+	closedOperationID := operationRunClosedOperationID(events)
+	if m.appDef == nil || closedOperationID == "" {
+		return w, nil
+	}
+	active, ok := operationRunHandle(w.Vars[app.OperationRunWorldKey])
+	if !ok || strings.TrimSpace(operationRunString(active, "status")) != "running" {
+		return w, nil
+	}
+	policyID := strings.TrimSpace(operationRunString(active, "policy_id"))
+	if policyID == "" {
+		policyID = strings.TrimSpace(operationRunString(active, "operation_id"))
+	}
+	if policyID == "" || policyID != closedOperationID {
+		return w, nil
+	}
+	return m.finishActiveOperationRun(state, "", w)
+}
+
+func (m *machineImpl) failActiveOperationRunForOperationAbandon(events []store.Event, state string, w world.World) (world.World, []store.Event) {
+	operationID, reason := operationRunAbandonedOperation(events)
+	if m.appDef == nil || operationID == "" {
+		return w, nil
+	}
+	active, ok := operationRunHandle(w.Vars[app.OperationRunWorldKey])
+	if !ok || strings.TrimSpace(operationRunString(active, "status")) != "running" {
+		return w, nil
+	}
+	policyID := strings.TrimSpace(operationRunString(active, "policy_id"))
+	if policyID == "" {
+		policyID = strings.TrimSpace(operationRunString(active, "operation_id"))
+	}
+	if policyID == "" || policyID != operationID {
+		return w, nil
+	}
+	policy, ok := m.appDef.Operations[policyID]
+	if !ok || policy == nil {
+		return w, nil
+	}
+	if reason == "" {
+		reason = "abandoned"
+	}
+	payload := operationRunFailedPayload(policyID, policy, state, reason)
+	terminalHandle := cloneMapAny(active)
+	for k, v := range payload {
+		terminalHandle[k] = v
+	}
+	next := w.Clone()
+	next.SetDurable(app.OperationRunWorldKey, terminalHandle)
+	return next, []store.Event{
+		newEvent(store.OperationRunFailed, payload),
+		operationRunWorldUpdateEvent(terminalHandle),
+	}
+}
+
+func operationRunClosedOperationID(events []store.Event) string {
+	for i := len(events) - 1; i >= 0; i-- {
+		ev := events[i]
+		if ev.Kind != store.OperationCommitted && ev.Kind != store.OperationDraftPersisted {
+			continue
+		}
+		var payload map[string]any
+		if err := json.Unmarshal(ev.Payload, &payload); err != nil {
+			continue
+		}
+		if id, _ := payload["operation_id"].(string); strings.TrimSpace(id) != "" {
+			return strings.TrimSpace(id)
+		}
+	}
+	return ""
+}
+
+func operationRunAbandonedOperation(events []store.Event) (operationID, reason string) {
+	for i := len(events) - 1; i >= 0; i-- {
+		ev := events[i]
+		if ev.Kind != store.OperationAbandoned {
+			continue
+		}
+		var payload map[string]any
+		if err := json.Unmarshal(ev.Payload, &payload); err != nil {
+			continue
+		}
+		id, _ := payload["operation_id"].(string)
+		if strings.TrimSpace(id) == "" {
+			continue
+		}
+		reason, _ := payload["reason"].(string)
+		return strings.TrimSpace(id), strings.TrimSpace(reason)
+	}
+	return "", ""
+}
+
+func (m *machineImpl) finishActiveOperationRun(terminalState, policyPrefix string, w world.World) (world.World, []store.Event) {
+	active, ok := operationRunHandle(w.Vars[app.OperationRunWorldKey])
+	if !ok || strings.TrimSpace(operationRunString(active, "status")) != "running" {
+		return w, nil
+	}
+	policyID := strings.TrimSpace(operationRunString(active, "policy_id"))
+	if policyID == "" {
+		policyID = strings.TrimSpace(operationRunString(active, "operation_id"))
+	}
+	if policyID == "" {
+		return w, nil
+	}
+	if policyPrefix != "" && !strings.HasPrefix(policyID, policyPrefix) {
+		return w, nil
+	}
+	policy, ok := m.appDef.Operations[policyID]
+	if !ok || policy == nil {
+		return w, nil
+	}
+
+	eventKind := store.OperationRunCompleted
+	payload := operationRunCompletedPayload(policyID, policy, terminalState, w)
+	if reason, detail, ok := m.operationRunStopReason(policy, terminalState, w); ok {
+		eventKind = store.OperationRunWaiting
+		payload = operationRunWaitingPayload(policyID, policy, terminalState, reason, detail)
+	}
+	terminalHandle := cloneMapAny(active)
+	for k, v := range payload {
+		terminalHandle[k] = v
+	}
+
+	next := w.Clone()
+	next.SetDurable(app.OperationRunWorldKey, terminalHandle)
+	return next, []store.Event{
+		newEvent(eventKind, payload),
+		operationRunWorldUpdateEvent(terminalHandle),
+	}
+}
+
+func (m *machineImpl) advanceActiveOperationRunPhaseProgress(state string, w world.World) (world.World, []store.Event) {
+	if m.appDef == nil {
+		return w, nil
+	}
+	active, ok := operationRunHandle(w.Vars[app.OperationRunWorldKey])
+	if !ok || strings.TrimSpace(operationRunString(active, "status")) != "running" {
+		return w, nil
+	}
+	policyID := strings.TrimSpace(operationRunString(active, "policy_id"))
+	if policyID == "" {
+		policyID = strings.TrimSpace(operationRunString(active, "operation_id"))
+	}
+	if policyID == "" {
+		return w, nil
+	}
+	policy, ok := m.appDef.Operations[policyID]
+	if !ok || policy == nil {
+		return w, nil
+	}
+	phases := operationRunPhaseSummaryKeys(policy)
+	if len(phases) == 0 {
+		return w, nil
+	}
+
+	completed := operationRunStringSlice(active, "completed_phases")
+	completedSet := make(map[string]struct{}, len(completed))
+	for _, phase := range completed {
+		completedSet[phase] = struct{}{}
+	}
+	currentPhase := operationRunString(active, "phase")
+	handle := cloneMapAny(active)
+	var events []store.Event
+	changed := false
+	lastCompletedIndex := -1
+
+	for idx, phase := range phases {
+		if _, done := completedSet[phase]; done {
+			continue
+		}
+		if !operationRunWorldValuePresent(w, phase) {
+			continue
+		}
+		if currentPhase != phase {
+			if payload, ok := operationRunPhasePayload(policyID, policy, idx, "running"); ok {
+				events = append(events, newEvent(store.OperationRunPhaseStarted, payload))
+				applyOperationRunPhasePayload(handle, payload)
+				currentPhase = phase
+				changed = true
+			}
+		}
+		if payload, ok := operationRunPhasePayload(policyID, policy, idx, "completed"); ok {
+			events = append(events, newEvent(store.OperationRunPhaseCompleted, payload))
+			applyOperationRunPhasePayload(handle, payload)
+			completed = append(completed, phase)
+			completedSet[phase] = struct{}{}
+			currentPhase = phase
+			lastCompletedIndex = idx
+			changed = true
+		}
+	}
+
+	if changed && !m.isTerminalState(state) {
+		for idx := lastCompletedIndex + 1; idx < len(phases); idx++ {
+			phase := phases[idx]
+			if _, done := completedSet[phase]; done {
+				continue
+			}
+			if currentPhase == phase {
+				break
+			}
+			if payload, ok := operationRunPhasePayload(policyID, policy, idx, "running"); ok {
+				events = append(events, newEvent(store.OperationRunPhaseStarted, payload))
+				applyOperationRunPhasePayload(handle, payload)
+				changed = true
+			}
+			break
+		}
+	}
+	if !changed {
+		return w, nil
+	}
+	handle["completed_phases"] = append([]string(nil), completed...)
+	next := w.Clone()
+	next.SetDurable(app.OperationRunWorldKey, handle)
+	events = append(events, operationRunWorldUpdateEvent(handle))
+	return next, events
+}
+
+func operationRunCompletedPayload(policyID string, policy *app.OperationPolicy, terminalState string, w world.World) map[string]any {
+	payload := operationRunPolicyPayload(policy, false)
+	payload["operation_id"] = policyID
+	payload["policy_id"] = policyID
+	payload["status"] = "completed"
+	payload["terminal_state"] = terminalState
+	if policy.TerminalArtifact != "" {
+		payload["terminal_artifact"] = policy.TerminalArtifact
+		if handle := operationRunTerminalArtifactHandle(w, policy.TerminalArtifact); handle != "" {
+			payload["terminal_artifact_handle"] = handle
+		}
+	}
+	return payload
+}
+
+func operationRunTerminalArtifactHandle(w world.World, artifactKey string) string {
+	artifactKey = strings.TrimSpace(artifactKey)
+	if artifactKey == "" || w.Vars == nil {
+		return ""
+	}
+	value, ok := w.Vars[artifactKey]
+	if !ok {
+		return ""
+	}
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed)
+	case map[string]any:
+		if handle := operationRunString(typed, "handle_id"); handle != "" {
+			return handle
+		}
+		if handle := operationRunString(typed, "id"); handle != "" {
+			return handle
+		}
+		if nested, ok := typed["handle"].(map[string]any); ok {
+			return operationRunString(nested, "id")
+		}
+	case map[string]string:
+		if handle := strings.TrimSpace(typed["handle_id"]); handle != "" {
+			return handle
+		}
+		if handle := strings.TrimSpace(typed["id"]); handle != "" {
+			return handle
+		}
+	}
+	return ""
+}
+
+func operationRunWaitingPayload(policyID string, policy *app.OperationPolicy, terminalState, reason, detail string) map[string]any {
+	payload := operationRunPolicyPayload(policy, false)
+	payload["operation_id"] = policyID
+	payload["policy_id"] = policyID
+	payload["status"] = "waiting"
+	payload["terminal_state"] = terminalState
+	payload["stop_reason"] = reason
+	if detail != "" {
+		payload["stop_detail"] = detail
+	}
+	return payload
+}
+
+func operationRunFailedPayload(policyID string, policy *app.OperationPolicy, terminalState, reason string) map[string]any {
+	payload := operationRunPolicyPayload(policy, false)
+	payload["operation_id"] = policyID
+	payload["policy_id"] = policyID
+	payload["status"] = "failed"
+	payload["terminal_state"] = terminalState
+	if strings.TrimSpace(reason) != "" {
+		payload["reason"] = strings.TrimSpace(reason)
+	}
+	return payload
+}
+
+func (m *machineImpl) operationRunStopReason(policy *app.OperationPolicy, terminalState string, w world.World) (reason, detail string, ok bool) {
+	if policy == nil || len(policy.StopOn) == 0 {
+		return "", "", false
+	}
+	stopReasons := make(map[string]string, len(policy.StopOn))
+	for _, configured := range policy.StopOn {
+		norm := normalizeOperationStopReason(configured)
+		if norm == "" {
+			continue
+		}
+		stopReasons[norm] = configured
+	}
+	if len(stopReasons) == 0 {
+		return "", "", false
+	}
+
+	candidates := []string{
+		terminalExitReason(terminalState),
+		worldString(w, "status"),
+	}
+	if worldString(w, "needs_human_reason") != "" {
+		candidates = append(candidates, "needs-human")
+	}
+	for _, candidate := range candidates {
+		norm := normalizeOperationStopReason(candidate)
+		if configured, exists := stopReasons[norm]; exists {
+			detail := operationRunStopDetail(w)
+			if detail == "" {
+				detail = m.operationRunExitDescription(configured, terminalState)
+			}
+			return configured, detail, true
+		}
+	}
+	return "", "", false
+}
+
+func (m *machineImpl) operationRunExitDescription(reason, terminalState string) string {
+	if m == nil || m.appDef == nil || len(m.appDef.Exits) == 0 {
+		return ""
+	}
+	for _, key := range []string{terminalExitReason(terminalState), reason} {
+		if key == "" {
+			continue
+		}
+		if exit := m.appDef.Exits[key]; exit != nil {
+			return strings.TrimSpace(exit.Description)
+		}
+	}
+	return ""
+}
+
+func terminalExitReason(state string) string {
+	state = strings.TrimSpace(state)
+	if state == "" {
+		return ""
+	}
+	state = strings.TrimPrefix(state, "__exit__")
+	if i := strings.LastIndexAny(state, "./"); i >= 0 {
+		state = state[i+1:]
+	}
+	return state
+}
+
+func normalizeOperationStopReason(reason string) string {
+	reason = strings.TrimSpace(strings.ToLower(reason))
+	reason = strings.TrimPrefix(reason, "__exit__")
+	reason = strings.ReplaceAll(reason, "_", "-")
+	return reason
+}
+
+func operationRunStopDetail(w world.World) string {
+	for _, key := range []string{"needs_human_reason", "last_error"} {
+		if value := worldString(w, key); value != "" {
+			return value
+		}
+	}
+	if hostError, ok := w.Vars["host_error"].(map[string]any); ok {
+		if msg, _ := hostError["message"].(string); strings.TrimSpace(msg) != "" {
+			return strings.TrimSpace(msg)
+		}
+	}
+	return ""
+}
+
+func worldString(w world.World, key string) string {
+	v, ok := w.Vars[key]
+	if !ok || v == nil {
+		return ""
+	}
+	if s, ok := v.(string); ok {
+		return strings.TrimSpace(s)
+	}
+	return strings.TrimSpace(fmt.Sprint(v))
+}
+
+func operationRunPolicyPayload(policy *app.OperationPolicy, includeRunPolicy bool) map[string]any {
+	payload := map[string]any{}
+	if policy == nil {
+		return payload
+	}
+	if policy.Title != "" {
+		payload["title"] = policy.Title
+	}
+	if policy.Mode != "" {
+		payload["mode"] = policy.Mode
+	}
+	if policy.ExecutionMode != "" {
+		payload["execution_mode"] = policy.ExecutionMode
+	}
+	if policy.RunInBackground {
+		payload["run_in_background"] = true
+	}
+	if includeRunPolicy {
+		if len(policy.StopOn) > 0 {
+			payload["stop_on"] = append([]string(nil), policy.StopOn...)
+		}
+		if len(policy.PauseOn) > 0 {
+			payload["pause_on"] = append([]string(nil), policy.PauseOn...)
+		}
+		if len(policy.PhaseSummary.From) > 0 {
+			payload["phase_summary_from"] = append([]string(nil), policy.PhaseSummary.From...)
+		}
+	}
+	return payload
+}
+
+func operationRunWorldUpdateEvent(handle map[string]any) store.Event {
+	return newEvent(store.EffectApplied, map[string]any{
+		"set": map[string]any{
+			app.OperationRunWorldKey: cloneMapAny(handle),
+		},
+	})
+}
+
+func operationRunHandle(v any) (map[string]any, bool) {
+	handle, ok := v.(map[string]any)
+	if !ok || len(handle) == 0 {
+		return nil, false
+	}
+	return handle, true
+}
+
+func operationRunString(handle map[string]any, key string) string {
+	v, ok := handle[key]
+	if !ok || v == nil {
+		return ""
+	}
+	switch s := v.(type) {
+	case string:
+		return s
+	default:
+		return fmt.Sprint(s)
+	}
+}
+
+func operationRunStringSlice(handle map[string]any, key string) []string {
+	v, ok := handle[key]
+	if !ok || v == nil {
+		return nil
+	}
+	switch typed := v.(type) {
+	case []string:
+		out := make([]string, 0, len(typed))
+		for _, raw := range typed {
+			if value := strings.TrimSpace(raw); value != "" {
+				out = append(out, value)
+			}
+		}
+		return out
+	case []any:
+		out := make([]string, 0, len(typed))
+		for _, raw := range typed {
+			if value := strings.TrimSpace(fmt.Sprint(raw)); value != "" {
+				out = append(out, value)
+			}
+		}
+		return out
+	case string:
+		if value := strings.TrimSpace(typed); value != "" {
+			return []string{value}
+		}
+	}
+	return nil
+}
+
+func operationRunWorldValuePresent(w world.World, key string) bool {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return false
+	}
+	v, ok := w.Vars[key]
+	if !ok || v == nil {
+		return false
+	}
+	switch typed := v.(type) {
+	case string:
+		return strings.TrimSpace(typed) != ""
+	case []any:
+		return len(typed) > 0
+	case []string:
+		return len(typed) > 0
+	case map[string]any:
+		return len(typed) > 0
+	case map[any]any:
+		return len(typed) > 0
+	default:
+		return true
+	}
+}
+
+func cloneMapAny(src map[string]any) map[string]any {
+	if src == nil {
+		return nil
+	}
+	dst := make(map[string]any, len(src))
+	for k, v := range src {
+		dst[k] = cloneAny(v)
+	}
+	return dst
+}
+
+func cloneAny(v any) any {
+	switch x := v.(type) {
+	case map[string]any:
+		return cloneMapAny(x)
+	case []string:
+		out := make([]string, len(x))
+		copy(out, x)
+		return out
+	case []any:
+		out := make([]any, len(x))
+		for i, item := range x {
+			out[i] = cloneAny(item)
+		}
+		return out
+	default:
+		return x
+	}
+}
+
+func (m *machineImpl) isTerminalState(statePath string) bool {
+	cs, ok := m.states[statePath]
+	return ok && cs.s != nil && cs.s.Terminal
 }
 
 // resolveEmittedIntentName resolves a bare intent name emitted by an
@@ -1618,23 +2415,21 @@ func (m *machineImpl) applyEffectsTracedWithOptions(ctx context.Context, effects
 			}
 			for _, k := range keys {
 				before := newWorld.Vars[k]
-				newWorld.Vars[k] = m.coerceSetValue(k, resolvedSet[k])
+				newWorld.Set(k, m.coerceSetValue(k, resolvedSet[k]))
 				m.logger.DebugContext(ctx, trace.EvMachineEffectApplied,
 					slog.String("type", "set"),
 					slog.String("key", k),
 					slog.Any("before", before),
 					slog.Any("after", resolvedSet[k]),
 				)
-				effectEvents = append(effectEvents, newEvent(store.EffectApplied, map[string]any{
-					"set": map[string]any{k: resolvedSet[k]},
-				}))
+				effectEvents = append(effectEvents, newEvent(store.EffectApplied, m.worldUpdatePayload(newWorld, "set", map[string]any{k: resolvedSet[k]})))
 			}
 			env.World = newWorld.Vars // expose this block's commits to the next entry
 
 		case len(eff.Increment) > 0:
 			for k, delta := range eff.Increment {
 				cur := toInt64(newWorld.Vars[k])
-				newWorld.Vars[k] = cur + int64(delta)
+				newWorld.Set(k, cur+int64(delta))
 				env.World = newWorld.Vars
 				m.logger.DebugContext(ctx, trace.EvMachineEffectApplied,
 					slog.String("type", "increment"),
@@ -1642,10 +2437,114 @@ func (m *machineImpl) applyEffectsTracedWithOptions(ctx context.Context, effects
 					slog.Int64("delta", int64(delta)),
 					slog.Int64("after", cur+int64(delta)),
 				)
-				effectEvents = append(effectEvents, newEvent(store.EffectApplied, map[string]any{
-					"increment": map[string]any{k: delta},
-				}))
+				effectEvents = append(effectEvents, newEvent(store.EffectApplied, m.worldUpdatePayload(newWorld, "increment", map[string]any{k: delta})))
 			}
+
+		case eff.CommitOperation != nil:
+			if newWorld.Operation == nil {
+				return world.World{}, nil, saySB, nil, nil, fmt.Errorf("commit_operation outside an active operation")
+			}
+			patch := make(map[string]any)
+			commitKeys := make([]string, 0, len(eff.CommitOperation.World))
+			for k := range eff.CommitOperation.World {
+				commitKeys = append(commitKeys, k)
+			}
+			sort.Strings(commitKeys)
+			if len(commitKeys) == 0 {
+				for k, v := range newWorld.OverlayPatch() {
+					patch[k] = v
+				}
+			} else {
+				for _, k := range commitKeys {
+					resolved, err := resolveEffectValue(eff.CommitOperation.World[k], env, newWorld)
+					if err != nil {
+						return world.World{}, nil, saySB, nil, nil, fmt.Errorf("commit_operation world %q: %w", k, err)
+					}
+					patch[k] = m.coerceSetValue(k, resolved)
+				}
+			}
+			clear := true
+			if eff.CommitOperation.Clear != nil {
+				clear = *eff.CommitOperation.Clear
+			}
+			opID := newWorld.Operation.ID
+			newWorld = newWorld.CommitOperation(patch, clear)
+			env.World = newWorld.Vars
+			effectEvents = append(effectEvents, newEvent(store.OperationCommitted, map[string]any{
+				"operation_id": opID,
+				"world_patch":  patch,
+			}))
+
+		case eff.PersistDraft != nil:
+			if newWorld.Operation == nil {
+				return world.World{}, nil, saySB, nil, nil, fmt.Errorf("persist_draft outside an active operation")
+			}
+			idVal, err := resolveEffectValue(eff.PersistDraft.ID, env, newWorld)
+			if err != nil {
+				return world.World{}, nil, saySB, nil, nil, fmt.Errorf("persist_draft id: %w", err)
+			}
+			draftID := strings.TrimSpace(fmt.Sprint(idVal))
+			if draftID == "" {
+				return world.World{}, nil, saySB, nil, nil, fmt.Errorf("persist_draft id resolved empty")
+			}
+			title := ""
+			if eff.PersistDraft.Title != "" {
+				titleVal, err := resolveEffectValue(eff.PersistDraft.Title, env, newWorld)
+				if err != nil {
+					return world.World{}, nil, saySB, nil, nil, fmt.Errorf("persist_draft title: %w", err)
+				}
+				title = fmt.Sprint(titleVal)
+			}
+			draftWorld := make(map[string]any)
+			if len(eff.PersistDraft.World) == 0 {
+				for k, v := range newWorld.OverlayPatch() {
+					draftWorld[k] = v
+				}
+			} else {
+				for _, k := range eff.PersistDraft.World {
+					if v, ok := newWorld.Vars[k]; ok {
+						draftWorld[k] = v
+					}
+				}
+			}
+			drafts := map[string]any{}
+			if existing, ok := newWorld.DurableVars()["operation_drafts"].(map[string]any); ok {
+				for k, v := range existing {
+					drafts[k] = v
+				}
+			}
+			draft := map[string]any{"id": draftID, "world": draftWorld}
+			if title != "" {
+				draft["title"] = title
+			}
+			drafts[draftID] = draft
+			opID := newWorld.Operation.ID
+			newWorld.SetDurable("operation_drafts", drafts)
+			newWorld = newWorld.DiscardOperation()
+			env.World = newWorld.Vars
+			effectEvents = append(effectEvents, newEvent(store.OperationDraftPersisted, map[string]any{
+				"operation_id": opID,
+				"draft_id":     draftID,
+				"world":        draftWorld,
+			}))
+
+		case eff.DiscardOperation != nil:
+			if newWorld.Operation == nil {
+				return world.World{}, nil, saySB, nil, nil, fmt.Errorf("discard_operation outside an active operation")
+			}
+			op := newWorld.Operation
+			reason := eff.DiscardOperation.Reason
+			if reason == "" {
+				reason = "explicit"
+			}
+			discarded := newWorld.OverlayPatch()
+			newWorld = newWorld.DiscardOperation()
+			env.World = newWorld.Vars
+			effectEvents = append(effectEvents, newEvent(store.OperationAbandoned, map[string]any{
+				"operation_id":    op.ID,
+				"reason":          reason,
+				"discarded_patch": discarded,
+			}))
 
 		case eff.Say != "":
 			text, err := render.Pongo(eff.Say, env)
@@ -1741,10 +2640,21 @@ func (m *machineImpl) applyEffectsTracedWithOptions(ctx context.Context, effects
 				slog.String("type", "invoke"),
 				slog.String("namespace", eff.Invoke),
 			)
+			// Stamp the resolved effect/deterministic pair (effect-taxonomy.md)
+			// using the builtin classification table, consulted against
+			// resolvedArgs so a multi-op verb (host.git, host.gh.ticket,
+			// host.local, ...) resolves per-op. This is the STATIC,
+			// story-author-invisible default — deliberately NOT the precise
+			// per-agent tool-surface join for host.agent.* verbs (that
+			// precision already lives on task.end's replay_mode, unchanged).
+			// See internal/effect.ClassifyVerb.
+			invokedEffect, invokedDeterministic := effect.ClassifyVerb(eff.Invoke, resolvedArgs)
 			effectEvents = append(effectEvents, newEvent(store.HostInvoked, map[string]any{
-				"namespace":  eff.Invoke,
-				"args":       resolvedArgs,
-				"background": eff.Background,
+				"namespace":     eff.Invoke,
+				"args":          resolvedArgs,
+				"background":    eff.Background,
+				"effect":        string(invokedEffect),
+				"deterministic": invokedDeterministic,
 			}))
 		}
 
@@ -2016,6 +2926,12 @@ func (m *machineImpl) isDecisionGate(ctx context.Context, state string, w world.
 	}
 	env := expr.Env{Slots: map[string]any{}, World: w.Vars, Event: map[string]any{}}
 	for _, name := range m.allowedIntentNames(app.StatePath(state)) {
+		if name == storyauthoring.EnterIntent {
+			continue
+		}
+		if intentDef, ok := m.lookupIntent(app.StatePath(state), name); ok && intentDef.Hidden {
+			continue
+		}
 		if _, isEmit := emitTargets[name]; isEmit {
 			continue // auto-advance outcome, not an operator choice
 		}
@@ -2084,6 +3000,13 @@ func (m *machineImpl) DecisionCandidates(cur app.StatePath, w world.World) []All
 	env := expr.Env{Slots: map[string]any{}, World: w.Vars, Event: map[string]any{}}
 	var out []AllowedIntent
 	for _, name := range m.allowedIntentNames(cur) {
+		if name == storyauthoring.EnterIntent {
+			continue
+		}
+		intentDef, _ := m.lookupIntent(cur, name)
+		if intentDef.Hidden {
+			continue
+		}
 		tr, path, _, err := m.findTransitionTraced(ctx, string(cur), name, env)
 		if err != nil || tr == nil {
 			continue
@@ -2100,7 +3023,6 @@ func (m *machineImpl) DecisionCandidates(cur app.StatePath, w world.World) []All
 		if resolveTarget(path, raw) == string(cur) {
 			continue
 		}
-		intentDef, _ := m.lookupIntent(cur, name)
 		out = append(out, AllowedIntent{
 			Name:        name,
 			Title:       intentDef.Title,
@@ -2129,13 +3051,7 @@ func (m *machineImpl) RenderState(cur app.StatePath, w world.World) (string, err
 // and legacy string/extends/template_file shapes return typed=nil and
 // the existing string-rendering path is used.
 func (m *machineImpl) RenderStateTyped(cur app.StatePath, w world.World) (string, *app.View, expr.Env, *render.AppRenderer, error) {
-	env := expr.Env{
-		Slots: map[string]any{},
-		World: w.Vars,
-		Menu:  MenuToTemplateMap(m.Menu(cur, w)),
-		State: stateMetaFor(m, cur),
-	}
-	expr.PopulateMenuHelpers(&env)
+	env := m.renderEnvForState(cur, w, expr.Env{})
 	if par := parseParallel(string(cur)); par.IsParallel {
 		// Parallel composition: parent view (if any) + each leaf view.
 		// Each leaf renders with its own State metadata so the per-region
@@ -2169,11 +3085,15 @@ func (m *machineImpl) RenderStateTyped(cur app.StatePath, w world.World) (string
 			}
 			sb.WriteString(v)
 		}
-		return sb.String(), nil, env, nil, nil
+		rr := m.rendererFor(string(cur))
+		text, typed, err := m.withPrerequisiteNotice(string(cur), nil, sb.String(), env, rr)
+		return text, typed, env, rr, err
 	}
 	cs, ok := m.states[string(cur)]
 	if !ok || cs.s == nil || cs.s.View.IsEmpty() {
-		return "", nil, env, nil, nil
+		rr := m.rendererFor(string(cur))
+		text, typed, err := m.withPrerequisiteNotice(string(cur), nil, "", env, rr)
+		return text, typed, env, rr, err
 	}
 	text, err := m.renderViewBody(cs.s.View, env, string(cur))
 	if err != nil {
@@ -2184,6 +3104,10 @@ func (m *machineImpl) RenderStateTyped(cur app.StatePath, w world.World) (string
 	if typedViewIsElementArray(cs.s.View) {
 		v := cs.s.View
 		typed = &v
+	}
+	text, typed, err = m.withPrerequisiteNotice(string(cur), typed, text, env, rr)
+	if err != nil {
+		return "", nil, env, nil, err
 	}
 	return text, typed, env, rr, nil
 }
@@ -2300,6 +3224,12 @@ func (m *machineImpl) coerceSetValue(k string, v any) any {
 	}
 	vd, ok := m.appDef.World[k]
 	if !ok {
+		return v
+	}
+	if f, isFloat := v.(float64); isFloat {
+		if vd.Type == "int" && !math.IsInf(f, 0) && !math.IsNaN(f) && f == math.Trunc(f) {
+			return int64(f)
+		}
 		return v
 	}
 	s, isStr := v.(string)
@@ -2509,15 +3439,7 @@ func (m *machineImpl) renderViewWithTyped(tr app.Transition, targetPath string, 
 	// intents with reasons. The menu is computed against the resolved
 	// target path and the post-effect world so the on-screen menu reflects
 	// the state the user is about to see.
-	renderEnv := expr.Env{
-		Slots: env.Slots,
-		World: w.Vars,
-		Event: env.Event,
-		Run:   env.Run,
-		Menu:  MenuToTemplateMap(m.Menu(app.StatePath(targetPath), w)),
-		State: stateMetaFor(m, app.StatePath(targetPath)),
-	}
-	expr.PopulateMenuHelpers(&renderEnv)
+	renderEnv := m.renderEnvForState(app.StatePath(targetPath), w, env)
 
 	var (
 		viewText string
@@ -2552,6 +3474,11 @@ func (m *machineImpl) renderViewWithTyped(tr app.Transition, targetPath string, 
 	}
 
 	rr := m.rendererFor(targetPath)
+	var err error
+	viewText, typed, err = m.withPrerequisiteNotice(targetPath, typed, viewText, renderEnv, rr)
+	if err != nil {
+		return "", nil, renderEnv, nil, fmt.Errorf("render prerequisites for %q: %w", targetPath, err)
+	}
 
 	if sayText != "" && viewText != "" {
 		return sayText + "\n\n" + viewText, typed, renderEnv, rr, nil
@@ -2832,11 +3759,37 @@ func commonPrefixLen(a, b []string) int {
 // ─── Utility helpers ─────────────────────────────────────────────────────────
 
 func cloneWorld(w world.World) world.World {
-	nw := world.World{Vars: make(map[string]any, len(w.Vars))}
-	for k, v := range w.Vars {
-		nw.Vars[k] = v
+	return w.Clone()
+}
+
+func worldSnapshotHash(w world.World) string {
+	b, err := json.Marshal(w.DurableVars())
+	if err != nil {
+		return ""
 	}
-	return nw
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
+}
+
+func (m *machineImpl) operationForState(path string) (string, bool) {
+	cs, ok := m.states[path]
+	if !ok || cs.s == nil || cs.s.Operation == nil {
+		return "", false
+	}
+	scope := strings.TrimSpace(cs.s.Operation.Scope)
+	if scope == "" {
+		scope = path
+	}
+	return scope, true
+}
+
+func (m *machineImpl) worldUpdatePayload(w world.World, kind string, value map[string]any) map[string]any {
+	payload := map[string]any{kind: value}
+	if w.Operation != nil {
+		payload["operation_id"] = w.Operation.ID
+		payload["operation_local"] = true
+	}
+	return payload
 }
 
 // hostCallsWillBind reports whether any of the queued host invocations declares

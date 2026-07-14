@@ -22,11 +22,13 @@
 //      floor — "pick an action, or just say what you want." This is the actual
 //      workbench floor, not a lookalike.
 //
-//   2. THE READ-ONLY -> WRITE OPT-IN. The session starts read-only; the first
-//      time the agent wants to edit a file it parks and asks. The opt-in is
-//      surfaced in the SAME operator-question card the operator already answers
-//      (operator-question-modal / oq-option-* / oq-submit): "May I edit?" with
-//      accept / refine / dismiss. Answering it grants write mode (WriteModeGranted).
+//   2. PROTECTED MAIN + SCOPED WRITE OPT-IN. Source work happens in a managed
+//      capsule based on staging/local; the primary checkout stays protected.
+//      The first mutation still parks and asks. The opt-in is surfaced in the
+//      SAME operator-question card the operator already answers
+//      (operator-question-modal / oq-option-* / oq-submit): "May I change this?"
+//      with accept / refine / dismiss. Answering it grants mutation capability
+//      for the scoped capsule work (WriteModeGranted); it does not unlock main.
 //
 //   3. THE /mine PROPOSALS SURFACE. An ambient miner watches the session and,
 //      when a recurring pattern is worth capturing as structure, raises a
@@ -83,7 +85,7 @@ export const AD_HOC_WORKBENCH_TOUR_STEPS: readonly TourStep[] = [
     route: "home",
     target: "new-session-btn",
     title: "Open a session",
-    body: "Click New session to start a fresh, read-only run. It opens directly in the interactive chat view — where the landing room, the write-mode opt-in, and the proposals badge all live.",
+    body: "Click New session to start a fresh workbench run. It opens directly in the interactive chat view — where the landing room, protected-main delivery model, write-mode opt-in, and proposals badge all live.",
     placement: "right",
     kind: "action",
     advance: "route-match",
@@ -106,13 +108,13 @@ export const AD_HOC_WORKBENCH_TOUR_STEPS: readonly TourStep[] = [
     dwellMs: 6500,
   },
 
-  // ── 2. THE READ-ONLY -> WRITE OPT-IN ────────────────────────────────────────
+  // ── 2. PROTECTED MAIN + SCOPED WRITE OPT-IN ─────────────────────────────────
   {
     id: "awb-writemode-intro",
     route: "interactive",
     target: "current-state",
-    title: "Read-only until you say so",
-    body: "The session starts READ-ONLY. The agent can read the repo, reason, and propose — but the first time it wants to EDIT a file, it parks mid-turn and asks. No silent writes; the gate is explicit and operator-held.",
+    title: "Protected main, managed changes",
+    body: "The primary checkout stays protected. Changes happen in a managed capsule based on `staging/local`, and the first mutation still parks for your explicit write-mode grant. Finished, validated work is committed and merged back to `staging/local` — never written straight to `main`.",
     placement: "bottom",
     kind: "explain",
     advance: "next",
@@ -123,8 +125,8 @@ export const AD_HOC_WORKBENCH_TOUR_STEPS: readonly TourStep[] = [
     id: "awb-writemode-card",
     route: "interactive",
     target: "oq-submit",
-    title: "“May I edit?” — the write-mode opt-in",
-    body: "The opt-in surfaces in the SAME operator-question card the operator already knows. The agent is parked, waiting: accept grants write mode (and emits WriteModeGranted), refine narrows the ask, dismiss keeps it read-only. We've picked accept — Send answer grants write mode. One surface, one gesture, the moat made legible.",
+    title: "Approve a scoped capsule change",
+    body: "The opt-in surfaces in the SAME operator-question card the operator already knows. The agent is parked, waiting: accept grants mutation capability for the requested capsule work (and emits WriteModeGranted), refine narrows the ask, and dismiss makes no change. This approval never unlocks the protected primary checkout or `main`.",
     placement: "left",
     kind: "action",
     advance: "click-target",
@@ -234,7 +236,7 @@ export const AD_HOC_WORKBENCH_TOUR_STEPS: readonly TourStep[] = [
     id: "awb-done",
     route: "interactive",
     title: "That's the ad-hoc workbench",
-    body: "Three surfaces, one loop: a free-form landing room you can pick OR type into; a read-only→write opt-in held by the operator in the familiar question card; and a proposals badge where the session's own mined structure accrues for one-gesture accept. You worked free-form, and the project mined itself into shape.",
+    body: "Three surfaces, one loop: a free-form landing room you can pick OR type into; protected-main delivery through a managed capsule with an operator-held mutation gate; and a proposals badge where the session's own mined structure accrues for one-gesture accept. You worked free-form, and the project mined itself into shape.",
     placement: "center",
     kind: "explain",
     advance: "next",

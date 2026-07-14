@@ -6,11 +6,9 @@
 # brief-one shipped + releasing the lock → board picks brief-two → same → board
 # sees no pending → summary → @exit:done. shipped_count=2, parked_count=0.
 #
-# fleet_load / fleet_board run REAL python in production; flows block real
-# host.run (no accidental shell-out), so they are stubbed here per recompute
-# pass (fleet_board-0/-1/-2, keyed by shipped+parked count — the cherny
-# gate-{{ iteration }} pattern). The recompute LOGIC itself is unit-proven by
-# running the scripts directly (see README).
+# fleet_load / fleet_board run REAL Starlark in this flow. The load script's
+# filesystem read is served from the inspect cassette below; host.run remains
+# stubbed only for the imported ship-it delivery steps.
 
 test_kind: flow
 app: ../app.yaml
@@ -20,58 +18,11 @@ initial_world:
   base_branch:        main
   main_worktree_path: "."
 
+starlark_inspect_cassette: ../cassettes/two_briefs.inspect.yaml
+
 host_handlers:
   host.run:
     by_call:
-      fleet_load:
-        data:
-          ok: true
-          exit_code: 0
-          stdout_json:
-            fleet_briefs:
-              - { id: brief-one, brief: "Implement slice one", gate_command: "go test ./internal/one/", status: pending, last_error: "" }
-              - { id: brief-two, brief: "Implement slice two", gate_command: "go test ./internal/two/", status: pending, last_error: "" }
-            fleet_state_path: "/tmp/fleet-two.json"
-            error: ""
-      # Board pass 0: nothing delivered yet → pick brief-one (2 pending).
-      fleet_board-0:
-        data:
-          ok: true
-          exit_code: 0
-          stdout_json:
-            fleet_briefs:  []
-            next_brief:    { id: brief-one, brief: "Implement slice one", gate_command: "go test ./internal/one/", status: pending, last_error: "" }
-            has_pending:   true
-            route:         dispatch
-            shipped_count: 0
-            parked_count:  0
-            pending_count: 2
-      # Board pass 1: brief-one shipped → pick brief-two (1 shipped, 1 pending).
-      fleet_board-1:
-        data:
-          ok: true
-          exit_code: 0
-          stdout_json:
-            fleet_briefs:  []
-            next_brief:    { id: brief-two, brief: "Implement slice two", gate_command: "go test ./internal/two/", status: pending, last_error: "" }
-            has_pending:   true
-            route:         dispatch
-            shipped_count: 1
-            parked_count:  0
-            pending_count: 1
-      # Board pass 2: both shipped → no pending → summary.
-      fleet_board-2:
-        data:
-          ok: true
-          exit_code: 0
-          stdout_json:
-            fleet_briefs:  []
-            next_brief:    {}
-            has_pending:   false
-            route:         done
-            shipped_count: 2
-            parked_count:  0
-            pending_count: 0
       # Each brief's ship-it delivery half (shared call ids per brief).
       integrate_exec:
         data: { ok: true, exit_code: 0, stdout_json: { outcome: integrated, integrated_sha: "deadbee", last_op_ok: true, last_error: "" } }

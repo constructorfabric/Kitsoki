@@ -1,0 +1,145 @@
+# serious_exception_pauses — a driver can raise a serious question without using
+# AskUserQuestion. The story records the result, writes the journal, pauses in
+# exception_review, then continues after explicitly parking or answering it.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  inner_pipeline: "bugfix"
+  backlog_sources: "local:.artifacts/issues/bugs"
+  case_budget: 25
+  drop_already_fixed: true
+  backlog:
+    items:
+      - { id: "constructorfabric/Kitsoki#61", title: "First-run profile setup is feature-sized and needs scope", baseline: "abc123^", repro_command: "go test ./cmd/kitsoki -run TestProfileSetupScopeGate", source_kind: "github", source_url: "https://github.com/constructorfabric/Kitsoki/issues/61", issue_label: "Kitsoku Issue #61", issue_url: "https://github.com/constructorfabric/Kitsoki/issues/61" }
+
+host_handlers:
+  host.starlark.run:
+    by_call:
+      load_backlog:
+        data:
+          backlog:
+            items:
+              - { id: "constructorfabric/Kitsoki#61", title: "First-run profile setup is feature-sized and needs scope", baseline: "abc123^", repro_command: "go test ./cmd/kitsoki -run TestProfileSetupScopeGate", source_kind: "github", source_url: "https://github.com/constructorfabric/Kitsoki/issues/61", issue_label: "Kitsoku Issue #61", issue_url: "https://github.com/constructorfabric/Kitsoki/issues/61" }
+          run_id: "dogfood-marathon"
+          run_dir: ".artifacts/dogfood-marathon/dogfood-marathon"
+          journal_path: ".artifacts/dogfood-marathon/dogfood-marathon/journal.json"
+          journal_markdown_path: ".artifacts/dogfood-marathon/dogfood-marathon/journal.md"
+          last_result: {}
+          loaded_journal: false
+          journal_status: "loaded"
+          journal_summary: "loaded"
+          last_checkpoint: "intake"
+      persist_journal:
+        data:
+          run_id: "dogfood-marathon"
+          run_dir: ".artifacts/dogfood-marathon/dogfood-marathon"
+          journal_path: ".artifacts/dogfood-marathon/dogfood-marathon/journal.json"
+          journal_markdown_path: ".artifacts/dogfood-marathon/dogfood-marathon/journal.md"
+          journal_status: "written"
+          journal_summary: "checkpoint written"
+          last_checkpoint: "recorded"
+      pick_case:
+        data:
+          current_case:    { id: "constructorfabric/Kitsoki#61", title: "First-run profile setup is feature-sized and needs scope", baseline: "abc123^", repro_command: "go test ./cmd/kitsoki -run TestProfileSetupScopeGate", source_kind: "github", source_url: "https://github.com/constructorfabric/Kitsoki/issues/61", issue_label: "Kitsoku Issue #61", issue_url: "https://github.com/constructorfabric/Kitsoki/issues/61" }
+          current_case_id: "constructorfabric/Kitsoki#61"
+          current_case_json: "{\"id\":\"constructorfabric/Kitsoki#61\",\"title\":\"First-run profile setup is feature-sized and needs scope\"}"
+      verify_case:
+        data:
+          verify_result: { status: "partial", how: "operator review required: scope first-run credential UX before code changes" }
+      record_case:
+        data:
+          results:
+            items:
+              - { case_id: "constructorfabric/Kitsoki#61", title: "First-run profile setup is feature-sized and needs scope", exit: "needs-human", verify_status: "partial", trace: ".artifacts/dogfood-marathon/dogfood-marathon/traces/case-05.jsonl" }
+          last_result: { case_id: "constructorfabric/Kitsoki#61", title: "First-run profile setup is feature-sized and needs scope", source_url: "https://github.com/constructorfabric/Kitsoki/issues/61", issue_label: "Kitsoku Issue #61", issue_url: "https://github.com/constructorfabric/Kitsoki/issues/61", issue_link: "[Kitsoku Issue #61](https://github.com/constructorfabric/Kitsoki/issues/61)", operator_question: "Should this marathon leave Kitsoku Issue #61 parked as a scoped product/design follow-up instead of changing first-run credentials UX now?", operator_impact: "Answer decides whether the agent may change credential setup UX in this run; without approval the case stays needs-human and the marathon continues.", exit: "needs-human", verify_status: "partial", tokens: 12000, tokens_display: "12000", wall_s: 90, wall_s_display: "90", trace: ".artifacts/dogfood-marathon/dogfood-marathon/traces/case-05.jsonl", trace_label: "case-05 trace", trace_link: "[case-05 trace](.artifacts/dogfood-marathon/dogfood-marathon/traces/case-05.jsonl)" }
+          findings: { items: [] }
+          exceptions:
+            items:
+              - { case_id: "constructorfabric/Kitsoki#61", severity: "serious", summary: "Should this marathon leave Kitsoku Issue #61 parked as a scoped product/design follow-up instead of changing first-run credentials UX now?", question: "Should this marathon leave Kitsoku Issue #61 parked as a scoped product/design follow-up instead of changing first-run credentials UX now?", impact: "Answer decides whether the agent may change credential setup UX in this run; without approval the case stays needs-human and the marathon continues.", issue_label: "Kitsoku Issue #61", issue_url: "https://github.com/constructorfabric/Kitsoki/issues/61", issue_link: "[Kitsoku Issue #61](https://github.com/constructorfabric/Kitsoki/issues/61)", trace: ".artifacts/dogfood-marathon/dogfood-marathon/traces/case-05.jsonl", trace_label: "case-05 trace", trace_link: "[case-05 trace](.artifacts/dogfood-marathon/dogfood-marathon/traces/case-05.jsonl)", status: "open" }
+          exception_pending: "constructorfabric/Kitsoki#61"
+          exception_summary: "Should this marathon leave Kitsoku Issue #61 parked as a scoped product/design follow-up instead of changing first-run credentials UX now?"
+          record_status: "recorded"
+      resolve_exception:
+        data:
+          exceptions:
+            items:
+              - { case_id: "constructorfabric/Kitsoki#61", severity: "serious", summary: "Should this marathon leave Kitsoku Issue #61 parked as a scoped product/design follow-up instead of changing first-run credentials UX now?", status: "parked", answer: "parked without operator answer" }
+      aggregate_run:
+        data:
+          rollup:
+            counts: { processed: 1, solved: 0, partial: 1, failed: 0, skipped: 0, shipped: 0, needs_human: 1 }
+            totals: { cost_usd: 1.25, tokens: 12000, wall_s: 90 }
+            worked: []
+            didnt: ["1 case needed operator guidance"]
+            headline: "Processed 1 case: 0 solved, 1 partial."
+      build_deck:
+        data:
+          deck_spec:
+            spec_path: "stories/dogfood-marathon/baked/report.deck.json"
+            summary: "Dogfood marathon report — 1 case, 0 solved."
+            case_decks: []
+
+  host.agent.task:
+    by_call:
+      triage_case:
+        data:
+          ok: true
+          submitted: { verdict: "UNCLEAR", evidence: "constructorfabric/Kitsoki#61 is a feature-sized first-run workflow", note: "needs operator scoping" }
+      drive_case:
+        data:
+          ok: true
+          submitted:
+            exit: "needs-human"
+            worktree: ".worktrees/case-05"
+            branch: "fix/case-05"
+            deliverable_present: false
+            requires_operator: true
+            operator_question: "Should this marathon leave Kitsoku Issue #61 parked as a scoped product/design follow-up instead of changing first-run credentials UX now?"
+            operator_impact: "Answer decides whether the agent may change credential setup UX in this run; without approval the case stays needs-human and the marathon continues."
+            exception_severity: "serious"
+            trace: ".artifacts/dogfood-marathon/dogfood-marathon/traces/case-05.jsonl"
+            trace_label: "case-05 trace"
+            cost_usd: 1.25
+            tokens: 12000
+            wall_s: 90
+            findings: []
+        delay: "20ms"
+
+  host.slidey.render:
+    by_call:
+      render_report:
+        data:
+          ok: true
+          path: "stories/dogfood-marathon/baked/report.deck.json"
+
+  host.artifacts_dir:
+    by_call:
+      emit_report:
+        data:
+          ok: true
+          handle: { id: "dogfood-marathon#exception", kind: "slideshow", mime: "text/html" }
+          path: "stories/dogfood-marathon/baked/report.deck.json"
+
+turns:
+  - intent: { name: start, slots: {} }
+    advance_clock: "2s"
+    expect_state: exception_review
+    expect_world:
+      exception_pending: "constructorfabric/Kitsoki#61"
+      cases_processed: 0
+
+  - intent: { name: ack_exception, slots: {} }
+    advance_clock: "500ms"
+    expect_state: done
+    expect_world:
+      exception_pending: ""
+      cases_processed: 1
+      report_handle: "dogfood-marathon#exception"
+      exceptions:
+        items:
+          - { case_id: "constructorfabric/Kitsoki#61", severity: "serious", summary: "Should this marathon leave Kitsoku Issue #61 parked as a scoped product/design follow-up instead of changing first-run credentials UX now?", status: "parked", answer: "parked without operator answer" }
+
+expect_terminal: false
+expect_no_errors: true

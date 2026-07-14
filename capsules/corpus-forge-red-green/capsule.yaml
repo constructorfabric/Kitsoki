@@ -1,0 +1,33 @@
+name: corpus-forge-red-green
+source:
+  synthetic: true
+  default_branch: main
+  steps:
+    - action: write
+      path: README.md
+      content: |
+        # Corpus Forge RED/GREEN fixture
+
+        `HEAD~1` intentionally lacks `fixed.txt`; `HEAD` adds it.
+    - action: commit
+      message: baseline is red
+    - action: write
+      path: fixed.txt
+      content: |
+        green
+    - action: commit
+      message: fix makes oracle green
+network: none
+verify:
+  probes:
+    - name: baseline-is-red
+      run: if git cat-file -e HEAD~1:fixed.txt 2>/dev/null; then exit 1; fi
+      expect: zero
+    - name: fix-is-green
+      run: test "$(git show HEAD:fixed.txt)" = green
+      expect: zero
+    - name: clean-tree
+      run: git diff --quiet && git diff --cached --quiet
+      expect: zero
+scenario:
+  kind: corpus-forge-red-green

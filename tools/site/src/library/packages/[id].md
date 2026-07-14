@@ -1,0 +1,1 @@
+<ExtensionPackage :pkg="$params.pkg" />

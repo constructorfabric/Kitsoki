@@ -12,7 +12,17 @@ import (
 
 	goyaml "github.com/goccy/go-yaml"
 	jsonschema "github.com/santhosh-tekuri/jsonschema/v6"
+
+	"kitsoki/internal/app"
 )
+
+// defaultRootBindingKeys is the fallback set of required kitsoki.instance.
+// bindings.<key> entries used when the declared kitsoki.story cannot be
+// resolved to a kit manifest at all (no on-disk checkout, or an unknown
+// story name — see validateSemantic). It mirrors dev-story's own declared
+// root.host_interfaces (stories/dev-story/kit.yaml) — the v1 default before
+// D6 (root generalization) made this manifest-driven rather than hardcoded.
+var defaultRootBindingKeys = []string{"ticket", "vcs", "ci", "workspace", "transport"}
 
 //go:embed schema.json
 var schemaBytes []byte
@@ -159,14 +169,76 @@ func validateSemantic(doc map[string]any, repoRoot string) ([]string, []string) 
 			errs = append(errs, fmt.Sprintf("kitsoki.instance.path = %q, want %q", instancePath, wantPath))
 		}
 	}
-	if story := stringAt(kitsoki, "story"); story != "" && story != "dev-story" {
-		errs = append(errs, fmt.Sprintf("kitsoki.story = %q, want dev-story", story))
+	// D6 (root generalization): kitsoki.story is no longer required to be
+	// the literal string "dev-story" — any installed kit whose kit.yaml
+	// declares a root: block naming it qualifies (app.ResolveRootKit). An
+	// empty story defaults to app.DefaultRootKitName, same as
+	// webconfig/synthesis. The resolved manifest's root.host_interfaces
+	// becomes the required kitsoki.instance.bindings.<key> set, replacing
+	// the formerly hardcoded ticket/vcs/ci/workspace/transport list —
+	// falling back to that same list (defaultRootBindingKeys) only when the
+	// story can't be resolved at all (no on-disk checkout, or truly unknown
+	// story name), so the bindings check still fires something useful.
+	story := stringAt(kitsoki, "story")
+	resolveName := story
+	if resolveName == "" {
+		resolveName = app.DefaultRootKitName
+	}
+	bindingKeys := defaultRootBindingKeys
+	if manifest, mErr := app.ResolveRootKit(resolveName, repoRoot, nil); mErr != nil {
+		if story != "" && story != app.DefaultRootKitName {
+			// An explicit, non-default kitsoki.story that fails to resolve is
+			// always a profile error — surface it. The default name resolving
+			// to nothing just means no on-disk/repoRoot context was given to
+			// check against (e.g. a bare --profile-json call with an
+			// arbitrary --repo-root); skip rather than fail, mirroring
+			// webconfig.resolveRoot's identical default-unresolvable case.
+			errs = append(errs, fmt.Sprintf("kitsoki.story = %q is not a known root kit: %v", story, mErr))
+		}
+	} else if ifaces := manifest.RootHostInterfaces(); len(ifaces) > 0 {
+		keys := make([]string, 0, len(ifaces))
+		for k := range ifaces {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		bindingKeys = keys
 	}
 	bindings := mapAt(instance, "bindings")
-	for _, key := range []string{"ticket", "vcs", "ci", "workspace", "transport"} {
+	for _, key := range bindingKeys {
 		if strings.TrimSpace(stringAt(bindings, key)) == "" {
 			errs = append(errs, "kitsoki.instance.bindings."+key+" is required")
 		}
+	}
+
+	tracker := mapAt(doc, "tracker")
+	sources, _ := tracker["sources"].([]any)
+	if len(sources) > 0 {
+		seenSourceIDs := map[string]struct{}{}
+		seenSourceLabels := map[string]struct{}{}
+		for _, raw := range sources {
+			source := mapValue(raw)
+			id := strings.TrimSpace(stringAt(source, "id"))
+			if id == "" {
+				continue // JSON Schema reports missing and malformed ids.
+			}
+			if _, exists := seenSourceIDs[id]; exists {
+				errs = append(errs, fmt.Sprintf("tracker.sources id %q is declared more than once", id))
+			}
+			seenSourceIDs[id] = struct{}{}
+			label := strings.TrimSpace(stringAt(source, "label"))
+			labelKey := strings.ToLower(label)
+			if labelKey != "" {
+				if _, exists := seenSourceLabels[labelKey]; exists {
+					errs = append(errs, fmt.Sprintf("tracker.sources label %q is declared more than once", label))
+				}
+				seenSourceLabels[labelKey] = struct{}{}
+			}
+		}
+		if ticketBinding := strings.TrimSpace(stringAt(bindings, "ticket")); ticketBinding != "host.ticket_federation" {
+			errs = append(errs, fmt.Sprintf("kitsoki.instance.bindings.ticket = %q, want %q when tracker.sources is configured", ticketBinding, "host.ticket_federation"))
+		}
+	} else if strings.TrimSpace(stringAt(bindings, "ticket")) == "host.ticket_federation" {
+		errs = append(errs, "tracker.sources must contain at least one source when kitsoki.instance.bindings.ticket = \"host.ticket_federation\"")
 	}
 
 	commands := mapAt(doc, "commands")
@@ -178,6 +250,39 @@ func validateSemantic(doc map[string]any, repoRoot string) ([]string, []string) 
 	if buildCmd == "" {
 		warnings = append(warnings, "commands.build is empty")
 	}
+
+	setup := mapAt(doc, "setup_plan")
+	verificationGates := map[string]string{}
+	if len(setup) > 0 {
+		writes, _ := setup["writes"].([]any)
+		if instancePath != "" && !writeListContains(writes, filepath.ToSlash(instancePath)) {
+			warnings = append(warnings, "setup_plan.writes does not mention kitsoki.instance.path")
+		}
+		verifications, _ := setup["verifications"].([]any)
+		for _, raw := range verifications {
+			verification := mapValue(raw)
+			verificationID := strings.TrimSpace(stringAt(verification, "id"))
+			if verificationID != "" {
+				verificationGates[verificationID] = strings.TrimSpace(stringAt(verification, "gate"))
+			}
+		}
+	}
+
+	goals := mapAt(doc, "goals")
+	if len(goals) == 0 {
+		warnings = append(warnings, "goals is missing; legacy profile has no explicit story or phase goal contract")
+	} else {
+		errs = append(errs, validateGoalVerifications(goals, verificationGates)...)
+	}
+
+	onboarding := mapAt(doc, "onboarding")
+	resolutions, _ := onboarding["resolutions"].([]any)
+	if len(resolutions) == 0 {
+		warnings = append(warnings, "onboarding.resolutions is missing; legacy profile has no per-field provenance or default-update guidance")
+	} else {
+		errs = append(errs, validateResolutions(resolutions)...)
+	}
+
 	if repoRoot != "" {
 		for _, rel := range []string{".kitsoki.yaml", filepath.FromSlash(instancePath)} {
 			if rel == "" {
@@ -190,15 +295,67 @@ func validateSemantic(doc map[string]any, repoRoot string) ([]string, []string) 
 		}
 	}
 
-	setup := mapAt(doc, "setup_plan")
-	if len(setup) > 0 {
-		writes, _ := setup["writes"].([]any)
-		if instancePath != "" && !writeListContains(writes, filepath.ToSlash(instancePath)) {
-			warnings = append(warnings, "setup_plan.writes does not mention kitsoki.instance.path")
+	return errs, warnings
+}
+
+func validateGoalVerifications(goals map[string]any, verificationGates map[string]string) []string {
+	goalIDs := make([]string, 0, len(goals))
+	for goalID := range goals {
+		goalIDs = append(goalIDs, goalID)
+	}
+	sort.Strings(goalIDs)
+
+	var errs []string
+	for _, goalID := range goalIDs {
+		goal := mapValue(goals[goalID])
+		postconditions, _ := goal["postconditions"].([]any)
+		for index, raw := range postconditions {
+			postcondition := mapValue(raw)
+			verificationID := strings.TrimSpace(stringAt(postcondition, "verification"))
+			if verificationID == "" {
+				continue // JSON Schema reports the missing or malformed reference.
+			}
+			postconditionID := strings.TrimSpace(stringAt(postcondition, "id"))
+			if postconditionID == "" {
+				postconditionID = fmt.Sprintf("postconditions[%d]", index)
+			}
+			verificationGate, ok := verificationGates[verificationID]
+			if !ok {
+				errs = append(errs, fmt.Sprintf("goals.%s postcondition %q references unknown setup_plan.verifications id %q", goalID, postconditionID, verificationID))
+				continue
+			}
+			if stringAt(postcondition, "gate") == "required" && verificationGate != "required" {
+				errs = append(errs, fmt.Sprintf("goals.%s postcondition %q is required but verification %q is %s", goalID, postconditionID, verificationID, verificationGate))
+			}
 		}
 	}
+	return errs
+}
 
-	return errs, warnings
+func validateResolutions(resolutions []any) []string {
+	seen := map[string]struct{}{}
+	var errs []string
+	for index, raw := range resolutions {
+		resolution := mapValue(raw)
+		field := strings.TrimSpace(stringAt(resolution, "field"))
+		if field != "" {
+			if _, exists := seen[field]; exists {
+				errs = append(errs, fmt.Sprintf("onboarding.resolutions field %q is declared more than once", field))
+			} else {
+				seen[field] = struct{}{}
+			}
+		}
+		if stringAt(resolution, "source") != "default" {
+			continue
+		}
+		if strings.TrimSpace(stringAt(resolution, "notice")) == "" {
+			errs = append(errs, fmt.Sprintf("onboarding.resolutions[%d].notice is required when source = \"default\"", index))
+		}
+		if strings.TrimSpace(stringAt(resolution, "update")) == "" {
+			errs = append(errs, fmt.Sprintf("onboarding.resolutions[%d].update is required when source = \"default\"", index))
+		}
+	}
+	return errs
 }
 
 func mapAt(m map[string]any, key string) map[string]any {
@@ -207,6 +364,11 @@ func mapAt(m map[string]any, key string) map[string]any {
 	}
 	v, _ := m[key].(map[string]any)
 	return v
+}
+
+func mapValue(v any) map[string]any {
+	m, _ := v.(map[string]any)
+	return m
 }
 
 func stringAt(m map[string]any, key string) string {

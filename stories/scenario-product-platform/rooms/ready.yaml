@@ -1,0 +1,60 @@
+states:
+  ready:
+    description: "Ready to build a scenario-product-platform proof bundle."
+    relevant_world: [feature_path, scenario_id, persona_id, target_arg, run_id, output_root, status, last_error]
+    view:
+      - banner:
+          text: "SCENARIO PRODUCT PLATFORM"
+          subtitle: "Scenario pack → no-LLM evidence → reports → neutral site."
+          color: "#7C3AED"
+      - kv:
+          pairs:
+            Feature: "{{ world.feature_path }}"
+            Scenario: "{{ world.scenario_id }}"
+            Persona: "{{ world.persona_id }}"
+            Targets: "{{ world.target_arg }}"
+            Run: "{{ world.run_id }}"
+            Output root: "{{ world.output_root }}"
+            Status: "{{ world.status }}"
+      - prose: "{{ world.last_error }}"
+        when: "world.last_error != ''"
+      - prose: "This story is the proposal's first narrow implementation: it imports current product objects into a scenario pack and emits durable proof artifacts without a live LLM."
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "build"
+              intent: build
+              hint: "generate the pack, evidence bundle, reports, deck, completion-state, and neutral site page"
+            - label: "look"
+              intent: look
+            - label: "quit"
+              intent: quit
+              hint: "leave"
+    on:
+      build:
+        - target: complete
+          effects:
+            - set:
+                feature_path: "{{ slots.feature ?? world.feature_path }}"
+                scenario_id: "{{ slots.scenario ?? world.scenario_id }}"
+                persona_id: "{{ slots.persona ?? world.persona_id }}"
+                target_arg: "{{ slots.targets ?? world.target_arg }}"
+                run_id: "{{ slots.run_id ?? world.run_id }}"
+                output_root: "{{ slots.output_root ?? world.output_root }}"
+                pack_summary: {}
+                run_bundle: {}
+                report_paths: {}
+                site_path: ""
+                status: "building"
+                last_error: ""
+      look:
+        - target: .
+      quit:
+        - target: ended
+
+  ended:
+    terminal: true
+    description: "Closed"
+    view:
+      - prose: "Done. Re-run the story when you need a fresh scenario-product-platform proof bundle."

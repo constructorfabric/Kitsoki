@@ -1,0 +1,7 @@
+inputs:
+  decomposition_path: { type: string, required: true }
+  fleet_state_path: { type: string }
+outputs:
+  fleet_briefs: { type: list }
+  fleet_state_path: { type: string }
+  error: { type: string }

@@ -37,7 +37,7 @@ import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
 import { buildArtifact } from "./_helpers/artifact.js";
-import { saveVideoAsMp4, ChapterRecorder, writeChapters } from "./_helpers/server.js";
+import { saveVideoAsMp4, ChapterRecorder, writeChapters, maybeInstallAutoRrwebCapture } from "./_helpers/server.js";
 import { cameraContext } from "./_helpers/camera.js";
 import { captureDiagnostics } from "./_helpers/demo.js";
 import { execSync } from "child_process";
@@ -79,6 +79,7 @@ async function loadBugfix(page: Page): Promise<void> {
   await page.goto(url);
   await page.waitForSelector(".run-view__topbar", { timeout: 15000 });
   await page.waitForSelector(".trace-timeline__row", { timeout: 10000 });
+  await maybeInstallAutoRrwebCapture(page);
 }
 
 /** Expand the first decide agent call's detail body so DecideDetail

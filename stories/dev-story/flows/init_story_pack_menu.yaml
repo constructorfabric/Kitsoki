@@ -1,0 +1,82 @@
+# init_story_pack_menu -- the first-run onboarding affordance for choosing a
+# named pack before writing .kitsoki/project-profile.yaml. No host calls or LLMs.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: init
+initial_world:
+  init_target_path: "/srv/repos/acme-api"
+  init_project_id: "acme-api"
+  init_project_title: "Acme Api"
+  init_stack: "go project"
+  init_profile_status: "draft"
+  init_story_pack: "core-setup"
+  init_story_pack_title: "Core setup"
+  init_story_pack_summary: "Bring a project under project-local Kitsoki tooling with setup and guarded git operations only."
+  init_story_packs:
+    - id: "core-engineering"
+      title: "Core engineering starter"
+      summary: "Focused first-run set for ordinary software repositories: setup, bug fixing, repo-history capsules, PR refinement, and git operations."
+      stories: [setup, bugfix, repo-bakeoff, pr-refinement, git-ops]
+    - id: "core-setup"
+      title: "Core setup"
+      summary: "Bring a project under project-local Kitsoki tooling with setup and guarded git operations only."
+      stories: [setup, git-ops]
+  init_starter_stories:
+    - id: "setup"
+      title: "Project setup"
+      source_story: "dev-story:onboarding"
+      status: "enabled"
+      summary: "Onboard the checkout, install project-local Kitsoki tooling, and run explicit readiness checks."
+      expansion: "Keep this enabled as the team's bootstrap and refresh path."
+    - id: "git-ops"
+      title: "Git operations"
+      source_story: "git-ops"
+      status: "enabled"
+      summary: "Use the guarded git command hub for status, worktrees, commits, rebases, sync, and integration."
+      expansion: "Extend with project branch and remote-sync policy once the team's git flow is stable."
+
+turns:
+  - intent: { name: review_story_pack, slots: {} }
+    expect_state: init_story_pack
+    expect_view_matches: "core-engineering"
+
+  - intent: { name: select_story_pack, slots: { pack: "core-engineering" } }
+    expect_state: init
+    expect_world:
+      init_story_pack: "core-engineering"
+      init_story_pack_title: "Core engineering starter"
+      init_starter_stories:
+        - id: "setup"
+          title: "Project setup"
+          source_story: "dev-story:onboarding"
+          status: "enabled"
+          summary: "Onboard the checkout, install project-local Kitsoki tooling, and run explicit readiness checks."
+          expansion: "Keep this enabled as the team's bootstrap and refresh path."
+        - id: "bugfix"
+          title: "Bug fixing"
+          source_story: "bugfix"
+          status: "enabled"
+          summary: "Drive a picked bug through reproduce, fix, test, review, and validation gates."
+          expansion: "Add narrower project bug policies through profile customizations or prompt overlays."
+        - id: "repo-bakeoff"
+          title: "Repo-history capsules"
+          source_story: "repo-bakeoff"
+          status: "enabled"
+          summary: "Turn historical bug fixes into capsule records, prove RED/GREEN arming, and render live-cell commands."
+          expansion: "Use once the repo has 3-10 isolated historical bugs with regression tests or PR-proven oracles."
+        - id: "pr-refinement"
+          title: "PR refinement"
+          source_story: "pr-refinement"
+          status: "enabled"
+          summary: "Open or attach to a PR, monitor CI/review feedback, respond, and merge when accepted."
+          expansion: "Add provider-specific PR policy after the base loop is proven on real pull requests."
+        - id: "git-ops"
+          title: "Git operations"
+          source_story: "git-ops"
+          status: "enabled"
+          summary: "Use the guarded git command hub for status, worktrees, commits, rebases, sync, and integration."
+          expansion: "Extend with project branch and remote-sync policy once the team's git flow is stable."
+    expect_view_matches: "Core engineering starter"
+
+expect_no_errors: true

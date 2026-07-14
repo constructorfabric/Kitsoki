@@ -1,23 +1,108 @@
-# decompose — invoke the decomposer agent to break the epic into a brief manifest.
+# decompose — prior-decomposition detection router; decomposing — invoke the
+# decomposer agent to break the epic into a brief manifest.
 #
-# on_enter invokes host.agent.task (agent: decomposer, once:true). The agent
-# reads the epic at epic_path and WRITES the decomposition YAML to
+# Split into two states (proposal: deliver-canonical-decomposition B2c, task
+# 3.1) because an on_enter effects list evaluates every `invoke:`/`set:`
+# guard against the world AS IT WAS ON ENTRY, not progressively updated by
+# earlier effects in the SAME list (only `emit_intent:` guards see binds from
+# invokes earlier in that list — see lint.yaml's invoke-then-branch shape).
+# So the detect-then-conditionally-invoke-the-decomposer shape needs the
+# conditional invoke in a SEPARATE room entered via the detector's emitted
+# intent, not a `when:`-guarded invoke living alongside the detector's own
+# invoke in one on_enter list.
+#
+# `decompose` (router): scripts/detect_prior_decomposition.star checks
+# whether decomposition_path already exists on disk, ONCE per run
+# (refine_cycle == 0, latched by redecompose_checked so the lint-fail /
+# review-revise loops — which legitimately create the file mid-run — don't
+# re-trigger it). "fresh" (no prior file) → decomposing, unchanged from
+# before B2c. "redecompose" (a prior manifest already exists) → routing
+# straight into the decomposer would silently overwrite it, dropping any
+# in-flight brief state — instead route to `redecompose`, which authors a
+# delta and applies it via the decompose-update transaction
+# (host.decomposition.update) instead of overwriting.
+#
+# `decomposing` (worker): host.agent.task (agent: decomposer, once:true). The
+# agent reads the epic at epic_path and WRITES the decomposition YAML to
 # decomposition_path (in the format fleet's load room expects: top-level
 # `briefs:` list). It then submits structured output conforming to
 # schemas/decomposition.json (briefs list).
 #
 # Success   → emit decomposition_done → lint
 # Host error → decompose_error room → @exit:needs-human (last_error set by engine)
+#
+# refine_feedback carries the reason for a re-entry (a lint failure or an
+# adversarial-review revise verdict) into the decomposer's prompt args so it
+# actually addresses what was flagged, not a blind retry. Empty on a fresh run.
 
 states:
 
   decompose:
+    description: "Route: fresh decompose, or a managed re-decompose delta if a prior manifest already exists."
+    relevant_world: [epic_path, decomposition_path, refine_cycle, decompose_route]
+    view:
+      - prose: "Checking {{ world.decomposition_path }} for a prior decomposition…"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "look"
+              intent: look
+    on_enter:
+      # Detect a prior decomposition ONCE per run, only before anything in
+      # this run has written decomposition_path itself (refine_cycle == 0
+      # guards against the lint-fail/review-revise loops, which legitimately
+      # create the file mid-run; redecompose_checked guards against re-firing
+      # on a reload/resume within that same window).
+      - when: "world.refine_cycle == 0 && !world.redecompose_checked"
+        invoke: host.starlark.run
+        id: detect_prior_decomposition
+        with:
+          script: scripts/detect_prior_decomposition.star
+          capabilities:
+            fs:
+              read: ["**"]
+          inputs:
+            decomposition_path: "{{ world.decomposition_path }}"
+        bind:
+          decompose_route: route
+        on_error: decompose_error
+      - when: "world.refine_cycle == 0 && !world.redecompose_checked"
+        set:
+          redecompose_checked: true
+      # Deliberately == 'redecompose' / == 'fresh' (never a negation/catch-all):
+      # the flow-test harness's discovery pass evaluates this SAME on_enter's
+      # emit_intent guards once against the pre-bind default ("") before the
+      # real dispatch resolves decompose_route — a negated guard would match
+      # that default and commit to the wrong branch before the real detect
+      # result exists. Mirrors lint.yaml's lint_route == 'ok' / == 'fail'
+      # (never != ) for the identical reason.
+      - when: "world.decompose_route == 'redecompose'"
+        emit_intent: redecompose_needed
+      - when: "world.decompose_route == 'fresh'"
+        emit_intent: decompose_route_fresh
+    on:
+      decompose_route_fresh:
+        - target: decomposing
+      redecompose_needed:
+        - target: redecompose
+          effects:
+            - set:
+                redecompose_delta_path:    "{{ world.decomposition_path }}.delta.yaml"
+                redecompose_versions_dir:  ".artifacts/deliver/decomposition-versions"
+                redecompose_event_log:     ".artifacts/deliver/plan-evolution.jsonl"
+      look:
+        - target: .
+
+  decomposing:
     description: "Decompose the epic into an ordered brief manifest via the decomposer agent."
-    relevant_world: [epic_path, decomposition_path, decomposition_briefs]
+    relevant_world: [epic_path, decomposition_path, decomposition_briefs, refine_feedback, refine_cycle, refine_budget]
     view:
       - prose: "Decomposing {{ world.epic_path }} into independently-shippable briefs…"
-      - prose: "{{ world.decomposition_briefs|length }} brief(s) returned."
-        when: "world.decomposition_briefs"
+      - prose: "Refine cycle {{ world.refine_cycle }} / {{ world.refine_budget }} — feedback: {{ world.refine_feedback }}"
+        when: "world.refine_feedback != ''"
+      - prose: "{{ world.decomposition_briefs|default:''|length }} brief(s) returned."
+        when: "(world.decomposition_briefs ?? [])"
       - choice:
           mode: single
           prompt: "Actions"
@@ -40,8 +125,10 @@ states:
             args:
               epic_path:          "{{ world.epic_path }}"
               decomposition_path: "{{ world.decomposition_path }}"
+              refine_feedback:    "{{ world.refine_feedback }}"
         bind:
           decomposition_briefs: submitted.briefs
+          coverage_note:        submitted.coverage_note
         on_error: decompose_error
       - emit_intent: decomposition_done
     on:
@@ -68,7 +155,16 @@ states:
     on_enter:
       - emit_intent: bail
     on:
+      # The engine's on_error handling already set last_error before this
+      # room was entered; the pass-through set: below makes that explicit at
+      # the exit arc itself so the static import-time check
+      # (checkExitRequires — requires exits.needs-human.requires: [last_error])
+      # can see it. Standalone deliver never triggers this check (only
+      # imported children are validated); dev-story's `deliver` import does.
       bail:
         - target: "@exit:needs-human"
+          effects:
+            - set:
+                last_error: "{{ world.last_error }}"
       look:
         - target: .

@@ -2,8 +2,8 @@ package host
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
 )
 
@@ -27,26 +27,26 @@ type GitHubInboxOptions struct {
 }
 
 // ListGitHubInboxItems returns GitHub issues assigned to the operator and PRs
-// awaiting their review. It shells through gh using the shared cliExec seam so
-// callers can test it without network access or a real gh binary.
+// awaiting their review through the native GitHub Search API.
 func ListGitHubInboxItems(ctx context.Context, opts GitHubInboxOptions) ([]GitHubInboxItem, error) {
-	if !ghAvailable(ctx) {
-		return nil, fmt.Errorf("gh CLI not available — install github.com/cli/cli and run `gh auth login`")
-	}
 	limit := opts.Limit
 	if limit <= 0 {
 		limit = 100
 	}
+	repo, err := resolveGitHubInboxRepo(ctx, opts.Repo)
+	if err != nil {
+		return nil, err
+	}
 	var out []GitHubInboxItem
 	if opts.IncludeIssues {
-		issues, err := listGitHubAssignedIssues(ctx, opts.Repo, opts.Assignee, limit)
+		issues, err := listGitHubAssignedIssues(ctx, repo, opts.Assignee, limit)
 		if err != nil {
 			return nil, err
 		}
 		out = append(out, issues...)
 	}
 	if opts.IncludePRs {
-		prs, err := listGitHubReviewRequests(ctx, opts.Repo, opts.ReviewRequested, limit)
+		prs, err := listGitHubReviewRequests(ctx, repo, opts.ReviewRequested, limit)
 		if err != nil {
 			return nil, err
 		}
@@ -59,29 +59,17 @@ func listGitHubAssignedIssues(ctx context.Context, repo, assignee string, limit 
 	if strings.TrimSpace(assignee) == "" {
 		assignee = "@me"
 	}
-	args := []string{"issue", "list"}
-	if repo = strings.TrimSpace(repo); repo != "" {
-		args = append(args, "--repo", repo)
-	}
-	args = append(args,
-		"--state", "open",
-		"--assignee", assignee,
-		"--limit", fmt.Sprintf("%d", limit),
-		"--json", "number,title,assignees,url",
-	)
-	stdout, stderr, code, err := cliExec(ctx, "", "gh", args...)
+	q := githubIssueSearchQuery(repo, "is:issue", "is:open", "assignee:"+assignee)
+	var raw githubIssueSearchResponse
+	code, resp, err := githubAPIJSON(ctx, "GET", "search/issues?q="+url.QueryEscape(q)+"&per_page="+fmt.Sprintf("%d", limit), nil, &raw)
 	if err != nil {
-		return nil, fmt.Errorf("github inbox issues: exec: %w", err)
+		return nil, fmt.Errorf("github inbox issues: %w", err)
 	}
-	if code != 0 {
-		return nil, fmt.Errorf("github inbox issues: %s", strings.TrimSpace(stderr))
+	if code >= 300 {
+		return nil, fmt.Errorf("github inbox issues: %s", githubAPIError(resp))
 	}
-	var raw []map[string]any
-	if err := json.Unmarshal([]byte(stdout), &raw); err != nil {
-		return nil, fmt.Errorf("github inbox issues: parse JSON: %w", err)
-	}
-	items := make([]GitHubInboxItem, 0, len(raw))
-	for _, r := range raw {
+	items := make([]GitHubInboxItem, 0, len(raw.Items))
+	for _, r := range raw.Items {
 		num, title, url := githubNumberTitleURL(r)
 		items = append(items, GitHubInboxItem{
 			Kind:   "issue",
@@ -98,39 +86,46 @@ func listGitHubReviewRequests(ctx context.Context, repo, reviewer string, limit 
 	if strings.TrimSpace(reviewer) == "" {
 		reviewer = "@me"
 	}
-	args := []string{"pr", "list"}
-	if repo = strings.TrimSpace(repo); repo != "" {
-		args = append(args, "--repo", repo)
-	}
-	args = append(args,
-		"--state", "open",
-		"--search", "review-requested:"+reviewer,
-		"--limit", fmt.Sprintf("%d", limit),
-		"--json", "number,title,author,url",
-	)
-	stdout, stderr, code, err := cliExec(ctx, "", "gh", args...)
+	q := githubIssueSearchQuery(repo, "is:pr", "is:open", "review-requested:"+reviewer)
+	var raw githubIssueSearchResponse
+	code, resp, err := githubAPIJSON(ctx, "GET", "search/issues?q="+url.QueryEscape(q)+"&per_page="+fmt.Sprintf("%d", limit), nil, &raw)
 	if err != nil {
-		return nil, fmt.Errorf("github inbox prs: exec: %w", err)
+		return nil, fmt.Errorf("github inbox prs: %w", err)
 	}
-	if code != 0 {
-		return nil, fmt.Errorf("github inbox prs: %s", strings.TrimSpace(stderr))
+	if code >= 300 {
+		return nil, fmt.Errorf("github inbox prs: %s", githubAPIError(resp))
 	}
-	var raw []map[string]any
-	if err := json.Unmarshal([]byte(stdout), &raw); err != nil {
-		return nil, fmt.Errorf("github inbox prs: parse JSON: %w", err)
-	}
-	items := make([]GitHubInboxItem, 0, len(raw))
-	for _, r := range raw {
+	items := make([]GitHubInboxItem, 0, len(raw.Items))
+	for _, r := range raw.Items {
 		num, title, url := githubNumberTitleURL(r)
 		items = append(items, GitHubInboxItem{
 			Kind:   "pr",
 			Number: num,
 			Title:  title,
-			Author: loginFromMap(r["author"]),
+			Author: loginFromMap(r["user"]),
 			URL:    url,
 		})
 	}
 	return items, nil
+}
+
+func resolveGitHubInboxRepo(ctx context.Context, repo string) (string, error) {
+	repo = strings.TrimSpace(repo)
+	if repo != "" {
+		return repo, nil
+	}
+	stdout, stderr, code, err := cliExec(ctx, "", "git", "remote", "get-url", "origin")
+	if err != nil {
+		return "", fmt.Errorf("github inbox: repo is required and git remote lookup failed: %w", err)
+	}
+	if code != 0 {
+		return "", fmt.Errorf("github inbox: repo is required and git remote lookup failed: %s", strings.TrimSpace(stderr))
+	}
+	repo = githubRepoFromRemote(stdout)
+	if repo == "" {
+		return "", fmt.Errorf("github inbox: repo is required and origin is not a GitHub repository")
+	}
+	return repo, nil
 }
 
 func githubNumberTitleURL(raw map[string]any) (string, string, string) {
@@ -144,8 +139,12 @@ func githubNumberTitleURL(raw map[string]any) (string, string, string) {
 		num = v
 	}
 	title, _ := raw["title"].(string)
-	url, _ := raw["url"].(string)
-	return num, title, url
+	htmlURL, _ := raw["html_url"].(string)
+	apiURL, _ := raw["url"].(string)
+	if strings.TrimSpace(htmlURL) != "" {
+		return num, title, htmlURL
+	}
+	return num, title, apiURL
 }
 
 func firstLogin(v any) string {

@@ -1,0 +1,12 @@
+{% comment %}
+run-as-user-setup base view.
+{% endcomment %}
+{% block status %}platform {{ world.platform }}  |  delegated user {{ world.agent_user }}  |  capsule root {{ world.capsule_root }}  |  {{ world.status }}{% endblock %}
+
+{% block heading %}{{ state.description }}{% endblock %}
+
+{% block body %}{% endblock %}
+
+{% block choices %}{% endblock %}
+{% block footer %}{% endblock %}
+

@@ -1,0 +1,117 @@
+# journey — project-local composition lifecycle. Scenario QA continues to own
+# exploratory per-transport capture and independent judgment; this room invokes
+# the deterministic `kitsoki qa` adapter only after an operator explicitly
+# selects a stateful stage. Preview remains no-write by construction.
+
+states:
+
+  journey:
+    description: "Operating the project-local journey-pack lifecycle."
+    relevant_world: [journey_path, journey_action, journey_flow, journey_artifacts, journey_origin_trace, journey_cassette, journey_tour, journey_deck, journey_output, last_error]
+    view:
+      - banner:
+          text: "PROJECT JOURNEY"
+          subtitle: "Composition, replay, tutorial, tour, and release receipts."
+          color: "#8B5CF6"
+      - kv:
+          pairs:
+            Action: "{{ world.journey_action }}"
+            Journey: "{{ world.journey_path }}"
+            Flow: "{{ world.journey_flow }}"
+            Artifacts: '{{ world.journey_artifacts|default:"(default digest directory)" }}'
+      - heading: "Command result"
+      - code: "{{ world.journey_output|default:\"(running…)\" }}"
+      - prose: "A real provider-backed exploratory run must still be independently judged before `freeze --origin-kind real` and publish can succeed. Demo/replay evidence is intentionally blocked from successful publication."
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "main room"
+              intent: main_room
+    on_enter:
+      - when: "world.journey_action == 'bootstrap'"
+        invoke: host.run
+        id: journey_bootstrap
+        with:
+          cmd: kitsoki
+          args: [qa, bootstrap]
+          cwd: "."
+        bind:
+          journey_result: stdout_json
+          journey_output: "result.stdout"
+        on_error: idle
+      - when: "world.journey_action == 'preview'"
+        invoke: host.run
+        id: journey_preview
+        with:
+          cmd: kitsoki
+          args: [qa, preview, "{{ world.journey_path }}"]
+          cwd: "."
+        bind:
+          journey_result: stdout_json
+          journey_output: "result.stdout"
+        on_error: idle
+      - when: "world.journey_action == 'check'"
+        invoke: host.run
+        id: journey_check
+        with:
+          cmd: kitsoki
+          args: [qa, check, "{{ world.journey_path }}", --flow, "{{ world.journey_flow }}", --out, "{{ world.journey_artifacts }}"]
+          cwd: "."
+        bind:
+          journey_result: stdout_json
+          journey_output: "result.stdout"
+        on_error: idle
+      - when: "world.journey_action == 'freeze'"
+        invoke: host.run
+        id: journey_freeze
+        with:
+          cmd: kitsoki
+          args: [qa, freeze, "{{ world.journey_path }}", --origin-kind, real, --origin-trace, "{{ world.journey_origin_trace }}", --flow, "{{ world.journey_flow }}", --cassette, "{{ world.journey_cassette }}", --out, "{{ world.journey_artifacts }}"]
+          cwd: "."
+        bind:
+          journey_result: stdout_json
+          journey_output: "result.stdout"
+        on_error: idle
+      - when: "world.journey_action == 'produce'"
+        invoke: host.run
+        id: journey_produce
+        with:
+          cmd: kitsoki
+          args: [qa, produce, "{{ world.journey_path }}", --artifacts, "{{ world.journey_artifacts }}"]
+          cwd: "."
+        bind:
+          journey_result: stdout_json
+          journey_output: "result.stdout"
+        on_error: idle
+      - when: "world.journey_action == 'publish'"
+        invoke: host.run
+        id: journey_publish
+        with:
+          cmd: kitsoki
+          args: [qa, publish, "{{ world.journey_path }}", --artifacts, "{{ world.journey_artifacts }}", --tour, "{{ world.journey_tour }}", --deck, "{{ world.journey_deck }}"]
+          cwd: "."
+        bind:
+          journey_result: stdout_json
+          journey_output: "result.stdout"
+        on_error: idle
+      - when: "world.journey_action == 'status'"
+        invoke: host.run
+        id: journey_status
+        with:
+          cmd: kitsoki
+          args: [qa, status, "{{ world.journey_path }}", --artifacts, "{{ world.journey_artifacts }}"]
+          cwd: "."
+        bind:
+          journey_result: stdout_json
+          journey_output: "result.stdout"
+        on_error: idle
+    on:
+      main_room:
+        - target: idle
+          effects:
+            - set: { journey_action: "", journey_output: "", status: idle }
+      status:
+        - target: .
+      look:
+        - target: .

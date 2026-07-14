@@ -3,10 +3,13 @@ id: story-editor
 kind: feature
 title: The story editor
 tagline: Rooms, hooks, domain model, and the Agent Workbench — one inspector.
-summary: "The per-story editor surface: the BFS-ordered room list, room detail with hook and domain model and IDE deep-link, the meta-chat column, and the Agent Workbench's contract cards and cassette browser."
+summary: 'The per-story editor surface: the BFS-ordered room list, room detail with hook and domain model and IDE deep-link, the meta-chat column, and the Agent Workbench''s contract cards and cassette browser.'
 promo:
   order: 60
+docs:
+  - docs/tui/story-editor.md
 demo:
+  format: rrweb
   spec: tests/playwright/story-editor-video.spec.ts
   artifactDir: story-editor
   videoBase: story-editor-demo
@@ -80,7 +83,7 @@ tour:
       route: any
       target: editor-room-detail
       title: A room, fully unpacked
-      body: "Selecting 'clarifying' pins it in the detail pane: its hook, its domain model, its typed view, and an IDE deep-link — everything you'd otherwise reconstruct by reading YAML across files."
+      body: 'Selecting ''clarifying'' pins it in the detail pane: its hook, its domain model, its typed view, and an IDE deep-link — everything you''d otherwise reconstruct by reading YAML across files.'
       placement: left
       kind: explain
       advance: next
@@ -100,7 +103,7 @@ tour:
       route: any
       target: editor-hook
       title: The hook (on_enter)
-      body: "Each on_enter effect renders as a typed card — the host call, its arguments, and the world bindings it produces. The clarifying room fires a decide agent to surface the gaps in the brief. This is also the security boundary: every host.* call a room makes is checked against the story's allow-list at load time, and each agent runs with an explicit tool allow-list — so the hooks you read here are the complete, auditable list of what the machine can do, no matter what the model asks for."
+      body: 'Each on_enter effect renders as a typed card — the host call, its arguments, and the world bindings it produces. The clarifying room fires a decide agent to surface the gaps in the brief. This is also the security boundary: every host.* call a room makes is checked against the story''s allow-list at load time, and each agent runs with an explicit tool allow-list — so the hooks you read here are the complete, auditable list of what the machine can do, no matter what the model asks for.'
       placement: right
       kind: explain
       advance: next
@@ -110,7 +113,7 @@ tour:
       route: any
       target: editor-domain-model
       title: The domain model
-      body: "Three sections: world keys this room reads and writes (with direction), the intents it defines, and its transitions. Transition targets are links — click one to jump straight to that room."
+      body: 'Three sections: world keys this room reads and writes (with direction), the intents it defines, and its transitions. Transition targets are links — click one to jump straight to that room.'
       placement: right
       kind: explain
       advance: next
@@ -130,7 +133,7 @@ tour:
       route: any
       target: editor-agent-workbench
       title: The Agent Workbench
-      body: "For any room that calls an agent, the workbench lists its contracts: the call kind, the prompt template, the declared output schema, and the cassette key that flow-tests match on — the contract an author tunes."
+      body: 'For any room that calls an agent, the workbench lists its contracts: the call kind, the prompt template, the declared output schema, and the cassette key that flow-tests match on — the contract an author tunes.'
       placement: left
       kind: explain
       advance: next
@@ -149,7 +152,7 @@ tour:
     - id: se-done
       route: any
       title: The whole story, on one surface
-      body: "That's the Story Editor: a reachability-ordered room map, per-room hook / domain-model / typed-view detail, IDE deep-links, a meta-chat scratchpad, and an agent workbench with a cassette browser — all a static, no-LLM read of the story as authored. Hit '?' anytime to replay this tour."
+      body: 'That''s the Story Editor: a reachability-ordered room map, per-room hook / domain-model / typed-view detail, IDE deep-links, a meta-chat scratchpad, and an agent workbench with a cassette browser — all a static, no-LLM read of the story as authored. Hit ''?'' anytime to replay this tour.'
       placement: center
       kind: explain
       advance: next

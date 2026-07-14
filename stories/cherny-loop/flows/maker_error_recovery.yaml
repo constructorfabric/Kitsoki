@@ -6,8 +6,8 @@ app: ../app.yaml
 initial_state: configuring
 
 host_handlers:
-  # Worktree minted at launch (iface.workspace.create -> host.git_worktree).
-  host.git_worktree: { data: { ok: true, path: ".worktrees/cherny-loop" } }
+  # Worktree minted at launch (iface.workspace.create -> host.capsule_workspace).
+  host.capsule_workspace: { data: { ok: true, path: ".capsules/workspaces/cherny-loop" } }
   host.run:
     by_call:
       gate-0: { data: { ok: false, exit_code: 1, stdout: "FAIL: initial red" } }

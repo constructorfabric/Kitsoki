@@ -86,6 +86,44 @@ func toolBreadcrumbs(ev host.StreamEvent) []host.StreamToolUse {
 	return nil
 }
 
+func streamThinkingText(ev host.StreamEvent) string {
+	if ev.Thinking != "" {
+		return ev.Thinking
+	}
+	if ev.Type == "assistant.reasoning" {
+		return ev.Text
+	}
+	return ""
+}
+
+func streamDeltaText(ev host.StreamEvent) string {
+	if ev.Type == "assistant.reasoning" {
+		return ""
+	}
+	return ev.Text
+}
+
+func streamActivityTools(ev host.StreamEvent) []host.StreamToolUse {
+	switch ev.Type {
+	case "assistant", "tool.execution_start":
+		return toolBreadcrumbs(ev)
+	default:
+		return nil
+	}
+}
+
+func isStreamActivity(ev host.StreamEvent) bool {
+	if ev.IsResult {
+		return false
+	}
+	switch ev.Type {
+	case "assistant", "assistant.message", "assistant.reasoning", "tool.execution_start":
+	default:
+		return false
+	}
+	return streamThinkingText(ev) != "" || streamDeltaText(ev) != "" || len(streamActivityTools(ev)) > 0
+}
+
 func (s *Server) handleMetaStream(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -165,8 +203,7 @@ loop:
 			if ev.IsResult {
 				continue
 			}
-			switch ev.Type {
-			case "assistant":
+			if isStreamActivity(ev) {
 				// Narration and tool calls can both ride in ONE assistant
 				// event (a thought plus the tool calls it explains). Emit
 				// the thought first, then one breadcrumb per tool — never
@@ -175,13 +212,13 @@ loop:
 				// Extended-thinking prose gets its own "think" frame so the
 				// client can render it immediately (it is never the reply)
 				// while deferring narration deltas.
-				if ev.Thinking != "" {
-					emit(metaStreamFrame{Type: "think", Text: ev.Thinking})
+				if text := streamThinkingText(ev); text != "" {
+					emit(metaStreamFrame{Type: "think", Text: text})
 				}
-				if ev.Text != "" {
-					emit(metaStreamFrame{Type: "delta", Text: ev.Text})
+				if text := streamDeltaText(ev); text != "" {
+					emit(metaStreamFrame{Type: "delta", Text: text})
 				}
-				for _, tc := range toolBreadcrumbs(ev) {
+				for _, tc := range streamActivityTools(ev) {
 					emit(metaStreamFrame{Type: "tool", Tool: tc.Name, Preview: tc.Preview})
 				}
 			}

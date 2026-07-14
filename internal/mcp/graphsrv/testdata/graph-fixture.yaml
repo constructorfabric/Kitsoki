@@ -1,0 +1,116 @@
+schema: project-object-graph/seed-catalog/v0
+catalog:
+  id: graph-reads-test-fixture-catalog
+type_registry:
+  - id: core-node
+    schema: graph-type/v0
+    extends: null
+    required_fields: [id, schema, title, status, visibility]
+  - id: requirement
+    schema: graph-type/v0
+    extends: core-node
+    edge_fields:
+      - id: acceptance
+        target_type: usecase
+        cardinality: many
+  - id: iso-clause
+    schema: graph-type/v0
+    extends: requirement
+  - id: usecase
+    schema: graph-type/v0
+    extends: core-node
+    edge_fields:
+      - id: covers
+        target_type: requirement
+        cardinality: many
+  # change declares depends_on as a storage: top_level edge field — the
+  # conformance fixture the graph-mcp plan §3.3 spec rule calls for: a
+  # naive reader touching node.Edges directly would see depends_on as
+  # empty even though the target ids live at node.Fields["depends_on"].
+  - id: change
+    schema: graph-type/v0
+    extends: core-node
+    edge_fields:
+      - id: depends_on
+        target_type: change
+        cardinality: many
+        storage: top_level
+        acyclic: true
+  - id: changeset
+    schema: graph-type/v0
+    extends: core-node
+nodes:
+  - schema: graph/requirement/v0
+    id: req-alpha
+    title: Requirement alpha
+    status: active
+    visibility: internal
+    statement: alpha must hold
+    edges:
+      acceptance: [uc-alpha]
+  - schema: graph/requirement/v0
+    id: req-beta
+    title: Requirement beta
+    status: active
+    visibility: internal
+    statement: beta must hold
+  - schema: graph/iso-clause/v0
+    id: req-iso-gamma
+    title: ISO clause gamma
+    status: active
+    visibility: internal
+    statement: gamma is an ISO-pack requirement subtype
+    edges:
+      acceptance: [uc-alpha]
+  - schema: graph/usecase/v0
+    id: uc-alpha
+    title: Use case alpha
+    status: active
+    visibility: internal
+    trigger: alpha happens
+    edges:
+      covers: [req-alpha, req-iso-gamma]
+  - schema: graph/change/v0
+    id: change-root
+    title: Change root
+    status: active
+    visibility: internal
+    goal: root change
+    depends_on: []
+  - schema: graph/change/v0
+    id: change-leaf
+    title: Change leaf
+    status: active
+    visibility: internal
+    goal: leaf change depends on root
+    depends_on: [change-root]
+  - schema: graph/changeset/v0
+    id: cs-1
+    title: Flip req-beta to done
+    status: proposed
+    visibility: internal
+    operations:
+      - kind: modified
+        node: req-beta
+        changes:
+          - path: [status]
+            before: active
+            after: done
+  - schema: graph/changeset/v0
+    id: cs-2
+    title: Flip req-alpha to done
+    status: authorized
+    visibility: internal
+    operations:
+      - kind: modified
+        node: req-alpha
+        changes:
+          - path: [status]
+            before: active
+            after: done
+      - kind: modified
+        node: uc-alpha
+        changes:
+          - path: [status]
+            before: active
+            after: done

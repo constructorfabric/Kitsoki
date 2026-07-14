@@ -127,6 +127,82 @@ func TestConvertTraceToFlow_MapsTransitionsAndResponses(t *testing.T) {
 	}
 }
 
+func TestConvertTraceToFlow_SkipsSyntheticAndBackgroundTransitions(t *testing.T) {
+	t.Parallel()
+
+	const trace = `{"kind":"session.header","schema_version":1,"written_at":"2026-07-06T00:00:00Z"}
+{"turn":1,"seq":0,"kind":"turn.input","state_path":"idle","payload":{"input":"","intent":"start"}}
+{"turn":1,"seq":1,"kind":"machine.transition","state_path":"idle","payload":{"from":"idle","to":"load","intent":"start","slots":{}}}
+{"turn":2,"seq":0,"kind":"turn.input","state_path":"load","payload":{"input":"","intent":"next_item"}}
+{"turn":2,"seq":1,"kind":"machine.transition","state_path":"load","payload":{"from":"load","to":"board","intent":"next_item","slots":{}}}
+{"turn":3,"seq":0,"kind":"turn.input","state_path":"board","payload":{"input":"","intent":"next_item"}}
+{"turn":3,"seq":1,"kind":"machine.transition","state_path":"board","payload":{"from":"board","to":"policy_check","intent":"next_item","slots":{}}}
+{"turn":3,"seq":2,"kind":"machine.transition","state_path":"board","payload":{"from":"policy_check","to":"drive","intent":"policy_ok","slots":{},"synthetic":true}}
+{"turn":4,"seq":0,"kind":"machine.transition","payload":{"from":"drive","to":"needs_human","intent":"__on_complete_target__","slots":{}}}
+`
+	lines, err := parseTraceLines([]byte(trace))
+	if err != nil {
+		t.Fatalf("parseTraceLines: %v", err)
+	}
+	res, err := convertTraceLines(lines, ConvertOptions{
+		AppPath: "../app.yaml",
+	})
+	if err != nil {
+		t.Fatalf("convertTraceLines: %v", err)
+	}
+
+	var flow flowFixtureDoc
+	if err := goyaml.Unmarshal(res.FlowYAML, &flow); err != nil {
+		t.Fatalf("unmarshal flow: %v\n%s", err, res.FlowYAML)
+	}
+	if res.NumTurns != 3 {
+		t.Fatalf("NumTurns = %d, want 3; flow:\n%s", res.NumTurns, res.FlowYAML)
+	}
+	got := []string{}
+	for _, turn := range flow.Turns {
+		got = append(got, turn.Intent.Name)
+	}
+	want := []string{"start", "next_item", "next_item"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("turn intents = %v, want %v", got, want)
+	}
+	body := stripComments(res.FlowYAML)
+	if strings.Contains(body, "policy_ok") || strings.Contains(body, "__on_complete_target__") {
+		t.Fatalf("flow must not emit internal transitions; got:\n%s", res.FlowYAML)
+	}
+}
+
+func TestConvertTraceToFlow_PreservesAgentLifecycleInCassette(t *testing.T) {
+	t.Parallel()
+	const trace = `{"turn":1,"kind":"turn.input","payload":{"input":"orient me"}}
+{"turn":1,"kind":"agent.call.start","payload":{"verb":"task","agent":"landing","model":"opus","prompt":"orient the operator"}}
+{"turn":1,"kind":"agent.call.complete","payload":{"verb":"task","agent":"landing","model":"opus","duration_ms":42,"response":{"summary":"No files were changed."},"meta":{"cost_usd":0.12,"usage":{"input_tokens":12,"output_tokens":34}}}}
+{"turn":1,"kind":"harness.returned","payload":{"namespace":"host.agent.task","data":{"submitted":{"summary":"No files were changed."}}}}
+{"turn":1,"kind":"machine.transition","payload":{"from":"core.landing","to":"core.landing","intent":"capture","slots":{}}}`
+	lines, err := parseTraceLines([]byte(trace))
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := convertTraceLines(lines, ConvertOptions{AppPath: "app.yaml", CassettePath: "capture.yaml"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cas Cassette
+	if err := goyaml.Unmarshal(res.CassetteYAML, &cas); err != nil {
+		t.Fatalf("unmarshal cassette: %v", err)
+	}
+	if len(cas.Episodes) != 1 || cas.Episodes[0].Agent == nil {
+		t.Fatalf("agent episode = %#v, want one lifecycle-bearing episode", cas.Episodes)
+	}
+	agent := cas.Episodes[0].Agent
+	if agent.Verb != "task" || agent.Agent != "landing" || agent.Response != `{"summary":"No files were changed."}` {
+		t.Errorf("agent = %#v, want preserved lifecycle fields", agent)
+	}
+	if agent.PromptTokens != 12 || agent.ResponseTokens != 34 || agent.CostUSD != 0.12 {
+		t.Errorf("agent usage = %#v, want trace usage", agent)
+	}
+}
+
 // stripComments removes whole-line YAML comments so body assertions don't trip
 // on words that legitimately appear in the generated header.
 func stripComments(b []byte) string {

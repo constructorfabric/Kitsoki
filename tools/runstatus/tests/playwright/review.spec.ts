@@ -1,6 +1,6 @@
 /**
  * review.spec.ts — Playwright end-to-end for the /review video-feedback surface
- * (proposal: docs/proposals/video-feedback-mode.md, slice 2).
+ * (shipped; see docs/tui/video-review.md).
  *
  * The SPA is loaded from the built dist/index.html WITHOUT an inlined snapshot,
  * so createDataSource() returns LiveSource and the page issues real JSON-RPC

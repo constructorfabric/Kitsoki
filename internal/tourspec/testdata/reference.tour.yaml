@@ -1,0 +1,26 @@
+version: 1
+id: save-tour
+origin: https://example.test
+bindings:
+  save:
+    target:
+      role: button
+      name: Save
+      testid: save-button
+claims:
+  - id: can-save
+    mustExpect: save-succeeds
+beats:
+  - id: introduction
+    kind: highlight
+    title: Save changes
+    narration: This tour shows the save control.
+    expect: [save-succeeds]
+    next: [save]
+  - id: save
+    binding: save
+    kind: gate
+    title: Save your change
+    narration: Select Save to persist the change.
+    advanceOn: click
+    expect: [save-succeeds]

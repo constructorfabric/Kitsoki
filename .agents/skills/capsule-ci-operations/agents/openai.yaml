@@ -1,0 +1,4 @@
+interface:
+  display_name: "Capsule CI Operations"
+  short_description: "Diagnose and operate story-native Capsule CI"
+  default_prompt: "Use $capsule-ci-operations to preflight, run, diagnose, and clean up this project’s Capsule CI safely."

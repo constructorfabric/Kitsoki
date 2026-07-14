@@ -1,0 +1,32 @@
+# review_revise_loop — adversarial review returns `revise` → decompose
+# re-arms with the review's questions as refine_feedback → decompose runs
+# again → lint passes again → review runs again and this time `accept`s →
+# fleet.load.
+#
+# Proves the B2b review gate's revise edge (proposal task 2.2/2.3): lint
+# passing is necessary but not sufficient — the adversarial reviewer can
+# still send the manifest back for a specific, named gap.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: configure
+initial_world:
+  base_branch: main
+  main_worktree_path: "."
+
+host_cassette: ../cassettes/review_revise_loop.cassette.yaml
+starlark_inspect_cassette: ../cassettes/review_revise_loop.inspect.yaml
+
+turns:
+  - intent:
+      name: start
+      slots:
+        epic_path: "stories/deliver/testdata/fixture_epic.md"
+    expect_state: fleet.load
+    expect_world:
+      lint_route:      "ok"
+      refine_cycle:    1
+      review_verdict:  "accept"   # the SECOND review's bind — the first review's "revise" is a mid-chain value, not final
+      refine_feedback: "Adversarial review requested changes: coverage_note claims the endpoint is wired end to end but no brief registers the route in the router. — Add a brief (or extend health-handler) that registers GET /health in the router and asserts it resolves."
+
+expect_no_errors: true

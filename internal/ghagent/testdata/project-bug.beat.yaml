@@ -1,0 +1,33 @@
+# project-bug.beat.yaml — drives an onboarded project dev-story instance from a
+# bug-labelled GitHub mention. The service supplies appPath from the target
+# checkout; this fixture proves the local project route reaches the bugfix
+# import without live LLM.
+test_kind: flow
+app: ../../../stories/dev-story/app.yaml
+initial_state: landing
+initial_world:
+  ticket_id: "42"
+  ticket_title: "Bug report from GitHub"
+  ticket_type: "bug"
+  ticket_url: "https://github.com/o/r/issues/42"
+  thread: "github:o/r/issue/42"
+  workdir: "."
+  workspace_id: "ws-gh-bug-poc"
+  base_branch: "main"
+  feature_branch: "fix/gh-bug-poc"
+  bugfix_destination: "leave-worktree"
+  judge_mode: "human"
+  gh_job_id: "job-stub"
+  gh_origin_ref: "github:o/r/issue/42"
+  repo: "o/r"
+
+host_handlers:
+  host.git_worktree: { data: { ok: true, log: "", path: ".worktrees/gh-bug-poc" } }
+
+turns:
+  - intent: { name: drive, slots: {} }
+    expect_state: bf.idle
+    expect_world:
+      ticket_type: "bug"
+
+expect_no_errors: true

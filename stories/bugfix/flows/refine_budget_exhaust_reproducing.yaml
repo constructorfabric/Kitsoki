@@ -2,7 +2,7 @@
 # more times than reproducing_budget allows, the next refine routes to
 # @exit:abandoned with abandon_reason=reproducing_cycle_budget_exhausted.
 #
-# Mirrors cyber-repo's stories/bugfix/flows/cycle_budget_exhaust.yaml,
+# Mirrors focused-engineering's stories/bugfix/flows/cycle_budget_exhaust.yaml,
 # scenario 1, against the kitsoki bugfix story's per-phase counters.
 #
 # Pattern: world_override seeds the counter at the budget (3); the next
@@ -27,7 +27,7 @@ host_handlers:
     data: { ok: true, message_id: "msg-1" }
   host.inbox.add:
     data: { ok: true, id: "ib-1" }
-  host.git_worktree:
+  host.capsule_workspace:
     data: { ok: true, log: "" }
   host.git:
     data: { ok: true, sha: "abc", diff: "" }
@@ -89,7 +89,7 @@ host_handlers:
     data: { ok: true, message_id: "msg-1" }
   host.inbox.add:
     data: { ok: true, id: "ib-1" }
-  host.git_worktree:
+  host.capsule_workspace:
     data: { ok: true, log: "" }
   host.git:
     data: { ok: true, sha: "abc", diff: "" }

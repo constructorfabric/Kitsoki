@@ -3,12 +3,13 @@ id: onboarding-tour
 kind: product-tour
 title: The kitsoki web UI, in five minutes
 tagline: A story-agnostic guided walkthrough of every core surface.
-summary: "The in-app onboarding tour: from the story library through a live run — chat, intent buttons, the live trace diagram and timeline, meta mode, and the read-only observer. It anchors only to elements every story ships, so it works for any first-time user on any story, and replays anytime from the “?” button."
+summary: 'The in-app onboarding tour: from the story library through a live run — chat, intent buttons, the live trace diagram and timeline, meta mode, and the read-only observer. It anchors only to elements every story ships, so it works for any first-time user on any story, and replays anytime from the “?” button.'
 promo:
   order: 40
 docs:
   - docs/web/README.md
 demo:
+  format: rrweb
   spec: tests/playwright/tour-video.spec.ts
   artifactDir: tour-video
   videoBase: tour-video-demo
@@ -16,6 +17,48 @@ demo:
   story: stories/bugfix
   flow: stories/bugfix/flows/happy_llm.yaml
   hostCassette: stories/bugfix/flows/demo.cassette.yaml
+qa:
+  scenarios:
+    - id: tour-starts
+      required: true
+      steps:
+        - A tour popover is visible while the page behind it remains undimmed and readable
+        - A popover with a title and description is shown
+        - A Next or action button is present in the popover
+      title: Tour overlay appears and opens on the home screen
+    - id: home-landmarks
+      required: true
+      steps:
+        - A story card or card list is highlighted with a visible ring and no page dimming
+        - The popover describes the story catalogue
+        - The New Session button is spotlighted in at least one step
+      title: Home screen landmarks are spotlighted
+    - id: navigate-to-interactive
+      required: true
+      steps:
+        - The URL or view changes away from the home screen
+        - The interactive (chat) view is visible with a chat section and input area
+      title: Clicking New Session navigates to the interactive view
+    - id: interactive-landmarks
+      required: true
+      steps:
+        - The current-state panel is spotlighted with a popover
+        - The chat section is spotlighted with a popover
+        - The input bar is spotlighted with a popover
+        - The state badge is spotlighted with a popover
+      title: Interactive view landmarks are spotlighted in sequence
+    - id: trace-panels
+      required: true
+      steps:
+        - A trace diagram panel is spotlighted with a popover
+        - A trace timeline panel is spotlighted with a popover
+      title: Trace diagram and timeline are spotlighted
+    - id: tour-ends
+      required: true
+      steps:
+        - A closing / done message is shown in a centered popover
+        - After the final step the overlay is no longer visible
+      title: Tour concludes and overlay dismisses
 tour:
   export: TOUR_STEPS
   steps:
@@ -137,50 +180,8 @@ tour:
     - id: tour-done
       route: any
       title: You're all set
-      body: "You know the layout: drive the story from the left, watch the trace on the right, switch to observer mode for a focused read-only view, and hit the meta button to inspect or edit the story YAML live. Hit '?' anytime to replay this tour."
+      body: 'You know the layout: drive the story from the left, watch the trace on the right, switch to observer mode for a focused read-only view, and hit the meta button to inspect or edit the story YAML live. Hit ''?'' anytime to replay this tour.'
       placement: center
       kind: explain
       advance: next
       dwellMs: 4000
-qa:
-  scenarios:
-    - id: tour-starts
-      title: Tour overlay appears and opens on the home screen
-      required: true
-      steps:
-        - A spotlight overlay is visible with a darkened backdrop
-        - A popover with a title and description is shown
-        - A Next or action button is present in the popover
-    - id: home-landmarks
-      title: Home screen landmarks are spotlighted
-      required: true
-      steps:
-        - A story card or card list is highlighted with a cutout in the backdrop
-        - The popover describes the story catalogue
-        - The New Session button is spotlighted in at least one step
-    - id: navigate-to-interactive
-      title: Clicking New Session navigates to the interactive view
-      required: true
-      steps:
-        - The URL or view changes away from the home screen
-        - The interactive (chat) view is visible with a chat section and input area
-    - id: interactive-landmarks
-      title: Interactive view landmarks are spotlighted in sequence
-      required: true
-      steps:
-        - The current-state panel is spotlighted with a popover
-        - The chat section is spotlighted with a popover
-        - The input bar is spotlighted with a popover
-        - The state badge is spotlighted with a popover
-    - id: trace-panels
-      title: Trace diagram and timeline are spotlighted
-      required: true
-      steps:
-        - A trace diagram panel is spotlighted with a popover
-        - A trace timeline panel is spotlighted with a popover
-    - id: tour-ends
-      title: Tour concludes and overlay dismisses
-      required: true
-      steps:
-        - A closing / done message is shown in a centered popover
-        - After the final step the overlay is no longer visible

@@ -1,0 +1,89 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: deciding
+initial_world:
+  goal_slug: goal-seeker-test
+  goal_dir: stories/goal-seeker/testdata/goal
+  work_dir: .artifacts/goal/flow-multiprovider-claude
+  preamble: "ready: C1"
+  remaining: 1
+  ready_id: C1
+  evaluator_provider: evaluator_claude
+
+host_handlers:
+  host.agent.decide:
+    by_call:
+      evaluate:
+        data:
+          ok: true
+          submitted:
+            verdict: not_done
+            summary: "C1 is ready."
+            next_instruction:
+              change_id: C1
+              action: "implement C1"
+              pipeline: implementation
+              gate: { class: G-FLOW, cmd: "true" }
+  host.starlark.run:
+    by_call:
+      gs_manifest:
+        data:
+          change:
+            id: C1
+            title: "First change"
+          gate_cmd: "true"
+
+turns:
+  - intent: { name: advance, slots: {} }
+    expect_state: dispatch
+    expect_world: { next_change_id: C1, next_gate_cmd: "true" }
+    expect_host_calls:
+      - handler: host.agent.decide
+        args: { call: evaluate, provider: evaluator_claude }
+
+expect_no_errors: true
+---
+test_kind: flow
+app: ../app.yaml
+initial_state: deciding
+initial_world:
+  goal_slug: goal-seeker-test
+  goal_dir: stories/goal-seeker/testdata/goal
+  work_dir: .artifacts/goal/flow-multiprovider-codex
+  preamble: "ready: C1"
+  remaining: 1
+  ready_id: C1
+  evaluator_provider: evaluator_codex
+
+host_handlers:
+  host.agent.decide:
+    by_call:
+      evaluate:
+        data:
+          ok: true
+          submitted:
+            verdict: not_done
+            summary: "C1 is ready."
+            next_instruction:
+              change_id: C1
+              action: "implement C1"
+              pipeline: implementation
+              gate: { class: G-FLOW, cmd: "true" }
+  host.starlark.run:
+    by_call:
+      gs_manifest:
+        data:
+          change:
+            id: C1
+            title: "First change"
+          gate_cmd: "true"
+
+turns:
+  - intent: { name: advance, slots: {} }
+    expect_state: dispatch
+    expect_world: { next_change_id: C1, next_gate_cmd: "true" }
+    expect_host_calls:
+      - handler: host.agent.decide
+        args: { call: evaluate, provider: evaluator_codex }
+
+expect_no_errors: true

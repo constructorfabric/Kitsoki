@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/stretchr/testify/require"
 
 	"kitsoki/internal/app"
@@ -348,6 +349,26 @@ func TestChoiceWhenFalseItemFilteredOut(t *testing.T) {
 	require.Equal(t, "pick_c", commit.Intent)
 }
 
+func TestChoiceWhenMissingNestedPathHidesItem(t *testing.T) {
+	el := app.ViewElement{
+		Kind:       "choice",
+		ChoiceMode: "single",
+		ChoiceItems: []app.ChoiceItem{
+			{
+				Label:  "hidden route",
+				Intent: "take_route",
+				When:   "(world.landing_note.route.intent ?? '') != ''",
+			},
+			{Label: "visible", Intent: "go_visible"},
+		},
+	}
+	w := tui.NewTestChoiceWidget()
+	require.NoError(t, w.OpenChoice(el, map[string]any{"landing_note": nil}))
+	require.Equal(t, 1, w.ItemCount(), "missing nested optional path should hide the guarded row, not fail Open")
+	require.NotContains(t, ansi.Strip(w.View(80)), "hidden route")
+	require.Contains(t, ansi.Strip(w.View(80)), "visible")
+}
+
 // ---- View rendering smoke --------------------------------------------------
 
 func TestChoiceViewRendersCursorAndCheckbox(t *testing.T) {
@@ -362,6 +383,69 @@ func TestChoiceViewRendersCursorAndCheckbox(t *testing.T) {
 	// Footer hint is rendered.
 	require.True(t, strings.Contains(out, "Space") || strings.Contains(out, "submit"),
 		"multi-mode footer should mention Space/submit")
+}
+
+func TestChoiceViewLinesFitWidth(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		el   app.ViewElement
+	}{
+		{
+			name: "single",
+			el: app.ViewElement{
+				Kind:       "choice",
+				ChoiceMode: "single",
+				ChoiceItems: []app.ChoiceItem{
+					{
+						Label:  "prd",
+						Hint:   "author a PRD, then carry it into design without wrapping the live row",
+						Intent: "go_prd",
+					},
+					{
+						Label:  "very long action label that should not force wrapping",
+						Hint:   "a long explanatory hint that must be clipped",
+						Intent: "go_long",
+					},
+				},
+			},
+		},
+		{
+			name: "multi",
+			el: app.ViewElement{
+				Kind:         "choice",
+				ChoiceMode:   "multi",
+				ChoiceIntent: "choose",
+				ChoiceSlot:   "items",
+				ChoiceItems: []app.ChoiceItem{
+					{Label: "coverage", Value: "coverage", Hint: "add deterministic regression coverage before shipping"},
+					{Label: "docs", Value: "docs", Hint: "update the narrative docs after the implementation lands"},
+				},
+			},
+		},
+		{
+			name: "form",
+			el: app.ViewElement{
+				Kind:         "choice",
+				ChoiceMode:   "form",
+				ChoiceIntent: "submit",
+				ChoiceFields: []app.ChoiceField{
+					{Name: "summary", Type: "string", Placeholder: "short summary", Hint: "this hint is intentionally too long for a narrow terminal"},
+				},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			const width = 40
+			w := tui.NewTestChoiceWidget()
+			require.NoError(t, w.OpenChoice(tc.el, nil))
+			out := w.View(width)
+			for i, line := range strings.Split(out, "\n") {
+				require.LessOrEqualf(t, ansi.StringWidth(line), width,
+					"line %d exceeds width %d (visible=%d): %q\n%s",
+					i, width, ansi.StringWidth(line), ansi.Strip(line), ansi.Strip(out))
+			}
+		})
+	}
 }
 
 func TestChoiceClosedViewEmpty(t *testing.T) {

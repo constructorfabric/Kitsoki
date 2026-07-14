@@ -1,0 +1,4 @@
+# Interface declaration for hello.star. No inputs; declares the single
+# greeting output the effect binds into world.
+outputs:
+  greeting: { type: string }

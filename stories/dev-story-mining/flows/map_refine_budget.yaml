@@ -19,8 +19,8 @@ initial_world:
     intent_count: 154
     summary_markdown: "154 intents catalogued."
   map_artifact:
-    themes:
-      - { theme: "Pre-existing failure vs regression", intents: 8, home_room: "stories/bugfix/rooms/validating.yaml", status: "ENRICH" }
+    opportunities:
+      - { theme: "Pre-existing failure vs regression", intents: 8, artifact_kind: "ENRICH-STORY", status: "ACTIONABLE", target_path: "stories/bugfix/rooms/validating.yaml", home_room: "stories/bugfix/rooms/validating.yaml", validator: "baseline worktree reproduces failure", determinism_rung: "L2" }
     summary_markdown: "Map present but the operator keeps rejecting it."
 
 turns:

@@ -25,14 +25,17 @@ func TestLoadCloak_Positive(t *testing.T) {
 	require.True(t, ok, "root must be a string")
 	require.Equal(t, "foyer", root)
 
-	// World schema — three declared variables.
-	require.Len(t, def.World, 3)
+	// World schema — three app variables plus the built-in story-authoring room.
+	require.Len(t, def.World, 6)
 	require.Contains(t, def.World, "wearing_cloak")
 	require.Contains(t, def.World, "disturbance")
 	require.Contains(t, def.World, "message_rumpled")
+	require.Contains(t, def.World, "story_authoring_request")
+	require.Contains(t, def.World, "story_authoring_note")
+	require.Contains(t, def.World, "story_authoring_return_state")
 
-	// Intent library — six intents.
-	require.Len(t, def.Intents, 6, "expected 6 intents in library")
+	// Intent library — six app intents plus the built-in story-authoring room.
+	require.Len(t, def.Intents, 10, "expected 10 intents in library")
 	goIntent, ok := def.Intents["go"]
 	require.True(t, ok, "intent 'go' must exist")
 	require.Equal(t, "Go", goIntent.Title)
@@ -138,6 +141,18 @@ func TestNegative(t *testing.T) {
 			name:        "timeout duration unparseable",
 			fixture:     "testdata/bad/bad_timeout_duration.yaml",
 			wantErrSnip: "forever",
+		},
+		{
+			// Regression coverage for the "silent no-op" footgun: a story
+			// invoking a host verb missing from its own hosts: allow-list
+			// used to appear to succeed in traces while doing nothing. The
+			// loader has always rejected this at load time (validateStates'
+			// invoke: host.* check against allowedHosts, internal/app/loader.go)
+			// — this test pins that behavior so it can never silently
+			// regress. See docs/architecture/hosts.md "Allow-list enforcement".
+			name:        "host invoke not in own allow-list",
+			fixture:     "testdata/bad/host_not_in_allowlist.yaml",
+			wantErrSnip: "not declared in app hosts",
 		},
 	}
 

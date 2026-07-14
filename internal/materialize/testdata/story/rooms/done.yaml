@@ -1,0 +1,9 @@
+states:
+  done:
+    description: "Done"
+    view: "Done: {{ world.artifact_path }}."
+    on:
+      restart:
+        - target: gather
+      look:
+        - target: done

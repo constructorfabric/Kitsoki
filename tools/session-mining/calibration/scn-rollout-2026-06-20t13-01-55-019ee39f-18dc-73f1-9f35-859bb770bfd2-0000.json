@@ -1,0 +1,28 @@
+{
+  "schema_version": "1.0",
+  "kind": "conversation",
+  "id": "scn-rollout-2026-06-20t13-01-55-019ee39f-18dc-73f1-9f35-859bb770bfd2-0000",
+  "source": "mined",
+  "provenance": {
+    "corpus": "codex",
+    "session_id": "rollout-2026-06-20T13-01-55-019ee39f-18dc-73f1-9f35-859bb770bfd2",
+    "span_idx": 0
+  },
+  "persona": "core-maintainer",
+  "goal": "somehow main got checked out to a fix branch - this keeps happening despite intended guards - get back to main and make sure anything on this branch moves over to main",
+  "turns": [
+    {
+      "role": "user",
+      "text": "somehow main got checked out to a fix branch - this keeps happening despite intended guards - get back to main and make sure anything on this branch moves over to main",
+      "corrected": false
+    }
+  ],
+  "expected_effects": [
+    "exec_command: git branch --merged main completed",
+    "exec_command: git branch -d fix/vscode-embed-compact-scaling completed",
+    "exec_command: git merge --ff-only fix/vscode-embed-compact-scaling completed",
+    "exec_command: git status --short --branch completed",
+    "exec_command: git switch main completed"
+  ],
+  "abandoned": false
+}

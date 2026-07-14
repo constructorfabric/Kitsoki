@@ -1,0 +1,31 @@
+schema: project-object-graph/seed-catalog/v0
+type_registry:
+  - id: core-node
+    schema: graph-type/v0
+  - id: feature
+    schema: graph-type/v0
+    extends: core-node
+    edge_fields:
+      - id: requirements
+        target_type: requirement
+        cardinality: many
+  - id: requirement
+    schema: graph-type/v0
+    extends: core-node
+  - id: evidence
+    schema: graph-type/v0
+    extends: core-node
+nodes:
+  - schema: graph/feature/v0
+    id: feature-one
+    title: Feature one
+    status: active
+    visibility: public
+    edges:
+      requirements:
+        - evidence-one
+  - schema: graph/evidence/v0
+    id: evidence-one
+    title: Some evidence
+    status: current
+    visibility: public

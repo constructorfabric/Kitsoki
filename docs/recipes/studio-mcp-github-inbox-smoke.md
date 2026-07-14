@@ -39,7 +39,7 @@ Then run the MCP smoke with that fake `gh` first on `PATH`:
 
 ```sh
 PATH="$PWD/.artifacts/mcp-test/fake-bin:$PATH" \
-GOCACHE="$PWD/.cache/go-build" \
+GOCACHE="${KITSOKI_GOCACHE:-/private/tmp/kitsoki-gocache}" \
 go run ./cmd/kitsoki mcp-test \
   --timeout 20s \
   --server-arg mcp \

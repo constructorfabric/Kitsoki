@@ -74,6 +74,7 @@ confirm the new draft addresses each point.
 
 ## 1. Classify the kind
 
+{% if args.template_dir %}
 The template set lives under **`{{ args.template_dir }}`**. Read its
 `README.md` (the which-template table) when present and choose the kind
 that matches the change. For the kitsoki template set the kinds are:
@@ -93,12 +94,34 @@ use its `DESIGN/template.md`, mint and thread the IDs it prescribes (e.g.
 
 Record your choice in `kind`. Tie-break toward the template whose design
 sections you will actually fill.
+{% else %}
+No design template directory is configured for this project. Classify the work
+as the most specific plain-English kind that helps a maintainer route it
+(`feature`, `runtime`, `ui`, `docs`, `test`, or similar), and record that value
+in `kind`.
+{% endif %}
 
 ## 2. Copy the matching template and fill it
 
-Read the matching template under **`{{ args.template_dir }}/`** (the
-`<kind>.md` for the kitsoki set, or `DESIGN/template.md` for an external
-spec-template tree) and fill it:
+{% if args.template_dir %}
+Before copying a template, inspect nearby existing design/proposal docs in the
+target repo and follow their format when a clear local convention exists. If no
+local convention exists, read the matching template under
+**`{{ args.template_dir }}/`** (the `<kind>.md` for the Kitsoki fallback set, or
+`DESIGN/template.md` for an external spec-template tree) and fill it:
+{% else %}
+Before inventing structure, inspect nearby existing design/proposal docs in the
+target repo and follow their format when a clear local convention exists. If no
+local convention exists, write a self-contained design document with this
+structure:
+
+- **Status**
+- **Kind**
+- **Why**
+- **What changes**
+- **Impact**
+- **Tasks**
+{% endif %}
 
 - The shared spine first — **Why / What changes / Impact** — tight and
   skim-in-two-minutes; the `Why` in the reader's terms.

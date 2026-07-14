@@ -1,0 +1,18 @@
+goal_slug: cycle-test
+changes:
+  - id: "A"
+    wall: WT
+    title: "A"
+    pipeline: implementation
+    scope: ["a/**"]
+    depends_on: ["B"]
+    acceptance: ["x"]
+    gate: { class: G-FLOW, cmd: "true" }
+  - id: "B"
+    wall: WT
+    title: "B"
+    pipeline: implementation
+    scope: ["b/**"]
+    depends_on: ["A"]
+    acceptance: ["x"]
+    gate: { class: G-FLOW, cmd: "true" }

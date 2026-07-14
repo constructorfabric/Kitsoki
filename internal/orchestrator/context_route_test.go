@@ -13,13 +13,16 @@ package orchestrator_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sync/atomic"
 	"testing"
 
+	mcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
 
 	"kitsoki/internal/agent"
 	"kitsoki/internal/app"
+	"kitsoki/internal/harness"
 	"kitsoki/internal/machine"
 	"kitsoki/internal/orchestrator"
 	"kitsoki/internal/store"
@@ -32,6 +35,29 @@ type stubContextRouter struct {
 	calls      int32
 	submission string
 }
+
+type structuredFallbackHarness struct {
+	structuredCalls int32
+	routingCalls    int32
+	schema          json.RawMessage
+	response        json.RawMessage
+}
+
+func (h *structuredFallbackHarness) RunTurn(context.Context, harness.TurnInput) (mcp.CallToolParams, error) {
+	atomic.AddInt32(&h.routingCalls, 1)
+	return mcp.CallToolParams{}, errors.New("main routing harness should not run")
+}
+
+func (h *structuredFallbackHarness) RunStructured(_ context.Context, in harness.StructuredInput) (json.RawMessage, error) {
+	atomic.AddInt32(&h.structuredCalls, 1)
+	h.schema = append(json.RawMessage(nil), in.SchemaJSON...)
+	if len(h.response) > 0 {
+		return h.response, nil
+	}
+	return json.RawMessage(`{"class":"intent","intent":"go_west","confidence":0.95,"reason":"bugfix command"}`), nil
+}
+
+func (h *structuredFallbackHarness) Close() error { return nil }
 
 func (s *stubContextRouter) Ask(ctx context.Context, req agent.AskRequest) (agent.AskResponse, error) {
 	atomic.AddInt32(&s.calls, 1)
@@ -136,6 +162,111 @@ func TestContextualRouter_IntentClassRoutesOnMiss(t *testing.T) {
 	}
 	require.Equal(t, "intent", decidedClass,
 		"trace must record the contextual route class for replay")
+}
+
+func TestContextualRouter_DefaultHarnessFallbackPreservesContextSchema(t *testing.T) {
+	def, err := app.LoadBytes([]byte(ctxRouteAppYAML))
+	require.NoError(t, err)
+	m, err := machine.New(def)
+	require.NoError(t, err)
+	s, err := store.OpenMemory()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	structured := &structuredFallbackHarness{}
+	reg := agent.NewRegistry()
+	reg.Register(agent.DefaultAgentName, agent.FromHarness(structured))
+	mainHarness := &countingHarness{fall: staticHarness{intentName: "go_south"}}
+	orch := orchestrator.New(def, m, s, mainHarness, orchestrator.WithAgentRegistry(reg))
+
+	sid, err := orch.NewSession(context.Background())
+	require.NoError(t, err)
+	out, err := orch.Turn(context.Background(), sid, "qqzzx wibble frob")
+	require.NoError(t, err)
+	require.Equal(t, app.StatePath("west_end"), out.NewState)
+	require.Equal(t, int32(1), atomic.LoadInt32(&structured.structuredCalls))
+	require.Equal(t, int64(0), mainHarness.calls.Load(), "contextual fallback should resolve before main routing")
+
+	var schema struct {
+		Properties map[string]struct {
+			Enum []string `json:"enum"`
+		} `json:"properties"`
+	}
+	require.NoError(t, json.Unmarshal(structured.schema, &schema))
+	require.ElementsMatch(t, []string{"intent", "help", "room_request", "meta_edit"}, schema.Properties["class"].Enum)
+	_, hasTransitionIntent := schema.Properties["intent"]
+	require.True(t, hasTransitionIntent)
+	_, hasSlots := schema.Properties["slots"]
+	require.True(t, hasSlots, "contextual intent routes must carry required slot values")
+}
+
+func TestContextualRouter_FallbackCarriesBugfixReportSlotsAndNarration(t *testing.T) {
+	const bugfixApp = `
+app:
+  id: contextual-bugfix-report
+  version: 0.1.0
+world: {}
+routing:
+  enabled: true
+  extract_llm_on_no_match: true
+  extract_llm_agent: agent.local
+intents:
+  bugfix_report:
+    title: "Report bug"
+    examples: []
+    slots:
+      complaint: { type: string, required: true }
+      title: { type: string, required: false }
+  look:
+    title: "Look"
+    examples: ["look"]
+root: landing
+states:
+  landing:
+    view: "Workbench"
+    contextual_routing:
+      enabled: true
+      room_chat: bugfix_report
+    on:
+      bugfix_report:
+        - target: bugfix
+          effects:
+            - say: "Bug report captured; entering bugfix with the inline complaint."
+      look:
+        - target: landing
+  bugfix:
+    terminal: true
+    view: "Bugfix owns: {{ slots.complaint }}"
+`
+	def, err := app.LoadBytes([]byte(bugfixApp))
+	require.NoError(t, err)
+	m, err := machine.New(def)
+	require.NoError(t, err)
+	s, err := store.OpenMemory()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	structured := &structuredFallbackHarness{response: json.RawMessage(`{
+		"class":"intent",
+		"intent":"bugfix_report",
+		"slots":{"complaint":"the workbench gave no status messages","title":"Surface bugfix progress"},
+		"confidence":0.96,
+		"reason":"inline bug report"
+	}`)}
+	reg := agent.NewRegistry()
+	reg.Register(agent.DefaultAgentName, agent.FromHarness(structured))
+	mainHarness := &countingHarness{fall: staticHarness{intentName: "bugfix_report"}}
+	orch := orchestrator.New(def, m, s, mainHarness, orchestrator.WithAgentRegistry(reg))
+	sid, err := orch.NewSession(context.Background())
+	require.NoError(t, err)
+
+	out, err := orch.Turn(context.Background(), sid, "qqzzx wibble frob")
+	require.NoError(t, err)
+	require.Equal(t, int32(1), atomic.LoadInt32(&structured.structuredCalls))
+	require.Equal(t, int64(0), mainHarness.calls.Load())
+	require.Equal(t, app.StatePath("bugfix"), out.NewState)
+	require.Contains(t, out.View, "Bug report captured; entering bugfix with the inline complaint.")
+	require.Contains(t, out.View, "the workbench gave no status messages")
 }
 
 // 1.1: the verdict schema accepts the four classes and rejects a fifth.

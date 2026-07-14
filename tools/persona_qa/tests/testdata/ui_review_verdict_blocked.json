@@ -1,0 +1,33 @@
+{
+  "overall": "fail",
+  "strict": false,
+  "server": {"cmd": "bin/kitsoki web --stories-dir stories --flow flows/onboarding.json", "base": "http://127.0.0.1:7746"},
+  "summary": {"error": 1, "warn": 1, "info": 0, "blocking": 1, "by_source": {"geometry": 0, "a11y": 1, "vision": 1}},
+  "findings": [
+    {
+      "source": "a11y",
+      "check": "a11y:color-contrast",
+      "severity": "error",
+      "surface": "home-welcome",
+      "viewport": "desktop",
+      "frame": "01-home-welcome@desktop.png",
+      "count": 1,
+      "frames": ["01-home-welcome@desktop.png"],
+      "detail": "insufficient contrast 3.75 (fg #64748b / bg #0f172a) — expected 4.5:1",
+      "recommendation": "Darken the background or lighten the chip text.",
+      "selector": "[data-testid=\"session-filter-active\"]"
+    },
+    {
+      "source": "vision",
+      "check": "layout:crowding",
+      "severity": "warn",
+      "surface": "home-welcome",
+      "viewport": "mobile",
+      "frame": "01-home-welcome@mobile.png",
+      "count": 1,
+      "frames": ["01-home-welcome@mobile.png"],
+      "detail": "Filter chips wrap awkwardly on narrow viewports.",
+      "recommendation": "Stack the chips vertically below 420px."
+    }
+  ]
+}

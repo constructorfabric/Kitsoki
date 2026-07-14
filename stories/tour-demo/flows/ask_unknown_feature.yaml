@@ -1,0 +1,19 @@
+# ask_unknown_feature — the not_found path: when host.tour.plan can't
+# resolve a feature, on_error routes straight to not_found rather than
+# fabricating a tour or silently stalling in idle.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world: {}
+
+host_handlers:
+  host.tour.plan:
+    data: {}
+    error: "host.tour.plan: no plannable tour for feature \"definitely-not-a-feature\": read feature \"features/definitely-not-a-feature.yaml\": no such file"
+
+turns:
+  - intent: { name: ask, slots: { feature_id: "definitely-not-a-feature" } }
+    expect_state: not_found
+
+expect_no_errors: true

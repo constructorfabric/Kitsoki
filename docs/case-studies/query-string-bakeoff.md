@@ -138,7 +138,7 @@ worker calls 429'd at dispatch. Its cells are withheld rather than reported as a
 capability result; they land once the throttle clears.
 
 Durable results: [`tools/bugfix-bakeoff/external/results/`](../../tools/bugfix-bakeoff/external/results).
-Narrated deck: [`docs/decks/query-string-bakeoff.slidey.html`](../decks/query-string-bakeoff.slidey.html).
+Narrated deck source: [`docs/decks/query-string-bakeoff.slidey.json`](../decks/query-string-bakeoff.slidey.json).
 
 ## The cost comparison (operator-run)
 
@@ -164,4 +164,4 @@ pre-flight, hidden-oracle adjudication, one-basis cost).
 
 - [bugfix-bakeoff.md](bugfix-bakeoff.md) — the parent study (kitsoki's own bugs)
 - [tools/bugfix-bakeoff/external/](../../tools/bugfix-bakeoff/external) — the harness
-- [project-onboarding.md](../project-onboarding.md) — onboarding any repo
+- [getting-started.md](../getting-started.md) — onboarding any repo

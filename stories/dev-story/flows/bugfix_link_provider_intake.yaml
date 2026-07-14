@@ -1,0 +1,72 @@
+# bugfix_link_provider_intake -- dev-story can start bugfix from a remote issue
+# link when the project has selected a ticket provider. The bugfix story owns the
+# triager host call; this flow pins the provider body fetch and import
+# projection.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world:
+  bugfix_mode: "triage"
+  judge_mode: "human"
+  ticket_repo: "acme/api"
+
+host_bindings:
+  ticket: host.gh.ticket
+
+host_handlers:
+  host.gh.ticket.get:
+    data:
+      id: "77"
+      title: "Crash opening saved filters"
+      body: |
+        Steps:
+        1. Open Saved filters.
+        2. Pick a filter created before the migration.
+        Expected: filter opens.
+        Actual: panic in filter decoder.
+      status: "open"
+      url: "https://github.com/acme/api/issues/77"
+  host.agent.codeact:
+    data:
+      ok: true
+      terminated: "done"
+      payload:
+        verdict: "STILL-LIVE"
+        confidence: 0.81
+        summary_title: "STILL-LIVE - fetched issue body"
+        evidence: "The remote issue body reached triage."
+        summary_markdown: "The provider-backed issue body was fetched before triage."
+        suggested_action: "drive the full bugfix pipeline"
+        fixed_in_ref: null
+        involved_components: []
+      steps: []
+turns:
+  - intent:
+      name: bugfix_link
+      slots:
+        url: "https://github.com/acme/api/issues/77"
+    expect_state: bf.triaging
+    expect_host_calls:
+      - handler: host.gh.ticket.get
+        args:
+          repo: "acme/api"
+          id: "https://github.com/acme/api/issues/77"
+    expect_world:
+      bf__ticket_id: "77"
+      bf__ticket_title: "Crash opening saved filters"
+      bf__ticket_source_mode: "remote"
+      bf__ticket_source_ref: "https://github.com/acme/api/issues/77"
+      bf__ticket_url: "https://github.com/acme/api/issues/77"
+      bf__ticket_body: |
+        Steps:
+        1. Open Saved filters.
+        2. Pick a filter created before the migration.
+        Expected: filter opens.
+        Actual: panic in filter decoder.
+    expect_events:
+      - kind: machine.say
+        effect:
+          text: "Bug link https://github.com/acme/api/issues/77 resolved; entering bugfix with provider metadata."
+
+expect_no_errors: true

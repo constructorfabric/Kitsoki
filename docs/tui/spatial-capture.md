@@ -14,6 +14,16 @@ focused window — see [`spatial-handoff.md`](spatial-handoff.md). The recorded
 trace shape is in
 [`docs/tracing/trace-format.md`](../tracing/trace-format.md#inputvisual--the-spatial-attachment).
 
+In normal live-session use, the most discoverable entry point is the media
+artifact itself: click `Pin` to put the artifact in the
+[session media workbench](../web/session-media-workbench.md), then click
+`Annotate` in the pinned pane. That flow uses the same spatial substrate, but
+normalises the pick into the newer
+[annotation anchor](../architecture/artifact-annotation.md) union so a story can
+route it to read-only discussion or to a `Send & refine` turn. Use `/review`
+when you specifically need to flag a video time range and ask the read-only
+oracle about that flagged frame.
+
 ## Mental model
 
 A **magnifying glass over a frame**: click anywhere and it tells you *"that's
@@ -128,7 +138,10 @@ Web surface — Vitest + Playwright, never the Go `CapturedIO` harness, oracle
 
 ## Non-goals
 
-- **Arbitrary / external media** — kitsoki-rendered DOM only in v1; the bundle
-  is forward-compatible (`element` may be absent).
+- **Unresolved external media semantics** — generic HTML/rrweb/image artifacts
+  can now carry semantic sidecars and selector-resolved fields, but Kitsoki still
+  does not infer producer-specific object schemas on its own. A producer names
+  the fields it wants addressable; otherwise the picker falls back to DOM nodes
+  or pixel regions.
 - **A web-tier write path** — the chat is the read-only off-path `converse`;
   guidance never edits source from a click (shared decision 1).

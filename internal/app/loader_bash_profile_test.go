@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"kitsoki/internal/effect"
 )
 
 // TestBashProfileDecl_ReadOnly verifies that "read-only" string form parses.
@@ -171,10 +173,15 @@ agents:
 	require.NoError(t, err, "matching declaration and inference should load cleanly")
 }
 
-// TestExternalSideEffect_DeclaredDisagreesWithInferred verifies that a
-// disagreement between declared and inferred values loads (only a warn-line,
-// not a loader error).
-func TestExternalSideEffect_DeclaredDisagreesWithInferred(t *testing.T) {
+// TestExternalSideEffect_DeclaredReadContradictsNetworkTool_HardFails
+// verifies the effect-taxonomy.md load-time hard-fail: declaring
+// external_side_effect: false (which maps to effect: read, since no mutator
+// tool is present) while the tool surface includes WebFetch/WebSearch (a
+// network tool, joining to effect: external) is a load ERROR, not a
+// warn-line — the teeth the old boolean never had. This supersedes the
+// pre-taxonomy behavior (a bare warn), which could not distinguish a
+// genuinely read-only agent from one that just claimed to be.
+func TestExternalSideEffect_DeclaredReadContradictsNetworkTool_HardFails(t *testing.T) {
 	yaml := `app:
   id: ese-disagree
   version: 0.1.0
@@ -188,9 +195,93 @@ agents:
     tools: [Read, WebFetch]
     external_side_effect: false
 `
-	// Disagreement is a warn-line, not a load error.
 	_, err := LoadBytes([]byte(yaml))
-	require.NoError(t, err, "external_side_effect disagreement should be a warn, not a load error")
+	require.Error(t, err, "declaring read-tier posture over a network-tool surface must hard-fail")
+	require.Contains(t, err.Error(), "suspicious")
+}
+
+// TestEffect_DeclaredOverPrivileged_WarnsNotErrors verifies that declaring a
+// MORE privileged effect than the tool surface justifies (external, but the
+// surface only joins to write) is a warn-line, not a load error — an author
+// over-claiming privilege is a safe, if noisy, mistake, unlike under-claiming
+// it.
+func TestEffect_DeclaredOverPrivileged_WarnsNotErrors(t *testing.T) {
+	yaml := `app:
+  id: ese-overclaim
+  version: 0.1.0
+root: foyer
+states:
+  foyer:
+    view: "hi"
+agents:
+  cautious:
+    system_prompt: "cautious"
+    tools: [Read, Edit, Write]
+    external_side_effect: true
+`
+	_, err := LoadBytes([]byte(yaml))
+	require.NoError(t, err, "over-declaring privilege should warn, not error")
+}
+
+// TestEffect_ExplicitFieldTakesPrecedenceAndValidates verifies the new
+// `effect:` field parses, resolves, and rejects an unrecognised value.
+func TestEffect_ExplicitFieldTakesPrecedenceAndValidates(t *testing.T) {
+	yaml := `app:
+  id: ese-explicit
+  version: 0.1.0
+root: foyer
+states:
+  foyer:
+    view: "hi"
+agents:
+  writer:
+    system_prompt: "writer"
+    tools: [Read, Edit, Write]
+    effect: write
+`
+	def, err := LoadBytes([]byte(yaml))
+	require.NoError(t, err)
+	a := def.Agents["writer"]
+	require.Equal(t, effect.Write, a.Effect)
+	require.NotNil(t, a.ExternalSideEffect)
+	require.False(t, *a.ExternalSideEffect, "write-tier mirrors to external_side_effect=false")
+
+	yaml2 := `app:
+  id: ese-badenum
+  version: 0.1.0
+root: foyer
+states:
+  foyer:
+    view: "hi"
+agents:
+  writer:
+    system_prompt: "writer"
+    effect: sideways
+`
+	_, err = LoadBytes([]byte(yaml2))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "sideways")
+}
+
+// TestEffect_BothFieldsDeclaredIsLoadError verifies that effect: and the
+// deprecated external_side_effect: are mutually exclusive.
+func TestEffect_BothFieldsDeclaredIsLoadError(t *testing.T) {
+	yaml := `app:
+  id: ese-both
+  version: 0.1.0
+root: foyer
+states:
+  foyer:
+    view: "hi"
+agents:
+  confused:
+    system_prompt: "confused"
+    effect: read
+    external_side_effect: false
+`
+	_, err := LoadBytes([]byte(yaml))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "confused")
 }
 
 // TestBashProfile_NilWhenAbsent verifies that an agent without bash_profile

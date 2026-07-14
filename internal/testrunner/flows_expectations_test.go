@@ -101,6 +101,112 @@ expect_no_errors: true
 	require.Equal(t, 1, report.Passed)
 }
 
+func TestOperationRunExpectations(t *testing.T) {
+	dir := t.TempDir()
+	appYAML := `
+app:
+  id: op_expect_test
+  version: 0.1.0
+  title: "operation expectation test"
+  author: a
+  license: CC0
+operations:
+  demo_run:
+    title: "Demo run"
+    mode: autonomous
+    execution_mode: one-shot
+    run_in_background: true
+    terminal_artifact: done_artifact
+intents:
+  go:
+    description: "Run the operation."
+    examples: ["go"]
+root: idle
+states:
+  idle:
+    on:
+      go:
+        - target: done
+          operation: demo_run
+  done:
+    terminal: true
+`
+	flowYAML := `
+test_kind: flow
+app: ` + filepath.Join(dir, "app.yaml") + `
+initial_state: idle
+turns:
+  - intent: { name: go }
+    expect_state: done
+expect_terminal: true
+expect_operation_policy: demo_run
+expect_operation_status: completed
+expect_terminal_artifact: done_artifact
+expect_no_errors: true
+`
+	appPath, flowPath := writeFixture(t, dir, appYAML, flowYAML)
+	report, err := testrunner.RunFlows(t.Context(), appPath, flowPath, testrunner.FlowOptions{})
+	require.NoError(t, err)
+	require.Equal(t, 0, report.Failed, "report: %+v", report.Results)
+	require.Equal(t, 1, report.Passed)
+}
+
+func TestOperationRunWaitingExpectations(t *testing.T) {
+	dir := t.TempDir()
+	appYAML := `
+app:
+  id: op_waiting_expect_test
+  version: 0.1.0
+  title: "operation waiting expectation test"
+  author: a
+  license: CC0
+operations:
+  demo_run:
+    title: "Demo run"
+    mode: autonomous
+    execution_mode: one-shot
+    stop_on: [needs-human, host-error]
+intents:
+  go:
+    description: "Run the operation."
+    examples: ["go"]
+world:
+  status: { type: string, default: "" }
+  needs_human_reason: { type: string, default: "" }
+root: idle
+states:
+  idle:
+    on:
+      go:
+        - target: needs-human
+          operation: demo_run
+          effects:
+            - set:
+                status: needs-human
+                needs_human_reason: "Regression gate was never RED."
+  needs-human:
+    terminal: true
+`
+	flowYAML := `
+test_kind: flow
+app: ` + filepath.Join(dir, "app.yaml") + `
+initial_state: idle
+turns:
+  - intent: { name: go }
+    expect_state: needs-human
+expect_terminal: true
+expect_operation_policy: demo_run
+expect_operation_status: waiting
+expect_stop_reason: needs-human
+expect_no_errors: true
+`
+	appPath, flowPath := writeFixture(t, dir, appYAML, flowYAML)
+	report, err := testrunner.RunFlows(t.Context(), appPath, flowPath, testrunner.FlowOptions{})
+	require.NoError(t, err)
+	require.Equal(t, 0, report.Failed, "report: %+v", report.Results)
+	require.Equal(t, 1, report.Passed)
+}
+
 // TestHostStub_ByCall_DispatchesPerCallSite verifies a single stub serves
 // different envelopes for two invokes that share a handler name AND identical
 // args, distinguished only by the author-assigned `id:` on each invoke. This

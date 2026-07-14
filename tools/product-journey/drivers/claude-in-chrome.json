@@ -1,0 +1,35 @@
+{
+  "id": "claude-in-chrome",
+  "label": "Claude-in-Chrome real-browser surface",
+  "app_kind": "web",
+  "capabilities": {
+    "visual.open": ["mcp__claude-in-chrome__tabs_context_mcp", "mcp__claude-in-chrome__tabs_create_mcp", "mcp__claude-in-chrome__navigate"],
+    "visual.observe": ["mcp__claude-in-chrome__computer", "mcp__claude-in-chrome__read_page", "mcp__claude-in-chrome__find", "mcp__claude-in-chrome__get_page_text"],
+    "visual.act": ["mcp__claude-in-chrome__computer", "mcp__claude-in-chrome__form_input", "mcp__claude-in-chrome__browser_batch"],
+    "session.open": ["mcp__claude-in-chrome__tabs_context_mcp", "mcp__claude-in-chrome__navigate"],
+    "session.status": ["mcp__claude-in-chrome__read_page"],
+    "session.submit": ["mcp__claude-in-chrome__computer", "mcp__claude-in-chrome__form_input"],
+    "session.drive": ["mcp__claude-in-chrome__computer", "mcp__claude-in-chrome__form_input", "mcp__claude-in-chrome__navigate", "mcp__claude-in-chrome__browser_batch"],
+    "session.inspect": ["mcp__claude-in-chrome__read_page", "mcp__claude-in-chrome__read_console_messages", "mcp__claude-in-chrome__read_network_requests"],
+    "session.trace": ["mcp__claude-in-chrome__read_console_messages", "mcp__claude-in-chrome__read_network_requests"],
+    "render.tui": ["mcp__claude-in-chrome__computer"]
+  },
+  "affordances": {},
+  "evidence_contract": {
+    "web": {
+      "primary_tool": "mcp__claude-in-chrome__gif_creator",
+      "evidence_kind": "key_interaction_video",
+      "level": "interaction-level"
+    }
+  },
+  "notes": [
+    "Call mcp__claude-in-chrome__tabs_context_mcp once before any other browser tool, and create a fresh tab with tabs_create_mcp instead of reusing existing tabs.",
+    "Raw computer screenshots are NOT file-addressable: save_to_disk returns an opaque id, never a path. The only file-addressable capture is gif_creator: start_recording before the interaction, stop_recording after, then export with download:true and a meaningful filename; the .gif lands in ~/Downloads — copy it into the run evidence dir before attaching.",
+    "Screenshots may be scaled relative to the CSS viewport; click coordinates are interpreted in screenshot space, and zoom regions must also be expressed in screenshot space. When a coordinate click silently no-ops (overlays, backdrops), fall back to find + ref-based clicks.",
+    "Element refs from find/read_page go stale whenever the target re-renders; re-run find per step instead of caching refs across page updates.",
+    "browser_batch executes sequentially and stops at the first error; keep batches to 2-6 actions and end each batch with a screenshot so the next batch's coordinates are grounded.",
+    "read_console_messages and read_network_requests return text only; persist their output to files in the run evidence dir yourself before citing them as evidence.",
+    "Do not trigger JavaScript alerts/confirms/prompts; they block the extension. Prefer console.log plus read_console_messages when debugging."
+  ],
+  "oracles": []
+}

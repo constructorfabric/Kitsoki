@@ -1,0 +1,46 @@
+# This runs every Corpus Forge Starlark script for real. The proof seam is a
+# deterministic stub because fixture materialization/oracle execution belongs
+# to the injected corpusproof.Executor, never to a flow or an LLM.
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  corpus_role: calibration
+  source_manifest_ref: fixtures/arena-five.yaml
+  task_limit: 5
+  source_candidates:
+    - { kind: corpus-case.v1, id: five, repo: example/five, source: arena, baseline_ref: base-five, fix_ref: fix-five, ticket: five, archetype: bugfix, oracle: { command: [test, five] }, provenance: { adapter: fixture, locator: five, source_digest: sha256:five }, verified_red: false, verified_green: false }
+    - { kind: corpus-case.v1, id: three, repo: example/three, source: arena, baseline_ref: base-three, fix_ref: fix-three, ticket: three, archetype: bugfix, oracle: { command: [test, three] }, provenance: { adapter: fixture, locator: three, source_digest: sha256:three }, verified_red: true, verified_green: true }
+    - { kind: corpus-case.v1, id: one, repo: example/one, source: arena, baseline_ref: base-one, fix_ref: fix-one, ticket: one, archetype: bugfix, oracle: { command: [test, one] }, provenance: { adapter: fixture, locator: one, source_digest: sha256:one }, verified_red: false, verified_green: true }
+    - { kind: corpus-case.v1, id: four, repo: example/four, source: arena, baseline_ref: base-four, fix_ref: fix-four, ticket: four, archetype: bugfix, oracle: { command: [test, four] }, provenance: { adapter: fixture, locator: four, source_digest: sha256:four }, verified_red: true, verified_green: false }
+    - { kind: corpus-case.v1, id: two, repo: example/two, source: arena, baseline_ref: base-two, fix_ref: fix-two, ticket: two, archetype: bugfix, oracle: { command: [test, two] }, provenance: { adapter: fixture, locator: two, source_digest: sha256:two }, verified_red: true, verified_green: true }
+host_handlers:
+  host.corpus.prove:
+    data:
+      proof:
+        oracle_sha256: independent-proof
+        environment_fingerprint: fixture-v1
+  host.corpus.freeze_receipt:
+    data: {}
+turns:
+  - intent: { name: start, slots: {} }
+    expect_state: load
+    expect_host_calls: [{ handler: host.starlark.run }]
+  - intent: { name: accept, slots: {} }
+    expect_state: select
+    expect_world: { selected_ids: '["five","four","one","three","two"]' }
+    expect_host_calls: [{ handler: host.starlark.run }]
+  - intent: { name: accept, slots: {} }
+    expect_state: validate
+    expect_world: { validation: { ok: true, task_count: 5, task_ids: [five, four, one, three, two], failures: [] } }
+    # The nested proof call is exercised inside the real Starlark handler;
+    # host-call tracing records the outer deterministic script invocation.
+    expect_host_calls: [{ handler: host.starlark.run }]
+  - intent: { name: accept, slots: {} }
+    expect_state: receipt
+    expect_view_matches: "frozen receipt"
+    expect_host_calls: [{ handler: host.starlark.run }]
+  - intent: { name: accept, slots: {} }
+    expect_state: __exit__done
+expect_terminal: true
+expect_no_errors: true

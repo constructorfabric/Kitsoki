@@ -1,0 +1,18 @@
+{
+  "meta": { "title": "fixture deck" },
+  "scenes": [
+    { "type": "title", "title": "Intro" },
+    {
+      "type": "video",
+      "title": "Scene A",
+      "rrweb": "clips/tour-a.rrweb.json",
+      "narration": [{ "chapter": "a", "text": "State A narration." }]
+    },
+    {
+      "type": "video",
+      "title": "Scene B",
+      "rrweb": "clips/tour-b.rrweb.json",
+      "narration": [{ "chapter": "b", "text": "State B narration." }]
+    }
+  ]
+}

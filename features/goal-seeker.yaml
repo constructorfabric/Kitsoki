@@ -1,0 +1,6 @@
+# yaml-language-server: $schema=feature.schema.json
+id: goal-seeker
+kind: story-demo
+title: Goal-seeker — the loop that drives the plan through kitsoki itself
+tagline: A kitsoki story that evaluates a decomposed plan, dispatches workers, integrates green work, and loops until done.
+summary: 'goal-seeker is the generalized-usage stabilization loop, built as a kitsoki story rather than an out-of-engine script. It imports punch-list for the load -> drive -> verify -> report loop and ship-it for lost-work-safe integrate -> verify -> cleanup, then adds an evaluate gate that reads a bounded preamble over the plan''s ledger and trace evidence and emits a verdict: keep dispatching, or done. The whole loop is flow-tested with no LLM, including adversarial cases (a false-done verdict, a worker self-reporting green, a not-RED change) that must be rejected deterministically rather than trusted.'

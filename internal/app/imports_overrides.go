@@ -115,11 +115,11 @@ func applyOverrides(child *AppDef, ov *ImportOverrides, file, alias, parentBaseD
 }
 
 // rebaseEffectPaths walks an imported child's state tree and rewrites
-// every relative `prompt:` / `schema:` arg in effect `with:` blocks to
+// every relative `prompt:` / `schema:` / `script:` arg in effect `with:` blocks to
 // an absolute path rooted at the child's directory. Without this, the
 // runtime joins the relative path against $KITSOKI_APP_DIR (the parent
 // app's directory) and fails to find files that live in the child
-// story's prompts/ or schemas/ tree.
+// story's prompts/, schemas/, or scripts/ tree.
 //
 // Idempotent: paths already absolute or containing template syntax
 // (`{{`) are left alone — the latter because we can't resolve them
@@ -146,6 +146,7 @@ func rebaseEffectPaths(states map[string]*State, childDir string) {
 		if s == nil {
 			continue
 		}
+		rebaseWorkbenchPaths(s.Workbench, childDir)
 		rebaseEffectPathsInEffects(s.OnEnter, childDir)
 		for _, list := range s.On {
 			for i := range list {
@@ -156,6 +157,14 @@ func rebaseEffectPaths(states map[string]*State, childDir string) {
 			rebaseEffectPaths(s.States, childDir)
 		}
 	}
+}
+
+func rebaseWorkbenchPaths(decl *WorkbenchDecl, childDir string) {
+	if decl == nil {
+		return
+	}
+	decl.Prompt = rebasePathValue(decl.Prompt, childDir)
+	decl.AcceptanceSchema = rebasePathValue(decl.AcceptanceSchema, childDir)
 }
 
 func rebaseEffectPathsInEffects(effs []Effect, childDir string) {
@@ -170,18 +179,12 @@ func rebaseEffectPathsInEffects(effs []Effect, childDir string) {
 }
 
 func rebaseWithMap(with map[string]any, childDir string) {
-	for _, key := range []string{"prompt", "prompt_path", "schema"} {
+	for _, key := range []string{"prompt", "prompt_path", "schema", "script"} {
 		raw, ok := with[key].(string)
-		if !ok || raw == "" {
+		if !ok {
 			continue
 		}
-		if filepath.IsAbs(raw) {
-			continue
-		}
-		if containsTemplate(raw) {
-			continue
-		}
-		with[key] = filepath.Join(childDir, raw)
+		with[key] = rebasePathValue(raw, childDir)
 	}
 	// host.agent.task nests prompt/prompt_path under with.context and the
 	// acceptance schema under with.acceptance.schema. Both must rebase to the
@@ -195,11 +198,48 @@ func rebaseWithMap(with map[string]any, childDir string) {
 	}
 }
 
+func rebasePathValue(raw, childDir string) string {
+	if raw == "" {
+		return raw
+	}
+	if filepath.IsAbs(raw) {
+		return raw
+	}
+	if containsTemplate(raw) {
+		return raw
+	}
+	return filepath.Join(childDir, raw)
+}
+
 // containsTemplate reports whether s carries a pongo2/expr template
 // delimiter — `{{` or `{%`. Used to guard static path rewrites from
 // touching dynamic expressions the runtime renders at dispatch time.
 func containsTemplate(s string) bool {
 	return strings.Contains(s, "{{") || strings.Contains(s, "{%")
+}
+
+// containsCapabilityTemplate reports whether a nested CodeAct capability
+// declaration has a dispatch-time expression. Static declarations are checked
+// at load time; dynamic leaves are re-rendered to typed values and parsed by
+// AgentCodeactHandler before any model call starts.
+func containsCapabilityTemplate(v any) bool {
+	switch value := v.(type) {
+	case string:
+		return containsTemplate(value)
+	case map[string]any:
+		for _, child := range value {
+			if containsCapabilityTemplate(child) {
+				return true
+			}
+		}
+	case []any:
+		for _, child := range value {
+			if containsCapabilityTemplate(child) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // applyPromptOverridesToStates walks every Effect.With["prompt"] in the

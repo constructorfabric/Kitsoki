@@ -135,12 +135,8 @@ func (o *Orchestrator) Teleport(ctx context.Context, sid app.SessionID, target i
 	// (Re-)arm any Timeout: declared on the destination state.
 	o.armTimeoutForState(sid, priorState, target.State)
 
-	// Compute new allowed intents in the destination state.
-	newAllowed := o.machine.AllowedIntents(target.State, w)
-	newAllowedNames := make([]string, len(newAllowed))
-	for i, ai := range newAllowed {
-		newAllowedNames[i] = ai.Name
-	}
+	// Compute new visible allowed intents in the destination state.
+	newAllowedNames := allowedNamesFromMachine(o.machine, target.State, w)
 
 	mode := ModeTransitioned
 	newStateDef := lookupStateByPath(o.def, target.State)

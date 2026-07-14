@@ -1,15 +1,16 @@
-# dev-story-mining — turn real Claude Code transcripts into dev-story gates.
+# dev-story-mining — turn real Claude Code/Codex transcripts into Kitsoki improvements.
 #
 # The repeatable process from .context/dev-story-from-transcripts.md, made
 # first-class and runnable as a kitsoki story. Five phase rooms walk the
 # operator (or an LLM judge, in autonomous mode) through the loop:
 #
-#   mine    → run intent-mining over recent transcripts            (host.agent.task: miner)
-#   map     → cross-reference the brief's gates vs dev-story's      (host.agent.task: mapper)
-#             existing gate inventory; classify ALREADY / ENRICH / GAP
-#   decide  → rank ENRICH/GAP items, select what to ticket          (host.agent.ask: ranker + judge gate)
-#   author  → author the gate + a flow fixture; verify flows green  (host.agent.task: author)
-#   record  → check whether recorded decisions let a gate climb a   (host.agent.ask: recorder)
+#   prepare → build the transcript-source and determinism plan      (host.starlark.run)
+#   mine    → run intent/idea mining over planned sources           (host.agent.task: miner)
+#   mapping → announce + write OPPORTUNITY_MAP.md before MAP review (host.agent.task: mapper)
+#   map     → review mapped opportunities and linked OPPORTUNITY_MAP.md
+#   decide  → rank ENRICH/GAP items, select what to apply           (host.agent.ask: ranker + judge gate)
+#   author  → author the selected improvement; verify flows green   (host.agent.task: author)
+#   record  → write FINAL_REPORT.md and review ladder moves         (host.agent.task: recorder)
 #             determinism rung (L2→L3→L4)
 #
 # Each room produces a schema-validated artifact in its on_enter (idempotent
@@ -30,15 +31,16 @@
 app:
   id: dev-story-mining
   version: 0.1.0
-  title: "dev-story-mining — mine transcripts into dev-story gates"
+  title: "dev-story-mining — mine transcripts into Kitsoki improvements"
   author: "Kitsoki"
   license: "CC0"
 
 # Host allow-list.
 hosts:
+  - host.starlark.run   # deterministic source/determinism planning
   - host.run            # mining pipeline, gate-inventory scan, `kitsoki test flows`
-  - host.agent.task    # agentic producers (miner, mapper, author)
-  - host.agent.ask     # read-only producers (ranker, recorder)
+  - host.agent.task    # agentic producers (miner, mapper, author, recorder)
+  - host.agent.ask     # read-only producer (ranker)
   - host.agent.decide  # the checkpoint judge
 
 # Personas — one class of LLM work each. The verb at every call site matches
@@ -46,33 +48,34 @@ hosts:
 # typed verdict). Mirrors stories/bugfix's persona table.
 agents:
   miner:
-    system_prompt: "You run the session-mining intent pipeline (tools/session-mining). Distill recent transcripts, run the strict-agent pass, ground and emit the two linked reports, then summarise the resulting brief: job id, intent count, determinism split. You do not invent numbers — read them from the emitted reports."
+    system_prompt: "You run the session-mining pipelines for the prepared transcript sources. Distill Claude Code and/or Codex transcripts as directed, run the strict-agent pass where requested, ground and emit linked reports, then summarise the resulting brief: job id, source counts, intent count, determinism split, and tool gaps. You do not invent numbers — read them from emitted reports or mark them unavailable."
     model: claude-sonnet-4-6
     tools: [Read, Grep, Glob, Bash]
     bash_profile: read-only
     external_side_effect: false
   mapper:
-    system_prompt: "You cross-reference mined decision gates against an existing kitsoki story's gate inventory. Regenerate the inventory by grepping host.agent.decide / host.agent.task across the target rooms, cluster the brief's in-scope gates into decision themes, and classify each ALREADY-MODELED / ENRICH / GAP with the home room file path and the brief's validator."
+    system_prompt: "You cross-reference mined automation opportunities against the existing Kitsoki story/script/hook inventory. Regenerate the inventory from the repository, cluster in-scope opportunities, and classify each as EXISTING-STORY, ENRICH-STORY, NEW-STORY, STARLARK-SCRIPT, HUB-ROUTE, SKILL-ONLY, ENFORCEMENT-LIMIT, or OUT-OF-SCOPE with concrete file paths and validators. You may write only the markdown opportunity map artifact under .artifacts/session-mining/<job>/."
     model: claude-sonnet-4-6
-    tools: [Read, Grep, Glob, Bash]
+    tools: [Read, Grep, Glob, Write, Bash]
     bash_profile: read-only
     external_side_effect: false
   ranker:
-    system_prompt: "You rank ENRICH/GAP enrichment items by (# distinct intents × how mechanical the surrounding recipe is) and select the highest-value item to ticket next, with a one-line rationale and the exact room file to edit."
+    system_prompt: "You rank actionable opportunities by (# distinct intents × mechanicalness × Kitsoki-adoption leverage) and select the highest-value improvement to apply next, with a one-line rationale, artifact kind, target files, and the determinism rung it should start on."
     model: claude-sonnet-4-6
     tools: [Read, Grep, Glob]
     bash_profile: read-only
   author:
-    system_prompt: "You author a kitsoki story gate. Add the selected decider gate to the named room YAML, write a cassette-free flow fixture covering each branch, and run `kitsoki test flows` to prove it green. Never use a live LLM in the fixture (cassettes/seeded world only)."
+    system_prompt: "You author the selected Kitsoki improvement. Depending on artifact_kind, add or enrich a story room, Starlark script, flow fixture, hub route, skill handoff, or local issue/proposal. Write no-LLM flow/cassette coverage for changed behavior and run the focused validation. Never use a live LLM in tests."
     model: claude-sonnet-4-6
     tools: [Read, Grep, Glob, Edit, Write, Bash]
     bash_profile: read-only
     external_side_effect: false
   recorder:
-    system_prompt: "You read the recorded decisions at an existing gate and judge whether one branch dominates enough to drop a determinism rung (LLM → default-rule). You report ladder moves; you do not change code."
+    system_prompt: "You read the recorded decisions at an existing gate and judge whether one branch dominates enough to drop a determinism rung (LLM to default-rule). You write the final markdown report under .artifacts/session-mining/<job>/ and return its path. You do not change source code."
     model: claude-sonnet-4-6
-    tools: [Read, Grep, Glob]
+    tools: [Read, Grep, Glob, Write]
     bash_profile: read-only
+    external_side_effect: false
   judge:
     system_prompt: "You are a quality gate. Evaluate the provided artifact against the stated criteria and emit a structured verdict: accept, refine, or uncertain."
     model: claude-sonnet-4-6
@@ -81,10 +84,17 @@ agents:
 world:
   # ── Run identity / inputs ──────────────────────────────────────────────
   job:           { type: string, default: "intents-current" }   # session-mining job folder name
-  project_dir:   { type: string, default: "" }                  # ~/.claude/projects/<slug> (empty → current repo)
+  project_dir:   { type: string, default: "" }                  # Claude project dir; empty -> current repo slug
+  codex_sessions_dir: { type: string, default: "~/.codex/sessions" }
+  transcript_sources: { type: string, default: "claude,codex" } # comma list: claude,codex
   stories_dir:   { type: string, default: "stories" }           # target story tree to enrich
+  target_artifacts: { type: string, default: "stories,rooms,starlark,flows,hub-routes,skills,hooks" }
+  automation_goal: { type: string, default: "Find missed opportunities to use Kitsoki stories, rooms, Starlark scripts, and recorded gates so more developer work runs through Kitsoki." }
+  determinism_doc: { type: string, default: "tools/session-mining/README.md#concepts" }
+  prompt_intercept_doc: { type: string, default: "docs/architecture/prompt-intercept.md" }
   min_intents:   { type: int,    default: 20 }                  # freshness floor — fewer ⇒ corpus too thin
   selected_theme: { type: string, default: "" }                 # the item the decide room chose
+  selected_artifact_kind: { type: string, default: "" }         # NEW-STORY | ENRICH-STORY | STARLARK-SCRIPT | ...
 
   # mining_started gates idle's autostart so it fires exactly once per
   # session (mirrors bugfix's bf_autostart_attempted — an on_error bounce
@@ -103,11 +113,13 @@ world:
   status:          { type: string, default: "open" }              # open | mapped | authored | abandoned
 
   # ── Per-phase cycle budgets (L2 — one bail-out instead of a loop) ──────
+  prepare_cycle:  { type: int, default: 0 }
   mine_cycle:     { type: int, default: 0 }
   map_cycle:      { type: int, default: 0 }
   decide_cycle:   { type: int, default: 0 }
   author_cycle:   { type: int, default: 0 }
   record_cycle:   { type: int, default: 0 }
+  prepare_budget: { type: int, default: 3 }
   mine_budget:    { type: int, default: 3 }
   map_budget:     { type: int, default: 3 }
   decide_budget:  { type: int, default: 3 }
@@ -115,11 +127,14 @@ world:
   record_budget:  { type: int, default: 3 }
 
   # ── Per-room artifacts ─────────────────────────────────────────────────
-  mine_artifact:   { type: object, default: {} }   # { brief_path, intent_count, deterministic, agent_gated, irreducible, summary_markdown }
-  map_artifact:    { type: object, default: {} }   # { themes:[{theme,intents,home_room,status,decider,validator}], summary_markdown }
+  source_plan_artifact: { type: object, default: {} }   # deterministic source + ladder plan
+  source_summary_markdown: { type: string, default: "" }
+  mine_artifact:   { type: object, default: {} }   # { brief_path, source_counts, display counts, intent_count, deterministic, agent_gated, irreducible, summary_markdown }
+  map_artifact:    { type: object, default: {} }   # { map_path, opportunities:[{theme,intents,artifact_kind,status,target_path,validator}], summary_markdown }
   decide_artifact: { type: object, default: {} }   # { selected:[{theme,room,gate}], rationale, summary_markdown }
-  author_artifact: { type: object, default: {} }   # { files_changed, flows_green, summary_markdown }
-  record_artifact: { type: object, default: {} }   # { ladder_moves, summary_markdown }
+  author_artifact: { type: object, default: {} }   # { files_changed, diff_path, flows_green, summary_markdown }
+  record_artifact: { type: object, default: {} }   # { final_report_path, ladder_moves, summary_markdown }
+  last_error:       { type: string, default: "" }
 
 intents:
   start:

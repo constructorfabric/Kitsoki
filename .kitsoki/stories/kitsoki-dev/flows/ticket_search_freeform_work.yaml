@@ -3,8 +3,9 @@
 #
 # Regression shape: in live kitsoki-dev, free text from core.ticket_search was
 # routed by the LLM to core__go_main, producing only the landing/opening view.
-# The imported room now has default_intent: work, folded to core__work here, so
-# the request becomes a landing_agent task.
+# The imported room now has default_intent: landing_capture (workbench:'s
+# `<room>_capture` naming), folded to core__landing_capture here, so the
+# request becomes a landing_agent task.
 
 test_kind: flow
 app: ../app.yaml
@@ -23,7 +24,7 @@ host_handlers:
 
 turns:
   - intent:
-      name: core__work
+      name: core__landing_capture
       slots:
         request: "we have a bunch of tickets saved in the repo itself we need to migrate to github"
     expect_state: core.landing

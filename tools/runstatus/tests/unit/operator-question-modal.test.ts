@@ -73,6 +73,29 @@ describe("OperatorQuestionModal", () => {
     expect(answer).toHaveBeenCalledWith({ "Ship it?": "Yes" });
   });
 
+  it("single-select: custom answer is gated until text is entered, then submits the text", async () => {
+    const store = useOperatorQuestionStore();
+    store.queue.push(singleFrame());
+    const answer = vi.spyOn(store, "answer").mockResolvedValue();
+
+    mount(OperatorQuestionModal);
+    const submit = document.querySelector('[data-testid="oq-submit"]') as HTMLButtonElement;
+    (document.querySelector('[data-testid="oq-option-0-custom"]') as HTMLButtonElement).click();
+    await Promise.resolve();
+
+    expect(submit.disabled).toBe(true);
+    const input = document.querySelector('[data-testid="oq-custom-answer-0"]') as HTMLInputElement;
+    input.value = "Use the canary branch after docs are updated";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    await Promise.resolve();
+
+    expect(submit.disabled).toBe(false);
+    submit.click();
+    expect(answer).toHaveBeenCalledWith({
+      "Ship it?": "Use the canary branch after docs are updated",
+    });
+  });
+
   it("multi-select: toggles labels into an array and submits the list", async () => {
     const store = useOperatorQuestionStore();
     store.queue.push(multiFrame());

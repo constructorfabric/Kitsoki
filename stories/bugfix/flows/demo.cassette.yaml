@@ -25,7 +25,7 @@ episodes:
 
   - id: git_worktree_any
     match:
-      handler: host.git_worktree
+      handler: host.capsule_workspace
     response:
       data: { ok: true, log: "synced" }
     replay: any

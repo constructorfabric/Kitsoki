@@ -1,0 +1,15 @@
+# G-VIEW gate, positive case, legacy (machine-only) rig.
+#
+# go_good lands in `fine`, whose view renders cleanly — proving the gate does
+# not false-positive on the common, healthy path.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: lobby
+
+turns:
+  - intent: { name: go_good, slots: {} }
+    expect_state: fine
+    expect_view_matches: "Made it, all good."
+
+expect_terminal: true

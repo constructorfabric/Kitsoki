@@ -3,7 +3,7 @@ id: harness-picker
 kind: feature
 title: The harness picker — pluggable operators, live
 tagline: Switch provider, model, and reasoning effort from the run header; every call is stamped with the operator that answered it.
-summary: "kitsoki treats the LLM as a swappable operator. The run header carries a provider / model / effort picker — claude-native, codex, and synthetic backends — that takes effect on the next turn (substrate semantics, not a mid-call swap). Each agent call is stamped with the exact profile, model, and effort that produced it, shown inline on the trace row. The demo asks each operator to identify itself and watches the per-call provenance change as the picker switches — same recorded input, different operator, auditable output."
+summary: kitsoki treats the LLM as a swappable operator. The run header carries a provider / model / effort picker — claude-native, codex, and synthetic backends — that takes effect on the next turn (substrate semantics, not a mid-call swap). Each agent call is stamped with the exact profile, model, and effort that produced it, shown inline on the trace row. The demo asks each operator to identify itself and watches the per-call provenance change as the picker switches — same recorded input, different operator, auditable output.
 promo:
   order: 35
 docs:
@@ -12,6 +12,7 @@ related:
   - agent-actions
   - trace-features
 demo:
+  format: rrweb
   spec: tests/playwright/harness-picker-video.spec.ts
   artifactDir: harness-picker
   videoBase: harness-picker-demo
@@ -21,14 +22,14 @@ demo:
 qa:
   scenarios:
     - id: provider-switch-live
-      title: The provider picker switches the operator from the run header
       required: true
       steps:
         - The run header shows a provider dropdown (the harness picker)
         - Selecting a different provider changes the active profile
+      title: The provider picker switches the operator from the run header
     - id: per-call-provenance
-      title: Each agent call is stamped with the operator that answered it
       required: true
       steps:
         - After a turn the trace row shows a harness profile / model label
         - Switching the provider and asking again shows a different label and identity
+      title: Each agent call is stamped with the operator that answered it

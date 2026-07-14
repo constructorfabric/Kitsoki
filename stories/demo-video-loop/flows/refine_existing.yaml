@@ -37,6 +37,9 @@ host_handlers:
             feature_md_path: ".artifacts/ui-qa/feature.md"
             scenarios_path:  ".artifacts/ui-qa/scenarios.yaml"
   host.artifacts_dir: { data: { ok: true } }
+  host.ui_qa.run:
+    by_call:
+      qa-1: { data: { ok: true, exit_code: 0, qa_ok: true, qa_exit_code: 0 } }
 
 turns:
   # A non-look self-target into the root re-fires on_enter; the whole refine loop
@@ -58,7 +61,7 @@ turns:
       - handler: host.run
         args: { call: validate-1 }
         times: 1
-      - handler: host.run
+      - handler: host.ui_qa.run
         args: { call: qa-1 }
         times: 1
 

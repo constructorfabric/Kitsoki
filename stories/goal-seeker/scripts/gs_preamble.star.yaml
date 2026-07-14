@@ -1,0 +1,5 @@
+inputs:
+  goal_dir: { type: string, required: true }   # docs/goals/<slug>/ — holds GOAL.md
+  work_dir: { type: string, required: true }   # .artifacts/goal/<slug>/ — holds ledger.json (from gs_ledger)
+outputs:
+  preamble: { type: string }   # the bounded, fixed-shape projection fed to the evaluate decide-gate

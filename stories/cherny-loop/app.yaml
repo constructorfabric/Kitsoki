@@ -69,20 +69,20 @@ hosts:
   - host.chat.transcript
   - host.agent.converse
 
-# Worktree confinement — the maker is an autonomous agent that EDITS the repo,
+# Capsule confinement — the maker is an autonomous agent that EDITS the repo,
 # so it must never write the operator's checkout directly. `launch` mints a
-# dedicated git worktree under .worktrees/<workspace_id> on a throwaway branch,
+# dedicated Capsule workspace under the checked-in `development` definition,
 # and every maker turn + every gate runs with `working_dir`/`cwd` pinned to it.
 # The maker can READ the rest of the repo (cwd doesn't wall off reads); its
 # WRITES land in the isolated branch. This reuses the same provider-neutral
 # `workspace` host_interface dev-story declares (default-bound to
-# host.git_worktree), so a parent INSTANCE can rebind the backend in one place
+# host.capsule_workspace), so a parent INSTANCE can rebind the backend in one place
 # and the two stories share one workspace vocabulary.
 #
 # NB: like dev-story, `working_dir` is the cwd, not an OS write-jail — it
 # confines writes by convention. A hard OS-level write guarantee (deny writes
 # outside the worktree even for absolute / ../ paths) is an engine-layer change
-# tracked separately; see README → "Worktree confinement".
+# tracked separately; see README → "Capsule confinement".
 host_interfaces:
   # vcs — version control. The commit op stages and commits the maker's
   # changes to workspace_branch before exiting @exit:achieved. Mirrors the
@@ -96,7 +96,7 @@ host_interfaces:
     default: host.git
 
   workspace:
-    description: "Working-copy manager. Local: git worktree."
+    description: "Working-copy manager. Local: checked-in Capsule definition."
     operations:
       list:
         input:  {}
@@ -105,22 +105,21 @@ host_interfaces:
         input:  { id: string }
         output: { id: string, path: string, branch: string, dirty: bool }
       create:
-        # `id` pins the .worktrees/<id> dir basename; `name` is the branch;
-        # `base` is the branch to root from ("" = current HEAD). Matches
-        # host.git_worktree's worktreeCreate signature.
-        input:  { id: string, name: string, base: string }
-        output: { ok: bool, path: string }
+        # `definition` selects the checked-in Capsule policy. `name`/`base`
+        # remain transitional compatibility hints for older providers; the
+        # Capsule host returns the authoritative branch/path in its trace data.
+        input:  { id: string, definition: string, name: string, base: string }
+        output: { ok: bool, path: string, branch: string }
       sync:
         input:  { id: string }
         output: { ok: bool, log: string }
-    default: host.git_worktree
+    default: host.capsule_workspace
 
 agents:
   maker:
     system_prompt: "You are an engineer iterating toward a stated goal. Read the goal and the previous attempt's gate-failure feedback, make the smallest correct change that moves toward passing the gate, and report a one-line summary of what you changed."
     tools: [Read, Grep, Glob, Edit, Write, Bash]
     bash_profile: read-only
-    external_side_effect: false
 
   gate_reviewer:
     system_prompt: "You are an adversarial quality gate. Judge the goal artifact against the stated goal. Default to pass=false unless the goal is clearly, fully met. When you fail it, give a specific, actionable reason the next iteration can act on."
@@ -146,6 +145,7 @@ world:
   gate_command:      { type: string, default: "" }    # script-mode shell command
   gate_plan_reason:  { type: string, default: "" }    # why the planner chose this gate
   gate_prompt_focus: { type: string, default: "" }    # extra reviewer rubric for agent/hybrid gates
+  baseline_green_policy: { type: string, default: "hold" } # hold | needs-human
   anchor_files:      { type: string, default: "" }    # fixed context handed to the maker each turn (ralph reset)
   iteration_budget:  { type: int,    default: 8 }
   cost_budget_usd:   { type: number, default: 0 }     # 0 = disabled
@@ -175,10 +175,10 @@ world:
   worktree_path_b:          { type: string, default: "" }
   merge_conflict_detected:  { type: bool,   default: false }
 
-  # Worktree confinement (see hosts comment). The maker + gate run with cwd
+  # Capsule confinement (see hosts comment). The maker + gate run with cwd
   # pinned to worktree_path so every iteration's writes land in an isolated
   # branch, never the operator's checkout.
-  workspace_id:      { type: string, default: "cherny-loop" }      # .worktrees/<id> basename
+  workspace_id:      { type: string, default: "cherny-loop" }      # Capsule workspace id
   workspace_branch:  { type: string, default: "cherny-loop/run" }  # branch the worktree holds
   workspace_base:    { type: string, default: "" }                 # "" = root at current HEAD
   worktree_path:     { type: string, default: "" }                 # bound from create; cwd for maker + gate
@@ -231,7 +231,7 @@ intents:
       iteration_budget: { type: int,    required: false }
       cost_budget:      { type: number, required: false }
       # Override the worktree branch/id for parallel loops (defaults give one
-      # reusable .worktrees/cherny-loop on branch cherny-loop/run).
+      # reusable .capsules/workspaces/cherny-loop on branch cherny-loop/run).
       workspace_branch: { type: string, required: false }
       workspace_id:     { type: string, required: false }
       # Orchestrator settings
@@ -290,6 +290,10 @@ intents:
     priority: 1
     slots:
       feedback: { type: string, required: false }
+  baseline_green_needs_human:
+    description: "(internal) autonomous importer requires a human decision for an already-green baseline."
+    examples: []
+    priority: 1
   slot_a_finished:
     description: "(internal) worker A done."
     examples: []

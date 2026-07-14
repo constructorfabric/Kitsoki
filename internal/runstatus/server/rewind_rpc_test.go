@@ -23,7 +23,7 @@ type rewindDriver struct {
 	err            error
 }
 
-func (d *rewindDriver) RewindRoute(_ context.Context, decisionID string, newClass orchestrator.ContextRouteClass, reason string) (*orchestrator.TurnOutcome, error) {
+func (d *rewindDriver) RewindRoute(_ context.Context, decisionID string, newClass orchestrator.ContextRouteClass, reason string, _ string) (*orchestrator.TurnOutcome, error) {
 	d.called = true
 	d.lastDecisionID, d.lastClass, d.lastReason = decisionID, newClass, reason
 	if d.err != nil {

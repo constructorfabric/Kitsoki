@@ -1,0 +1,139 @@
+{
+  "cli_fallback_finalize_commands": [
+    "go run ./cmd/kitsoki gitops autonomous-fix --json --report-invalid-autonomous-fix --run-dir .artifacts/product-journey/20260705T225534Z-gears-rust-core-maintainer-dwf3-a3-onboard --ticket-repo <owner/repo> --agent-db .artifacts/product-journey/20260705T225534Z-gears-rust-core-maintainer-dwf3-a3-onboard/gh-agent-jobs.sqlite --public-base-url <public-gh-agent-url>",
+    "python3 tools/product-journey/run.py --review-run --run-dir .artifacts/product-journey/20260705T225534Z-gears-rust-core-maintainer-dwf3-a3-onboard",
+    "python3 tools/product-journey/run.py --validate-run --run-dir .artifacts/product-journey/20260705T225534Z-gears-rust-core-maintainer-dwf3-a3-onboard"
+  ],
+  "created_at": "2026-07-05T22:56:01+00:00",
+  "dispatch_modes": [
+    {
+      "description": "Use existing cassettes or deterministic fixtures. Safe for no-LLM regression runs.",
+      "mode": "replay"
+    },
+    {
+      "description": "Capture a new reusable cassette or visual evidence path with explicit operator approval.",
+      "mode": "record"
+    },
+    {
+      "description": "Use live model behavior only when the operator explicitly authorizes cost-bearing exploration.",
+      "mode": "live"
+    }
+  ],
+  "driver_agent": ".agents/agents/product-journey-qa-driver.md",
+  "finalize_commands": [
+    "autonomous_fix ticket_repo=<owner/repo> gh_agent_public_base_url=<public-gh-agent-url>",
+    "review",
+    "validate"
+  ],
+  "inputs": {
+    "agent_brief": "agent-brief.md",
+    "driver_journal": "driver-journal.md",
+    "driver_plan": "driver-plan.md",
+    "evidence": "evidence.json",
+    "execution_plan": "execution-plan.md",
+    "media_manifest": "media-manifest.json",
+    "scenario_outcomes": "scenario-outcomes.md"
+  },
+  "missing_evidence": [
+    {
+      "hint": "Save the rendered TUI/web frame for the room under review.",
+      "kind": "rendered_tui_frame",
+      "scenario": "project-onboarding"
+    },
+    {
+      "hint": "Save the generated config diff or a no-change note.",
+      "kind": "generated_config_diff",
+      "scenario": "project-onboarding"
+    },
+    {
+      "hint": "Save the deterministic onboarding smoke result.",
+      "kind": "onboarding_smoke_result",
+      "scenario": "project-onboarding"
+    },
+    {
+      "hint": "Save an MP4/GIF clip or retained video reference for Slidey playback.",
+      "kind": "key_interaction_video",
+      "scenario": "project-onboarding"
+    }
+  ],
+  "missing_proof_evidence": [
+    {
+      "captured_minimum_evidence_count": 1,
+      "label": "Project onboarding",
+      "minimum_evidence_count": 5,
+      "missing_proof_evidence": [
+        "generated_config_diff",
+        "key_interaction_video",
+        "onboarding_smoke_result",
+        "rendered_tui_frame"
+      ],
+      "proof_minimum_evidence_count": 1,
+      "record_blocker_command": "python3 tools/product-journey/run.py --record-blocker --run-dir .artifacts/product-journey/20260705T225534Z-gears-rust-core-maintainer-dwf3-a3-onboard --scenario project-onboarding --title <blocker-title> --summary <why-this-scenario-could-not-be-captured> --evidence-path <trace-or-frame-path>",
+      "scenario": "project-onboarding",
+      "slots": [
+        {
+          "attach_command": "python3 tools/product-journey/run.py --attach-evidence --run-dir .artifacts/product-journey/20260705T225534Z-gears-rust-core-maintainer-dwf3-a3-onboard --scenario project-onboarding --evidence-kind generated_config_diff --evidence-path <path-or-retained-id> --evidence-source <retained|external|local|cassette> --notes \"Save the generated config diff or a no-change note.\"",
+          "capture_hint": "Save the generated config diff or a no-change note.",
+          "kind": "generated_config_diff"
+        },
+        {
+          "attach_command": "python3 tools/product-journey/run.py --attach-evidence --run-dir .artifacts/product-journey/20260705T225534Z-gears-rust-core-maintainer-dwf3-a3-onboard --scenario project-onboarding --evidence-kind key_interaction_video --evidence-path <path-or-retained-id> --evidence-source <retained|external|local|cassette> --notes \"Save an MP4/GIF clip or retained video reference for Slidey playback.\"",
+          "capture_hint": "Save an MP4/GIF clip or retained video reference for Slidey playback.",
+          "kind": "key_interaction_video"
+        },
+        {
+          "attach_command": "python3 tools/product-journey/run.py --attach-evidence --run-dir .artifacts/product-journey/20260705T225534Z-gears-rust-core-maintainer-dwf3-a3-onboard --scenario project-onboarding --evidence-kind onboarding_smoke_result --evidence-path <path-or-retained-id> --evidence-source <retained|external|local|cassette> --notes \"Save the deterministic onboarding smoke result.\"",
+          "capture_hint": "Save the deterministic onboarding smoke result.",
+          "kind": "onboarding_smoke_result"
+        },
+        {
+          "attach_command": "python3 tools/product-journey/run.py --attach-evidence --run-dir .artifacts/product-journey/20260705T225534Z-gears-rust-core-maintainer-dwf3-a3-onboard --scenario project-onboarding --evidence-kind rendered_tui_frame --evidence-path <path-or-retained-id> --evidence-source <retained|external|local|cassette> --notes \"Save the rendered TUI/web frame for the room under review.\"",
+          "capture_hint": "Save the rendered TUI/web frame for the room under review.",
+          "kind": "rendered_tui_frame"
+        }
+      ]
+    }
+  ],
+  "operator_warning": "This handoff does not automatically launch an LLM. Use it as the reviewable contract for a live or cassette-backed driver pass, then attach evidence and run review + validation.",
+  "persona": {
+    "description": "Maintains a mature repository and is skeptical of bot-generated churn.",
+    "id": "core-maintainer",
+    "label": "Core maintainer",
+    "persona_lens": {
+      "escalation_trigger": "generated churn, hidden broad scope, missing deterministic test proof, or unclear ownership boundary",
+      "evidence_emphasis": "candidate diff, targeted tests, full-suite classification, and trace events for unexpected routing",
+      "finding_bias": "Prefer reviewability, bisectability, and least-surprise findings over cosmetic notes.",
+      "first_question": "Will this produce a minimal, reviewable diff that follows the repository's style?",
+      "starting_surface": "terminal-first; prefer TUI/session state before browser surfaces"
+    },
+    "risk_focus": [
+      "reviewability",
+      "house-style",
+      "minimal diffs"
+    ],
+    "surface_preference": "terminal-first"
+  },
+  "project": {
+    "id": "gears-rust",
+    "label": "constructorfabric/gears-rust",
+    "manifest": "tools/bugfix-bakeoff/external/projects/gears-rust/manifest.yaml",
+    "notes": "Sister project and first production slice. Uses existing external manifest + suite.",
+    "source": "catalog",
+    "stack": "rust",
+    "status": "validated"
+  },
+  "run_dir": ".artifacts/product-journey/20260705T225534Z-gears-rust-core-maintainer-dwf3-a3-onboard",
+  "run_id": "20260705T225534Z-gears-rust-core-maintainer-dwf3-a3-onboard",
+  "status": {
+    "findings_count": 0,
+    "minimum_evidence_count": 5,
+    "missing_evidence_count": 4,
+    "missing_proof_evidence_count": 4,
+    "present_evidence_count": 2,
+    "proof_evidence_count": 1,
+    "proof_minimum_evidence_count": 1,
+    "required_evidence_count": 6,
+    "review_status": "needs_evidence"
+  },
+  "suggested_prompt": "Drive product journey QA for run_dir=.artifacts/product-journey/20260705T225534Z-gears-rust-core-maintainer-dwf3-a3-onboard. Open or attach stories/product-journey-qa/app.yaml, submit `load run_dir=.artifacts/product-journey/20260705T225534Z-gears-rust-core-maintainer-dwf3-a3-onboard`, then inspect story world `last_result.driver_scenarios`, `last_result.next_driver_capture`, `last_result.next_driver_attach_command`, `last_result.next_driver_blocker_command`, `last_result.missing_proof_evidence`, and `last_result.driver_final_gates`. Respect each scenario's `live_budget` from driver-plan.json; when the live budget is exhausted, record the blocker, journal the attempt, and move to the next scenario. Use `last_result.next_driver_attach_command` for the first proof attach when present, or `last_result.next_driver_blocker_command` when the slot is attempted but blocked, then use Kitsoki Studio MCP and visual MCP to capture proof-source evidence or blockers, record findings, then run the autonomous issue-to-fix gate when credible issue findings exist. If the autonomous gate is not armed with ticket_repo and gh_agent_public_base_url, leave those parameters explicit for the operator instead of silently skipping the gate. Finish with review and validation."
+}

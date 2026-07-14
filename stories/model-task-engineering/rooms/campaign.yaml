@@ -1,0 +1,115 @@
+states:
+  campaign_review:
+    description: "Materialize no-spend campaign review artifacts from the Arena study."
+    relevant_world: [campaign_study, campaign_output_dir, campaign_plan, campaign_markdown, campaign_deck, campaign_status, campaign_error]
+    view:
+      - heading: "Model task engineering · campaign review"
+      - kv:
+          pairs:
+            Study: "{{ world.campaign_study }}"
+            Plan: '{{ world.campaign_plan|default:"(pending)" }}'
+            Deck: '{{ world.campaign_deck|default:"(pending)" }}'
+            Status: '{{ world.campaign_status|default:"(pending)" }}'
+      - prose: "This phase is offline: it writes plan JSON/Markdown and a Slidey review deck but never calls a provider."
+      - prose: 'Error: {{ world.campaign_error ?? "(pending)" }}'
+        when: "world.campaign_error != ''"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - { label: "campaign arm", intent: campaign_arm, hint: "explicit live gate required; no dispatch" }
+            - { label: "done", intent: done, hint: "accept reviewed artifacts" }
+            - { label: "quit", intent: quit }
+    on_enter:
+      - invoke: host.starlark.run
+        id: model_task_campaign_paths
+        once: true
+        with:
+          script: scripts/campaign_paths.star
+          inputs:
+            study: "{{ world.campaign_study }}"
+            output_dir: "{{ world.campaign_output_dir }}"
+        bind:
+          campaign_plan: "campaign_plan"
+          campaign_root: "campaign_root"
+          campaign_markdown: "campaign_markdown"
+          campaign_deck: "campaign_deck"
+          campaign_arm_receipt: "campaign_arm_receipt"
+      - invoke: host.run
+        id: model_task_campaign_plan
+        once: true
+        with:
+          cmd: python3
+          args: ["tools/arena/arena.py", "task-optimization", "plan", "--study", "{{ world.campaign_study }}", "--out", "{{ world.campaign_root }}", "--repeat-phase", "{{ world.campaign_repeat_phase }}"]
+        bind:
+          campaign_status: "stdout_json.status"
+          campaign_error: "stdout_json.error"
+        on_error: campaign_review
+      - invoke: host.run
+        id: model_task_campaign_deck
+        once: true
+        with:
+          cmd: go
+          args: ["run", "tools/arena/scripts/task_optimization_plan_deck.go", "--plan", "{{ world.campaign_plan }}", "--out", "{{ world.campaign_deck }}"]
+        bind:
+          campaign_status: "stdout_json.status"
+          campaign_error: "stdout_json.error"
+        on_error: campaign_review
+    on:
+      done:
+        - when: "world.campaign_plan != '' && world.campaign_markdown != '' && world.campaign_deck != ''"
+          target: "@exit:campaign_done"
+        - target: .
+          effects:
+            - say: "Campaign review has not produced all required artifacts yet."
+      campaign_arm:
+        - target: campaign_arm
+      quit:
+        - target: "@exit:abandoned"
+
+  campaign_arm:
+    description: "Record explicit campaign arming intent without dispatching a provider."
+    relevant_world: [campaign_study, campaign_output_dir, campaign_arm_receipt, campaign_status, campaign_error]
+    view:
+      - heading: "Model task engineering · campaign arm"
+      - kv:
+          pairs:
+            Study: "{{ world.campaign_study }}"
+            Arm receipt: '{{ world.campaign_arm_receipt|default:"(pending)" }}'
+            Status: '{{ world.campaign_status|default:"(pending)" }}'
+      - prose: "Arming requires this explicit operator action plus --live and the study live-gate environment variable. It creates only an arm receipt; it never dispatches a provider."
+      - prose: 'Error: {{ world.campaign_error ?? "(pending)" }}'
+        when: "world.campaign_error != ''"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - { label: "campaign review", intent: campaign_review, hint: "return to offline plan review" }
+            - { label: "quit", intent: quit }
+    on_enter:
+      - invoke: host.starlark.run
+        id: model_task_campaign_arm_paths
+        once: true
+        with:
+          script: scripts/campaign_paths.star
+          inputs:
+            study: "{{ world.campaign_study }}"
+            output_dir: "{{ world.campaign_output_dir }}"
+        bind:
+          campaign_arm_receipt: "campaign_arm_receipt"
+          campaign_root: "campaign_root"
+      - invoke: host.run
+        id: model_task_campaign_arm
+        once: true
+        with:
+          cmd: python3
+          args: ["tools/arena/arena.py", "task-optimization", "arm", "--study", "{{ world.campaign_study }}", "--out", "{{ world.campaign_root }}", "--repeat-phase", "{{ world.campaign_repeat_phase }}", "--live"]
+        bind:
+          campaign_status: "stdout_json.status"
+          campaign_error: "stdout_json.error"
+        on_error: campaign_arm
+    on:
+      campaign_review:
+        - target: campaign_review
+      quit:
+        - target: "@exit:abandoned"

@@ -1,0 +1,56 @@
+# landing_next_step_action — post-workbench next steps are deterministic actions.
+#
+# The workbench agent returns structured next_steps. Landing renders them as
+# numbered rows plus a run_next_step menu item. Selecting a row runs its command
+# through host.run, records stdout + exit_code, and renders a green/check affordance
+# for exit 0.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world: {}
+
+host_handlers:
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary: "Finished the requested inspection."
+        details: "Found the stale fixture and prepared a focused follow-up command."
+        next_steps:
+          - label: "Run focused fixture"
+            command: "printf ok-focused-fixture"
+            description: "prove the landing action path works"
+  host.run:
+    by_call:
+      landing-next-step:
+        data: { ok: true, stdout: "ok-focused-fixture", exit_code: 0 }
+
+turns:
+  - intent: { name: landing_capture, slots: { request: "inspect the stale landing fixture" } }
+    expect_state: landing
+    expect_view_matches: 'Run focused fixture'
+    expect_world:
+      landing_note:
+        summary: "Finished the requested inspection."
+        details: "Found the stale fixture and prepared a focused follow-up command."
+        next_steps:
+          - label: "Run focused fixture"
+            command: "printf ok-focused-fixture"
+            description: "prove the landing action path works"
+
+  - intent: { name: run_next_step, slots: { n: 1 } }
+    expect_state: landing
+    expect_host_calls:
+      - handler: host.run
+        args: { call: landing-next-step }
+        times: 1
+    expect_view_matches: 'NEXT STEP ✓[\s\S]*exit 0[\s\S]*ok-focused-fixture'
+    expect_world:
+      landing_next_step_label: "Run focused fixture"
+      landing_next_step_command: "printf ok-focused-fixture"
+      landing_next_step_stdout: "ok-focused-fixture"
+      landing_next_step_exit_code: 0
+      landing_next_step_ran: true
+
+expect_no_errors: true

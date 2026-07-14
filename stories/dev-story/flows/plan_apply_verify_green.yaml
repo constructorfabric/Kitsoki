@@ -21,7 +21,8 @@
 test_kind: flow
 app: ../app.yaml
 initial_state: landing
-initial_world: {}
+initial_world:
+  origin_repo: "acme/project"
 
 # The verify script's one read-only probe (gh.issue.list) replays from this
 # cassette — the REAL script runs, only its probe is canned. No host.starlark.run
@@ -53,7 +54,7 @@ host_handlers:
 
 turns:
   # Propose the plan.
-  - intent: { name: work, slots: { request: "import the issues folder in the repo to github" } }
+  - intent: { name: landing_capture, slots: { request: "import the issues folder in the repo to github" } }
     expect_state: landing
 
   # Accept & apply — freezes accepted_plan, enters applying, applying runs the
@@ -75,7 +76,7 @@ turns:
     expect_world:
       plan_decision: "accepted"
       verify_ok: true
-      verify_reason: "Migration verified: GitHub lists 3 issue(s) for bsacrobatix/Kitsoki (>= 3 expected)."
+      verify_reason: "Migration verified: GitHub lists 3 issue(s) for acme/project (>= 3 expected)."
       captured: 1
       accepted_plan:
         goal: "Migrate repo-local issues/ to GitHub issues."

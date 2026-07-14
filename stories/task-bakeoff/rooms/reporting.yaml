@@ -1,6 +1,6 @@
 # reporting — DETERMINISTIC (no LLM). Assemble the comparison report + build the
-# slidey deck SPEC from the summary rollup, by calling the harness's offline
-# report/deck builder (eval_pilot_report.py — the skill's "Report + deck" step;
+# slidey deck SPEC through the explicit native boundary for the harness's offline
+# report/deck builder (the skill's "Report + deck" step;
 # free, no LLM). The deck spec it emits is the input to the slideshow room's
 # host.slidey.render.
 #
@@ -34,26 +34,23 @@ states:
               intent: quit
     on_enter:
       # Build the report markdown + the deck spec from the summary. Deterministic,
-      # offline — eval_pilot_report.py regenerates with zero re-spend. The deck
+      # offline report tool regenerates with zero re-spend. The deck
       # builder writes the spec JSON; we bind its path into world.deck.spec_path
       # so the next room renders exactly what was built.
-      - invoke: host.run
+      - invoke: host.starlark.run
         id: build_report
         once: true
         with:
-          cmd: python3
-          args:
-            - "../session-mining/eval_pilot_report.py"
-            - "--summary"
-            - "results/summary.json"
-            - "--markdown"
-            - "results/report.md"
-            - "--deck"
-            - "results/deck.html"
-          cwd: "{{ world.harness_dir }}"
+          script: scripts/bakeoff_run.star
+          inputs:
+            op: report
+            cwd: "{{ world.harness_dir }}"
+          capabilities:
+            host:
+              verbs: [host.bakeoff.run]
         bind:
-          report_markdown: stdout_json.markdown
-          deck:            stdout_json.deck
+          report_markdown: "result.stdout_json.markdown"
+          deck:            "result.stdout_json.deck"
         on_error: scoring
     on:
       accept:

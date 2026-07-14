@@ -82,7 +82,7 @@ func artifactJournalWriterFromCtx(ctx context.Context) journal.Writer {
 //   - thread   (string): destination filename stem under artifacts_root
 //     (source extension is preserved; .md is NOT appended).
 //   - src_path (string): absolute path of the source file to copy.
-//   - kind     (string): one of video / image / pdf / html / slideshow.
+//   - kind     (string): one of video / image / pdf / html / slideshow / data.
 //
 // Optional args (both paths):
 //   - artifacts_root (string): override the root. Falls back to
@@ -250,13 +250,13 @@ func handleMediaEmit(ctx context.Context, args map[string]any, thread, srcPath s
 	kind, _ := args["kind"].(string)
 	kind = strings.TrimSpace(strings.ToLower(kind))
 	if kind == "" {
-		return Result{Error: "host.artifacts_dir: kind argument is required when src_path is set (one of video/image/pdf/html/slideshow)"}, nil
+		return Result{Error: "host.artifacts_dir: kind argument is required when src_path is set (one of video/image/pdf/html/slideshow/data)"}, nil
 	}
 	switch kind {
-	case "video", "image", "pdf", "html", "slideshow":
+	case "video", "image", "pdf", "html", "slideshow", "data":
 		// valid
 	default:
-		return Result{Error: fmt.Sprintf("host.artifacts_dir: unsupported kind %q (must be video/image/pdf/html/slideshow)", kind)}, nil
+		return Result{Error: fmt.Sprintf("host.artifacts_dir: unsupported kind %q (must be video/image/pdf/html/slideshow/data)", kind)}, nil
 	}
 
 	// Validate the source file.

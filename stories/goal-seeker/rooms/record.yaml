@@ -1,0 +1,72 @@
+states:
+  # record — ship-it shipped the change (its `shipped` exit lands here, setting
+  # shipped_sha). Append an `integration` entry (state=integrated, sha) to the
+  # append-only log — the SOURCE OF TRUTH the next evaluate folds — then loop back to
+  # evaluate, clearing the decide bind targets so the gate re-runs fresh.
+  record:
+    description: "Record — log the integration and loop back to evaluate."
+    relevant_world: [next_change_id, shipped_sha, last_seq]
+    on_enter:
+      - invoke: host.starlark.run
+        id: gs_append
+        with:
+          script: scripts/gs_append.star
+          capabilities:
+            fs:
+              read: ["**"]
+              write: ["**"]
+          inputs:
+            work_dir:  "{{ world.work_dir }}"
+            change_id: "{{ world.next_change_id }}"
+            state:     "integrated"
+            sha:       "{{ world.shipped_sha }}"
+            summary:   "integrated {{ world.next_change_id }} at {{ world.shipped_sha }}"
+            kind:      "integration"
+            actor:     "integrator"
+            gate_status: "green"
+        bind:
+          last_seq: seq
+        on_error: needs_human
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Change:  '{{ world.next_change_id }}'
+                SHA:     '{{ world.shipped_sha|default:"(pending)" }}'
+                Seq:     '{{ world.last_seq|default:"(pending)" }}'
+          - prose: "Recorded the integration; advance to re-evaluate the goal."
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - { label: "advance", hint: "re-fold the ledger and re-evaluate" }
+                - { label: "look" }
+    on:
+      # PAUSE before re-evaluating: gs_append's log WRITE settles across this turn
+      # boundary, so the next evaluate's gs_ledger folds the just-recorded entry (a
+      # starlark write does not settle inside a synthetic emit cascade). advance re-
+      # enters evaluate with the loop state cleared.
+      advance:
+        - target: evaluate
+          effects:
+            - set:
+                verdict: ""
+                summary: ""
+                next_change_id: ""
+                next_pipeline: ""
+                next_action: ""
+                next_gate_cmd: ""
+                worktree_path: ""
+                workspace_branch: ""
+                gate_command: ""
+                shipped_sha: ""
+                manifest_path: ""
+      look:
+        - target: .
+      "*":
+        - default: true
+          target: .
+          effects:
+            - say: "Advance to re-evaluate."

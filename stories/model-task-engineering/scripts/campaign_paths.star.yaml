@@ -1,0 +1,9 @@
+inputs:
+  study: { type: string, required: true }
+  output_dir: { type: string }
+outputs:
+  campaign_root: { type: string }
+  campaign_plan: { type: string }
+  campaign_markdown: { type: string }
+  campaign_deck: { type: string }
+  campaign_arm_receipt: { type: string }

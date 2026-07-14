@@ -58,7 +58,7 @@ states:
             Summary:        '{{ world.reproduction_artifact.summary_title|default:"(pending)" }}'
             "Bug verified": '{{ world.reproduction_artifact.bug_verified|yesno:"yes,no,(pending)" }}'
       - heading: "Artifact"
-      - code: '{{ world.reproduction_artifact.summary_markdown|default:"(pending — agent has not returned yet)" }}'
+      - template: '{{ world.reproduction_artifact.summary_markdown|default:"(pending — agent has not returned yet)" }}'
       - choice:
           mode: single
           prompt: "Actions"
@@ -96,7 +96,7 @@ states:
             - label:  "look"
               hint:   "re-render"
               intent: look
-    relevant_world: [judge_mode, judge_confidence_threshold, ticket_id, ticket_title, thread, workdir, test_cmd, reproduction_artifact, llm_verdict, refine_feedback, cycle, gate_command, repro_checked, regression_red_pre_fix, regression_pre_fix_log, repro_gate_ran, repro_gate_ok, repro_baseline_green, repro_test_red, repro_gate_summary, repro_gate_log]
+    relevant_world: [judge_mode, judge_confidence_threshold, ticket_id, ticket_title, ticket_source_mode, ticket_source_ref, ticket_body, thread, workdir, test_cmd, reproduction_artifact, llm_verdict, refine_feedback, cycle, gate_command, repro_checked, regression_red_pre_fix, regression_pre_fix_log, repro_gate_ran, repro_gate_ok, repro_baseline_green, repro_test_red, repro_gate_summary, repro_gate_log]
     on_enter:
       # 0. Deterministic RED-gate (bugfix-repro-gate slice). When the ticket
       #    carried a `repro_command:` (projected into world.gate_command at
@@ -163,6 +163,19 @@ states:
         with:
           agent: reproducer
           working_dir: "{{ world.workdir }}"
+          # A live reproducer is allowed to be slow, but never unbounded. The
+          # supervised runtime records the timeout/cancel path in the trace so
+          # an MCP driver can distinguish a real failure from a silent session
+          # that remains running forever.
+          sandbox:
+            min_strength: supervised
+            degrade: warn
+            # Provider-backed worker profiles authenticate through the
+            # operator's Claude home. Keep it for this explicitly live call.
+            auth_home: inherit
+            resources:
+              timeout: "15m"
+              activity_timeout: "90s"
           acceptance:
             schema: schemas/reproducing_artifact.json
           context:
@@ -170,6 +183,9 @@ states:
             args:
               ticket_id:        "{{ world.ticket_id }}"
               ticket_title:     "{{ world.ticket_title }}"
+              ticket_source_mode: "{{ world.ticket_source_mode }}"
+              ticket_source_ref: "{{ world.ticket_source_ref }}"
+              ticket_body:      "{{ world.ticket_body }}"
               workdir:          "{{ world.workdir }}"
               refine_feedback:  "{{ world.refine_feedback }}"
               cycle:            "{{ world.cycle }}"
@@ -209,8 +225,10 @@ states:
             - |
               set +e
               export NO_COLOR=1 GIT_TERMINAL_PROMPT=0 GIT_PAGER=cat
-              WT="{{ world.workdir }}"
-              cd "$WT" || { jq -n '{ran:false,baseline_green:false,test_red:false,ok:false,summary:"gate skipped: workdir unavailable",log:""}'; exit 0; }
+              # host.run already chdirs the child into cwd (world.workdir); do NOT
+              # re-apply world.workdir here — it is a RELATIVE path in production
+              # and a second cd/git -C would resolve it against the already-chdir'd
+              # cwd (nested .worktrees/bf-<id>/.worktrees/bf-<id>) and self-skip.
               TESTCMD='{{ world.test_cmd }}'
               # RED leg: the suite on the DIRTY tree (reproducer's new failing test
               # present, no fix) must FAIL.
@@ -251,17 +269,22 @@ states:
         invoke: iface.transport.post
         with:
           thread:   "{{ world.thread }}"
+          workdir:  "{{ world.workdir }}"
           title:    "Repro gate (GREEN→RED): {{ world.ticket_id }}"
           body:     "{{ world.repro_gate_summary }}\n\n{{ world.repro_gate_log }}"
           phase_id: "repro_gate_{{ world.ticket_id }}_{{ world.cycle }}"
 
-      # 1d. Deterministic refine: the GREEN→RED proof FAILED (baseline not green, or
-      #     the reproducer's test didn't fail). Bounce back to the reproducer with
-      #     the verdict as feedback BEFORE spending the LLM judge / maker budget.
-      #     With escalate_low_value on, the refine budget-exhaust handler turns the
-      #     terminal bounce into a needs-human escalation (a mis-scoped repro that
-      #     never arms the gate quits to a human instead of silently abandoning).
-      - when: "world.repro_gate_ran && !world.repro_gate_ok"
+      # 1d. A red baseline is a contaminated workspace/calibration input, not a
+      #     deficient reproduction. It cannot be repaired by asking the same
+      #     agent for another test, so fail closed with the gate diagnostic.
+      - when: "world.repro_gate_ran && !world.repro_baseline_green"
+        emit_intent: escalate_human
+        slots:
+          reason: "Strict reproduction gate found a contaminated baseline for {{ world.ticket_id }}. {{ world.repro_gate_summary }}\n\n{{ world.repro_gate_log }}"
+
+      # 1e. With a known-good baseline, a reproducer test that does not go RED
+      #     is actionable agent feedback and may use the bounded refine loop.
+      - when: "world.repro_gate_ran && world.repro_baseline_green && !world.repro_gate_ok"
         emit_intent: refine
         slots:
           feedback: "{{ world.repro_gate_summary }}"
@@ -292,13 +315,25 @@ states:
       #    Bounded by machine.EmitIntentMaxDepth (=8).
       - when: |
           world.judge_mode != 'human' &&
-          world.llm_verdict.confidence >= world.judge_confidence_threshold &&
+          (world.llm_verdict.verdict ?? '') != '' &&
+          (world.llm_verdict.confidence ?? 0) >= world.judge_confidence_threshold &&
           world.llm_verdict.verdict != 'uncertain' &&
           world.llm_verdict.intent != 'uncertain'
         emit_intent: "{{ world.llm_verdict.intent }}"
         slots:
           feedback: "{{ world.llm_verdict.reason }}"
     on:
+      # Internal strict baseline failure. Keep the operational distinction
+      # visible: this is a contaminated workspace/bad benchmark baseline, not
+      # an unverified product bug or an exhausted agent budget.
+      escalate_human:
+        - target: "@exit:needs-human"
+          effects:
+            - set:
+                needs_human_reason: "{{ slots.reason }}"
+                last_error:         "NEEDS HUMAN (reproducing baseline): {{ slots.reason }}"
+                status:             "needs-human"
+
       # `accept` advances to proposing. Examples include "continue" and
       # "proceed" so the LLM router maps the canonical user verbs here.
       # The transport.post is a side-effect of the decision — the
@@ -316,6 +351,7 @@ states:
             - invoke: iface.transport.post
               with:
                 thread:   "{{ world.thread }}"
+                workdir:  "{{ world.workdir }}"
                 title:    "Reproduction artifact: {{ world.ticket_id }}"
                 body:     "{{ world.reproduction_artifact.summary_markdown }}"
                 phase_id: "reproducing_{{ world.ticket_id }}_{{ world.cycle }}"

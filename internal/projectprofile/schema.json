@@ -30,6 +30,14 @@
       }
     },
 
+    "goals": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": { "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+      "description": "Named story or lifecycle-phase goals. Each goal states measurable postconditions and points them at setup_plan.verifications by id.",
+      "additionalProperties": { "$ref": "#/$defs/goal" }
+    },
+
     "repo": {
       "type": "object",
       "additionalProperties": false,
@@ -38,6 +46,8 @@
         "root": { "type": "string", "description": "Absolute or repo-relative checkout root. '.' for the current repo." },
         "vcs": { "enum": ["git", "hg", "svn", "none"] },
         "default_branch": { "type": "string" },
+        "branch_pattern": { "type": "string", "description": "Normal working-branch template, for example feature/{issue_id}-{slug}." },
+        "branch_issue_id": { "enum": ["required", "optional", "forbidden", "unknown"], "description": "Whether normal working branches include a ticket or issue id." },
         "remote": { "type": "string", "description": "owner/repo or remote URL." },
         "monorepo": { "type": "boolean", "default": false }
       }
@@ -48,7 +58,7 @@
       "additionalProperties": false,
       "required": ["kind"],
       "properties": {
-        "kind": { "enum": ["frontend", "backend", "fullstack", "service", "cli", "library", "monorepo", "rust", "go", "node", "generic", "other"] },
+        "kind": { "enum": ["frontend", "backend", "fullstack", "service", "cli", "library", "monorepo", "rust", "go", "node", "python", "generic", "other"] },
         "languages": { "type": "array", "items": { "type": "string" } },
         "frameworks": { "type": "array", "items": { "type": "string" } },
         "package_managers": { "type": "array", "items": { "type": "string" } }
@@ -236,8 +246,53 @@
 
     "tracker": {
       "type": "object",
-      "description": "Issue or work tracker metadata discovered for this project.",
-      "additionalProperties": true
+      "description": "Issue or work tracker metadata discovered for this project. tracker.sources is the canonical ordered set; provider/project/repo remain readable for legacy profiles.",
+      "additionalProperties": true,
+      "properties": {
+        "provider": { "type": "string", "description": "Legacy single-provider metadata. New profiles should declare tracker.sources." },
+        "project": { "type": "string", "description": "Legacy single-project locator. New profiles should declare each source's args." },
+        "repo": { "type": "string", "description": "Legacy alias for tracker.project." },
+        "sources": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Ordered, composable ticket sources exposed through host.ticket_federation. Source ids are stable user-facing identities, independent of provider-local ticket numbers.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "label", "provider", "kind", "mode", "args"],
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+                "description": "Stable source id used in federated refs such as upstream:123."
+              },
+              "label": { "type": "string", "minLength": 1, "description": "Unambiguous label shown in ticket lists." },
+              "provider": { "type": "string", "pattern": "^host\\.[A-Za-z0-9_.-]+$", "description": "Concrete statically registered ticket host id, for example host.local_files.ticket or host.gh.ticket. Raw .star paths are direct bindings and cannot be composed as federation sources." },
+              "kind": { "type": "string", "minLength": 1, "description": "Presentation/provider class such as local, github, jira, or a future provider kind." },
+              "mode": { "enum": ["local", "remote"], "description": "Whether the source is local to the checkout or backed by a remote service." },
+              "args": { "type": "object", "description": "Provider-specific arguments passed directly to the concrete ticket host.", "additionalProperties": true },
+              "locator_keys": {
+                "type": "array",
+                "description": "Optional provider-specific args that identify this source and must override ambient runtime values, for example project or queue. repo, root, and workdir are implicit when present in args.",
+                "items": { "type": "string", "minLength": 1 },
+                "uniqueItems": true
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "pull_requests": {
+      "type": "object",
+      "description": "Where pull requests are opened and which project policy they follow.",
+      "additionalProperties": false,
+      "properties": {
+        "provider": { "type": "string", "description": "Pull-request provider, for example github, gitlab, bitbucket, local, or none." },
+        "repository": { "type": "string", "description": "Repository slug or URL where pull requests are opened." },
+        "base_branch": { "type": "string", "description": "Normal pull-request target branch." },
+        "template": { "type": "string", "description": "Repo-relative pull-request template path, or an empty string when the project has no template." }
+      }
     },
 
     "rules": {
@@ -263,7 +318,18 @@
       "additionalProperties": false,
       "required": ["story", "instance"],
       "properties": {
-        "story": { "type": "string", "default": "dev-story", "description": "The hub story the instance imports (dev-story today)." },
+        "story": { "type": "string", "default": "dev-story", "description": "The root kit story the instance imports (dev-story by default; any installed kit that declares a kit.yaml root: block naming it also qualifies -- see D6 root generalization, .context/kits-implementation-plan.md)." },
+        "story_pack": {
+          "type": "string",
+          "description": "Named first-run story pack selected during onboarding. This records the install-like starter group; it is not a runtime fence.",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "enabled_stories": {
+          "type": "array",
+          "description": "Adoption-scope list for teams starting with a focused subset of the dev-story catalog. This records what to emphasize first; it is not a runtime fence.",
+          "items": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+          "uniqueItems": true
+        },
         "instance": {
           "type": "object",
           "additionalProperties": false,
@@ -273,16 +339,8 @@
             "path": { "type": "string", "description": "Where the generated instance app.yaml is written, e.g. .kitsoki/stories/<id>-dev/app.yaml." },
             "bindings": {
               "type": "object",
-              "description": "Concrete host bindings for dev-story's five host_interfaces (ticket/vcs/ci/workspace/transport). Each value is a host id, e.g. host.git, host.local_files.ticket.",
-              "additionalProperties": false,
-              "required": ["ticket", "vcs", "ci", "workspace", "transport"],
-              "properties": {
-                "ticket": { "type": "string" },
-                "vcs": { "type": "string" },
-                "ci": { "type": "string" },
-                "workspace": { "type": "string" },
-                "transport": { "type": "string" }
-              }
+              "description": "Concrete host bindings for the root story's declared host_interfaces (dev-story's default set: ticket/vcs/ci/workspace/transport -- see kitsoki.story). Each value is a host id, e.g. host.git or host.local_files.ticket, or a .star script path resolved from the project root. Which keys are actually required is root-kit-dependent and checked semantically (internal/projectprofile.validateSemantic), not fixed here, since a non-default root kit may declare different interface names.",
+              "additionalProperties": { "type": "string" }
             }
           }
         },
@@ -343,7 +401,27 @@
       "additionalProperties": false,
       "properties": {
         "job": { "type": "string" },
+        "status": { "enum": ["no-transcripts-found", "transcripts-found", "mined"] },
         "sample": { "enum": ["recency", "all", "tagged", "none"] },
+        "first_pass_sample": { "type": "integer", "minimum": 0 },
+        "transcript_count": { "type": "integer", "minimum": 0 },
+        "sources": {
+          "type": "array",
+          "description": "Associated transcript sources found during deterministic discovery. Evidence only; mining still requires explicit consent/config.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["backend", "sessions"],
+            "properties": {
+              "backend": { "enum": ["claude-code", "codex", "kitsoki-trace", "other"] },
+              "dir": { "type": "string" },
+              "sessions": { "type": "integer", "minimum": 0 },
+              "latest_mtime": { "type": "integer", "minimum": 0 },
+              "include": { "enum": ["human", "agent", "both"] }
+            }
+          }
+        },
+        "note": { "type": "string", "contentMediaType": "text/markdown" },
         "intent_count": { "type": "integer", "minimum": 0 },
         "themes": {
           "type": "array",
@@ -364,9 +442,105 @@
 
     "onboarding": {
       "type": "object",
-      "description": "Reusable onboarding-test anchors. Baseline commits let deterministic flow/cassette tests and gated live recordings replay init from a known pre-init state.",
+      "description": "Reusable onboarding anchors: which starter story was selected, what repo evidence drove adaptation, and the replay-test commits/fixtures.",
       "additionalProperties": false,
       "properties": {
+        "base_story": {
+          "type": "string",
+          "description": "Reusable starter story selected during onboarding, e.g. dev-story."
+        },
+        "base_story_title": {
+          "type": "string",
+          "description": "Human title for the selected starter story."
+        },
+        "base_story_reason": {
+          "type": "string",
+          "contentMediaType": "text/markdown",
+          "description": "Why this starter story was selected for the repo."
+        },
+        "story_pack": {
+          "type": "string",
+          "description": "Named starter pack chosen in the first-run menu.",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "story_pack_title": {
+          "type": "string",
+          "description": "Human title for the selected starter pack."
+        },
+        "story_pack_summary": {
+          "type": "string",
+          "contentMediaType": "text/markdown",
+          "description": "Short explanation of the selected starter pack."
+        },
+        "starter_stories": {
+          "type": "array",
+          "description": "Focused story set the team should start with before expanding to more of dev-story.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "status", "summary"],
+            "properties": {
+              "id": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+              "title": { "type": "string" },
+              "source_story": { "type": "string" },
+              "status": { "enum": ["enabled", "available", "deferred"] },
+              "summary": { "type": "string", "contentMediaType": "text/markdown" },
+              "expansion": { "type": "string", "contentMediaType": "text/markdown" }
+            }
+          }
+        },
+        "expansion_policy": {
+          "type": "string",
+          "contentMediaType": "text/markdown",
+          "description": "How to expand from the focused starter story set."
+        },
+        "resolutions": {
+          "type": "array",
+          "description": "Per-field onboarding provenance. The stored value is the last resolved value, allowing reruns to distinguish a managed value from an operator edit.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["field", "value", "source"],
+            "properties": {
+              "field": { "type": "string", "minLength": 1, "pattern": "^[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)*$", "description": "Dotted path to the canonical project-profile field." },
+              "value": { "description": "The last value onboarding resolved for this field." },
+              "source": { "enum": ["discovered", "default", "operator"], "description": "How the value was resolved." },
+              "evidence": { "type": "string", "contentMediaType": "text/markdown", "description": "Repo evidence or operator decision supporting the value." },
+              "update": { "type": "string", "minLength": 1, "description": "Exact file and field location the operator can update." },
+              "notice": { "type": "string", "minLength": 1, "contentMediaType": "text/markdown", "description": "User-facing explanation shown when onboarding had to use a default." }
+            }
+          }
+        },
+        "repo_patterns": {
+          "type": "array",
+          "description": "Deterministic repo evidence used to adapt the starter story.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "source", "evidence"],
+            "properties": {
+              "id": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+              "source": { "type": "string" },
+              "evidence": { "type": "string", "contentMediaType": "text/markdown" },
+              "recommendation": { "type": "string", "contentMediaType": "text/markdown" }
+            }
+          }
+        },
+        "story_customizations": {
+          "type": "array",
+          "description": "Starter-story adaptations applied or proposed for this project-local instance.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "status", "summary"],
+            "properties": {
+              "id": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+              "status": { "enum": ["applied", "proposed", "pending", "deferred"] },
+              "summary": { "type": "string", "contentMediaType": "text/markdown" },
+              "evidence": { "type": "string", "contentMediaType": "text/markdown" }
+            }
+          }
+        },
         "baseline_commit": {
           "type": "string",
           "pattern": "^[0-9a-f]{7,40}$",
@@ -417,11 +591,16 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["id", "kind", "command", "gate"],
+            "required": ["id", "kind", "gate"],
+            "anyOf": [
+              { "required": ["command"] },
+              { "required": ["fields"] }
+            ],
             "properties": {
               "id": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
-              "kind": { "enum": ["dev-server", "readiness", "build", "tests", "lint", "typecheck", "golden-path", "story", "artifact", "ui"] },
+              "kind": { "enum": ["dev-server", "readiness", "build", "tests", "lint", "typecheck", "golden-path", "story", "artifact", "ui", "profile", "ticket", "pull-request", "corpus", "workflow"] },
               "command": { "type": "string" },
+              "fields": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 }, "description": "Canonical project-profile fields inspected by a native or metadata verification." },
               "gate": { "enum": ["required", "advisory", "recommended"] }
             }
           }
@@ -444,7 +623,7 @@
             "required": ["id", "kind", "ok"],
             "properties": {
               "id": { "type": "string" },
-              "kind": { "enum": ["dev-server", "readiness", "build", "tests", "lint", "typecheck", "golden-path", "story", "artifact", "ui"] },
+              "kind": { "enum": ["dev-server", "readiness", "build", "tests", "lint", "typecheck", "golden-path", "story", "artifact", "ui", "profile", "ticket", "pull-request", "corpus", "workflow"] },
               "ok": { "type": "boolean" },
               "detail": { "type": "string" },
               "evidence": { "type": "array", "items": { "$ref": "#/$defs/media" } }
@@ -456,6 +635,32 @@
   },
 
   "$defs": {
+    "goal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["statement", "postconditions"],
+      "properties": {
+        "statement": { "type": "string", "minLength": 1, "contentMediaType": "text/markdown", "description": "The outcome this story or phase exists to establish." },
+        "requires": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" }, "description": "Other named goals that must be satisfied first." },
+        "postconditions": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/postcondition" }
+        }
+      }
+    },
+    "postcondition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "statement", "gate", "verification"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+        "statement": { "type": "string", "minLength": 1, "contentMediaType": "text/markdown" },
+        "gate": { "enum": ["required", "advisory", "recommended"] },
+        "verification": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "description": "Id of the setup_plan.verifications entry that measures this postcondition." },
+        "applicable": { "type": "boolean", "default": true, "description": "False records an explicit, reviewable not-applicable outcome instead of inventing a check." }
+      }
+    },
     "conventionDir": {
       "type": "object",
       "additionalProperties": false,

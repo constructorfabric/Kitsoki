@@ -6,7 +6,7 @@
 #         merge → @exit:merged → main(status=merged)
 #
 # judge_mode is human throughout; the operator (here, the flow runner)
-# accepts at every checkpoint. The stubbed host.gh.ticket
+# accepts at every checkpoint. The stubbed host.ticket_federation
 # returns the seed bug list; iface.transport.post (host.append_to_file)
 # is stubbed to ok:true. In a real run against the on-disk seed bug,
 # host.append_to_file appends `## Comment <iso> by <author>` blocks
@@ -17,7 +17,7 @@
 # Why the flow can't ASSERT on-disk file state today:
 #   testrunner/flows.go's HostHandlers map only registers STUB
 #   handlers — there's no path to register the REAL
-#   host.gh.ticket against a temp git repo from a fixture.
+#   host.ticket_federation against a temp git repo from a fixture.
 #   The on-disk assertion is documented in the README's "Manual
 #   walkthrough" section and exercised by hand, not by this flow.
 #
@@ -38,11 +38,17 @@ test_kind: flow
 app: ../app.yaml
 initial_state: core.landing
 initial_world:
+  # Opt out of bf's auto_triage pre-flight (default on): these fixtures test
+  # the downstream bugfix walk, not triage. core-level key — the bf import
+  # wrapper re-seeds bf__auto_triage on entry from dev-story's world_in
+  # projection of (core__)auto_triage. Pre-flight contract:
+  # stories/bugfix/flows/preflight_triage_*.yaml.
+  core__auto_triage: false
   core__ticket_id:      "2026-05-14T103205Z-tui-view-render-before-bind"
   core__ticket_title:   "TUI view templates render BEFORE on_enter binds"
   core__ticket_url:     "issues/bugs/2026-05-14T103205Z-tui-view-render-before-bind.md"
   core__thread:         "issues/bugs/2026-05-14T103205Z-tui-view-render-before-bind.md"
-  core__workdir:        ".worktrees/tui-view-render-before-bind"
+  core__workdir:        ".capsules/workspaces/tui-view-render-before-bind"
   core__workspace_id:   "ws-tui-view-render"
   core__base_branch:    "main"
   core__feature_branch: "fix/tui-view-render-before-bind"
@@ -64,7 +70,7 @@ host_handlers:
     data: { ok: true, id: "ib-1" }
 
   # Workspace iface — git_worktree. Single prefix-fallback stub.
-  host.git_worktree:
+  host.capsule_workspace:
     data: { ok: true, log: "synced" }
 
   # VCS iface — host.git serves vcs.commit / vcs.diff / vcs.open_pr /
@@ -84,9 +90,9 @@ host_handlers:
   host.local:
     data: { ok: true, log: "PASS: 12 tests", passed: 12, failed: 0, state: "success" }
 
-  # Ticket iface — host.gh.ticket. Returns the seed bug list
+  # Ticket iface — host.ticket_federation. Returns the seed bug list
   # for ticket.list_mine / ticket.search and ok for ticket.transition.
-  host.gh.ticket:
+  host.ticket_federation:
     data:
       ok: true
       tickets:

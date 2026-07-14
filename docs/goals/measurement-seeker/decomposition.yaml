@@ -1,0 +1,102 @@
+goal_slug: measurement-seeker
+
+runtime:
+  base_branch: staging/local
+  worktree_path: .capsules/staging/local
+
+definition_of_done: >
+  An improvement is eligible for promotion only when its deterministic gate is
+  green, an independent reviewer records the result, and a matched arena rerun
+  produces an explicit comparison result. Live spend is acceptance-only and
+  must remain within an operator-supplied policy; no worker can promote itself.
+
+changes:
+  - id: measurement-fidelity
+    wall: G1
+    goal_ref: [G1, G6]
+    title: Fix CodeAct launch-plan evidence and Studio trace accounting
+    goal: Repair the reusable measurement seams exposed by the GPT-5.4 arena run before any performance claim is allowed.
+    kind: runtime
+    pipeline: bugfix
+    scope: ["tools/arena/arena/treatments/codex_codeact.py", "tools/arena/lib/paired_task_runner.py", "tools/arena/tests/test_paired_task_codeact.py"]
+    depends_on: []
+    acceptance:
+      - "the direct CodeAct treatment accepts the canonical capability JSON emitted by kitsoki agent launch and records a real model result when launch succeeds"
+      - "Studio-MCP treatments classify missing trace usage as incomplete measurement, not a zero-cost model result"
+      - "no-LLM tests cover both regressions using recorded launch and trace fixtures"
+    gate:
+      class: G-LINT
+      red_now: "the GPT-5.4 direct CodeAct cell is blocked by a false capability-threading assertion and Studio cells record zero usage without a measurement failure"
+      green_when: "focused treatment tests pass and fixture rollup reports explicit incomplete measurement for an absent Studio trace"
+      cmd: "python3 tools/arena/tests/test_paired_task_codeact.py"
+    agent_brief: >
+      Diagnose the GPT-5.4 arena artifacts, add RED fixture tests for the
+      capability-plan canonicalization and missing Studio trace accounting, then
+      fix only the reusable treatment/evidence seams. Do not spend on a live run.
+
+  - id: experiment-contract
+    wall: G1
+    goal_ref: [G1, G4, G6]
+    title: Declare reusable story-performance experiments and promotion guards
+    goal: Make the matched baseline, evidence policy, and promotion threshold a reusable declarative contract.
+    kind: runtime
+    pipeline: implementation
+    scope: ["tools/arena/arena/experiment.py", "tools/arena/tests/test_experiment.py", "schemas/story-performance-experiment.schema.json"]
+    depends_on: [measurement-fidelity]
+    acceptance:
+      - "a story developer can declare baseline, treatments, corpus, budget, minimum sample count, and promotion threshold in one schema"
+      - "promotion rejects any unresolved infra or incomplete-measurement cell"
+      - "fixtures prove solved-rate comparison and rejection paths with no LLM or Docker"
+    gate:
+      class: G-LINT
+      red_now: "Arena specs can run cells but cannot express a reusable improvement policy or a safe promotion decision"
+      green_when: "experiment schema and promotion fixture tests pass"
+      cmd: "python3 tools/arena/tests/test_experiment.py"
+    agent_brief: >
+      Add the smallest reusable experiment contract and deterministic promotion
+      evaluator. Keep it story-agnostic and use the existing arena result shape.
+
+  - id: goal-seeker-adapter
+    wall: G2
+    goal_ref: [G2, G3, G6]
+    title: Feed arena evidence into a bounded goal-seeker adapter
+    goal: Give the goal-seeker typed, bounded experiment evidence and safe next-action choices.
+    kind: story
+    pipeline: implementation
+    scope: ["stories/goal-seeker/**", "tools/arena/arena/goal_adapter.py", "tools/arena/tests/test_goal_adapter.py"]
+    depends_on: [experiment-contract]
+    acceptance:
+      - "the evaluator receives a bounded experiment summary with detail pointers, not full traces or history"
+      - "its allowed next actions are diagnose, implement, rerun, promote, or stop, each with deterministic preconditions"
+      - "replay fixtures prove that failed/blocked cells choose diagnosis rather than prompt tuning"
+    gate:
+      class: G-FLOW
+      red_now: "goal-seeker has no typed arena-evidence input or action policy"
+      green_when: "goal-adapter tests and goal-seeker replay flow pass without an LLM"
+      cmd: "python3 tools/arena/tests/test_goal_adapter.py && kitsoki test flows stories/goal-seeker/app.yaml"
+    agent_brief: >
+      Integrate the experiment contract into the existing goal-seeker as a
+      bounded input adapter, preserving its no-lost-work and independent-review
+      guarantees. Use replay only.
+
+  - id: developer-surface
+    wall: G5
+    goal_ref: [G3, G5, G6]
+    title: Productize the story-performance goal loop for Studio MCP users
+    goal: Expose the measurement and improvement loop as a reusable Studio MCP story for any developer.
+    kind: story
+    pipeline: implementation
+    scope: ["stories/story-performance/**", "docs/guide/development/story-performance-loops.md", "docs/decks/story-performance-loop.slidey.json"]
+    depends_on: [goal-seeker-adapter]
+    acceptance:
+      - "a developer supplies a story and experiment declaration, then can start/status/pause/resume/export through Studio MCP"
+      - "each cycle writes JSON receipts plus a refreshed Slidey deck"
+      - "a complete no-LLM flow demonstrates failure diagnosis, verified fix, rerun, and promotion refusal when sample policy is unmet"
+    gate:
+      class: G-FLOW
+      red_now: "only core developers can manually assemble an Arena-to-goal-seeker loop"
+      green_when: "story-performance flow and docs example pass without a live provider"
+      cmd: "kitsoki test flows stories/story-performance/app.yaml"
+    agent_brief: >
+      Build the reusable Studio-facing story around the completed lower-level
+      contracts. Keep live execution opt-in and require an explicit policy.

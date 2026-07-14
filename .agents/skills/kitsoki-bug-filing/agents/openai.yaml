@@ -1,0 +1,4 @@
+interface:
+  display_name: "Kitsoki Bug Filing"
+  short_description: "File Kitsoki bugs with evidence"
+  default_prompt: "Use $kitsoki-bug-filing to file a Kitsoki bug report with the right target, evidence, and artifacts."

@@ -231,6 +231,40 @@ Bindings compose across layers — see the `bandits__narrator` example
 above. The grandparent's host_bindings is what the leaf's invoke
 ultimately resolves to.
 
+### Starlark-bindable `host_bindings` — no per-kit Go
+
+A `host_bindings` value can name a starlark script instead of a
+concrete handler — three author forms:
+
+```yaml
+host_bindings:
+  ticket: host.gh.ticket                    # plain handler name (unchanged)
+  graph: scripts/graph_glue.star            # bare .star-suffixed script path
+  reporter:
+    script: scripts/report_glue.star        # explicit {script: ...} form
+```
+
+The script path resolves relative to the **importer's own directory**
+(the app.yaml declaring `host_bindings:`, not the child being
+imported) — the same rebasing rule other author-relative paths in this
+file follow. The loader verifies the script and its `.star.yaml`
+sidecar exist at load time (same fail-fast contract as a normal
+`invoke: host.starlark.run` effect), then synthesizes a `Handler` that
+delegates to the existing `host.starlark.run` adapter, injecting the
+dispatched interface op into `ctx.inputs.op` — so the script can branch
+on `ctx.inputs.get("op")` exactly like a shared Go handler branches on
+`args["op"]` for a multi-op interface. The synthesized handler is named
+deterministically from a hash of the script's absolute path, so the
+same script bound under two different keys (or reached via two
+different alias chains) resolves to one registration, not a duplicate.
+
+This is the mechanism used to bind a `ticket` capability straight to a
+starlark script instead of writing a Go handler (the gh-ticket-adapter
+pattern) — see `internal/app/imports.go` (`resolveHostBindingScripts`,
+`HostBindingSpec`) and `internal/host/starlark_binding.go`
+(`StarlarkBindingHandler`, `RegisterStarlarkBindings`) for the load-time
+and runtime halves.
+
 ## The blank root that grows — the implicit project root
 
 `kitsoki-dev` (`.kitsoki/stories/kitsoki-dev/app.yaml`) is a paragon: ~20 lines of

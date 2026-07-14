@@ -24,15 +24,16 @@
 #     cached (the migration never ran). It now binds apply_note. Asserting the
 #     call fired catches a silently-skipped step.
 #
-# All three were exposed by the real-backend dogfood (docs/stories/ad-hoc-plan.md
-# → "Dogfood findings"). No LLM, no network: the verify probe replays from the
-# inspect cassette.
+# All three were exposed by a real-backend live run
+# (docs/stories/ad-hoc-plan.md -> "Live-run findings"). No LLM, no network:
+# the verify probe replays from the inspect cassette.
 
 test_kind: flow
 app: ../app.yaml
 mode: staged
 initial_state: landing
-initial_world: {}
+initial_world:
+  origin_repo: "acme/project"
 
 starlark_inspect_cassette: ../cassettes/issues_migrated.inspect.yaml
 
@@ -57,7 +58,7 @@ host_handlers:
             reason: "Passes iff GitHub lists >= expected_min issues for the repo."
 
 turns:
-  - intent: { name: work, slots: { request: "import the issues folder in the repo to github" } }
+  - intent: { name: landing_capture, slots: { request: "import the issues folder in the repo to github" } }
     expect_state: landing
 
   # accept_plan → applying (apply-step runs) → verifying. In STAGED mode the

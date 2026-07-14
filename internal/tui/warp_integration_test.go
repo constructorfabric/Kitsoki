@@ -2,7 +2,9 @@ package tui
 
 import (
 	"context"
+	"io"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -21,6 +23,66 @@ import (
 // helpers in the same package.
 func osWriteFile(path string, body []byte) error { return os.WriteFile(path, body, 0o644) }
 func mkdirAll(path string) error                 { return os.MkdirAll(path, 0o755) }
+
+func copyWarpTestTree(src, dst string) error {
+	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(dst, rel)
+		if info.IsDir() {
+			return os.MkdirAll(target, 0o755)
+		}
+		if !info.Mode().IsRegular() {
+			return nil
+		}
+		in, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer in.Close()
+		mode := info.Mode().Perm()
+		if mode&0o200 == 0 {
+			mode |= 0o200
+		}
+		out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
+		if err != nil {
+			return err
+		}
+		defer out.Close()
+		_, err = io.Copy(out, in)
+		return err
+	})
+}
+
+func stageWritableOregonTrailStory(t *testing.T) (appPath string, storyDir string) {
+	t.Helper()
+	realStories, err := filepath.Abs("../../stories")
+	require.NoError(t, err)
+	tempRoot := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(tempRoot, "go.mod"), []byte("module kitsoki\n"), 0o644))
+	tempStories := filepath.Join(tempRoot, "stories")
+	require.NoError(t, os.MkdirAll(tempStories, 0o755))
+
+	entries, err := os.ReadDir(realStories)
+	require.NoError(t, err)
+	for _, entry := range entries {
+		name := entry.Name()
+		dst := filepath.Join(tempStories, name)
+		src := filepath.Join(realStories, name)
+		if name == "oregon-trail" {
+			require.NoError(t, copyWarpTestTree(src, dst))
+			continue
+		}
+		require.NoError(t, os.Symlink(src, dst))
+	}
+	storyDir = filepath.Join(tempStories, "oregon-trail")
+	return filepath.Join(storyDir, "app.yaml"), storyDir
+}
 
 // TestWarp_Interactive_Smoke is the regression test for the user-reported
 // "warp isn't working" bug. Drives the slash-command handler directly,
@@ -228,7 +290,8 @@ world:
 // falls back to the app's directory when the literal path doesn't
 // exist relative to cwd.
 func TestWarp_FromFile_AppRelativeFallback(t *testing.T) {
-	def, err := app.Load("../../stories/oregon-trail/app.yaml")
+	appPath, storyDir := stageWritableOregonTrailStory(t)
+	def, err := app.Load(appPath)
 	require.NoError(t, err)
 	m, err := machine.New(def)
 	require.NoError(t, err)
@@ -241,17 +304,13 @@ func TestWarp_FromFile_AppRelativeFallback(t *testing.T) {
 	sid, err := orch.NewSession(ctx)
 	require.NoError(t, err)
 
-	// Write a basis next to the oregon-trail app.yaml — this is what
-	// authors check in. From any cwd, `/warp file:scenarios/foo.yaml`
-	// resolves via the app-relative fallback. Use a uniquely-named
-	// file so a parallel test run cleaning it up doesn't stomp on
-	// the real shipped scenarios in this directory.
-	appPath := "../../stories/oregon-trail/app.yaml"
-	scenariosDir := "../../stories/oregon-trail/scenarios"
+	// Write a basis next to a writable copy of the oregon-trail app.yaml — this
+	// is what authors check in. From any cwd, `/warp file:scenarios/foo.yaml`
+	// resolves via the app-relative fallback.
+	scenariosDir := filepath.Join(storyDir, "scenarios")
 	_ = mkdirAll(scenariosDir)
 	basisRel := "scenarios/__test_fallback.yaml"
-	basisAbs := "../../stories/oregon-trail/" + basisRel
-	t.Cleanup(func() { _ = os.Remove(basisAbs) })
+	basisAbs := filepath.Join(storyDir, basisRel)
 	body := `state: leg_a_awaiting_reply
 world:
   current_landmark: "Kansas River Crossing"

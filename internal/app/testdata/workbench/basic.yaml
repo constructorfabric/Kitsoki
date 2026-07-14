@@ -1,0 +1,23 @@
+app:
+  id: wb-basic
+  version: 0.1.0
+hosts:
+  - host.agent.task
+intents:
+  go:
+    title: Go
+root: bench
+toolboxes:
+  builder_toolbox:
+    tools: [Read, Grep, Glob, Edit, Write, Bash]
+    effect: write
+states:
+  bench:
+    workbench:
+      agent: builder
+      prompt: prompts/bench.md
+      acceptance_schema: schemas/out.json
+agents:
+  builder:
+    system_prompt: "build things"
+    toolbox: builder_toolbox

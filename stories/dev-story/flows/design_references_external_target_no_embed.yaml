@@ -1,0 +1,129 @@
+# design_references_external_target_no_embed — the design_researcher agent
+# must still land a valid (possibly empty) references bind when driving an
+# EXTERNAL target repo (no project-local proposal docs, .agents/skills, or
+# stories/ tree) through the no-embedder fallback path.
+#
+# Regression coverage for the live scenario-qa confirmation rerun
+# (.artifacts/product-journey/20260706T090132Z-gears-rust-core-maintainer-
+# scenario-qa) that drove this pipeline against gears-rust, an external Rust
+# CLI target. host.agent.search failed there with "no embedder configured;
+# wire via NewAgentSearchHandler", which correctly routes design_materialize
+# -> design_materialize_researcher (the no-embed fallback, invoke id
+# references_research_no_embed) per the room's on_error wiring — that part
+# was never broken.
+#
+# The REAL bug (fixed in internal/host/agent_decide.go /
+# internal/host/agent_ask.go) was one layer down, invisible to this flow
+# harness: host.agent.decide always forces the claude CLI's permission mode
+# to "default" for its read-only ceiling, but the auto-attached validator's
+# submit tool (mcp__validator__submit) was never added to --allowedTools, so
+# the CLI held every submit call at an unapprovable interactive permission
+# gate ("Claude requested permissions to use mcp__validator__submit, but you
+# haven't granted it yet") until the outer retry budget (3 iterations)
+# exhausted — see agent_decide_test.go's TestAgentDecide_ReadOnlyTools_Allowed
+# / TestAgentDecide_PerCallTools_WinsOverAgentTools for the Go-level
+# regression coverage of that fix.
+#
+# This flow test covers the adjacent, still-real story-level contract: when
+# the researcher DOES get to submit (as it will now that submit is
+# reachable) and finds nothing - the expected, common outcome for a target
+# repo with none of the configured proposal/story conventions - an EMPTY
+# `items` list is a valid verdict that must flow straight through to
+# design_refine, not bounce back to design_search as if it were a failure.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: design
+initial_world:
+  judge_mode: "human"
+  # Shaped like an external target: workdir points outside this checkout, so
+  # none of the configured reference paths (docs/proposals/**,
+  # .agents/skills/**, stories/**) exist there.
+  workdir: "/tmp/external-target-checkout"
+
+starlark_inspect_cassette: ../cassettes/design_happy_path.inspect.yaml
+
+host_handlers:
+  host.fs.writable_dir:
+    data: { path: "docs/proposals", used_fallback: false }
+  host.ide.open_file:
+    data: { ok: true, connected: true }
+  host.agent.decide:
+    by_call:
+      existing_scan:
+        data:
+          ok: true
+          submitted:
+            overlaps: []
+            roadmap_fit: "External target; no kitsoki roadmap overlap."
+      # The embed-backed researcher path (references_research) is never
+      # reached — host.agent.search errors first — but flow harnesses
+      # require every by_call id the room can invoke to resolve, so keep
+      # this id benign in case a future edit reorders the gate.
+      references_research:
+        data:
+          ok: true
+          submitted: { items: [] }
+      # The no-embed fallback researcher: this is the one the real
+      # scenario-qa run actually exercised. It finds no kitsoki-specific
+      # reference material for the external target and submits an empty
+      # list — the correct, expected outcome, not an error.
+      references_research_no_embed:
+        data:
+          ok: true
+          submitted: { items: [] }
+      brief_check:
+        data:
+          ok: true
+          submitted: { verdict: "continue", reason: "Crisp enough to proceed.", questions: [] }
+  # Semantic search is unconfigured for this target — the sentinel error
+  # that routes design_materialize -> design_materialize_researcher.
+  host.agent.search:
+    error: "host.agent.search: no embedder configured; wire via NewAgentSearchHandler"
+  host.artifacts_dir:
+    data: { ok: true, path: "docs/proposals/.workspace/working-folder-primitive/001-brief.md", message_id: "out#1" }
+  host.agent.task:
+    by_call:
+      refine_brief:
+        data:
+          ok: true
+          submitted: { summary: "Idea is clear.", gaps: [] }
+
+turns:
+  # Intake: mint the candidate slug and advance to search (scout fires on
+  # entry to design_search). Reuses design_happy_path's exact idea text/slug
+  # so the shared starlark_inspect_cassette's recorded fs.exists checks
+  # (keyed by the resolved slug path) still match — the point of this fixture
+  # is the no-embed researcher fallback, not the slugging step.
+  - intent: { name: discuss, slots: { message: "I want a per-session working folder primitive" } }
+    expect_state: design_search
+    expect_world:
+      design_slug: "working-folder-primitive"
+    expect_host_calls:
+      - handler: host.starlark.run
+        args: { call: "name_slug" }
+      - handler: host.agent.decide
+        args: { call: "existing_scan" }
+
+  # Confirm: materialize tries the embed-backed search first (errors per the
+  # unconfigured-embedder sentinel), falls back to
+  # design_materialize_researcher's no-embed researcher, which submits an
+  # empty items list — and that must still auto-advance straight through to
+  # design_refine rather than bouncing to design_search.
+  - intent: { name: confirm, slots: {} }
+    expect_state: design_refine
+    expect_world:
+      design_overlap_decision: "new"
+      design_references:
+        items: []
+    expect_host_calls:
+      - handler: host.starlark.run
+        args: { call: "uniquify" }
+      - handler: host.artifacts_dir
+        args: { thread: "002-existing-state" }
+      - handler: host.agent.search
+      - handler: host.agent.decide
+        args: { call: "references_research_no_embed" }
+      - handler: host.artifacts_dir
+        args: { thread: "003-references.json" }
+expect_no_errors: true

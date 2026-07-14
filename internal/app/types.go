@@ -12,6 +12,7 @@ import (
 	goyaml "github.com/goccy/go-yaml"
 
 	"kitsoki/internal/bashprofile"
+	"kitsoki/internal/effect"
 )
 
 // BashProfileDecl is the YAML representation of a bash_profile: field on an
@@ -30,6 +31,19 @@ type BashProfileDecl struct {
 	Kind       bashprofile.Kind // resolved form
 	Commands   []string         // set when Kind == bashprofile.Commands
 	ScratchDir string           // set when Kind == bashprofile.SandboxWrite
+}
+
+// TokenBudgetDecl declares a per-agent override of the pre-dispatch
+// budget-gate thresholds (see AgentDecl.TokenBudget). Both fields are
+// required together — the loader rejects a declaration missing either or
+// with RefuseTokens < WarnTokens (see internal/app/loader.go).
+//
+//	agents:
+//	  reviewer:
+//	    token_budget: { warn_tokens: 50000, refuse_tokens: 120000 }
+type TokenBudgetDecl struct {
+	WarnTokens   int64 `yaml:"warn_tokens,omitempty"`
+	RefuseTokens int64 `yaml:"refuse_tokens,omitempty"`
 }
 
 // BashProfileKind is an alias for bashprofile.Kind kept for source compatibility.
@@ -170,18 +184,32 @@ type AgentPluginDecl struct {
 	// local-model sidecar (builtin.local_llm only). Empty fetches/uses the
 	// cached default.
 	ServerBin string `yaml:"server_bin,omitempty"`
+	// APIKeyEnv names an environment variable holding a bearer token sent as
+	// `Authorization: Bearer <key>` on every request (builtin.local_llm only).
+	// The value is the env-var NAME, not the secret; the secret is read at call
+	// time so it never has to be materialized in YAML. Used by authenticated
+	// OpenAI-compatible endpoints (e.g. GLM-5.2). Empty disables auth.
+	APIKeyEnv string `yaml:"api_key_env,omitempty"`
+	// JSONSchema enables the OpenAI-native `response_format: json_schema`
+	// constrained-output path (builtin.local_llm only): when true, the agent
+	// sends json_schema for any schema present regardless of the llama.cpp
+	// grammar-subset gate that the `grammar` knob governs. Use this for
+	// OpenAI-compatible endpoints that honour json_schema natively, including
+	// for schemas outside the GBNF subset (discriminated unions, etc.).
+	JSONSchema bool `yaml:"json_schema,omitempty"`
 }
 
 // ProviderDecl declares one named LLM backend profile (see AppDef.Providers).
 //
-// A provider is a thin, transport-agnostic override applied to the `claude`
-// subprocess: Env entries are merged onto the process environment for the
-// invocation (overriding any ambient value of the same key), and Model, when
-// set, supplies the --model default for an invocation whose agent declares no
-// explicit model. Both fields are optional — a provider with only Env keeps
-// each call's own model; a provider with only Model just retargets the model
-// against the ambient backend.
+// A provider is a thin per-invocation backend profile. Backend selects the
+// coding-agent CLI adapter, Env entries are merged onto the process environment
+// for the invocation, and Model/Effort supply defaults unless the call
+// explicitly selected this provider.
 type ProviderDecl struct {
+	// Backend selects the host agent backend for invocations that select this
+	// provider. Valid values: claude, codex, copilot. Optional; empty keeps the
+	// ambient/session backend.
+	Backend string `yaml:"backend,omitempty"`
 	// Model is the --model value used for invocations that select this provider
 	// and whose agent (and effect) declare no explicit model. Optional.
 	Model string `yaml:"model,omitempty"`
@@ -227,6 +255,9 @@ type AppDef struct {
 	// no provider preserves today's behavior (ambient environment). Env values
 	// support ${VAR} interpolation, resolved at load time.
 	Providers map[string]*ProviderDecl `yaml:"providers,omitempty"`
+	// Toolboxes declares reusable named agent tool surfaces. Agents may
+	// reference one with toolbox: and specialize it with tools_add/tools_remove.
+	Toolboxes map[string]*ToolboxDecl `yaml:"toolboxes,omitempty"`
 	// Proposals declares named proposal kinds.
 	Proposals map[string]*ProposalKind `yaml:"proposals,omitempty"`
 	// Include lists glob patterns for additional YAML files to merge.
@@ -257,6 +288,11 @@ type AppDef struct {
 	// one-shot (or decider:llm) decision gates without per-room judge
 	// wiring. Optional; nil disables it.
 	Decider *DeciderSpec `yaml:"decider,omitempty"`
+	// Operations declares session-level operation policies. These are distinct
+	// from state-local operation overlays: an operation policy describes how a
+	// workflow run should be driven and surfaced, while state.operation controls
+	// abandonable task-local world writes.
+	Operations map[string]*OperationPolicy `yaml:"operations,omitempty"`
 	// Agents declares named per-context agents (see docs/stories/meta-mode.md).
 	// Generalises OffPathDef.Persona / OffPathDef.Agent into a top-level
 	// primitive any host.agent.* call site can reference by name. Bound
@@ -325,6 +361,15 @@ type AppDef struct {
 	// {% include %} references in pongo2 templates locate per-app
 	// .pongo files (see docs/stories/story-style.md).
 	BaseDir string `yaml:"-"`
+
+	// StarlarkHostBindings maps a synthetic handler name (introduced by a
+	// script-form host_bindings entry, S3a/D2.1) to the absolute path of the
+	// starlark script it should delegate to. Populated by resolveHostBindingScripts
+	// during import fold and never set by YAML authors. The runtime wires
+	// these into the host.Registry via host.RegisterStarlarkBindings
+	// alongside RegisterBuiltins, before the allow-list check runs (def.Hosts
+	// already includes every synthetic name — see resolveAllInterfaces).
+	StarlarkHostBindings map[string]string `yaml:"-"`
 }
 
 // PromptsConfig declares a story's prompt search roots for prompt extension.
@@ -569,9 +614,61 @@ type ImportDef struct {
 	Intents *ImportIntents `yaml:"intents,omitempty"`
 	// Overrides patches child states/intents/prompts at import time.
 	Overrides *ImportOverrides `yaml:"overrides,omitempty"`
-	// HostBindings rebinds named child host_interfaces onto concrete
-	// handler names.
-	HostBindings map[string]string `yaml:"host_bindings,omitempty"`
+	// HostBindings rebinds named child host_interfaces onto either a
+	// concrete handler name or a starlark script (S3a, D2.1 — see
+	// HostBindingSpec).
+	HostBindings map[string]HostBindingSpec `yaml:"host_bindings,omitempty"`
+}
+
+// HostBindingSpec is the value type for one `host_bindings.<name>` entry.
+// Three author forms are supported:
+//
+//	host_bindings:
+//	  ticket: host.gh.ticket              # plain handler name (unchanged v1 form)
+//	  graph: scripts/graph_glue.star       # bare .star-suffixed script path
+//	  graph2:
+//	    script: scripts/graph_glue2.star   # explicit {script: ...} form
+//
+// Exactly one of Handler / Script is set after decode. A handler name binds
+// the interface straight to an existing registered host.* handler exactly as
+// before. A script path (either form) tells the import fold to synthesize a
+// Handler that closes over the script and delegates to host.starlark.run,
+// injecting the interface op into ctx.inputs.op (see
+// resolveHostBindingScripts / StarlarkBindingHandler in imports.go).
+type HostBindingSpec struct {
+	// Handler is a concrete host name to bind directly, e.g. "host.gh.ticket".
+	Handler string `yaml:"-"`
+	// Script is a starlark script path (author-relative to the app.yaml
+	// declaring the host_bindings entry) that synthesizes a Handler.
+	Script string `yaml:"-"`
+}
+
+// UnmarshalYAML implements goccy/go-yaml's BytesUnmarshaler. Accepts a plain
+// scalar string (a handler name, or a bare `.star`-suffixed script path) or a
+// `{script: <path>}` mapping.
+func (h *HostBindingSpec) UnmarshalYAML(data []byte) error {
+	var s string
+	if err := goyaml.Unmarshal(data, &s); err == nil {
+		s = strings.TrimSpace(s)
+		if strings.HasSuffix(s, ".star") {
+			*h = HostBindingSpec{Script: s}
+		} else {
+			*h = HostBindingSpec{Handler: s}
+		}
+		return nil
+	}
+
+	var raw struct {
+		Script string `yaml:"script"`
+	}
+	if err := goyaml.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	if raw.Script == "" {
+		return fmt.Errorf("host_bindings: value must be a handler name, a .star script path, or {script: <path>}")
+	}
+	*h = HostBindingSpec{Script: raw.Script}
+	return nil
 }
 
 // ImportExit declares how a child exit maps to a parent state.
@@ -631,6 +728,27 @@ type HostInterfaceDef struct {
 type HostInterfaceOp struct {
 	Input  map[string]any `yaml:"input,omitempty"`
 	Output map[string]any `yaml:"output,omitempty"`
+
+	// Effect overrides the builtin classification (internal/effect's
+	// ClassifyVerb table) for the concrete handler this op eventually binds
+	// to — the "host_interfaces: override" escape hatch named in
+	// agent-capability-model.md's cross-cutting open question 1. Empty means
+	// "use the builtin default"; when set, it must be one of
+	// pure|read|write|external (loader-validated).
+	Effect effect.Effect `yaml:"effect,omitempty"`
+	// Deterministic overrides the builtin default's determinism bit
+	// alongside Effect. Nil means "use the builtin default"; see
+	// DeterministicOrDefault.
+	Deterministic *bool `yaml:"deterministic,omitempty"`
+}
+
+// DeterministicOrDefault returns the op's declared Deterministic value, or
+// true (the taxonomy's default) when unset.
+func (o *HostInterfaceOp) DeterministicOrDefault() bool {
+	if o == nil || o.Deterministic == nil {
+		return true
+	}
+	return *o.Deterministic
 }
 
 // PhaseTemplate is a reusable phase shape. It declares a parameter schema and
@@ -764,6 +882,38 @@ type DeciderSpec struct {
 	Threshold float64 `yaml:"threshold,omitempty"`
 }
 
+// OperationPolicy is an app-level session operation policy. It is intentionally
+// declarative metadata in this slice: transitions opt into a policy and the
+// runtime emits operation.run_* events. Higher-level drivers and UI surfaces can
+// then consume one stable lifecycle vocabulary without abusing background host
+// jobs or state-local operation overlays.
+type OperationPolicy struct {
+	Title            string                `yaml:"title,omitempty"`
+	Mode             string                `yaml:"mode,omitempty"`           // interactive | autonomous | supervised
+	ExecutionMode    string                `yaml:"execution_mode,omitempty"` // one-shot | staged
+	RunInBackground  bool                  `yaml:"run_in_background,omitempty"`
+	StopOn           []string              `yaml:"stop_on,omitempty"`
+	PauseOn          []string              `yaml:"pause_on,omitempty"`
+	TerminalArtifact string                `yaml:"terminal_artifact,omitempty"`
+	PhaseSummary     OperationPhaseSummary `yaml:"phase_summary,omitempty"`
+}
+
+// OperationPhaseSummary declares which world/artifact keys should contribute
+// to the eventual operator summary for an operation run.
+type OperationPhaseSummary struct {
+	From []string `yaml:"from,omitempty"`
+}
+
+// AssignmentPolicy declares how a room may be staffed at runtime. It names a
+// role rather than a person so story definitions stay portable between
+// operators and ticket providers. Runtime state is event-sourced separately.
+type AssignmentPolicy struct {
+	Role          string `yaml:"role,omitempty"`
+	Required      bool   `yaml:"required,omitempty"`
+	AllowReassign bool   `yaml:"allow_reassign,omitempty"`
+	Sync          string `yaml:"sync,omitempty"` // "" | linked-ticket
+}
+
 type State struct {
 	// Type is "atomic" (default), "compound", or "parallel".
 	Type string `yaml:"type,omitempty"`
@@ -772,6 +922,9 @@ type State struct {
 	Mode string `yaml:"mode,omitempty"`
 	// Description is shown in the location indicator.
 	Description string `yaml:"description,omitempty"`
+	// Assignment optionally declares the staffing policy for this room/state.
+	// It never stores a principal identity; session assignments live in events.
+	Assignment *AssignmentPolicy `yaml:"assignment,omitempty"`
 	// View is the render template shown to the user on arrival.
 	//
 	// The View type custom-unmarshals YAML and accepts either the legacy
@@ -801,6 +954,10 @@ type State struct {
 	// agent (external_side_effect: true). See
 	// docs/proposals/agent-write-mode-opt-in.md.
 	WriteMode string `yaml:"write_mode,omitempty"`
+	// Operation declares that this state owns an operation-local world overlay.
+	// set/increment/bind writes while the operation is active are task-local
+	// until commit_operation or persist_draft intentionally publishes them.
+	Operation *OperationDecl `yaml:"operation,omitempty"`
 	// Initial is the initial child state for compound states; supports expr interpolation.
 	Initial string `yaml:"initial,omitempty"`
 	// States holds nested child states (compound/parallel).
@@ -813,6 +970,10 @@ type State struct {
 	Intents map[string]Intent `yaml:"intents,omitempty"`
 	// Menu is an explicit list of allowed intent names overriding the default.
 	Menu []string `yaml:"menu,omitempty"`
+	// Prerequisites declares deterministic setup/readiness checks for this
+	// room. The runtime evaluates them against the current world every time the
+	// room renders and surfaces unmet checks as a standard warning block.
+	Prerequisites []Prerequisite `yaml:"prerequisites,omitempty"`
 	// DefaultIntent names the free-text sink for this state: when an utterance
 	// matches no intent deterministically or semantically, the engine routes it
 	// straight to this intent with the whole input filling its single required
@@ -847,6 +1008,32 @@ type State struct {
 	// `agent_off_ramp: false`, so the runtime treats `!= nil` as "fires."
 	// Rejected at load time on terminal: true or mode: conversational states.
 	AgentOffRamp *OffRampDef `yaml:"agent_off_ramp,omitempty"`
+
+	// Workbench declares this room a governed free-form work floor: instead
+	// of hand-rolling write_mode + agent_off_ramp + an on_enter
+	// host.agent.task + a free-text capture arc, the author names an agent
+	// and a prompt/acceptance contract and the loader's expandWorkbenches
+	// pass (workbench.go) desugars it into those four already-shipped
+	// primitives at load time, before the roomDispatchesAgent / write-mode
+	// precondition pass runs. Nil — the default — means no workbench; the
+	// state's WriteMode/AgentOffRamp/OnEnter/DefaultIntent are whatever the
+	// author wrote by hand (or nothing). See
+	// docs/architecture/room-workbench.md.
+	Workbench *WorkbenchDecl `yaml:"workbench,omitempty"`
+
+	// ImportAlias is set ONLY on the synthesized compound wrapper state
+	// resolveImports creates for one import (imports.go's `wrapper`), to the
+	// alias it was folded under (e.g. "core"). Never authored in YAML — an
+	// internal marker read by expandWorkbenches (workbench.go), which runs
+	// AFTER import folding and needs to know the cumulative world-key/intent
+	// prefix (`<alias>__`) already applied to everything folded beneath this
+	// wrapper, so a workbench: room imported from a child story synthesizes
+	// its on_enter Bind / capture-slot / capture-intent names against the
+	// SAME already-aliased keys the rest of the fold produced — not the
+	// child's bare pre-fold names, which would silently write to phantom,
+	// undeclared world keys the room's own (correctly-aliased) view can
+	// never see. See expandOneWorkbench's worldPrefix parameter.
+	ImportAlias string `yaml:"-"`
 
 	// ContextualRouting opts this room into the contextual-routing final tier:
 	// a router that fires AFTER deterministic and LLM tiers miss, classifying
@@ -906,10 +1093,59 @@ type State struct {
 	InterceptDrive string `yaml:"intercept_drive,omitempty"`
 }
 
+// Prerequisite is a room-local deterministic setup/readiness check. It is
+// intentionally view-like data, not a host call: stories decide which world
+// facts mean "configured", and the engine makes the warning/help affordance
+// consistent across TUI, web, snapshots, and flow evidence.
+type Prerequisite struct {
+	// ID is a stable author-owned identifier, unique within one state.
+	ID string `yaml:"id"`
+	// Title is the short operator-facing name for the missing setup item.
+	Title string `yaml:"title"`
+	// Severity controls warning styling. Empty means "warning".
+	Severity string `yaml:"severity,omitempty"`
+	// When gates whether this prerequisite is relevant in the current room
+	// context. Empty means always relevant.
+	When string `yaml:"when,omitempty"`
+	// SatisfiedWhen is the deterministic check expression. When it evaluates
+	// false, the prerequisite is surfaced as unmet.
+	SatisfiedWhen string `yaml:"satisfied_when"`
+	// Summary is a short reason shown beside the title.
+	Summary string `yaml:"summary,omitempty"`
+	// Help gives the operator concrete remediation guidance.
+	Help string `yaml:"help,omitempty"`
+	// Action optionally points at an existing room intent that helps satisfy
+	// the prerequisite. The runtime may surface it as the recommended action.
+	Action *PrerequisiteAction `yaml:"action,omitempty"`
+}
+
+// PrerequisiteAction describes an existing intent that helps satisfy a
+// prerequisite. It does not create a new transition; the intent must already be
+// declared by the story and reachable in rooms where the action should work.
+type PrerequisiteAction struct {
+	Label  string         `yaml:"label,omitempty"`
+	Hint   string         `yaml:"hint,omitempty"`
+	Intent string         `yaml:"intent,omitempty"`
+	Slots  map[string]any `yaml:"slots,omitempty"`
+}
+
 // Transition is one entry in a state's on[intent] list.
 type Transition struct {
 	// Target is the destination state path. "." means self.
 	Target string `yaml:"target"`
+	// Operation starts a session-level operation run using the named
+	// app-level operation policy. This is separate from state.operation, which
+	// controls task-local world overlays.
+	Operation string `yaml:"operation,omitempty"`
+	// OperationExit is internal loader metadata set when an imported child's
+	// @exit:<name> transition is rewritten to a parent state. It lets the
+	// runtime complete a matching imported operation even though the parent
+	// target is usually not a terminal state. Not author-facing YAML.
+	OperationExit string `yaml:"-"`
+	// OperationExitPolicyPrefix is the active operation ID prefix that must
+	// match before OperationExit completes a run. It is re-prefixed through
+	// nested imports alongside Operation refs.
+	OperationExitPolicyPrefix string `yaml:"-"`
 	// When is the guard expression (expr-lang). Empty = always true.
 	When string `yaml:"when,omitempty"`
 	// Default marks this as the catch-all branch when no prior guard matched.
@@ -945,6 +1181,14 @@ type Effect struct {
 	Set map[string]any `yaml:"set,omitempty"`
 	// Increment maps world-variable names to integer delta values.
 	Increment map[string]int `yaml:"increment,omitempty"`
+	// CommitOperation copies selected values from the current operation overlay
+	// into durable world and closes the operation by default.
+	CommitOperation *CommitOperationEffect `yaml:"commit_operation,omitempty"`
+	// PersistDraft saves selected overlay values under an explicit draft handle
+	// in the engine-owned operation_drafts world key, then closes the operation.
+	PersistDraft *PersistDraftEffect `yaml:"persist_draft,omitempty"`
+	// DiscardOperation explicitly abandons the active operation overlay.
+	DiscardOperation *DiscardOperationEffect `yaml:"discard_operation,omitempty"`
 	// Say appends a narrative message (expr interpolation supported).
 	Say string `yaml:"say,omitempty"`
 	// Invoke calls a host-namespace function.
@@ -1058,6 +1302,29 @@ type Effect struct {
 	// this agent call site. Runtime consumers must treat missing or stale
 	// evidence conservatively; the eval tooling owns validation and freshness.
 	Selection *AgentSelection `yaml:"selection,omitempty"`
+}
+
+// OperationDecl is the state-level operation overlay declaration.
+type OperationDecl struct {
+	Scope string `yaml:"scope,omitempty"`
+}
+
+// CommitOperationEffect is the effect payload for commit_operation.
+type CommitOperationEffect struct {
+	World map[string]any `yaml:"world,omitempty"`
+	Clear *bool          `yaml:"clear,omitempty"`
+}
+
+// PersistDraftEffect is the effect payload for persist_draft.
+type PersistDraftEffect struct {
+	ID    string   `yaml:"id"`
+	Title string   `yaml:"title,omitempty"`
+	World []string `yaml:"world,omitempty"`
+}
+
+// DiscardOperationEffect is the effect payload for discard_operation.
+type DiscardOperationEffect struct {
+	Reason string `yaml:"reason,omitempty"`
 }
 
 // AgentSelection is the story-authored pinning metadata for one agent call
@@ -1217,6 +1484,16 @@ type OffRampDef struct {
 	// Banner is an optional label shown when the off-ramp engages, equivalent
 	// to OffPathDef.Banner.
 	Banner string `yaml:"banner,omitempty"`
+	// CaptureFreeText, when true, makes this room's off-ramp the
+	// deterministic free-text sink: the loader (expandOffRampCaptures,
+	// offramp_capture.go) synthesizes a `<room>_discuss` intent, sets it as
+	// the room's default_intent, and the orchestrator diverts that intent to
+	// the off-ramp conversation lane BEFORE the state machine runs — no
+	// transition, no world mutation, no room re-render. Without it the
+	// off-ramp only catches post-LLM clarify no-matches; with it unmatched
+	// prose never reaches the main-turn LLM at all (the near-miss
+	// misclassification guard routeViaDefaultIntent exists for).
+	CaptureFreeText bool `yaml:"capture_free_text,omitempty"`
 
 	// enabled distinguishes an active off-ramp from an explicit
 	// `agent_off_ramp: false`. Because goccy allocates the pointer and calls
@@ -1235,6 +1512,56 @@ type OffRampDef struct {
 // disabled case, so runtime callers normally just nil-check the pointer; this
 // accessor exists for the loader's own normalization pass and for tests.
 func (d *OffRampDef) Enabled() bool { return d != nil && d.enabled }
+
+// WorkbenchDecl is the `workbench:` state block — see docs/architecture/room-workbench.md.
+// The loader's expandWorkbenches pass (workbench.go) desugars a non-nil
+// WorkbenchDecl into write_mode: read_only, agent_off_ramp, a synthesized
+// on_enter host.agent.task, and a synthesized catch-all capture intent set as
+// the room's default_intent — the same four primitives
+// stories/dev-story/rooms/landing.yaml hand-rolls today.
+type WorkbenchDecl struct {
+	// Agent names the entry in AppDef.Agents dispatched by the synthesized
+	// on_enter host.agent.task. Required; must declare WS toolbox:+effect:
+	// with effect in {write, external} (enforced by the load-time
+	// invariant pass, alongside this desugaring).
+	Agent string `yaml:"agent"`
+	// Prompt is the prompt template path passed as with.context.prompt to
+	// the synthesized host.agent.task call (mirrors landing.yaml's
+	// prompts/landing.md).
+	Prompt string `yaml:"prompt"`
+	// AcceptanceSchema is the JSON schema path passed as
+	// with.acceptance.schema (the M6b host.agent.task contract every task
+	// dispatch already requires).
+	AcceptanceSchema string `yaml:"acceptance_schema"`
+	// CaptureSlot names the free-text world key the synthesized capture
+	// intent's single required string slot binds into (and the on_enter
+	// dispatch's guard/request arg reads from). Empty defaults to
+	// "<room>_request", mirroring landing.yaml's landing_request.
+	CaptureSlot string `yaml:"capture_slot,omitempty"`
+	// OffRampAgent names the agent backing the synthesized agent_off_ramp.
+	// Empty defaults to Agent itself — the workbench agent's own persona
+	// answers genuine Q&A that never reaches the capture intent.
+	OffRampAgent string `yaml:"off_ramp_agent,omitempty"`
+	// ContextArgs adds extra with.context.args entries to the synthesized
+	// on_enter host.agent.task dispatch, alongside the always-present
+	// `request` (the captured utterance). Each value is a template string
+	// resolved the same way any other Effect.With value is (world/expr
+	// interpolation via resolveEffectValue) — the general escape hatch for a
+	// workbench room that needs to feed the agent more than the bare
+	// utterance (e.g. dev-story's landing threading the prior turn's
+	// summary/details/plan into prompts/landing.md for continuity). Kept
+	// generic rather than landing-specific: any workbench consumer with its
+	// own continuity/context world keys can use it the same way.
+	ContextArgs map[string]string `yaml:"context_args,omitempty"`
+	// Plan, when true, requires AcceptanceSchema to declare a top-level
+	// "plan" property matching the shared plan.json contract
+	// (stories/dev-story/schemas/plan.json's goal/step/verify shape),
+	// checked at load time. The propose/accept/apply/verify sub-loop rooms
+	// themselves stay hand-authored — this only guards the contract the
+	// planner and those rooms must agree on (open question 2 in the
+	// proposal: code-generating the sub-loop is out of scope for v1).
+	Plan bool `yaml:"plan,omitempty"`
+}
 
 // ContextualRoutingConfig opts a room into the contextual-routing final tier.
 // When Enabled is true, the orchestrator fires a contextual router on every
@@ -1299,15 +1626,16 @@ func (d *OffRampDef) UnmarshalYAML(data []byte) error {
 	// Fall through: the struct form. Probe with the exact field set so a
 	// stray key (e.g. trigger:, which is off-path-only) fails the load.
 	type offRampForm struct {
-		Agent   string `yaml:"agent,omitempty"`
-		Persona string `yaml:"persona,omitempty"`
-		Banner  string `yaml:"banner,omitempty"`
+		Agent           string `yaml:"agent,omitempty"`
+		Persona         string `yaml:"persona,omitempty"`
+		Banner          string `yaml:"banner,omitempty"`
+		CaptureFreeText bool   `yaml:"capture_free_text,omitempty"`
 	}
 	var f offRampForm
 	if err := goyaml.UnmarshalWithOptions(data, &f, goyaml.Strict()); err != nil {
-		return fmt.Errorf("agent_off_ramp: must be `true` or an {agent, persona, banner} mapping: %w", err)
+		return fmt.Errorf("agent_off_ramp: must be `true` or an {agent, persona, banner, capture_free_text} mapping: %w", err)
 	}
-	*d = OffRampDef{Agent: f.Agent, Persona: f.Persona, Banner: f.Banner, enabled: true}
+	*d = OffRampDef{Agent: f.Agent, Persona: f.Persona, Banner: f.Banner, CaptureFreeText: f.CaptureFreeText, enabled: true}
 	return nil
 }
 
@@ -1315,6 +1643,10 @@ func (d *OffRampDef) UnmarshalYAML(data []byte) error {
 type TimeoutDef struct {
 	After  string `yaml:"after"`
 	Target string `yaml:"target"`
+	// CancelJob aborts the most recently dispatched background job for this
+	// session when this timeout fires. It is the circuit-breaker form of a
+	// timeout: transition away *and* stop the work that is no longer useful.
+	CancelJob bool `yaml:"cancel_job,omitempty"`
 }
 
 // AgentDecl is one entry in the top-level agents: map.
@@ -1329,6 +1661,29 @@ type AgentDecl struct {
 	Model string   `yaml:"model,omitempty"`
 	Tools []string `yaml:"tools,omitempty"`
 	Cwd   string   `yaml:"cwd,omitempty"`
+
+	// Toolbox names an entry in the top-level toolboxes: map. When set, Tools
+	// must be empty; the loader resolves the named toolbox plus ToolsAdd /
+	// ToolsRemove into Tools before effect classification.
+	Toolbox     string   `yaml:"toolbox,omitempty"`
+	ToolsAdd    []string `yaml:"tools_add,omitempty"`
+	ToolsRemove []string `yaml:"tools_remove,omitempty"`
+
+	// MCP declares the explicit MCP surface this agent may use. Servers are
+	// materialized into the generated --mcp-config for host.agent.* calls; Tools
+	// are appended to the effective allowed-tools list (for example
+	// mcp__validator__submit or mcp__operator__ask).
+	MCP *AgentMCPDecl `yaml:"mcp,omitempty"`
+
+	// Permissions declares the first-class permission posture for this agent.
+	// It is resolved before the legacy bash_profile, which remains the Bash
+	// command policy used when Bash is exposed through kitsoki-bash.
+	Permissions *AgentPermissionsDecl `yaml:"permissions,omitempty"`
+
+	// Harness names the provider/harness profile this agent should use by
+	// default. A call-site harness/provider override wins. Empty preserves the
+	// session-selected active profile behavior.
+	Harness string `yaml:"harness,omitempty"`
 
 	// Effort, when non-empty, is forwarded to `claude --effort` for every agent
 	// invocation that resolves to this agent (ask, decide, task, ask_structured,
@@ -1353,19 +1708,72 @@ type AgentDecl struct {
 	// docs/architecture/system-prompt.md (Replace vs append).
 	InheritClaudeDefault bool `yaml:"inherit_claude_default,omitempty"`
 
+	// TokenBudget overrides the built-in per-verb pre-dispatch budget-gate
+	// defaults (internal/host budget_gate.go, dispatch-context-floor task
+	// 1.4) for this agent. Both fields are required together: warn_tokens
+	// must be positive and refuse_tokens must be >= warn_tokens (checked at
+	// load time here, and again at runtime as a safety net) — an invalid
+	// override makes every dispatch through this agent refuse closed rather
+	// than silently falling back to the default. Omit entirely to use the
+	// shipped per-verb default (generous; effectively off until tuned).
+	TokenBudget *TokenBudgetDecl `yaml:"token_budget,omitempty"`
+
 	// BashProfile restricts Bash tool usage when the agent's tool surface
 	// includes "Bash". Required when Bash is in Tools and the agent is
 	// referenced by a host.agent.ask or host.agent.decide effect (enforced
 	// by the loader). Ignored for host.agent.task and host.agent.converse.
 	BashProfile *BashProfileDecl `yaml:"bash_profile,omitempty"`
 
-	// ExternalSideEffect, when non-nil, declares whether the agent may
-	// mutate external state (Mode C — read-write external side effects).
-	// When nil, the loader infers the value from the tool surface:
-	// WebFetch/WebSearch or any non-read_only MCP server → true; otherwise
-	// false. A disagreement between inferred and declared values produces a
-	// loader warn-line.
+	// Effect declares this agent's effect class — pure|read|write|external
+	// (see internal/effect and docs/proposals/effect-taxonomy.md). When
+	// empty, the loader resolves it as the JOIN over the agent's tool
+	// surface (effect.FromTools) — the most-privileged tool wins. When set,
+	// the loader checks it against that same join: a declared effect of
+	// read/pure whose tool surface actually includes a mutator/network tool
+	// is a load-time HARD ERROR (the teeth the old ExternalSideEffect
+	// boolean never had); any other disagreement is a warn-line. Either way
+	// the resolved value — declared-and-valid, or inferred — is written back
+	// onto this field, so it is always populated after a successful load.
+	Effect effect.Effect `yaml:"effect,omitempty"`
+
+	// Deterministic is reserved for forward compatibility with
+	// docs/proposals/effect-taxonomy.md's second axis. It is NOT enforced
+	// for agents: every agent invocation is an LLM call, so its effective
+	// determinism is always false regardless of this field's value. Host-call
+	// operations (HostInterfaceOp.Deterministic) are where this axis
+	// actually varies.
+	Deterministic *bool `yaml:"deterministic,omitempty"`
+
+	// ExternalSideEffect is a DEPRECATED alias for Effect, kept for one
+	// release so existing story YAML keeps loading. When non-nil and Effect
+	// is unset, the loader maps it through effect.FromLegacyBool (true ->
+	// external; false -> write when the tool surface has a mutator, else
+	// read) and emits a warn-line pointing authors at effect:. After
+	// resolution the loader mirrors the FINAL resolved Effect back onto this
+	// field (true iff Effect == external) so pre-taxonomy consumers that
+	// still read the boolean directly (e.g. the write_mode: read_only
+	// contradiction check) keep working unchanged for both old- and
+	// new-style declarations. Declaring both effect: and
+	// external_side_effect: on the same agent is a load error.
 	ExternalSideEffect *bool `yaml:"external_side_effect,omitempty"`
+}
+
+// ToolboxDecl is one entry in top-level toolboxes:. Tools are normalized by the
+// loader to the same host.* form as AgentDecl.Tools. Effect, when set, asserts
+// the joined tool-surface class and is checked at load time.
+type ToolboxDecl struct {
+	Tools  []string      `yaml:"tools,omitempty"`
+	Effect effect.Effect `yaml:"effect,omitempty"`
+}
+
+type AgentMCPDecl struct {
+	Servers map[string]any `yaml:"servers,omitempty"`
+	Tools   []string       `yaml:"tools,omitempty"`
+}
+
+type AgentPermissionsDecl struct {
+	Mode            string   `yaml:"mode,omitempty"`
+	DisallowedTools []string `yaml:"disallowed_tools,omitempty"`
 }
 
 // MetaModeDef declares one meta mode.

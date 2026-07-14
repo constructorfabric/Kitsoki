@@ -1,0 +1,73 @@
+# example/catalog.yaml — @kitsoki/object-graph's small seed example
+# (D4: "a small seed example"). A self-contained, single-file catalog in the
+# same shape as kitsoki's own seed-objects.yaml (docs/proposals/
+# project-object-graph/seed-objects.yaml, which stays instance data and is
+# NOT part of this kit) — just enough nodes/edges to exercise the kit's
+# conformance flow (flows/basic.yaml) and to give a new integrator something
+# to point the viewer at without needing a real project's data.
+schema: project-object-graph/seed-catalog/v0
+catalog:
+  id: object-graph-kit-example
+  title: Object graph kit example catalog
+  status: draft
+  visibility: internal
+  purpose: kit-example
+
+type_registry:
+  - id: core-node
+    schema: graph/core-node/v0
+    summary: "Base fields shared by every node type in this pack."
+  - id: actor
+    schema: graph/actor/v0
+    extends: core-node
+    summary: "A person or role who uses or owns part of the system."
+  - id: feature
+    schema: graph/feature/v0
+    extends: core-node
+    summary: "A shipped or proposed product capability."
+    edge_fields:
+      - id: owned_by
+        target_type: actor
+        cardinality: one
+        storage: field
+      - id: requirements
+        target_type: requirement
+        cardinality: many
+        storage: field
+  - id: requirement
+    schema: graph/requirement/v0
+    extends: core-node
+    summary: "A concrete constraint a feature must satisfy."
+    edge_fields:
+      - id: required_by
+        target_type: feature
+        cardinality: one
+        storage: field
+
+nodes:
+  - schema: graph/actor/v0
+    id: actor-example-user
+    title: Example user
+    status: active
+    visibility: public
+    summary: "A representative end user of the example product."
+    edges: {}
+
+  - schema: graph/feature/v0
+    id: feature-example-widget
+    title: Example widget
+    status: shipped
+    visibility: public
+    summary: "A small example capability, just to exercise the graph."
+    edges:
+      owned_by: [actor-example-user]
+      requirements: [requirement-example-latency]
+
+  - schema: graph/requirement/v0
+    id: requirement-example-latency
+    title: Responds within 200ms
+    status: shipped
+    visibility: public
+    statement: "The widget must respond to user input within 200ms."
+    edges:
+      required_by: [feature-example-widget]

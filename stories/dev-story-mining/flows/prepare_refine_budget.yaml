@@ -1,0 +1,33 @@
+# prepare_refine_budget - refining past the prepare budget bails to abandoned.
+#
+# Exercises the new deterministic source-planning checkpoint budget. The source
+# summary is seeded so the guarded Starlark call does not run; this fixture is
+# only about the budget guard.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: prepare
+initial_world:
+  job: "intents-20260615"
+  transcript_sources: "claude,codex"
+  codex_sessions_dir: "~/.codex/sessions"
+  stories_dir: "stories"
+  target_artifacts: "stories,rooms,starlark,hub-routes,skills,hooks"
+  judge_mode: "human"
+  prepare_cycle: 3
+  prepare_budget: 3
+  source_plan_artifact:
+    schema: "dev-story-mining-source-plan/v1"
+    sources: [{ id: "claude" }, { id: "codex" }]
+    artifact_classes: [{ kind: "STARLARK-SCRIPT" }]
+  source_summary_markdown: "Source plan present but the operator keeps rejecting it."
+
+turns:
+  - intent: { name: refine, slots: { feedback: "drop Codex from this run" } }
+    expect_state: __exit__abandoned
+    expect_world:
+      abandon_reason: "prepare_cycle_budget_exhausted"
+      status: "abandoned"
+
+expect_terminal: true
+expect_no_errors: true

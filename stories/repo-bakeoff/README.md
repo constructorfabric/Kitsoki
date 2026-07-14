@@ -1,4 +1,9 @@
-# repo-bakeoff — generate & execute an external-repo bug-fix bake-off
+# repo-bakeoff — optional external evaluation workflow
+
+> **Not project CI.** This story is an operator-facing wrapper around the
+> external evaluation adapter. Native pinned Capsules own source lifecycle and
+> Capsule CI owns normal project validation. Use this only for hidden-oracle
+> model evaluation, never as a general workspace/runtime path.
 
 A drivable kitsoki story that wraps the **`external-repo-bakeoff`** method
 ([`.agents/skills/external-repo-bakeoff/SKILL.md`](../../.agents/skills/external-repo-bakeoff/SKILL.md))
@@ -19,7 +24,7 @@ each fix against the PR's own hidden oracle, and deck it.
 For a private/heavy repo, seed `repo_dir` with a local checkout path. The story's
 `prepare` room passes it to `bench.py preflight --repo-dir`,
 `bench.py verify --repo-dir`, and `prepare_handoffs.sh --repo-dir`, so local
-checkout, candidate profile, commit, oracle, RED/GREEN arming, no-drive worktree
+checkout, candidate profile, commit, oracle, RED/GREEN arming, no-drive Capsule
 prep, and MCP prompt leak-audit gates all run before any model spend. Commands
 are scoped to `world.bugs`, so a one-bug smoke does not arm or prepare the whole
 manifest.
@@ -108,7 +113,7 @@ or real-fix hints leak into the MCP prompt.
 The `running` room then computes the copy-ready live commands with:
 
 ```sh
-python3 bench.py drive-plan \
+host.bakeoff.run --op bench --cwd tools/bugfix-bakeoff/external -- drive-plan \
   --project gears-rust \
   --bug bug1,bug4 \
   --candidate opus-4.8,gpt-5.3-spark \

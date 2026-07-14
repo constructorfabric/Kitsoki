@@ -37,6 +37,8 @@ steps:
         text: prd
       - type: click-intent
         intent: core__prd__start
+      - type: click-selector
+        selector: '[data-testid="new-session-btn"]'
       - type: reveal-turn
       - type: dwell-ms
         ms: 500
@@ -55,8 +57,8 @@ steps:
 		t.Fatalf("want 2 steps, got %d", len(m.Steps))
 	}
 	d := m.Steps[1].Drive
-	if len(d) != 5 {
-		t.Fatalf("want 5 drive actions, got %d", len(d))
+	if len(d) != 6 {
+		t.Fatalf("want 6 drive actions, got %d", len(d))
 	}
 	cases := []struct {
 		typ, field, want string
@@ -65,6 +67,7 @@ steps:
 		{DriveWaitState, "state", "core.main", 0},
 		{DriveTypeAndSend, "text", "prd", 0},
 		{DriveClickIntent, "intent", "core__prd__start", 0},
+		{DriveClickSelector, "selector", "[data-testid=\"new-session-btn\"]", 0},
 		{DriveRevealTurn, "", "", 0},
 		{DriveDwellMs, "ms", "", 500},
 	}
@@ -85,6 +88,10 @@ steps:
 			if d[i].Intent != c.want {
 				t.Errorf("drive[%d] intent = %q, want %q", i, d[i].Intent, c.want)
 			}
+		case "selector":
+			if d[i].Selector != c.want {
+				t.Errorf("drive[%d] selector = %q, want %q", i, d[i].Selector, c.want)
+			}
 		case "ms":
 			if d[i].Ms != c.num {
 				t.Errorf("drive[%d] ms = %d, want %d", i, d[i].Ms, c.num)
@@ -97,26 +104,28 @@ steps:
 // Go mirror of the TS schema's superRefine cross-field check.
 func TestDriveAction_Validate(t *testing.T) {
 	bad := []DriveAction{
-		{Type: DriveTypeAndSend}, // missing text
-		{Type: DriveClickIntent}, // missing intent
-		{Type: DriveWaitState},   // missing state
-		{Type: DriveDwellMs},     // missing ms
-		{Type: "nope"},           // unknown
+		{Type: DriveTypeAndSend},   // missing text
+		{Type: DriveClickIntent},   // missing intent
+		{Type: DriveClickSelector}, // missing selector
+		{Type: DriveWaitState},     // missing state
+		{Type: DriveDwellMs},       // missing ms
+		{Type: "nope"},             // unknown
 	}
 	for _, a := range bad {
-		if err := a.validate(); err == nil {
+		if err := a.Validate(); err == nil {
 			t.Errorf("expected %q to be invalid", a.Type)
 		}
 	}
 	good := []DriveAction{
 		{Type: DriveTypeAndSend, Text: "x"},
 		{Type: DriveClickIntent, Intent: "i"},
+		{Type: DriveClickSelector, Selector: "[data-testid=x]"},
 		{Type: DriveWaitState, State: "s"},
 		{Type: DriveDwellMs, Ms: 1},
 		{Type: DriveRevealTurn},
 	}
 	for _, a := range good {
-		if err := a.validate(); err != nil {
+		if err := a.Validate(); err != nil {
 			t.Errorf("expected %q to be valid: %v", a.Type, err)
 		}
 	}

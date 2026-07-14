@@ -1,0 +1,56 @@
+# An autonomous LLM judge may say accept, but that must never bypass a failed
+# deterministic strict-path gate. A human/driver accept then routes back to
+# implementation with the gate diagnostic.
+test_kind: flow
+app: ../app.yaml
+initial_state: testing
+initial_world:
+  ticket_id: "TKT-LLM-STRICT"
+  ticket_title: "The public fix must touch the named source file."
+  thread: "TKT-LLM-STRICT"
+  workdir: "/tmp/contract-stub"
+  bugfix_mode: "quick"
+  judge_mode: "llm"
+  acceptance_contract:
+    - id: source-path
+      description: "public source file changes"
+      required_paths: ["internal/host/validator_sandbox.go"]
+  propose_fix_artifact: { summary_title: "stub", summary_markdown: "stub" }
+host_handlers:
+  host.local:
+    data: { ok: true, passed: 1, failed: 0, log: "green" }
+  host.run:
+    data:
+      ok: true
+      exit_code: 0
+      stdout: "internal/host/agent_decide.go\n"
+      stdout_json: { dirty: false, files: "" }
+  host.git:
+    data: { ok: true, sha: "abc" }
+  host.agent.task:
+    data:
+      submitted:
+        summary_title: "Green but incomplete path"
+        summary_markdown: "A receipt exists but the required source file was not changed."
+        status: "passed"
+        tests_added: []
+        tests_run: { passed: 1, failed: 0, skipped: 0, log: "green" }
+        blockers: []
+        acceptance_coverage:
+          - { requirement_id: "source-path", test_path: "internal/host/agent_decide_test.go", assertion: "path behavior checked" }
+  host.agent.decide:
+    data:
+      submitted: { intent: "accept", reason: "LLM says green", confidence: 0.99, verdict: "pass" }
+turns:
+  - intent: { name: refine, slots: { feedback: "run strict LLM gate" } }
+    expect_state: testing
+    expect_world:
+      acceptance_gate:
+        ok: false
+        missing: ["source-path@internal/host/validator_sandbox.go"]
+        summary: "missing direct assertion receipts for: source-path@internal/host/validator_sandbox.go"
+  - intent: { name: accept, slots: {} }
+    expect_state: implementing
+    expect_world:
+      refine_feedback: "Strict acceptance contract is incomplete: missing direct assertion receipts for: source-path@internal/host/validator_sandbox.go"
+expect_no_errors: true

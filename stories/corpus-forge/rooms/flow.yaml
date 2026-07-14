@@ -1,0 +1,81 @@
+states:
+  idle:
+    view:
+      - heading: "Corpus Forge"
+      - prose: "Load source-neutral corpus-case.v1 proposals, inspect and independently prove RED/GREEN, then freeze either a calibration or heldout receipt."
+      - kv:
+          pairs:
+            role: "{{ world.corpus_role }}"
+            source: "{{ world.source_manifest_ref|default:'seeded Studio world' }}"
+    on: { start: [{ target: load }], quit: [{ target: "@exit:abandoned" }], look: [{ target: . }] }
+
+  load:
+    view:
+      - heading: "Corpus Forge · inspect intake"
+      - prose: "Validating canonical intake records; imported verified_red/verified_green flags are ignored."
+      - code: "{{ world.source_candidates|default:'[]' }}"
+    on_enter:
+      - invoke: host.starlark.run
+        id: corpus_load_candidates
+        with:
+          script: scripts/load_candidates.star
+          inputs: { candidates: "{{ world.source_candidates }}" }
+        bind: { loaded_candidates: candidates }
+        on_error: failed
+    on: { accept: [{ target: select }], quit: [{ target: "@exit:abandoned" }], look: [{ target: . }] }
+
+  select:
+    view:
+      - heading: "Corpus Forge · select and freeze"
+      - prose: "Selection is ID-sorted. Freeze calibration and heldout as separate receipts."
+      - code: "{{ world.selected_ids|default:'(pending)' }}"
+    on_enter:
+      - invoke: host.starlark.run
+        id: corpus_select
+        with:
+          script: scripts/select_corpus.star
+          inputs:
+            candidates: "{{ world.loaded_candidates }}"
+            task_limit: "{{ world.task_limit }}"
+            corpus_role: "{{ world.corpus_role }}"
+        bind: { selected_candidates: candidates, selected_ids: selected_ids }
+        on_error: failed
+    on: { accept: [{ target: validate }], quit: [{ target: "@exit:abandoned" }], look: [{ target: . }] }
+
+  validate:
+    view: [{ heading: "Corpus Forge · prove" }, { code: "{{ world.validation|default:'(pending)' }}" }]
+    on_enter:
+      - invoke: host.starlark.run
+        id: corpus_validate_manifest
+        with:
+          script: scripts/validate_manifest.star
+          capabilities: { host: { verbs: [host.corpus.prove] } }
+          inputs: { candidates: "{{ world.selected_candidates }}" }
+        bind: { proofs: proofs, validation: validation }
+        on_error: failed
+    on: { accept: [{ target: receipt }], quit: [{ target: "@exit:abandoned" }], look: [{ target: . }] }
+
+  receipt:
+    view:
+      - heading: "Corpus Forge · frozen receipt"
+      - prose: "This receipt records the role, source reference, selected candidates, and independent proof evidence."
+      - code: "{{ world.receipt|default:'(pending)' }}"
+    on_enter:
+      - invoke: host.starlark.run
+        id: corpus_build_receipt
+        with:
+          script: scripts/build_receipt.star
+          capabilities: { host: { verbs: [host.corpus.freeze_receipt] } }
+          inputs:
+            selection_id: "{{ world.selection_id }}"
+            corpus_role: "{{ world.corpus_role }}"
+            source_manifest_ref: "{{ world.source_manifest_ref }}"
+            candidates: "{{ world.selected_candidates }}"
+            proofs: "{{ world.proofs }}"
+        bind: { receipt: receipt }
+        on_error: failed
+    on: { accept: [{ target: "@exit:done" }], quit: [{ target: "@exit:abandoned" }], look: [{ target: . }] }
+
+  failed:
+    view: [{ heading: "Corpus Forge · rejected" }, { code: "{{ world.last_error|default:'Proof or control-plane failure' }}" }]
+    on: { quit: [{ target: "@exit:abandoned" }], look: [{ target: . }] }

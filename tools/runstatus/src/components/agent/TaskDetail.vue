@@ -45,7 +45,7 @@
 
       <CollapsibleText label="System Prompt" :text="systemPrompt" />
       <CollapsibleText label="Prompt" :text="prompt" />
-      <CollapsibleText label="Response" :text="responseText" />
+      <CollapsibleText label="Response" :text="responseText" markdown />
     </template>
 
     <!-- Tool transcript tab -->

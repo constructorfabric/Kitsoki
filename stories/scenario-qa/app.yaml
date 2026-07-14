@@ -1,0 +1,400 @@
+# scenario-qa — "check this scenario in the TUI / on web / on CLI / on all transports"
+# as one drivable pipeline: plan a run bundle scoped to the requested
+# transport(s), drive the reusable product-journey-qa-driver PER TRANSPORT LEG
+# (transport-pinned, overriding its usual cheapest-surface heuristic), judge
+# each leg's captured evidence independently (kitsoki-ui-qa posture — never
+# trust the driver's own report), then fold every leg's outcome into ONE
+# per-transport verdict table -- report.md (Starlark) and deck.slidey.json
+# (run.py --scenario-qa-report) -- with VS Code legs labeled "bridge-level"
+# and CLI legs labeled "terminal-level".
+#
+# This story is the operator-facing Persona QA product surface. It wraps the
+# deterministic product-journey runner directly for scenario/persona/transport
+# resolution, then hands one transport-pinned leg at a time to the reusable
+# .agents/agents/product-journey-qa-driver.md capture agent. Lower-level Python
+# modules under tools/ are implementation adapters for deterministic planning,
+# schema validation, deck folding, and tests; operators should not need to find
+# or drive those modules directly.
+#
+# # Pipeline
+#
+#   idle → plan → resolve → execute → judge → recording → report
+#                               ^________________|
+#             (default pause=auto: `recording` self-emits "next leg" and the
+#              loop drains every transport leg in one turn — "check bugfix
+#              on all transports" → a single report, no per-leg ceremony.
+#              pause=each-leg opts back into the old ceremony: recording
+#              pauses for an explicit "next leg" per turn. Either way each
+#              leg is still its own execute → judge → recording hop; the
+#              per-leg emit chain (~3 emit_intent hops) stays well under the
+#              engine's EmitIntentMaxDepth even fully auto-chained across
+#              every transport known today — see recording.yaml's header
+#              comment for the measured budget.)
+#
+#   idle       operator surface: "check" a scenario (catalog id or a free-text
+#              description) on one or more transports.
+#   plan       host.product_journey.run → tools/product-journey/run.py --emit-run --transport
+#              <...> builds the run bundle (project/persona resolution,
+#              evidence dirs).
+#   resolve    scripts/plan_legs.star reads the bundle back into scenario x
+#              transport legs; for a free-text ad-hoc scenario, it first
+#              DRAFTS a scenario entry (id/task/success_criteria) and splices
+#              it into the transport legs `plan` already resolved for a
+#              generic carrier scenario, rather than reinventing project/
+#              persona resolution or the transport evidence contract. A
+#              separate room from `plan` on purpose: a same-room
+#              self-transition does not re-run on_enter in this engine, so a
+#              second host call that depends on the first's bind needs a
+#              genuinely different room to see it within the same turn.
+#   execute    dispatch the driver agent for the CURRENT leg, transport-pinned
+#              (the handoff's "transport:" pin overrides the driver's usual
+#              cheapest-surface heuristic). A dead/failed driver still may
+#              have captured partial evidence — judge re-checks regardless.
+#   judge      independently judge the current leg's captured evidence (the
+#              kitsoki-ui-qa posture: read-only, cites concrete frames, never
+#              a bare "looks good"). This is the grade, not the driver's word.
+#   recording  accumulate this leg's driver+judge outcome; drained → auto
+#              advance to report; otherwise pause for the next "next leg".
+#   report     fold every leg's outcome into report.md AND deck.slidey.json
+#              under the run dir — the ONE per-transport verdict table.
+
+app:
+  id: scenario-qa
+  version: 0.1.0
+  title: "Scenario QA — check a scenario across transports"
+  author: "Kitsoki"
+  license: "CC0"
+
+# Host allow-list.
+#   host.product_journey.run — explicit external boundary to
+#                        tools/product-journey/run.py --emit-run to
+#                        build the scenario/persona/transport run bundle
+#                        (project + persona resolution, evidence dirs,
+#                        driver-plan.json), then --scenario-qa-report to fold
+#                        the recorded leg_results into deck.slidey.json
+#                        (reuses run.py's Slidey deck-shape validator rather
+#                        than reimplementing it in Starlark).
+#   host.starlark.run  — deterministic glue: draft an ad-hoc scenario onto the
+#                        resolved transport legs, pick the current leg by
+#                        index, accumulate per-leg driver+judge outcomes, and
+#                        fold everything into report.md.
+#   host.agent.task    — the LIVE per-leg work: dispatch the reusable
+#                        product-journey-qa-driver agent (transport-pinned)
+#                        to capture evidence, then dispatch a read-only judge
+#                        agent using the kitsoki-ui-qa posture to grade it.
+#                        Stubbed by id under flow/no-LLM tests; never
+#                        fabricated — a failed dispatch is recorded honestly.
+#   host.run           — execute the already-planned product-journey command
+#                        for each transport leg. The journey rooms invoke this
+#                        boundary directly, so it must be part of the story's
+#                        explicit host contract (and is inherited by persona-qa).
+hosts:
+  - host.run
+  - host.product_journey.run
+  - host.starlark.run
+  - host.agent.task
+  - host.run
+
+# Personas. Both are thin attachment points for the real work: the driver
+# delegates to .agents/agents/product-journey-qa-driver.md's own transport
+# discipline and preflight; the judge follows the kitsoki-ui-qa skill's
+# grounded-verdict posture (every pass cites a frame; no frame, no pass).
+agents:
+  driver:
+    system_prompt: >-
+      You are the reusable product-journey QA driver
+      (.agents/agents/product-journey-qa-driver.md). Drive ONE
+      product-journey scenario leg pinned to a SINGLE transport named in
+      your handoff — that pin OVERRIDES your usual cheapest-surface
+      heuristic. Preflight the transport's visual tools before capturing; if
+      they come back JSON-degraded, stop and report status
+      "degraded-evidence" with the exact blocker rather than fabricating a
+      screenshot. Capture the evidence this transport's contract requires,
+      then report what you actually captured — you do not grade yourself.
+    model: claude-sonnet-4-6
+    tools: [Read, Grep, Glob, Bash, mcp__kitsoki__studio_ping, mcp__kitsoki__studio_handles, mcp__kitsoki__session_new, mcp__kitsoki__session_attach, mcp__kitsoki__session_drive, mcp__kitsoki__session_submit, mcp__kitsoki__session_continue, mcp__kitsoki__session_status, mcp__kitsoki__session_world, mcp__kitsoki__session_trace, mcp__kitsoki__session_close, mcp__kitsoki__render_tui, mcp__kitsoki__render_tui_png, mcp__kitsoki__visual_open, mcp__kitsoki__visual_observe, mcp__kitsoki__visual_act]
+    effect: external
+  judge:
+    system_prompt: >-
+      You are a read-only UI QA judge following the kitsoki-ui-qa skill's
+      posture. Given a transport, the scenario's success criteria, and a
+      frames/evidence directory, judge whether the CAPTURED evidence for
+      THIS transport leg actually proves the scenario — cite a concrete
+      frame or trace path for every pass. A claim with no citable evidence
+      is "unsupported", never a bare pass. If the driver reported
+      "degraded-evidence" or a blocker, verdict is "degraded-evidence" —
+      do not paper over a missing capture.
+    model: claude-sonnet-4-6
+    tools: [Read, Glob, Bash]
+    bash_profile: read-only
+
+world:
+  # ── request ────────────────────────────────────────────────────────────
+  scenario_ref:         { type: string, default: "" }   # catalog scenario id, e.g. "bugfix"
+  scenario_description: { type: string, default: "" }   # free-text ad-hoc scenario, if no scenario_ref
+  transport_arg:        { type: string, default: "all" } # raw --transport value: tui|web|vscode|cli, comma list, or "all"
+  persona:              { type: string, default: "" }
+  target:               { type: string, default: "" }   # --project, or primary_story override for an ad-hoc scenario
+  seed:                 { type: string, default: "scenario-qa" }
+  live_profile:         { type: string, default: "" }   # harness profile the driver passes to nested live session.new calls
+  live_budget_minutes:  { type: int, default: 0 }   # caller override for run.py --live-budget-minutes; 0 = run.py's own default (20)
+  mode:                 { type: string, default: "catalog" } # catalog | adhoc
+  pause:                { type: string, default: "auto" } # auto (default: drain every leg without an operator turn) | each-leg (opt-out: pause at `recording` for an explicit "next transport")
+  # P2.10 "parallel legs via arena" (opt-in): "true" hands the resolved legs
+  # to arena's persona-qa job type (rooms/parallel.yaml) instead of the
+  # serial execute -> judge -> recording loop rooms/plan.yaml routes to by
+  # default ("false"). Always zero-LLM-spend -- see
+  # tools/arena/scripts/run_scenario_qa_legs_parallel.py's scope note.
+  parallel:             { type: string, default: "false" }
+  request_status:       { type: object, default: {} }
+
+  # ── run bundle ─────────────────────────────────────────────────────────
+  transport_suite:       { type: object, default: {} }   # side-effect-free preview from run.py --transport-suite
+  suite_status:          { type: string, default: "" }
+  suite_leg_count:       { type: int, default: 0 }
+  suite_skipped_count:   { type: int, default: 0 }
+  suite_summary:         { type: string, default: "" }
+  suite_plan:            { type: string, default: "" }
+  run_id:               { type: string, default: "" }
+  run_dir:              { type: string, default: "" }    # absolute — for the driver's own tools and display
+  run_dir_rel:          { type: string, default: "" }    # repo-relative — for this story's own ctx.fs reads/writes
+  scenario_workspace:   { type: object, default: {} }    # managed capsule workspace used for the current check run
+  scenario_workspace_root: { type: string, default: "" }
+  scenario_workspace_id: { type: string, default: "" }
+  driver_plan_path:     { type: string, default: "" }
+  execution_plan_path:  { type: string, default: "" }
+  agent_brief_path:     { type: string, default: "" }
+  driver_agent:         { type: string, default: ".agents/agents/product-journey-qa-driver.md" }
+
+  # ── per-leg loop ───────────────────────────────────────────────────────
+  # plan_status is a dedicated marker (NOT leg_count/legs directly): `plan`'s
+  # routing guard needs to defer until plan_legs's bind actually lands, which
+  # this engine only does for a `when:`+`emit_intent:` that ERRORS pre-bind —
+  # a field read on a `{}`-default object does that; `len()` on a missing
+  # list field does NOT (it tolerates a nil list as length 0 and decides
+  # immediately against stale data instead of deferring). See plan.yaml.
+  plan_status:          { type: object, default: {} }
+  legs:                 { type: object, default: {} }             # resolved scenario x transport legs
+  # Fail-closed harness selection (issue group B / bug #105): one entry per
+  # leg that needs interpretive/live drive and has no profile= authorization,
+  # computed deterministically by scripts/plan_legs.star and surfaced up
+  # front by rooms/plan.yaml + rooms/execute.yaml before any leg is driven.
+  live_authorization_summary: { type: list, default: [] }
+  # P2.10 "parallel legs via arena": transient -- rooms/parallel.yaml's own
+  # host.product_journey.run bind, consumed by the SAME turn's record_leg_result invoke
+  # (legs_batch: input) and never read anywhere else.
+  parallel_records:     { type: list, default: [] }
+  # Dedicated resolved-marker so rooms/parallel.yaml can defer its
+  # `emit_intent: legs_drained` guard until record_leg_result's bind lands
+  # -- mirrors plan_status; see record_leg_result.star's own comment.
+  record_status:        { type: object, default: {} }
+  leg_index:            { type: int, default: 0 }
+  leg_count:            { type: int, default: 0 }
+  current_leg:          { type: object, default: {} }
+  current_leg_id:       { type: string, default: "" }
+  current_leg_json:     { type: string, default: "{}" }  # JSON form for agent prompt args
+  drive_result_json:    { type: string, default: "{}" }  # JSON form for the judge prompt
+  drive_result:         { type: object, default: {} }
+  judge_result:         { type: object, default: {} }
+  leg_results:          { type: object, default: { items: [] } }  # accumulated per-leg outcomes
+  pass_count:           { type: int, default: 0 }
+  fail_count:           { type: int, default: 0 }
+  degraded_count:       { type: int, default: 0 }
+
+  # ── report ─────────────────────────────────────────────────────────────
+  report_path:          { type: string, default: "" }
+  report_summary:       { type: string, default: "" }
+  deck_path:            { type: string, default: "" }  # deck.slidey.json, folded by run.py --scenario-qa-report
+  deck_error:           { type: string, default: "" }  # set when deck generation fails; report.md still succeeds
+
+  # ── project journey-pack lifecycle ─────────────────────────────────────
+  # The story remains the operator front door. These values intentionally hold
+  # only repo-relative source paths; run/artifact paths are supplied by the
+  # explicit lifecycle commands and never written into project source.
+  journey_path:         { type: string, default: ".kitsoki/qa/journeys/onboarding/journey.yaml" }
+  journey_action:       { type: string, default: "" }
+  journey_flow:         { type: string, default: ".kitsoki/qa/journeys/onboarding/flows/accepted.yaml" }
+  journey_artifacts:    { type: string, default: "" }
+  journey_origin_trace: { type: string, default: "" }
+  journey_cassette:     { type: string, default: "" }
+  journey_tour:         { type: string, default: "" }
+  journey_deck:         { type: string, default: "" }
+  journey_result:       { type: object, default: {} }
+  journey_output:       { type: string, default: "" }
+
+  # ── misc / diagnostics ───────────────────────────────────────────────────
+  last_result:          { type: object, default: {} }
+  last_error:           { type: string, default: "" }
+  status:               { type: string, default: "idle" }
+
+intents:
+  check_request:
+    title: "check a scenario request"
+    description: "Check an arbitrary scenario request. The request may be plain prose, a catalog id, or prose plus key=value qualifiers."
+    examples:
+      - "settings validation persists transport=web"
+      - "scenario=prd-design transport=tui,web persona=core-maintainer target=gears-rust"
+      - "check whether the onboarding tour renders on web"
+    priority: 95
+    slots:
+      request: { type: string, required: true }
+  preview_request:
+    title: "preview a scenario request"
+    description: "Dry-run an arbitrary scenario request. The request may be plain prose, a catalog id, or prose plus key=value qualifiers."
+    synonyms:
+      - "preview {request}"
+      - "dry run {request}"
+      - "show plan for {request}"
+    examples:
+      - "preview required user input affordance transport=web,tui target=kitsoki"
+      - "dry run onboarding tour renders transport=web"
+      - "preview scenario=bugfix transport=all"
+    priority: 98
+    slots:
+      request: { type: string, required: true }
+  check:
+    description: "Check a scenario (a catalog scenario id, or a free-text description) across one or more transports."
+    synonyms:
+      - "check {scenario} across {transport} transports for {persona} on {target}"
+      - "check {scenario} across {transport} transports for {persona} against {target}"
+      - "check {scenario} across {transport} transports"
+      - "check {scenario} on {transport} for {persona} on {target}"
+      - "check {scenario} on {transport}"
+      - "check {scenario} in {transport}"
+      - "check whether {description} on {transport}"
+      - "check whether {description} across {transport} transports"
+      - "verify {scenario} on {transport}"
+      - "verify whether {description} on {transport}"
+      - "test {scenario} on {transport}"
+      - "test whether {description} on {transport}"
+      - "check scenario {scenario} transport {transport} persona {persona} target {target}"
+      - "check scenario {scenario} transport {transport}"
+    priority: 90
+    slots:
+      scenario:     { type: string, required: false }
+      description:  { type: string, required: false }
+      transport:    { type: string, required: false }
+      persona:      { type: string, required: false }
+      target:       { type: string, required: false }
+      seed:         { type: string, required: false }
+      profile:      { type: string, required: false }  # harness profile for the driver's nested LIVE sessions (e.g. claude-native)
+      live_budget_minutes: { type: int, required: false }  # override run.py's default per-scenario live budget (20 min)
+      pause:        { type: string, required: false }  # auto (default) drains every leg automatically; each-leg pauses at `recording` for an explicit "next transport"
+      parallel:     { type: string, required: false }  # "true" hands the resolved legs to arena's persona-qa job type instead of the serial loop (P2.10, zero-LLM-spend)
+  preview:
+    description: "Preview the deterministic scenario x transport suite without creating a run bundle or launching capture."
+    synonyms:
+      - "preview {scenario} across {transport} transports"
+      - "preview {scenario} on {transport}"
+      - "preview {scenario} in {transport}"
+      - "preview scenario {scenario} transport {transport}"
+      - "dry run {scenario} across {transport} transports"
+      - "show transport plan for {scenario} on {transport}"
+    priority: 75
+    slots:
+      scenario:  { type: string, required: false }
+      transport: { type: string, required: false }
+  journey_bootstrap:
+    title: "bootstrap journey pack"
+    description: "Create the portable project-local onboarding journey-pack source skeleton."
+    examples: ["bootstrap onboarding QA for this project"]
+    priority: 72
+  journey_preview:
+    title: "preview journey pack"
+    description: "Preview the journey's persona x scenario x transport matrix without writes or model calls."
+    examples: ["preview the onboarding journey"]
+    priority: 72
+    slots:
+      journey: { type: string, required: false }
+  journey_check:
+    title: "check frozen journey"
+    description: "Run the journey's deterministic no-LLM replay fixture."
+    examples: ["check the frozen onboarding journey"]
+    priority: 72
+    slots:
+      journey: { type: string, required: false }
+      flow: { type: string, required: false }
+      artifacts: { type: string, required: false }
+  journey_freeze:
+    title: "freeze accepted journey"
+    description: "Verify an accepted origin trace against its no-LLM flow and cassette."
+    priority: 72
+    slots:
+      journey: { type: string, required: false }
+      origin_trace: { type: string, required: true }
+      flow: { type: string, required: true }
+      cassette: { type: string, required: true }
+      artifacts: { type: string, required: false }
+  journey_produce:
+    title: "produce journey artifacts"
+    description: "Generate protected tutorial content and tour inputs from a passed freeze receipt."
+    priority: 72
+    slots:
+      journey: { type: string, required: false }
+      artifacts: { type: string, required: false }
+  journey_publish:
+    title: "publish journey release"
+    description: "Publish only a real-origin, replay-passed journey with its required proof artifacts."
+    priority: 72
+    slots:
+      journey: { type: string, required: false }
+      artifacts: { type: string, required: false }
+      tour: { type: string, required: true }
+      deck: { type: string, required: true }
+  journey_status:
+    title: "journey status"
+    description: "Show the current receipts and blockers for a project journey pack."
+    priority: 72
+    slots:
+      journey: { type: string, required: false }
+      artifacts: { type: string, required: false }
+  # ── internal loop drivers (emitted by on_enter, not typed by an operator) ──
+  run_emitted:
+    description: "(internal) the run bundle's project/persona resolution committed; re-enter plan to resolve transport legs."
+    priority: 1
+  legs_ready:
+    description: "(internal) the run bundle and per-transport legs resolved; enter the per-leg loop."
+    priority: 1
+  legs_ready_parallel:
+    description: "(internal) the run bundle and per-transport legs resolved with parallel=true; hand them to arena's persona-qa job type."
+    priority: 1
+  legs_unresolved:
+    description: "(internal) no legs resolved for this scenario/transport combination."
+    priority: 1
+  leg_driven:
+    description: "(internal) the current leg's driver dispatch finished; route to judge."
+    priority: 1
+  leg_judged:
+    description: "(internal) the current leg's judge verdict came back; route to recording."
+    priority: 1
+  legs_drained:
+    description: "(internal) every leg has a recorded driver+judge outcome; build the report."
+    priority: 1
+  # ── operator-paced loop control ───────────────────────────────────────────
+  next_leg:
+    title: "next transport"
+    description: "Advance to and drive the next transport check (one transport per turn keeps the internal emit chain bounded)."
+    examples: ["next transport", "next leg", "continue", "drive the next one", "continue to the next transport"]
+    priority: 60
+  report:
+    description: "(Re)build report.md from the current run's per-leg driver and judge outcomes."
+    examples: ["report", "build the report", "show the verdict table"]
+    priority: 55
+  main_room:
+    title: "main room"
+    description: "Return to the Scenario QA main room without discarding the last run."
+    examples: ["main room", "back to main", "home", "start over"]
+    priority: 50
+  status:
+    description: "Show current scenario-qa progress: plan, per-leg outcomes, and report state."
+    examples: ["status", "show me", "where are we", "progress"]
+    priority: 20
+  look:
+    description: "Re-render the current view."
+    examples: ["look", "refresh", "?"]
+    priority: 10
+
+root: idle
+
+include:
+  - rooms/*.yaml

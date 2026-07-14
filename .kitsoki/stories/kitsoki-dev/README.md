@@ -1,25 +1,26 @@
-# kitsoki-dev — the dogfood instance
+# kitsoki-dev — the self-hosted dev-story instance
 
-The dogfood instance described in the
-[bug-fix case study](../../../docs/case-studies/bug-fix.md).
-This is the PoC milestone (★): **kitsoki working on kitsoki through
-its own UI**, with the bug file as both ticket and conversation log.
+This is the project-owned wrapper for running `@kitsoki/dev-story` against the
+Kitsoki checkout. It is the golden example for reusable dev-story instances:
+the app imports the shared story under `core`, keeps project defaults in
+`world:`, and binds provider interfaces without forking shared rooms. Local
+artifact bug files stay the default developer loop. The fork and upstream
+GitHub repositories appear beside them as separately named sources.
 
-The whole app is ~25 lines of YAML that imports `stories/dev-story/`
-under the alias `core` and binds five `host_interfaces:` to concrete
-providers:
+The app imports `stories/dev-story/` under the alias `core` and binds five
+`host_interfaces:` to concrete providers:
 
 | iface       | binding                  | what it does                                                     |
 |-------------|--------------------------|------------------------------------------------------------------|
-| `ticket`    | `host.local_files.ticket`| reads `issues/bugs/*.md` (+ feature files); transitions status   |
+| `ticket`    | `host.ticket_federation`  | composes ordered local and remote sources; routes every operation to the selected source |
 | `vcs`       | `host.git`               | local git CLI — branch, commit, diff, push, open_pr, merge       |
 | `ci`        | `host.local`             | `go test ./...` and friends                                      |
-| `workspace` | `host.git_worktree`      | `.worktrees/<task>` per ticket                                   |
+| `workspace` | `host.capsule_workspace` | managed Capsule workspaces from `.kitsoki/capsules/development.yaml` |
 | `transport` | `host.append_to_file`    | appends `## Comment <iso> by <author>` blocks INTO the bug file  |
 
-The bug file IS the conversation log — every checkpoint artifact
-(post, judge verdict, operator reply) gets appended. Nothing is lost
-when the session ends.
+For local artifact tickets, the bug file IS the conversation log — every
+checkpoint artifact (post, judge verdict, operator reply) gets appended.
+GitHub-sourced tickets carry their issue URL/thread instead.
 
 ---
 
@@ -40,6 +41,21 @@ there:
 > start                 # → core.bf.reproducing_executing
 > proceed → accept …    # walk the 8-room pipeline
 ```
+
+For repository-wide test repair, use the imported `fix-tests` loop directly:
+
+```
+> fix tests             # core__go_fix_tests; runs make test by default
+```
+
+That loop uses a bounded quick gate for repair cycles, then returns to
+`core.landing` only after the full deterministic command is green and the
+read-only review gate confirms no tests were weakened and no functionality was
+lost. The full command is `make test`; the quick self-instance command is
+`go test -short -count=1 ./cmd/kitsoki ./internal/mcp/studio ./internal/host ./internal/app`
+with a 180 second timeout. `-count=1` keeps the quick gate from passing on stale
+Go test cache. Override `test_cmd`, `quick_test_cmd`, or the timeout fields in a
+warp/profile when a project needs a different gate.
 
 When the bugfix pipeline reaches `@exit:done`, dev-story hands off
 into `pr-refinement` (a.k.a. `core.pr.open_pr`). The PR is opened via
@@ -94,51 +110,52 @@ canned closed-loop tests:
 
 | Fixture                                  | What it proves                                                                  |
 |------------------------------------------|---------------------------------------------------------------------------------|
-| `flows/dogfood_smoke.yaml`               | the app loads; `iface.ticket.list_mine` resolves; navigation lifts work          |
+| `flows/self_host_smoke.yaml`             | the app loads; `iface.ticket.list_mine` resolves; navigation lifts work          |
+| `flows/ticket_source_pick_routes.yaml`   | local, fork, and upstream groups keep global indices and exact source routing |
+| `flows/local_named_bug_intake_routes.yaml` | `fix local bug <id>` becomes a source-qualified local ref before bugfix |
+| `flows/fix_tests_autonomous.yaml`        | `core__go_fix_tests` runs quick/full make-test gates plus review and returns to landing |
+| `flows/idea_uses_context_workspace.yaml` | the idea/proposal room writes workspaces under `.context/designs`, not protected `docs/proposals/.workspace` |
 | `flows/pickup_self_bug_supervised.yaml`  | 18-turn supervised walk: ticket pick → bf 8-room → @exit:done → pr → @exit:merged → main |
 | `flows/pickup_story_bug_supervised.yaml` | same walk against `stories/oregon-trail/issues/bugs/<id>.md`; proves multi-glob coverage |
 | `flows/pickup_autonomous_then_bail.yaml` | `llm_then_human` auto-fires 2 checkpoints → operator flips mode → state HOLDS → manual accept resumes |
 
-All four use stubbed `host_handlers:` — no real LLM, git, or file
+These fixtures use stubbed `host_handlers:` — no real LLM, git, or file
 I/O. The on-disk smoke is documented below under "Manual
 walkthrough".
 
 ---
 
-## ticket_globs — what the multi-glob covers
+## Ticket sources
 
-The instance world key `ticket_globs:` documents the FULL scan
-surface for forward compatibility:
+`kitsoki-dev` presents three ordered, independently labelled sources in the
+same picker:
 
 ```
-issues/bugs/*.md                   — kitsoki self-bugs
-issues/features/*.md               — kitsoki PRD-track features
-stories/*/issues/bugs/*.md         — per-story bugs (story authoring)
-stories/*/issues/features/*.md     — per-story features
+.artifacts/issues/bugs/*.md       — local developer bugs
+.artifacts/issues/features/*.md   — local feature tickets
+.artifacts/issues/epics/*.md      — local epics
+bsacrobatix/Kitsoki                — fork GitHub issues
+constructorfabric/Kitsoki          — upstream GitHub issues
 ```
 
-A bug filed via `/meta story bug` against `stories/cloak/` would
-land at `stories/cloak/issues/bugs/<id>.md` and is reachable from
-the same `kitsoki-dev` app — only the file path differs. This is
-what "devstory oversees kitsoki AND its stories" means in practice
-(proposal §5.4).
+The wrapper stores concrete `owner/repo` slugs in each source's `args.repo`.
+That remains correct in managed capsule clones whose only git remote may be
+named `source`; display and routing never depend on a checkout-local alias.
+The same `ticket_sources` list can mix other statically registered ticket
+providers without changing dev-story rooms.
 
-**Today the `host.local_files.ticket` handler reads literally
-`<root>/issues/bugs/*.md`** — the multi-glob isn't yet honoured at
-the handler level (a future enhancement, see "Runtime gaps" below).
-For the supervised flow walks in `flows/`, the stubbed
-`host.local_files.ticket` returns a canned list; for the manual
-walkthrough below, the operator runs from the kitsoki repo root so
-the handler's `<root>` resolves to `pwd` and finds
-`issues/bugs/*.md`.
+When the process runs in a managed capsule, the relative `.artifacts` root is
+anchored at the source checkout recorded in `capsule-manifest.json`. Search,
+get, comments, and transitions therefore operate on the same durable ticket
+that web, TUI, Studio, and `kitsoki bug create --sink local-artifact` write.
 
 ---
 
 ## Manual walkthrough (the on-disk smoke)
 
-This is the loop that proves the dogfood acceptance per the
+This is the loop that proves the self-hosted acceptance path per the
 [bug-fix case study](../../../docs/case-studies/bug-fix.md):
-a kitsoki bug filed in one session is fixed via the dogfood
+a Kitsoki bug filed in one session is fixed via this
 instance in a second session, the diff lands as a real commit, the
 file's `status:` is `resolved`.
 
@@ -152,25 +169,24 @@ bug file to the bugfix pipeline:
 $ kitsoki bug create --target kitsoki \
     --title "TUI view renders before on_enter binds" \
     --body "Expected: first frame shows bound values. Actual: '(pending)'." \
+    --sink local-artifact \
     --severity med
-issues/bugs/2026-05-15T0407Z-tui-view-renders-before-on-enter-binds.md
+.artifacts/issues/bugs/2026-05-15T0407Z-tui-view-renders-before-on-enter-binds.md
 
 $ kitsoki run .kitsoki/stories/kitsoki-dev/app.yaml
 # in the TUI: > tickets → > search "tui view" → > pick <id> → > bugfix → > start …
 ```
 
-The first command writes a markdown file under `$KITSOKI_REPO/issues/bugs/`
+The first command writes a markdown file under
+`$KITSOKI_REPO/.artifacts/issues/bugs/`
 with the frontmatter schema documented in
 [`docs/stories/bugs.md`](../../../docs/stories/bugs.md) (and mirrored in
 [`../../../issues/README.md`](../../../issues/README.md)). The second command
-boots the dogfood instance, which scans the same directory via
-`host.local_files.ticket` and picks the file up as a ticket.
+boots this instance, whose ticket federation shows that artifact under Local
+and the two GitHub repositories under their explicit `owner/repo` labels.
 
-Two pre-seeded examples ship in `issues/bugs/` for the Phase 3
-acceptance smoke (one "view-render-before-bind", one
-"glamour caps prose") so the walkthrough works without filing a fresh
-bug first; either path (real `bug create` or one of the seeds) is
-equivalent from the pipeline's perspective.
+Committed `issues/bugs/` files are archive/fixture data and are not part of the
+active `kitsoki-dev` local queue.
 
 ### Phase 1 — pick up the bug
 
@@ -186,10 +202,12 @@ ticket-search room. Then:
 > search "tui view render"
 ```
 
-This dispatches `iface.ticket.search` against
-`host.local_files.ticket` with `query: "tui view render"`. The
-handler scans `issues/bugs/*.md`, matches title + body substring,
-and binds the result list into `world.ticket_results`. You see:
+This dispatches `iface.ticket.search` against `host.ticket_federation` with the
+ordered `world.ticket_sources` composition and `query: "tui view render"`.
+The local provider matches artifact files by title + body substring; each
+GitHub provider searches its explicit repository. The flat picker rows land in
+`world.ticket_results`, while `world.ticket_source_groups` preserves the named
+sections. Provider failures remain visible beside successful sources.
 
 ```
 Results:
@@ -201,8 +219,12 @@ Results:
 Pick it:
 
 ```
-> pick 2026-05-14T103205Z-tui-view-render-before-bind
+> pick 1
 ```
+
+Row numbers are global across source groups. A source-qualified ref such as
+`local:2026-05-14T103205Z-tui-view-render-before-bind` is also unambiguous;
+bare provider-local ids are rejected when more than one source is configured.
 
 The room sets `ticket_id`, `ticket_title`, `thread`. The
 `thread` value is the file path itself — that's how the transport
@@ -307,39 +329,18 @@ audit trail, and resolution record, in one Markdown file.**
 ## Runtime gaps — what blocks the FULLY-real PoC today
 
 The four flow fixtures in this directory pass deterministically.
-The manual walkthrough above works end-to-end against the real
-on-disk seeds with the existing host handlers, with three known
-caveats:
+The manual walkthrough above works end-to-end against the active local and
+remote providers. Historical implementation notes:
 
-1. **`world_in:` doesn't interpolate `env.PWD`.** The instance
-   world declares `repo_root` and `ticket_globs` for forward
-   compatibility, but the expression engine (`internal/expr/`) has
-   no `env.*` namespace today. The handler falls back to
-   `$KITSOKI_TICKETS_ROOT` then to `os.Getwd()`, so running from
-   the repo root works. A future enhancement could expose env vars
-   via the expr `Env` struct (low cost, ~10 lines) and surface them
-   to `world_in:` projections.
-
-2. **`host.local_files.ticket` scans `<root>/issues/bugs/` only.**
-   The multi-glob in `world.ticket_globs` is documented but not yet
-   honoured at the handler — it lists `issues/bugs/`,
-   `issues/features/`, `stories/*/issues/bugs/`,
-   `stories/*/issues/features/`, but only the first is read today.
-   The handler accepts a `globs` arg shape ready for the
-   enhancement; the ticket rooms just need to pass
-   `world.ticket_globs` through to `iface.ticket.search.args`.
-
-3. **~~`/meta kitsoki bug` doesn't emit a file yet.~~ Resolved.**
+1. **~~`/meta kitsoki bug` doesn't emit a file yet.~~ Resolved.**
    The bug-filing CLI (`kitsoki bug create`) ships on main and
-   `/meta kitsoki bug` writes to `$KITSOKI_REPO/issues/bugs/`;
-   `/meta story bug` writes to `<app-dir>/issues/bugs/`. Both use the
-   same on-disk format documented in [`docs/stories/bugs.md`](../../../docs/stories/bugs.md).
-   The dogfood loop reads + transitions the file the producer wrote;
+   local filing surfaces write to the source checkout's
+   `.artifacts/issues/bugs/`. Both use the same on-disk format documented in
+   [`docs/stories/bugs.md`](../../../docs/stories/bugs.md).
+   The self-hosted loop reads + transitions the file the producer wrote;
    the loop is now closed end-to-end.
 
-A fourth latent issue we surfaced while building this phase:
-
-4. **`emit_intent:` expressions weren't being world-prefix
+2. **`emit_intent:` expressions weren't being world-prefix
    rewritten across imports.** When the bugfix story was folded
    under dev-story and then again under kitsoki-dev, the
    `emit_intent: "{{ world.llm_verdict.intent }}"` template still
@@ -356,7 +357,7 @@ A fourth latent issue we surfaced while building this phase:
 
 A fifth concession the flow fixtures take:
 
-5. **Flow fixtures can't register the REAL `host.local_files.ticket`
+5. **Flow fixtures can't register the REAL `host.ticket_federation`
    against a temp git repo.** `testrunner/flows.go`'s `HostHandlers`
    map only registers STUB handlers via a closure over the
    `HostStub.Data` blob. There's no path to register a real
@@ -376,14 +377,14 @@ A fifth concession the flow fixtures take:
 
 ```
 .kitsoki/stories/kitsoki-dev/
-├── app.yaml                      — the ~50-line dogfood instance
+├── app.yaml                      — the self-hosted dev-story wrapper
 ├── README.md                     — this file
 ├── scenarios/                    — boot-time warp bases
 │   ├── pickup_self_bug.yaml
 │   ├── pickup_story_bug.yaml
 │   └── autonomous_ready.yaml
 └── flows/                        — deterministic flow fixtures
-    ├── dogfood_smoke.yaml
+    ├── self_host_smoke.yaml
     ├── pickup_self_bug_supervised.yaml
     ├── pickup_story_bug_supervised.yaml
     └── pickup_autonomous_then_bail.yaml
@@ -399,7 +400,7 @@ needed.
 ## See also
 
 - [`../../../docs/case-studies/bug-fix.md`](../../../docs/case-studies/bug-fix.md)
-  — the dogfood case study (kitsoki-dev shape, closed-loop
+  — the self-hosted case study (kitsoki-dev shape, closed-loop
   walkthrough, acceptance).
 - [`../../../docs/proposals/notes/dev-story-implementation-contract.md`](../../../docs/proposals/notes/dev-story-implementation-contract.md)
   Wave 2 / Phase 3 appendix.

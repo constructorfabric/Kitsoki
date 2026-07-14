@@ -1,0 +1,37 @@
+# splitting — deterministic fan-out. For each bucket: branch off integration in a
+# throwaway worktree (never touches the caller's working tree), cherry-pick the
+# bucket's commits, push, and open a PR via native host.git. Skipped writes under
+# dry_run.
+
+states:
+
+  splitting:
+    description: "Open one PR per bucket: branch, cherry-pick, push, native PR create."
+    relevant_world: [buckets, opened_prs, dry_run, integration_branch, source_branch, last_op_ok, last_op_output]
+    view:
+      - prose: "{% if world.dry_run %}Dry run — planning PRs without pushing.{% else %}Opening one PR per concern bucket…{% endif %}"
+      - prose: "Split failed: {{ world.last_op_output }}"
+        when: "world.last_op_ok == false"
+    on_enter:
+      - invoke: host.git
+        once: true
+        id: open_prs
+        with:
+          op: split_prs
+          workdir: "{{ world.working_dir }}"
+          repo: "{{ world.repo }}"
+          remote: "{{ world.remote }}"
+          integration_branch: "{{ world.integration_branch }}"
+          source_branch: "{{ world.source_branch }}"
+          buckets_json: "{{ world.buckets_json }}"
+          dry_run: "{{ world.dry_run }}"
+        bind:
+          opened_prs: "opened_prs"
+          last_op_ok: ok
+        on_error: splitting
+      - emit_intent: proceed
+    on:
+      proceed:
+        - target: done
+      look:
+        - target: .

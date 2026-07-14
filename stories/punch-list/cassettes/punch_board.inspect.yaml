@@ -1,0 +1,37 @@
+kind: inspect_cassette
+interactions:
+  - op: exists
+    target: .artifacts/punch-list/board-fixture.state.json
+    out: "true"
+  - op: read
+    target: .artifacts/punch-list/board-fixture.state.json
+    out: |
+      {
+        "items": [
+          {
+            "id": "first",
+            "title": "First item",
+            "status": "pending",
+            "story": "stories/punch-list/app.yaml",
+            "implementation_story": "",
+            "profile": "codex-native",
+            "model": "gpt-5.5",
+            "trace_path": ".artifacts/punch-list/traces/first.jsonl"
+          },
+          {
+            "id": "second",
+            "title": "Second item",
+            "status": "pending",
+            "story": "stories/punch-list/app.yaml",
+            "implementation_story": "stories/cherny-loop/app.yaml",
+            "profile": "codex-native",
+            "model": "gpt-5.5",
+            "trace_path": ".artifacts/punch-list/traces/second.jsonl"
+          }
+        ],
+        "results": { "items": [] }
+      }
+  - op: write
+    target: .artifacts/punch-list/board-fixture.state.json
+    out: |
+      {"defaults":{},"items":[{"id":"first","implementation_story":"","last_error":"ok summary","model":"gpt-5.5","profile":"codex-native","status":"passed","story":"stories/punch-list/app.yaml","title":"First item","trace_path":".artifacts/punch-list/traces/first.jsonl"},{"id":"second","implementation_story":"stories/cherny-loop/app.yaml","model":"gpt-5.5","profile":"codex-native","status":"pending","story":"stories/punch-list/app.yaml","title":"Second item","trace_path":".artifacts/punch-list/traces/second.jsonl"}],"results":{"items":[{"id":"first","implementation_story":"","model":"gpt-5.5","profile":"codex-native","status":"passed","story":"stories/punch-list/app.yaml","summary":"ok summary","title":"First item","trace_path":".artifacts/punch-list/traces/first.jsonl"}]}}

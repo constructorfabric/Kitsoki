@@ -29,7 +29,7 @@ succeeded and the schema-valid payload was captured to disk — the **post_cmd
 missing submit.
 
 This blocks every `decide` call that uses a post-submission verifier. It
-surfaced migrating the `cyber-repo` bugfix room (`stories/bugfix`) off the
+surfaced migrating the `focused-engineering` bugfix room (`stories/bugfix`) off the
 deprecated `host.agent.ask_with_mcp` onto `decide` — 6 phases (`phase_minus_1`,
 `phase_1_7`, `phase_3`, `phase_6`, `phase_9`, `phase_9_7`, `phase_13`) each carry
 a `validator.post_cmd: "python3 -m bugfix verify-*"` and all hang the same way.
@@ -141,7 +141,7 @@ rooms worked before the agent-split.
 - Likely related: `issues/bugs/2026-06-03T121407Z-agent-decide-silent-abandon-empty-artifact.md`
   (agent-decide silent abandon / empty artifact) — same family, validator
   acceptance path.
-- Migration context lives in the cyber-repo worktree
+- Migration context lives in the focused-engineering worktree
   (`stories/bugfix/app.yaml`, `tools/loopy/`); the room currently works around
   this by making decide validators schema-only and relocating the `verify-*`
   checks to downstream `host.run` gates.

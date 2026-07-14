@@ -44,6 +44,12 @@ type PluginDecl struct {
 	Grammar   bool
 	Port      int
 	ServerBin string
+	// APIKeyEnv/JSONSchema extend builtin.local_llm for authenticated
+	// OpenAI-compatible endpoints (e.g. GLM-5.2): a bearer-token env-var name
+	// and the OpenAI-native json_schema constrained-output toggle. See
+	// app.AgentPluginDecl for the semantics.
+	APIKeyEnv  string
+	JSONSchema bool
 }
 
 // BuildRegistryFromDef constructs a Registry from an *app.AppDef's agent_plugins
@@ -64,17 +70,19 @@ func BuildRegistryFromDef(def *app.AppDef, h harness.Harness) (*Registry, error)
 			continue
 		}
 		decls[name] = &PluginDecl{
-			Plugin:    appDecl.Plugin,
-			Command:   appDecl.Command,
-			Args:      appDecl.Args,
-			Endpoint:  appDecl.Endpoint,
-			Tool:      appDecl.Tool,
-			Env:       appDecl.Env,
-			Headers:   appDecl.Headers,
-			Model:     appDecl.Model,
-			Grammar:   appDecl.Grammar,
-			Port:      appDecl.Port,
-			ServerBin: appDecl.ServerBin,
+			Plugin:     appDecl.Plugin,
+			Command:    appDecl.Command,
+			Args:       appDecl.Args,
+			Endpoint:   appDecl.Endpoint,
+			Tool:       appDecl.Tool,
+			Env:        appDecl.Env,
+			Headers:    appDecl.Headers,
+			Model:      appDecl.Model,
+			Grammar:    appDecl.Grammar,
+			Port:       appDecl.Port,
+			ServerBin:  appDecl.ServerBin,
+			APIKeyEnv:  appDecl.APIKeyEnv,
+			JSONSchema: appDecl.JSONSchema,
 		}
 	}
 	return BuildRegistry(decls, h)
@@ -134,7 +142,9 @@ func BuildRegistry(plugins map[string]*PluginDecl, h harness.Harness) (*Registry
 			if decl.Model == "" && decl.Endpoint == "" {
 				return nil, fmt.Errorf("agent: BuildRegistry: builtin.local_llm plugin %q requires either model: or endpoint:", name)
 			}
-			o = NewLocalLLM(decl.Model, decl.Port, decl.ServerBin, decl.Grammar, decl.Endpoint, decl.Env)
+			o = NewLocalLLM(decl.Model, decl.Port, decl.ServerBin, decl.Grammar, decl.Endpoint, decl.Env).
+				WithAPIKeyEnv(decl.APIKeyEnv).
+				WithJSONSchema(decl.JSONSchema)
 
 		default:
 			return nil, fmt.Errorf("agent: BuildRegistry: unknown plugin type %q for %q", decl.Plugin, name)

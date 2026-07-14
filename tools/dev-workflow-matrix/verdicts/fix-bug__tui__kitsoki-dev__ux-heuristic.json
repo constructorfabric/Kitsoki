@@ -1,0 +1,50 @@
+{
+  "axis": {
+    "surface": "tui",
+    "workflow": "fix-bug"
+  },
+  "check_type": "ux-heuristic",
+  "evidence_refs": [
+    ".artifacts/dev-workflow-matrix/frames/fix-bug-tui.png"
+  ],
+  "findings": [
+    {
+      "frame": "/Users/brad/code/Kitsoki/.worktrees/dwf4-g2-experience/.artifacts/dev-workflow-matrix/frames/fix-bug-tui.png",
+      "id": "cramped-or-cluttered",
+      "severity": "warn",
+      "summary": "The metadata block runs six distinct key-value pairs together as one wrapped paragraph with no grouping: 'Ticket: TKT-100 \u2014 login button unresponsive on mobile Safari Workspace: gh-job-42 \u00b7 .worktrees/gh-job-42 Feature branch: fix/TKT-100-mobile-login Applied: (pending \u2014 agent has not returned yet) Status: (pending) Files: (none recorded)'. 'Safari' collides directly into 'Workspace:' with no separator, so fields are hard to parse apart."
+    },
+    {
+      "frame": "/Users/brad/code/Kitsoki/.worktrees/dwf4-g2-experience/.artifacts/dev-workflow-matrix/frames/fix-bug-tui.png",
+      "id": "poor-empty-state",
+      "severity": "warn",
+      "summary": "The Artifact section reads '(no implementation body \u2014 agent pending or failed)' \u2014 the empty state cannot tell the user whether the system is still working or has broken; 'pending or failed' are opposite outcomes and the debugger persona cannot decide whether to wait or intervene."
+    },
+    {
+      "frame": "/Users/brad/code/Kitsoki/.worktrees/dwf4-g2-experience/.artifacts/dev-workflow-matrix/frames/fix-bug-tui.png",
+      "id": "status-not-visible",
+      "severity": "warn",
+      "summary": "While 'Applied: (pending \u2014 agent has not returned yet) Status: (pending)' says the fix has not landed, the Actions menu still offers 'continue    advance to testing' with no indication of progress (no spinner, elapsed time, or 'waiting' state) \u2014 nothing shows whether the agent is actively running or stalled, and picking 'continue' appears possible before the fix exists."
+    },
+    {
+      "frame": "/Users/brad/code/Kitsoki/.worktrees/dwf4-g2-experience/.artifacts/dev-workflow-matrix/frames/fix-bug-tui.png",
+      "id": "weak-visual-hierarchy",
+      "severity": "warn",
+      "summary": "In the Actions list, 'continue', 'restart from reproducing', 'restart from proposing', 'quit', and 'look' are rendered in identical weight and style with no highlight or marker on any row; the destructive 'quit    abandon the pipeline' is visually indistinguishable from the primary 'continue    advance to testing', and no cursor/selection indicator shows which item '[\u2191/\u2193 move \u2022 Enter pick]' currently targets."
+    },
+    {
+      "frame": "/Users/brad/code/Kitsoki/.worktrees/dwf4-g2-experience/.artifacts/dev-workflow-matrix/frames/fix-bug-tui.png",
+      "id": "unreadable-or-broken-content",
+      "severity": "warn",
+      "summary": "The input prompt line shows '> \u25a1 accept \u00b7 describe what you want, or /help' \u2014 the '\u25a1' renders as a tofu/missing-glyph box rather than a meaningful icon, so whatever symbol was intended next to 'accept' is visibly broken."
+    }
+  ],
+  "health": "model:result",
+  "job_type": "dev-workflow-matrix",
+  "metrics": {},
+  "overall_pass": true,
+  "schema_version": "1.1.0",
+  "summary": "Status banner and keybinding hints are solid, but the run-together metadata wall, the ambiguous 'pending or failed' empty artifact state, a flat unselected actions menu, and a broken glyph in the prompt add up to several warnings with no hard errors.",
+  "target_id": "kitsoki-dev",
+  "verdict": "solved"
+}

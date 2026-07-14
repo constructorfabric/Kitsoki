@@ -1,0 +1,36 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.product_journey.run:
+    by_call: {}
+
+turns:
+  - intent:
+      name: autonomous_marathon
+      slots:
+        project: vscode
+        persona: core-maintainer
+        seed: marathon-missing-ticket
+        scenarios: bugfix
+        autonomous_driver_mode: replay
+        gh_agent_public_base_url: https://agent.example
+    expect_state: idle
+    expect_world:
+      status: autonomous_marathon_invalid
+      autonomous_marathon_status: autonomous_marathon_invalid
+      autonomous_driver_mode: replay
+      autonomous_driver_status: invalid
+      autonomous_driver_summary: "ticket_repo is required"
+      autonomous_gate_summary: "filing=fail, gh_agent=fail, independent_verify=fail, review=not_run, validation=fail"
+      independent_verify_status: fail
+      independent_verify_summary: "ticket_repo is required"
+      validation_status: invalid
+      validation_errors: 1
+      validation_issue_summary: ticket-repo-required
+      gh_agent_missing_evidence_summary: "ticket_repo is required"
+    expect_view_matches: "PRODUCT JOURNEY QA[\\s\\S]*Autonomous marathon[\\s\\S]*autonomous_marathon_invalid[\\s\\S]*Autonomous driver[\\s\\S]*replay / invalid[\\s\\S]*Autonomous gates[\\s\\S]*filing=fail[\\s\\S]*gh_agent=fail[\\s\\S]*independent_verify=fail[\\s\\S]*review=not_run[\\s\\S]*validation=fail[\\s\\S]*Independent verify[\\s\\S]*fail: ticket_repo is required[\\s\\S]*Validation[\\s\\S]*invalid[\\s\\S]*Validation issues[\\s\\S]*ticket-repo-required"
+    expect_host_calls: []
+
+expect_no_errors: true

@@ -20,7 +20,7 @@ states:
             Summary: '{{ world.implement_review_artifact.summary_title|default:"(pending)" }}'
             Status:  '{{ world.implement_review_artifact.status|default:"(pending)" }}'
       - heading: "Artifact"
-      - code: '{{ world.implement_review_artifact.summary_markdown|default:"(pending — agent has not returned yet)" }}'
+      - template: '{{ world.implement_review_artifact.summary_markdown|default:"(pending — agent has not returned yet)" }}'
       - choice:
           mode: single
           prompt: "Actions"
@@ -99,6 +99,8 @@ states:
                 refine_feedback:     ""
                 implementing_cycle:  0
                 cycle:               0
+                implement_artifact:        {}
+                implement_review_artifact: {}
         - when: "slots.stage == 'testing' || slots.stage == 'test'"
           target: testing
           effects:
@@ -185,6 +187,8 @@ states:
                 refine_feedback:    "External diff review rejected — revise the fix."
                 implementing_cycle: 0
                 cycle:              0
+                implement_artifact:        {}
+                implement_review_artifact: {}
 
       # View-only difftool or no surface available → return to reviewing; the
       # operator's continue/restart choice there is the recorded decision.

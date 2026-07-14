@@ -171,4 +171,4 @@ expect_no_errors: true
 # Bug/feature pipelines must not fire on the epic arm.
 expect_no_host_calls:
   - host.git
-  - host.git_worktree
+  - host.capsule_workspace

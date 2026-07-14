@@ -20,6 +20,9 @@ states:
         id: weather_report
         with:
           script: scripts/weather_report.star
+          capabilities:
+            http:
+              methods: [GET]
           inputs:
             location: "{{ world.location }}"
             mode: "{{ world.mode }}"

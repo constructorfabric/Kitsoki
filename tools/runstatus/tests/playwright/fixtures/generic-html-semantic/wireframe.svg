@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="520" viewBox="0 0 900 520" role="img" aria-label="Signup wireframe">
+  <rect width="900" height="520" fill="#f6f7fb"/>
+  <rect x="52" y="44" width="796" height="432" rx="10" fill="#ffffff" stroke="#d9e0ea"/>
+  <rect x="108" y="96" width="312" height="24" rx="4" fill="#1f2937"/>
+  <rect x="108" y="138" width="360" height="14" rx="4" fill="#94a3b8"/>
+  <rect x="108" y="162" width="288" height="14" rx="4" fill="#cbd5e1"/>
+  <rect x="108" y="196" width="260" height="182" rx="8" fill="#eff6ff" stroke="#bfdbfe"/>
+  <rect x="136" y="226" width="148" height="18" rx="4" fill="#1d4ed8"/>
+  <rect x="136" y="262" width="190" height="12" rx="4" fill="#60a5fa"/>
+  <rect x="136" y="288" width="164" height="12" rx="4" fill="#93c5fd"/>
+  <rect x="136" y="322" width="98" height="34" rx="5" fill="#dbeafe" stroke="#60a5fa"/>
+  <rect x="438" y="196" width="326" height="38" rx="6" fill="#f1f5f9" stroke="#cbd5e1"/>
+  <rect x="438" y="254" width="326" height="38" rx="6" fill="#f1f5f9" stroke="#cbd5e1"/>
+  <rect x="438" y="312" width="326" height="38" rx="6" fill="#f1f5f9" stroke="#cbd5e1"/>
+  <rect x="574" y="374" width="190" height="54" rx="8" fill="#0f766e"/>
+  <rect x="620" y="393" width="98" height="14" rx="4" fill="#ccfbf1"/>
+  <path d="M512 421 L538 421 L538 395" fill="none" stroke="#f59e0b" stroke-width="4" stroke-linecap="round"/>
+</svg>

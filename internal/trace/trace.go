@@ -140,9 +140,23 @@ const (
 	//   - semantic_miss:      state_path
 	//   - semantic_ambiguous: candidates, state_path
 	//   - llm_routed:         intent, confidence, state_path, model
+	//   - near_miss:          input, confidence, threshold, state_path
 	EvTurnSemanticHit       = "turn.semantic_hit"
 	EvTurnSemanticMiss      = "turn.semantic_miss"
 	EvTurnSemanticAmbiguous = "turn.semantic_ambiguous"
+
+	// EvTurnNearMiss fires when the semantic tier's confidence-band switch
+	// resolves a verdict that is neither a confident hit (>= HighBar), a
+	// clarification band (>= MidBar), nor a tie (== ConfidenceTie) — i.e.
+	// strictly between 0 (a genuine miss already returned earlier and never
+	// reaches this switch) and MidBar. See never-silent-runtime.md: this
+	// band must route to the S1 workbench, never silently fall through to
+	// the LLM interpreter guessing the nearest authored intent (the
+	// adjacent-command misroute class). The `threshold` field records
+	// MidBar so the trace shows exactly why the verdict missed the accept
+	// band, alongside the same `confidence` field the other semantic-tier
+	// events record.
+	EvTurnNearMiss = "turn.near_miss"
 
 	// EvTurnDefaultRouted fires when deterministic + semantic (+ turn-cache)
 	// all missed and the current state declares a free-text default_intent:

@@ -3,7 +3,7 @@ app: ../app.yaml
 initial_state: idle
 
 host_handlers:
-  host.run:
+  host.product_journey.run:
     by_call:
       driver_replay_product_journey_smoke:
         data:
@@ -11,6 +11,7 @@ host_handlers:
           exit_code: 0
           stdout_json:
             status: passed
+            readiness_status: needs_evidence
             smoke_id: replay-123
             smoke_dir: .artifacts/product-journey/dogfood/replay-123
             report_path: .artifacts/product-journey/dogfood/replay-123/driver-replay-smoke.json
@@ -26,11 +27,13 @@ host_handlers:
             persona_label: Hobbyist contributor
             attached_evidence_count: 4
             review_status: needs_evidence
-            review_summary: "needs_evidence: 16/19 checks passed, 0 warnings, 3 failures"
-            review_passed: 16
-            review_total: 19
+            review_summary: "needs_evidence: 17/20 checks passed, 0 warnings, 3 failures"
+            review_passed: 17
+            review_total: 20
             review_warnings: 0
             review_failed: 3
+            review_ready: 0
+            review_needs_evidence: 1
             review_backlog_summary: "fail: scenario-attempts (product-discovery, project-onboarding); fail: driver-journal-coverage (product-discovery, project-onboarding); fail: quality-gates (product-discovery (0/4))"
             validation_status: valid
             validation_warnings: 0
@@ -56,19 +59,22 @@ turns:
       driver_replay_scenario: project-onboarding
       driver_replay_persona: hobbyist-contributor
       driver_replay_attached_evidence_count: 4
+      driver_replay_readiness_status: needs_evidence
+      driver_replay_review_ready_count: 0
+      driver_replay_review_needs_evidence_count: 1
       driver_replay_journal_path: .artifacts/product-journey/run-123/driver-journal.md
       driver_replay_handoff_path: .artifacts/product-journey/run-123/driver-handoff.md
       driver_replay_media_manifest_path: .artifacts/product-journey/run-123/media-manifest.json
       review_status: needs_evidence
-      dogfood_review_passed: 16
-      dogfood_review_total: 19
+      dogfood_review_passed: 17
+      dogfood_review_total: 20
       dogfood_review_warnings: 0
       dogfood_review_failed: 3
       validation_status: valid
       dogfood_run_validation_warnings: 0
     expect_host_calls:
-      - handler: host.run
+      - handler: host.product_journey.run
         args: { call: driver_replay_product_journey_smoke }
-    expect_view_matches: "DOGFOOD SMOKE CREATED[\\s\\S]*Driver replay scenario[\\s\\S]*project-onboarding[\\s\\S]*Driver replay persona[\\s\\S]*hobbyist-contributor[\\s\\S]*Driver replay evidence[\\s\\S]*4[\\s\\S]*driver-journal.md[\\s\\S]*media-manifest.json[\\s\\S]*16 / 19 passed; 3 failed; 0 warnings[\\s\\S]*fail: scenario-attempts"
+    expect_view_matches: "DOGFOOD SMOKE CREATED[\\s\\S]*Driver replay scenario[\\s\\S]*project-onboarding[\\s\\S]*Driver replay persona[\\s\\S]*hobbyist-contributor[\\s\\S]*Driver replay evidence[\\s\\S]*4[\\s\\S]*Driver replay readiness[\\s\\S]*needs_evidence \\(0 ready, 1 need evidence\\)[\\s\\S]*driver-journal.md[\\s\\S]*media-manifest.json[\\s\\S]*17 / 20 passed; 3 failed; 0 warnings[\\s\\S]*fail: scenario-attempts"
 
 expect_no_errors: true

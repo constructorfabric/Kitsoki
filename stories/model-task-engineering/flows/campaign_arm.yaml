@@ -1,0 +1,22 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: configure
+initial_world:
+  campaign_study: tools/arena/specs/fixture-study.yaml
+  campaign_output_dir: .artifacts/task-optimization
+host_handlers:
+  host.run:
+    by_call:
+      model_task_campaign_arm:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json: { status: armed, error: "" }
+turns:
+  - intent:
+      name: campaign_arm
+    expect_state: campaign_arm
+    expect_world:
+      campaign_root: .artifacts/task-optimization/fixture-study
+      campaign_arm_receipt: .artifacts/task-optimization/fixture-study/armed.json
+      campaign_status: armed

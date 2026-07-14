@@ -11,6 +11,10 @@ terminal** replaying a committed **termcast** cassette, through the *same* share
 pipeline — camera (1600×900), `ChapterRecorder` sidecar, 25s duration floor, and
 the `kitsoki-ui-qa` gates (blank / pacing / placeholder + the vision review).
 
+This is not the real Kitsoki TUI. For browser-driven evidence of a live TUI
+process, use `tools/tui-bridge`, which connects xterm.js to a real PTY spawned by
+`kitsoki tui-serve`.
+
 ## No-LLM by construction
 
 The replay plays a static cassette in a terminal and **never spawns a model or the

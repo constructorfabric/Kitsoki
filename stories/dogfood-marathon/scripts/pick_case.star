@@ -9,7 +9,9 @@
 # Interface (authoritative in pick_case.star.yaml):
 #   inputs:  backlog (object), case_index (int), cases_processed (int), case_budget (int)
 #   world:   current_case (object), current_case_id (string)
-#   outputs: current_case (object), current_case_id (string)
+#   outputs: current_case (object), current_case_id (string),
+#            current_case_json (string — for agent prompt context.args, where
+#            a raw object value renders as a Go map string, not JSON)
 
 def main(ctx):
     backlog = ctx.inputs.get("backlog", {})
@@ -19,8 +21,12 @@ def main(ctx):
     budget = int(ctx.inputs.get("case_budget", 25))
 
     if idx < 0 or idx >= len(items) or processed >= budget:
-        return {"current_case": {}, "current_case_id": ""}
+        return {"current_case": {}, "current_case_id": "", "current_case_json": "{}"}
 
     case = items[idx]
     cid = case.get("id", "") if type(case) == "dict" else ""
-    return {"current_case": case, "current_case_id": cid}
+    return {
+        "current_case": case,
+        "current_case_id": cid,
+        "current_case_json": json.encode(case),
+    }

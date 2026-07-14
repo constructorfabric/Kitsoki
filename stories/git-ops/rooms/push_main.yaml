@@ -1,0 +1,128 @@
+# push_main - guarded remote publication for protected local main.
+#
+# This is intentionally narrower than a general push operation: it only pushes
+# the current integration branch to a named remote branch, after fetching and
+# proving the remote has no commits missing from local main.
+
+states:
+
+  push_main:
+    description: "Fast-forward a remote main ref from protected local main."
+    relevant_world: [push_remote, push_remote_branch, push_result]
+    view:
+      - kv:
+          pairs:
+            Status:       '{% if world.push_result.outcome == "up_to_date" %}✅ already current{% elif world.push_result.outcome == "pushed" %}✅ pushed{% elif world.push_result.outcome == "remote_ahead" %}⚠️ remote has new work{% elif world.push_result.outcome == "error" %}❌ push failed{% else %}⏳ checking{% endif %}'
+            Remote:       '{{ world.push_remote|default:"origin" }}'
+            "Remote ref": '{{ world.push_remote_branch|default:"main" }}'
+      - heading: "✅ Already current"
+        when: "world.push_result.outcome == 'up_to_date'"
+      - prose: "{{ world.push_remote }}/{{ world.push_remote_branch }} already matches {{ world.integration_branch }}."
+        when: "world.push_result.outcome == 'up_to_date'"
+      - heading: "✅ Pushed"
+        when: "world.push_result.outcome == 'pushed'"
+      - when: "world.push_result.outcome == 'pushed'"
+        kv:
+          pairs:
+            Ahead: '{{ world.push_result.ahead|default:0|integer }} commits published'
+      - heading: "⚠️ Remote has new work"
+        when: "world.push_result.outcome == 'remote_ahead'"
+      - prose: "{{ world.push_remote }}/{{ world.push_remote_branch }} has {{ world.push_result.behind|default:0|integer }} commits not present locally. Run sync_main remote={{ world.push_remote }} first."
+        when: "world.push_result.outcome == 'remote_ahead'"
+      - heading: "❌ Push failed"
+        when: "world.push_result.outcome == 'error'"
+      - prose: "{{ world.push_result.output|default:'(no output)' }}"
+        when: "world.push_result.outcome == 'error'"
+      - heading: "Helper output"
+        when: "world.push_result.output != '' && world.push_result.outcome != 'error'"
+      - template: "{{ world.push_result.output }}"
+        when: "world.push_result.output != '' && world.push_result.outcome != 'error'"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "retry"
+              hint:  "run the guarded push again"
+              intent: retry
+              when:  "world.push_result.outcome == 'error'"
+            - label: "back"
+              hint:  "return to hub"
+              intent: back
+            - label: "look"
+              intent: look
+    on_enter:
+      - invoke: host.run
+        once: true
+        id: push_main_exec
+        with:
+          cmd: bash
+          args:
+            - "-c"
+            - |
+              set -e
+              export NO_COLOR=1 GIT_TERMINAL_PROMPT=0 GIT_PAGER=cat
+              REMOTE="$1"
+              REMOTE_BRANCH="$2"
+              INTEGRATION="$3"
+              REPO_ROOT=$(git -C "{{ world.working_dir }}" rev-parse --show-toplevel 2>/dev/null || pwd)
+              cd "$REPO_ROOT"
+
+              EXIT=0
+              OUTPUT=$(git fetch "$REMOTE" "$REMOTE_BRANCH" 2>&1) || EXIT=$?
+              if [ "$EXIT" -ne 0 ]; then
+                jq -n --arg output "$OUTPUT" '{outcome:"error", ok:false, ahead:0, behind:0, output:$output}'
+                exit 0
+              fi
+
+              LOCAL_REF="$INTEGRATION"
+              REMOTE_REF="$REMOTE/$REMOTE_BRANCH"
+              AHEAD=$(git rev-list --count "$REMOTE_REF..$LOCAL_REF" 2>/dev/null || echo 0)
+              BEHIND=$(git rev-list --count "$LOCAL_REF..$REMOTE_REF" 2>/dev/null || echo 0)
+              if [ "$BEHIND" -gt 0 ]; then
+                jq -n \
+                  --arg output "$OUTPUT" \
+                  --argjson ahead "$AHEAD" \
+                  --argjson behind "$BEHIND" \
+                  '{outcome:"remote_ahead", ok:false, ahead:$ahead, behind:$behind, output:$output}'
+                exit 0
+              fi
+              if [ "$AHEAD" -eq 0 ]; then
+                jq -n \
+                  --arg output "$OUTPUT" \
+                  '{outcome:"up_to_date", ok:true, ahead:0, behind:0, output:$output}'
+                exit 0
+              fi
+
+              PUSH_OUT=$(git push --porcelain "$REMOTE" "$LOCAL_REF:refs/heads/$REMOTE_BRANCH" 2>&1) || EXIT=$?
+              OUTPUT=$(printf '%s\n%s' "$OUTPUT" "$PUSH_OUT")
+              if [ "$EXIT" -eq 0 ]; then
+                jq -n \
+                  --arg output "$OUTPUT" \
+                  --argjson ahead "$AHEAD" \
+                  '{outcome:"pushed", ok:true, ahead:$ahead, behind:0, output:$output}'
+              else
+                jq -n \
+                  --arg output "$OUTPUT" \
+                  --argjson ahead "$AHEAD" \
+                  '{outcome:"error", ok:false, ahead:$ahead, behind:0, output:$output}'
+              fi
+            - "kitsoki-push-main"
+            - "{{ world.push_remote }}"
+            - "{{ world.push_remote_branch }}"
+            - "{{ world.integration_branch }}"
+          cwd: "{{ world.working_dir }}"
+        bind:
+          push_result: "stdout_json"
+        on_error: push_main
+    on:
+      retry:
+        - target: push_main
+          effects:
+            - set:
+                push_result: {}
+      back:
+        - when: "world.on_integration == true"
+          target: main_ops
+        - target: branch_ops
+      look:
+        - target: .

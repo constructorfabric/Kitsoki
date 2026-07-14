@@ -17,6 +17,7 @@ root:            <string> | <State>              # required — initial state na
 states:          { <name>: <State>, ... }        # optional
 off_path:        <OffPathDef>                    # optional
 hosts:           [ <string>, ... ]               # optional allow-list of host handler names
+operations:      { <name>: <OperationPolicy> }   # optional session-level operation run policies
 proposals:       { <name>: <ProposalKind> }      # optional
 include:         [ <glob>, ... ]                 # optional — merge other YAMLs relative to this file
 imports:         { <alias>: <ImportDef>, ... }   # optional — aliased sub-story composition
@@ -35,6 +36,45 @@ host_interfaces: { <name>: <HostInterfaceDef> }  # optional — named capability
   projected world_in/world_out, named exits, intent re-export, and
   rebindable host_interfaces. Full reference and worked examples in
   [`docs/stories/imports.md`](../stories/imports.md).
+
+## `operations:` — session operation policies
+
+Top-level `operations:` declares named policies for workflow-shaped runs such
+as bugfix triage, direct ship, PR refinement, or protected-branch sync. A
+transition starts a run by naming one of these policies with
+`operation: <policy-id>`.
+
+```yaml
+operations:
+  bugfix_full:
+    title: "Fix bug"
+    mode: autonomous              # interactive | autonomous | supervised
+    execution_mode: one-shot      # optional: one-shot | staged
+    run_in_background: true
+    stop_on: [needs-human, host-error, gate-failed]
+    pause_on: [operator-ask]
+    terminal_artifact: done_artifact
+    phase_summary:
+      from: [triage_artifact, done_artifact]
+```
+
+This is distinct from state-level `operation:` overlays. Operation policies are
+session lifecycle metadata. When a transition starts a policy, the runtime
+emits operation lifecycle trace rows and writes the engine-owned
+`world.operation_run` handle with `status: running`; the handle is updated to
+`status: completed` when the run reaches a terminal state, even on a later
+turn. Imported child policies are lifted under the import alias
+(`<alias>__<policy-id>`), and child transition `operation:` refs are rewritten
+to match. When `run_in_background: true` is set, normal live write surfaces
+automatically invoke the safe operation driver after an accepted turn; foreground
+operations still require an explicit drive-operation command/tool. State
+overlays control abandonable task-local world writes.
+
+If a run enters a state-level `operation:` overlay with the same id as the
+active session policy, `commit_operation` and `persist_draft` also complete the
+session run at the settled target state. Leaving that overlay without committing
+or drafting marks the matching session run failed, so UI surfaces do not keep a
+stale running handle for an abandoned command-room operation.
 
 ## `AppMeta`
 
@@ -85,10 +125,12 @@ states:
     on_enter:        [ <Effect>, ... ]               # fires on entry
     intents:         { ... local Intent overrides ... }
     menu:            [ <intent>, ... ]               # override default menu ordering
+    prerequisites:   [ <Prerequisite>, ... ]          # room setup/readiness checks
     relevant_world:  [ <world-key>, ... ]            # pinned in TUI location indicator
     relevant_slots:  [ <slot-name>, ... ]
     timeout:         <TimeoutDef>                    # optional auto-transition
     agent_off_ramp: <OffRampDef>                    # optional no-match door (see below)
+    operation:       <OperationDef>                  # optional abandonable task-local world overlay
 ```
 
 Rules:
@@ -101,6 +143,63 @@ Rules:
 - `relevant_world` entries must exist in the top-level `world:` schema.
 - Intent names in `on:` must be declared globally (`intents:`), locally
   (`states.X.intents:`), or be the wildcard `"*"`.
+
+### `prerequisites:` — room setup/readiness checks
+
+Use `prerequisites:` when a room is usable but should clearly warn that a
+deterministic setup item is missing. The check is room-centric: it can live on
+any state, including a buried room or an imported child story. Parent
+prerequisites are inherited by nested child states.
+
+```yaml
+states:
+  landing:
+    prerequisites:
+      - id: project-onboarding
+        title: "Project onboarding"
+        severity: warning          # info | warning | warn | error; default warning
+        when: "world.project_id != ''"
+        satisfied_when: "world.onboarding_status == 'applied'"
+        summary: "Project setup has not been applied."
+        help: "Run onboarding to write .kitsoki config and readiness checks."
+        action:
+          label: "onboard"
+          hint: "discover, review, and apply local setup"
+          intent: go_init          # must be a declared intent
+          slots: { target: "{{ world.repo_root }}" }
+```
+
+`when:` and `satisfied_when:` are bare expr-lang boolean expressions. `title`,
+`summary`, `help`, `action.label`, `action.hint`, and action slot values may use
+`{{ ... }}` templates. At render time the engine computes
+`prerequisites.all`, `prerequisites.met`, `prerequisites.unmet`, and
+`prerequisites.has_unmet` for templates, and automatically prepends a warning
+block when any relevant prerequisite is unmet. If the current typed view already
+has a single-choice action widget, prerequisite actions are prepended there as
+recommended setup actions; they do not create new transitions.
+
+### `operation:` — abandonable task-local world
+
+```yaml
+operation:
+  scope: gitops.sync_main   # optional stable operation id; defaults to state path
+```
+
+An operation state opens an engine-owned world overlay. `set:`, `increment:`,
+and host `bind:` write to that overlay while guards, views, and host args keep
+reading ordinary `world.*` as committed base plus overlay. Exiting the operation
+state without `commit_operation` or `persist_draft` abandons the overlay and
+restores durable world.
+
+Rules:
+
+- `scope` must be a stable literal, not a template.
+- `commit_operation`, `persist_draft`, and `discard_operation` are valid only
+  inside an operation state.
+- Background jobs are rejected inside operation states until the story declares
+  an explicit completion policy.
+- Drafts created by `persist_draft` are written under the reserved
+  `world.operation_drafts` map.
 
 ## `view:` — string form vs typed elements
 
@@ -155,7 +254,7 @@ view:
 | `code:`     | `<string>`                                                | Layout-preserved content (tables, ASCII art, includes).  |
 | `template:` | `<string>` (pongo2 body)                                  | Raw pongo escape hatch.                                  |
 | `choice:`   | `{ mode, prompt, items / fields, ... }` (see below)       | Interactive picker / multi-select / mad-lib form.        |
-| `media:`    | `{ handle, caption?, kind? }` (see below)                 | Display a recorded media artifact; TUI pointer / web inline. |
+| `media:`    | `{ handle, caption?, kind?, annotate_url? }` (see below)  | Display a recorded media artifact; TUI pointer / web inline. |
 
 Every element accepts an optional element-level `when:` guard (expr-lang)
 evaluated against `world.*` / `slots.*`. Items in a `list:` accept their
@@ -175,13 +274,15 @@ view:
       handle:  "{{ world.walkthrough_handle }}"   # required — artifact id from host.artifacts_dir
       caption: "Walkthrough recording"             # optional one-line label
       kind:    video                               # optional hint: video/image/pdf/html/slideshow
+      annotate_url: "{{ world.review_url }}"        # optional TUI/web handoff URL
 ```
 
-| Field     | Required | Notes                                                                                        |
-|-----------|----------|----------------------------------------------------------------------------------------------|
-| `handle`  | yes      | Artifact id/handle bound into world by `host.artifacts_dir` (`bind: { my_handle: handle }`). May be a pongo2 template. |
-| `caption` | no       | One-line label shown beneath the artifact. Defaults to `handle` when absent.                 |
-| `kind`    | no       | Selects the pointer icon in the TUI and the embed strategy in the web UI. Values: `video`, `image`, `pdf`, `html`, `slideshow`. Unknown/absent kinds use a generic attachment icon. |
+| Field          | Required | Notes                                                                                        |
+|----------------|----------|----------------------------------------------------------------------------------------------|
+| `handle`       | yes      | Artifact id/handle bound into world by `host.artifacts_dir` (`bind: { my_handle: handle }`). May be a pongo2 template. |
+| `caption`      | no       | One-line label shown beneath the artifact. Defaults to `handle` when absent.                 |
+| `kind`         | no       | Selects the pointer icon in the TUI and the embed strategy in the web UI. Values: `video`, `image`, `pdf`, `html`, `slideshow`. Unknown/absent kinds use a generic attachment icon. |
+| `annotate_url` | no       | URL to open the annotation surface for transports that cannot host it inline. May be a pongo2 template. |
 
 The optional element-level `when:` guard (expr-lang) suppresses the element
 when false, e.g. `when: "world.walkthrough_handle != ''"`.
@@ -460,6 +561,7 @@ Story-style guidance: [`docs/stories/story-style.md`](../stories/story-style.md)
 on:
   go:
     - target:      bar                 # required — dest state path, "." = self
+      operation:   bugfix_full         # optional — top-level/folded operation policy id
       when:        "slots.direction == 'south'"
       effects:     [ <Effect>, ... ]
       guard_hint:  "Head outside first."   # shown when guard fails
@@ -490,6 +592,13 @@ effects:
     with:       { cmd: "git status", cwd: "{{ world.workspace_root }}" }
     bind:       { last_output: stdout, last_code: exit_code }
     on_error:   error_room
+  - commit_operation:
+      world: { last_output: "{{ world.last_output }}" }
+  - persist_draft:
+      id: "task:{{ world.task_id }}"
+      title: "Task {{ world.task_id }}"
+      world: [last_output, task_id]
+  - discard_operation: { reason: cancelled }
   - emit:       lights_dimmed
 ```
 
@@ -509,9 +618,29 @@ Fields (any subset):
 | `emit`        | Broadcast named event to parallel regions                            |
 | `background`  | `true` → dispatch `invoke` as a background job (see §Background jobs) |
 | `on_complete` | Effect list fired when the background job terminates (see §Background jobs) |
+| `commit_operation` | Operation-only: copy selected overlay values into durable world and close the operation |
+| `persist_draft` | Operation-only: save selected overlay values under `world.operation_drafts[id]` and close the operation |
+| `discard_operation` | Operation-only: explicitly abandon the active overlay |
 
 Conventional order within a single effect: `set` → `increment` → `say` →
-`invoke` → `emit`.
+`invoke` → operation close-out → `emit`.
+
+Operation close-out shapes:
+
+```yaml
+commit_operation:
+  world:
+    sync_result: "{{ world.sync_result }}"   # selected durable patch
+  clear: true                                # optional, default true
+
+persist_draft:
+  id: "sync_main:{{ world.sync_result.branch }}"
+  title: "sync_main {{ world.sync_remote }}/{{ world.sync_remote_branch }}" # optional
+  world: [sync_result, sync_remote, sync_remote_branch]                    # optional; default whole overlay
+
+discard_operation:
+  reason: back
+```
 
 ## Background jobs
 
@@ -875,13 +1004,15 @@ have no analogue here):
 ```yaml
 agent_off_ramp: true                                          # bare scalar — use the off-path voice
 agent_off_ramp: { agent: discovery-guide, banner: "(thinking)" }  # struct form
+agent_off_ramp: { agent: discovery-guide, capture_free_text: true } # preserve rejected text
 ```
 
-| Field     | Required | Notes                                                                                       |
-|-----------|----------|---------------------------------------------------------------------------------------------|
-| `agent`   | no       | Names an entry in top-level `agents:` whose system prompt + model style the converse call. Validated at load against the `agents:` map (mirrors `off_path.agent`). |
-| `persona` | no       | Inline system-prompt-style instruction for the off-ramp voice. When both `persona` and `agent` are set, `persona` wins. |
-| `banner`  | no       | One-line label shown when the off-ramp engages.                                             |
+| Field               | Required | Notes                                                                                       |
+|---------------------|----------|---------------------------------------------------------------------------------------------|
+| `agent`             | no       | Names an entry in top-level `agents:` whose system prompt + model style the converse call. Validated at load against the `agents:` map (mirrors `off_path.agent`). |
+| `persona`           | no       | Inline system-prompt-style instruction for the off-ramp voice. When both `persona` and `agent` are set, `persona` wins. |
+| `banner`            | no       | One-line label shown when the off-ramp engages.                                             |
+| `capture_free_text` | no       | Preserves the rejected free text on the off-ramp input.                                     |
 
 Load-time invariants (a violating `agent_off_ramp` fails the load):
 

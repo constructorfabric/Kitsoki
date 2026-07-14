@@ -134,6 +134,7 @@ editor RPC returns `codeReadOnly`.
 | Method | Params | Result |
 |---|---|---|
 | `runstatus.editor.rooms` | `{story_path}` | `{rooms: [{id, label, distance, has_agent}]}` |
+| `runstatus.editor.graph` | `{story_path}` | `kitsoki.graph/v1` room graph: `{schema, graph_id, kind, directed, cyclic, nodes[], edges[], groups[]}` |
 | `runstatus.editor.room` | `{story_path, room_id}` | `{id, label, distance, on_enter[], world_keys[], intents[], transitions[], view[], source_ref?}` |
 | `runstatus.editor.agents` | `{story_path, room_id}` | `{contracts: [{kind, prompt_path, output_schema, cassette_key, effect_index}], cassette_globs: []}` |
 | `runstatus.editor.cassettes` | `{story_path, cassette_key?}` | `{episodes: [{cassette_file, episode_id, handler, phase, schema_name, input_digest, output_preview}]}` |

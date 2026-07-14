@@ -1,0 +1,60 @@
+# ticket_root_passthrough — the repo_root → local-files ticket passthrough.
+#
+# An onboarded external checkout (a thin `@kitsoki/dev-story` instance) that
+# keeps local-file tickets sets world.repo_root; the dev-story rooms thread it
+# into every iface.ticket.* call as the `root` arg, which
+# host.local_files.ticket honours (args.root → $KITSOKI_TICKETS_ROOT → cwd —
+# `internal/host/localfiles_ticket.go` resolveTicketsRoot). This closes the
+# formerly-deferred "forward-compat" slot in the dev-story external-target
+# profile: no provider or engine change, purely the story-side arg threading.
+#
+# The provider is stubbed (the root-resolution order itself is unit-tested in
+# Go); the assertion here is the STORY contract — the dispatched search/get
+# carry the configured external root, and the pick still lands the ticket.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world:
+  judge_mode: "human"
+  repo_root:  "/ext/gears-rust"
+
+host_handlers:
+  host.local_files.ticket:
+    by_op:
+      search:
+        data:
+          ok: true
+          tickets:
+            - id: "2026-07-05T090000Z-panic-on-load"
+              title: "Panic on load"
+              status: "open"
+              type: "bug"
+      get:
+        data:
+          ok: true
+          id: "2026-07-05T090000Z-panic-on-load"
+          title: "Panic on load"
+          type: "bug"
+
+turns:
+  # landing → ticket_search; on_enter fires iface.ticket.search with the
+  # external checkout root threaded through.
+  - intent: { name: go_ticket_search, slots: {} }
+    expect_state: ticket_search
+    expect_host_calls:
+      - handler: host.local_files.ticket.search
+        args: { root: "/ext/gears-rust" }
+
+  # The pick's iface.ticket.get carries the same root.
+  - intent: { name: pick_ticket, slots: { n: 1 } }
+    expect_state: ticket_search
+    expect_host_calls:
+      - handler: host.local_files.ticket.get
+        args: { root: "/ext/gears-rust" }
+    expect_world:
+      ticket_id:    "2026-07-05T090000Z-panic-on-load"
+      ticket_type:  "bug"
+      ticket_title: "Panic on load"
+
+expect_no_errors: true

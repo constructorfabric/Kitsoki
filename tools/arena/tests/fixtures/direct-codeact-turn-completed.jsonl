@@ -1,0 +1,3 @@
+{"type":"turn.completed","id":"req-1","usage":{"input_tokens":120,"cached_input_tokens":80,"output_tokens":15,"reasoning_output_tokens":5}}
+{"type":"turn.completed","id":"req-1","usage":{"input_tokens":120,"cached_input_tokens":80,"output_tokens":15,"reasoning_output_tokens":5}}
+{"type":"turn.completed","id":"req-2","usage":{"input_tokens":90,"cached_input_tokens":60,"output_tokens":11,"reasoning_output_tokens":4}}

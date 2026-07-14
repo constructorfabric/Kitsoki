@@ -1,0 +1,123 @@
+# init_ticket_source_composition -- discovery presents the complete ordered
+# source composition for review and apply receives that same list. All host
+# calls are stubbed; the fixture performs no file writes and uses no LLM.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world:
+  workdir: "/srv/repos/acme"
+  repo_root: "/srv/repos/acme"
+
+host_handlers:
+  host.starlark.run:
+    by_call:
+      discover:
+        data:
+          result:
+            target_path: "/srv/repos/acme"
+            project_id: "acme"
+            project_title: "Acme"
+            stack: "go project"
+            dev_command: ""
+            test_command: "go test ./..."
+            build_command: "go build ./..."
+            dev_server_applicable: false
+            conventions: "local defaults"
+            repo_vcs: git
+            repo_default_branch: main
+            repo_remote: acme/fork
+            repo_branch_pattern: "feature/{slug}"
+            repo_branch_issue_id: optional
+            tracker: "github"
+            ticket_repo: "acme/fork"
+            ticket_sources:
+              - { id: local, label: Local, provider: host.local_files.ticket, kind: local, mode: local, args: { root: ".artifacts" } }
+              - { id: fork, label: acme/fork, provider: host.gh.ticket, kind: github, mode: remote, args: { repo: acme/fork } }
+              - { id: upstream, label: upstream/acme, provider: host.gh.ticket, kind: github, mode: remote, args: { repo: upstream/acme } }
+            starter_stories: []
+            story_pack: focused-engineering
+            story_packs: []
+            pr_provider: github
+            pr_repository: acme/fork
+            pr_base_branch: main
+            pr_template: ""
+            goals: {}
+            resolutions: []
+            default_notices: []
+            transcript_count: 0
+            transcript_sources: []
+            mining_recommendation: {}
+      apply:
+        data:
+          result:
+            status: applied
+            target_path: "/srv/repos/acme"
+            profile_validation: { ok: true, schema: [], semantic: [], warnings: [] }
+            writes: []
+  host.run:
+    by_call:
+      install_tools:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json: { target: "/srv/repos/acme", skills: [], agents: [], mcp_path: "/srv/repos/acme/.mcp.json", mcp_written: false }
+
+turns:
+  - intent: { name: go_init, slots: { target: "/srv/repos/acme" } }
+    expect_state: init_discover
+    expect_world:
+      init_ticket_sources:
+        - { id: local, label: Local, provider: host.local_files.ticket, kind: local, mode: local, args: { root: ".artifacts" } }
+        - { id: fork, label: acme/fork, provider: host.gh.ticket, kind: github, mode: remote, args: { repo: acme/fork } }
+        - { id: upstream, label: upstream/acme, provider: host.gh.ticket, kind: github, mode: remote, args: { repo: upstream/acme } }
+
+  - intent: { name: init_discovered, slots: {} }
+    expect_state: init
+    expect_view_matches: "3 configured[\\s\\S]*Local \\(local\\)[\\s\\S]*acme/fork \\(github\\)[\\s\\S]*upstream/acme \\(github\\)"
+
+  - intent: { name: confirm_init, slots: {} }
+    expect_state: init_apply
+    expect_host_calls:
+      - handler: host.starlark.run
+        args:
+          call: apply
+          inputs:
+            op: apply
+            profile_json: ""
+            data:
+              target_path: "/srv/repos/acme"
+              project_id: acme
+              project_title: Acme
+              stack: "go project"
+              dev_command: ""
+              dev_server_applicable: false
+              test_command: "go test ./..."
+              build_command: "go build ./..."
+              conventions: "local defaults"
+              tracker: github
+              ticket_repo: acme/fork
+              ticket_sources:
+                - { id: local, label: Local, provider: host.local_files.ticket, kind: local, mode: local, args: { root: ".artifacts" } }
+                - { id: fork, label: acme/fork, provider: host.gh.ticket, kind: github, mode: remote, args: { repo: acme/fork } }
+                - { id: upstream, label: upstream/acme, provider: host.gh.ticket, kind: github, mode: remote, args: { repo: upstream/acme } }
+              repo_vcs: git
+              repo_default_branch: main
+              repo_remote: acme/fork
+              repo_branch_pattern: "feature/{slug}"
+              repo_branch_issue_id: optional
+              pr_provider: github
+              pr_repository: acme/fork
+              pr_template: ""
+              story_pack: focused-engineering
+              starter_stories: []
+              goals: {}
+              resolutions: []
+        times: 1
+    expect_world:
+      init_ticket_sources:
+        - { id: local, label: Local, provider: host.local_files.ticket, kind: local, mode: local, args: { root: ".artifacts" } }
+        - { id: fork, label: acme/fork, provider: host.gh.ticket, kind: github, mode: remote, args: { repo: acme/fork } }
+        - { id: upstream, label: upstream/acme, provider: host.gh.ticket, kind: github, mode: remote, args: { repo: upstream/acme } }
+
+expect_no_errors: true

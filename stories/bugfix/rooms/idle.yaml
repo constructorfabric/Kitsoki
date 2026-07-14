@@ -29,12 +29,13 @@ states:
     # prose status line + the kv body; the standalone-only border
     # chrome is dropped.
     view:
-      - prose: "{{ world.ticket_id|default:'(no ticket)' }} · cycle {{ world.cycle }} · {{ world.bugfix_mode }} bugfix · judge {{ world.judge_mode }}"
+      - prose: "{{ world.ticket_id|default:'(no ticket)' }} · cycle {{ world.cycle }} · {{ world.bugfix_mode }} bugfix · oversight {{ world.oversight_mode|default:'gated' }} · judge {{ world.judge_mode }}"
       - kv:
           pairs:
             Ticket:    '{{ world.ticket_id|default:"(none)" }} {{ world.ticket_title }}'
             Workspace: '{{ world.workspace_id|default:"(none)" }}'
             Mode:      "{{ world.bugfix_mode }} bugfix"
+            Oversight: "{{ world.oversight_mode|default:'gated' }}"
             Judge:     "{{ world.judge_mode }}"
       - choice:
           mode: single
@@ -52,6 +53,18 @@ states:
             - label:  "skip_to_pr"
               hint:   "jump straight to validating (fix in hand)"
               intent: skip_to_pr
+            - label:  "gated"
+              hint:   "human checkpoint decisions"
+              intent: oversight_gated
+              when:   "world.oversight_mode != 'gated'"
+            - label:  "LLM review"
+              hint:   "LLM checkpoint decisions, human fallback"
+              intent: oversight_llm_review
+              when:   "world.oversight_mode != 'llm-review'"
+            - label:  "no gate"
+              hint:   "operation driver accepts checkpoints"
+              intent: oversight_no_gate
+              when:   "world.oversight_mode != 'no-gate'"
             - label:  "change_ticket"
               hint:   "exit to parent's ticket picker"
               intent: change_ticket
@@ -61,7 +74,7 @@ states:
             - label:  "look"
               hint:   "re-render"
               intent: look
-    relevant_world: [ticket_id, ticket_title, bugfix_mode, judge_mode, workspace_id, reproduction_artifact]
+    relevant_world: [ticket_id, ticket_title, bugfix_mode, oversight_mode, judge_mode, workspace_id, reproduction_artifact]
     # Auto-start when entered fresh with a ticket loaded. The
     # operator who lands here from dev-story's `go_bugfix` / `drive`
     # / `tickets → pick → bugfix` chain has ALREADY chosen to start;
@@ -85,34 +98,80 @@ states:
       # of looping or auto-firing a second pipeline kickoff.
       #
       # The pre-2026-05-18 09:20 version (no flag) made the dogfood
-      # walkthrough loop forever when `git worktree add` failed
-      # against a stale `.worktrees/<id>/` dir from a previous
+      # walkthrough loop forever when workspace creation failed
+      # against a stale managed workspace from a previous
       # aborted run: idle → workspace.create fails → on_error: idle
       # → idle.on_enter re-runs → start emit re-fires → repeat.
       # The engine cap in enterRedirectState backstops this now,
       # but breaking the YAML cycle here means the failure is
       # reported once and the operator stays at idle to inspect.
 
+      # Step -1: free-form complaint intake. A standalone/headless caller can
+      # start with just `ticket_body` (or the `work_complaint` intent below)
+      # instead of a filed issue. Synthesize the ticket identity the rest of the
+      # pipeline needs for thread/workspace names, mark the source as free-form,
+      # then let the usual autostart chain go as far as the available evidence
+      # allows. If the complaint is too vague, later triage/repro gates hold or
+      # route to needs-human with the specific missing guidance.
+      - when: "world.ticket_id == '' && world.ticket_body != '' && !world.bf_autostart_attempted"
+        set:
+          ticket_id:          "complaint-{{ world.session_id != '' ? world.session_id : 'manual' }}"
+          ticket_title:       "{{ world.ticket_title != '' ? world.ticket_title : 'Free-form bug report' }}"
+          ticket_source_mode: "{{ world.ticket_source_mode == '' || world.ticket_source_mode == 'local' ? 'freeform' : world.ticket_source_mode }}"
+          ticket_source_ref:  "{{ world.ticket_source_ref != '' ? world.ticket_source_ref : 'inline complaint' }}"
+          escalate_low_value: true
+
+      # Step 0a: prefer an explicit source reference as the reporting thread
+      # when it names a durable ticket surface. Local artifact tickets arrive as
+      # `.artifacts/issues/bugs/<id>.md`; GitHub tickets arrive as issue URLs.
+      # Free-form complaints use labels such as "operator complaint", so they
+      # must fall through to Step 0b's self-bootstrapping bug-file path.
+      - when: "world.ticket_id != '' && world.thread == '' && world.ticket_source_ref != '' && world.ticket_source_mode != 'freeform' && !world.bf_autostart_attempted"
+        set:
+          thread: "{{ world.ticket_source_ref }}"
+
+      # Step 0b: derive a default reporting thread from ticket_id when the caller
+      # didn't supply one — e.g. a headless drive (goal-seeker/punch-list, a bench
+      # cell, `kitsoki turn`) that hands over only a ticket_id + item text, no
+      # operator-chosen thread path. Every checkpoint's `iface.transport.post` (and
+      # the default host.append_to_file handler behind it) HARD-FAILS on an empty
+      # thread ("thread argument is required"), which otherwise dead-ends the whole
+      # pipeline at the very first checkpoint post. `issues/bugs/<ticket_id>.md` is
+      # the same self-bootstrapping bug-file convention host.append_to_file already
+      # documents ("the bug file IS the conversation thread") — it creates the file
+      # on first write, so this is safe even when no such file exists yet. Applies
+      # in triage mode too (triaging's `accept` posts to the transport as well), so
+      # this is NOT gated on bugfix_mode. Runs once per autostart attempt, same as
+      # the workspace-identity derivation below; never overrides an explicit thread
+      # a caller already projected in via world_in.
+      - when: "world.ticket_id != '' && world.thread == '' && !world.bf_autostart_attempted"
+        set:
+          thread: "issues/bugs/{{ world.ticket_id }}.md"
+
+      # Step 0w: autostart owns maker workspace identity. A headless caller can
+      # safely seed ticket metadata, but it must not be able to steer maker rooms
+      # onto "." or another non-isolated checkout via a seeded workdir. Triage is
+      # the explicit read-only exception below. A workdir already under the
+      # repo-relative managed isolation roots (new .capsules/workspaces/ or
+      # legacy .worktrees/) is legitimate and keeps its seeded identity; anything
+      # else is cleared so the mutating run re-derives an isolated checkout.
+      - when: "world.ticket_id != '' && world.bugfix_mode != 'triage' && !world.bf_autostart_attempted && !world.workspace_prepared && world.workdir != '' && !hasPrefix(world.workdir, '.capsules/workspaces/') && !hasPrefix(world.workdir, '.worktrees/')"
+        set:
+          workspace_id: ""
+          feature_branch: ""
+          workdir: ""
+
       # Step 1: derive workspace identity from ticket_id. Skipped in triage
-      # mode — triage is read-only against the current tree, so it needs no
-      # worktree (and creating one would be wasted side-effect).
+      # mode and for an explicit caller-prepared workspace — the latter owns
+      # its identity across re-entry/refinement, so do not replace it after a
+      # reproducer retry clears bf_autostart_attempted.
       #
-      # The worktree dir is ticket-scoped (`.worktrees/bf-<ticket>`), but the
-      # calling session's identity (world.session_id, projected from the
-      # orchestrator's per-session SessionID) is threaded into workspace.create
-      # below so the host-side `.kitsoki-owner` safety net can refuse to hand
-      # one session's live tree to a DIFFERENT session — the destructive
-      # shared-tree bug
-      # (2026-06-03T121409Z-concurrent-dogfood-sessions-share-checkout-destructive-git)
-      # where a `git checkout -- <file>` in one session silently reverted
-      # another session's unrecoverable uncommitted WIP. Two concurrent sessions
-      # racing the same ticket now FAIL LOUDLY (on_error: idle) instead of
-      # silently sharing a checkout; the second session is refused, never handed
-      # the first's tree. (Keeping the dir ticket-scoped preserves the stable
-      # on-disk path contract the dogfood-smoke suite and gitops cleanup rely on;
-      # per-session DISTINCT dirs for same-ticket concurrency is a possible
-      # future enhancement, not needed to close the destructive bug.)
-      - when: "world.ticket_id != '' && world.workspace_id == '' && !world.bf_autostart_attempted && world.bugfix_mode != 'triage'"
+      # The workspace id and branch include world.session_id, so concurrent
+      # sessions on the same ticket get distinct clone-backed capsule workspaces
+      # under .capsules/workspaces/. The host response is bound back into
+      # world.workdir below, so the script remains the source of truth for the
+      # actual path.
+      - when: "world.ticket_id != '' && world.workspace_id == '' && !world.bf_autostart_attempted && !world.workspace_prepared && world.bugfix_mode != 'triage'"
         set:
           # Append world.session_id so two concurrent sessions on the SAME
           # ticket resolve to DISTINCT workdir/branch/workspace ids — otherwise
@@ -121,32 +180,27 @@ states:
           # ReservedWorldKeys / loadJourney) and bare at every import depth.
           workspace_id:   "bf-{{ world.ticket_id }}-{{ world.session_id }}"
           feature_branch: "fix/{{ world.ticket_id }}-{{ world.session_id }}"
-          workdir:        ".worktrees/bf-{{ world.ticket_id }}-{{ world.session_id }}"
+          workdir:        ".capsules/workspaces/bf-{{ world.ticket_id }}-{{ world.session_id }}"
 
-      # Step 2: create the worktree on disk. `id:` pins the on-disk
-      # dir basename to `world.workspace_id` so the later
-      # `iface.workspace.sync` lookup (keyed on workspace_id) matches
-      # the directory worktreeCreate actually made. Without it,
-      # worktreeCreate would derive its dir from the branch name
-      # (`fix/<ticket>` → `fix-<ticket>`) while world.workspace_id is
-      # `bf-<ticket>`, so sync would silently fail and bounce the
-      # operator back to idle.
-      # `base:` is the committish the worktree is CUT FROM (passed straight to
-      # `git worktree add <dir> <base>`, which accepts a branch, tag, OR commit
-      # SHA). Prefer an explicit `base_commit` (pin the tree to a specific commit
-      # — e.g. a bug's pre-fix baseline in a bake-off) and fall back to
-      # `base_branch` (which doubles as the PR target and defaults to "main").
-      # Keep these distinct: the cut-point and the PR base are not the same thing.
-      - when: "world.ticket_id != '' && world.feature_branch != '' && world.workdir != '' && !world.bf_autostart_attempted && world.bugfix_mode != 'triage'"
+      # Step 2: create the Capsule workspace on disk. `id:` pins the workspace
+      # identity; `definition:` names the checked-in Capsule definition that owns
+      # source/bootstrap/policy. The transitional name/base/session_id fields are
+      # still supplied for legacy bindings during the migration window, but
+      # Capsule-backed bindings ignore them and return the authoritative branch.
+      - when: "world.ticket_id != '' && world.feature_branch != '' && world.workdir != '' && !world.bf_autostart_attempted && !world.workspace_prepared && world.bugfix_mode != 'triage'"
         invoke: iface.workspace.create
         with:
           id:         "{{ world.workspace_id }}"
+          definition: "development"
           name:       "{{ world.feature_branch }}"
           base:       "{{ world.base_commit != '' ? world.base_commit : world.base_branch }}"
           session_id: "{{ world.session_id }}"
+        bind:
+          workdir:        path
+          feature_branch: branch
         on_error: idle
 
-      # Step 2t (triage mode): no worktree — pin workdir to the current
+      # Step 2t (triage mode): no isolated workspace — pin workdir to the current
       # checkout so the read-only triager runs against the live tree.
       - when: "world.ticket_id != '' && world.bugfix_mode == 'triage' && world.workdir == '' && !world.bf_autostart_attempted"
         set:
@@ -156,7 +210,27 @@ states:
       # dispatched after the effect chain completes, so the next
       # effect (the flag set below) still runs first.
       # Triage mode autostarts into the triaging room instead of reproducing.
-      - when: "world.ticket_id != '' && !world.bf_autostart_attempted && world.bugfix_mode != 'triage' && (world.reproduction_artifact.summary_title == nil || world.reproduction_artifact.summary_title == '')"
+      #
+      # Pipeline modes run a PRE-FLIGHT triage first (world.auto_triage,
+      # default on): one read-only triager call against the workspace just cut
+      # above answers "does this bug still exist?" BEFORE the reproducer /
+      # judge / maker budget is spent. ALREADY-FIXED short-circuits to
+      # @exit:triaged; any other verdict continues into reproducing (the
+      # triaging room's accept arc owns that routing — see triaging.yaml).
+      # The guard skips the pre-flight when a triage_verdict is already
+      # seeded (the caller triaged separately), auto_triage is off (e.g.
+      # bench cells pinned to a known-live pre-fix baseline), or this is a
+      # MID-PIPELINE or RECOVERY re-entry rather than a fresh ticket:
+      # reproducing's refine arm bounces through idle with
+      # bf_autostart_attempted reset (cycle / reproducing_cycle > 0),
+      # restart_from does the same with restart_from_stage set, and an
+      # on_error bounce re-enters carrying last_error — re-triaging in any
+      # of those would burn verdict budget on a bug the pipeline is already
+      # actively working (and, for the error bounce, would MASK the surviving
+      # last_error diagnostic with the triager's outcome).
+      - when: "world.ticket_id != '' && !world.bf_autostart_attempted && world.bugfix_mode != 'triage' && world.auto_triage && (world.triage_verdict.verdict == nil || world.triage_verdict.verdict == '') && world.cycle == 0 && world.reproducing_cycle == 0 && world.restart_from_stage == '' && world.last_error == '' && (world.reproduction_artifact.summary_title == nil || world.reproduction_artifact.summary_title == '')"
+        emit_intent: preflight_triage
+      - when: "world.ticket_id != '' && !world.bf_autostart_attempted && world.bugfix_mode != 'triage' && (!world.auto_triage || (world.triage_verdict.verdict != nil && world.triage_verdict.verdict != '') || world.cycle > 0 || world.reproducing_cycle > 0 || world.restart_from_stage != '' || world.last_error != '') && (world.reproduction_artifact.summary_title == nil || world.reproduction_artifact.summary_title == '')"
         emit_intent: start
       - when: "world.ticket_id != '' && !world.bf_autostart_attempted && world.bugfix_mode == 'triage' && (world.triage_verdict.verdict == nil || world.triage_verdict.verdict == '')"
         emit_intent: triage
@@ -169,12 +243,85 @@ states:
           bf_autostart_attempted: true
     on:
       start:
+        - when: "world.ticket_id == ''"
+          target: "@exit:pick_ticket"
+        - when: "world.oversight_mode == 'llm-review'"
+          target: reproducing
+          operation: bugfix_full_llm_review
+          effects:
+            - set:
+                oversight_mode: "llm-review"
+                judge_mode: "{{ world.judge_mode != 'human' ? world.judge_mode : 'llm_then_human' }}"
+        - when: "world.oversight_mode == 'no-gate'"
+          target: reproducing
+          operation: bugfix_full_no_gate
+          effects:
+            - set:
+                oversight_mode: "no-gate"
+                judge_mode: "human"
+        - when: "world.oversight_mode == 'gated'"
+          target: reproducing
+          operation: bugfix_full
+          effects:
+            - set:
+                oversight_mode: "gated"
+                judge_mode: "human"
         - target: reproducing
+          operation: bugfix_full
+      # NL ticket-id handoff — see the work_ticket intent doc in ../app.yaml.
+      # Re-targets idle EXPLICITLY (not `.`) so on_enter re-fires with
+      # ticket_id now set, falling into the same autostart chain above
+      # (Steps 0-4) that the structured-initial_world path already uses.
+      work_ticket:
+        - target: idle
+          effects:
+            - set:
+                ticket_id:    "{{ slots.ticket_id }}"
+                ticket_title: "{{ slots.ticket_title ?? world.ticket_title }}"
+      # Free-form complaint handoff — see the work_complaint intent doc in
+      # ../app.yaml. It deliberately does NOT set ticket_id here: re-entering
+      # idle lets Step -1 above synthesize the same session-scoped identity used
+      # by callers that seed only initial_world.ticket_body.
+      work_complaint:
+        - target: idle
+          effects:
+            - set:
+                ticket_title:       "{{ slots.ticket_title ?? 'Free-form bug report' }}"
+                ticket_body:        "{{ slots.complaint }}"
+                ticket_source_mode: "freeform"
+                ticket_source_ref:  "operator complaint"
       # Walk the full 7-room pipeline. Explicit alias for `start` that
       # also pins bugfix_mode=full so a previously-set quick flag is
       # cleared. Autonomous callers prefer this for unambiguity.
       full_pipeline:
+        - when: "world.ticket_id == ''"
+          target: "@exit:pick_ticket"
+        - when: "world.oversight_mode == 'llm-review'"
+          target: reproducing
+          operation: bugfix_full_llm_review
+          effects:
+            - set:
+                bugfix_mode: "full"
+                oversight_mode: "llm-review"
+                judge_mode: "{{ world.judge_mode != 'human' ? world.judge_mode : 'llm_then_human' }}"
+        - when: "world.oversight_mode == 'no-gate'"
+          target: reproducing
+          operation: bugfix_full_no_gate
+          effects:
+            - set:
+                bugfix_mode: "full"
+                oversight_mode: "no-gate"
+                judge_mode: "human"
+        - when: "world.oversight_mode == 'gated'"
+          target: reproducing
+          operation: bugfix_full
+          effects:
+            - set:
+                bugfix_mode: "full"
+                oversight_mode: "gated"
+                judge_mode: "human"
         - target: reproducing
+          operation: bugfix_full
           effects:
             - set:
                 bugfix_mode: "full"
@@ -183,29 +330,133 @@ states:
       # done_executing instead. Still walks reproducing → proposing →
       # implementing → testing so the artifact chain has a body.
       quick_fix:
+        - when: "world.ticket_id == ''"
+          target: "@exit:pick_ticket"
+        - when: "world.oversight_mode == 'llm-review'"
+          target: reproducing
+          operation: bugfix_quick_llm_review
+          effects:
+            - set:
+                bugfix_mode: "quick"
+                oversight_mode: "llm-review"
+                judge_mode: "{{ world.judge_mode != 'human' ? world.judge_mode : 'llm_then_human' }}"
+        - when: "world.oversight_mode == 'no-gate'"
+          target: reproducing
+          operation: bugfix_quick_no_gate
+          effects:
+            - set:
+                bugfix_mode: "quick"
+                oversight_mode: "no-gate"
+                judge_mode: "human"
+        - when: "world.oversight_mode == 'gated'"
+          target: reproducing
+          operation: bugfix_quick
+          effects:
+            - set:
+                bugfix_mode: "quick"
+                oversight_mode: "gated"
+                judge_mode: "human"
         - target: reproducing
+          operation: bugfix_quick
           effects:
             - set:
                 bugfix_mode: "quick"
       # Triage-only. Read-only verdict on whether the bug still exists; no
-      # worktree, no fix. Pins bugfix_mode=triage (the idle autostart guard and
+      # workspace, no fix. Pins bugfix_mode=triage (the idle autostart guard and
       # the triaging room read it) and enters the triaging room.
       triage:
-        - target: triaging
+        - when: "world.ticket_id == ''"
+          target: "@exit:pick_ticket"
+        - when: "world.oversight_mode == 'llm-review'"
+          target: triaging
+          operation: bugfix_triage_llm_review
           effects:
             - set:
                 bugfix_mode: "triage"
+                oversight_mode: "llm-review"
+                judge_mode: "{{ world.judge_mode != 'human' ? world.judge_mode : 'llm_then_human' }}"
+        - when: "world.oversight_mode == 'no-gate'"
+          target: triaging
+          operation: bugfix_triage_no_gate
+          effects:
+            - set:
+                bugfix_mode: "triage"
+                oversight_mode: "no-gate"
+                judge_mode: "human"
+        - when: "world.oversight_mode == 'gated'"
+          target: triaging
+          operation: bugfix_triage
+          effects:
+            - set:
+                bugfix_mode: "triage"
+                oversight_mode: "gated"
+                judge_mode: "human"
+        - target: triaging
+          operation: bugfix_triage
+          effects:
+            - set:
+                bugfix_mode: "triage"
+      # Autostart pre-flight triage (internal — see Step 3 above). Enters the
+      # triaging room WITHOUT touching bugfix_mode: triaging's accept arc reads
+      # the preserved full/quick mode to route back into reproducing (or exit
+      # at @exit:triaged when the verdict is ALREADY-FIXED).
+      preflight_triage:
+        - when: "world.ticket_id == ''"
+          target: "@exit:pick_ticket"
+        - when: "world.oversight_mode == 'llm-review'"
+          target: triaging
+          operation: bugfix_full_llm_review
+          effects:
+            - set:
+                oversight_mode: "llm-review"
+                judge_mode: "{{ world.judge_mode != 'human' ? world.judge_mode : 'llm_then_human' }}"
+        - when: "world.oversight_mode == 'no-gate'"
+          target: triaging
+          operation: bugfix_full_no_gate
+          effects:
+            - set:
+                oversight_mode: "no-gate"
+                judge_mode: "human"
+        - when: "world.oversight_mode == 'gated'"
+          target: triaging
+          operation: bugfix_full
+          effects:
+            - set:
+                oversight_mode: "gated"
+                judge_mode: "human"
+        - target: triaging
+          operation: bugfix_full
       # Skip directly into validating; reproducing/proposing/
       # implementing/testing/reviewing don't run. restart_from_stage gets
       # the value "validate" for audit. Use when the operator already
       # has the fix in hand and just wants to re-validate / open the PR.
       skip_to_pr:
+        - when: "world.ticket_id == ''"
+          target: "@exit:pick_ticket"
         - target: validating
           effects:
             - set:
                 bugfix_mode:        "full"
                 restart_from_stage: "validate"
                 unsafe_jumps_made:  "{{ world.unsafe_jumps_made + 1 }}"
+      oversight_gated:
+        - target: .
+          effects:
+            - set:
+                oversight_mode: "gated"
+                judge_mode: "human"
+      oversight_llm_review:
+        - target: .
+          effects:
+            - set:
+                oversight_mode: "llm-review"
+                judge_mode: "llm_then_human"
+      oversight_no_gate:
+        - target: .
+          effects:
+            - set:
+                oversight_mode: "no-gate"
+                judge_mode: "human"
       # Bail back to the parent's ticket picker without abandoning. The
       # parent (dev-story) maps @exit:pick_ticket to its ticket_search
       # room; from there the operator picks an id and `go_bugfix` re-

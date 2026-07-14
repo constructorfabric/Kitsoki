@@ -1,0 +1,41 @@
+states:
+  # integrate — punch-list finished the change (its `done` exit lands here). Project
+  # the change into ship-it's integrate_existing seam (worktree_path + gate_command +
+  # workspace_branch are what the seam's guard requires) and enter ship-it at
+  # `configure`; the flow/operator then drives `integrate_existing`, which runs the
+  # delivery-tail integrate → verify → cleanup → shipped chain lost-work-safely.
+  integrate:
+    description: "Integrate — land the change's branch via ship-it."
+    relevant_world: [next_change_id, worktree_path, workspace_branch, gate_command]
+    on_enter:
+      - set:
+          worktree_path:    ".worktrees/gu-{{ world.next_change_id }}"
+          workspace_branch: "gu/{{ world.next_change_id }}"
+          workspace_id:     "gu-{{ world.next_change_id }}"
+          gate_command:     "{{ world.next_gate_cmd != '' ? world.next_gate_cmd : 'true' }}"
+      - emit_intent: go_ship
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Change:   '{{ world.next_change_id }}'
+                Worktree: '{{ world.worktree_path }}'
+                Branch:   '{{ world.workspace_branch }}'
+                Gate:     '{{ world.gate_command }}'
+          - prose: "Handing the change's worktree to ship-it for a lost-work-safe integrate."
+        choices:
+          - list:
+              items:
+                - { label: "look" }
+    on:
+      go_ship:
+        - target: shipit
+      look:
+        - target: .
+      "*":
+        - default: true
+          target: .
+          effects:
+            - say: "Entering ship-it to integrate the change."

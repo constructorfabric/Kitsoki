@@ -1,0 +1,60 @@
+# gitops_issue_status_uses_ticket_provider — issue lookups in the git-ops hub
+# go through iface.ticket, not ad-hoc `gh` shell commands.
+#
+# A parent project wrapper can bind the ticket interface to host.gh.ticket. This
+# flow stubs that provider and proves the nested dev-story -> gitops import can
+# fetch issue state from the story surface.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world:
+  ticket_repo: "acme/repo"
+
+host_bindings:
+  gitops__ticket: host.gh.ticket
+
+host_handlers:
+  host.run:
+    by_call:
+      refresh_intercept:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            branch:             main
+            main_worktree_path: "."
+            commits_ahead:      0
+            commits_behind:     0
+            has_uncommitted:    false
+            on_integration:     true
+            no_common_ancestor: false
+  host.gh.ticket:
+    by_op:
+      get:
+        data:
+          ok: true
+          id: "105"
+          title: "Replay miss must fail closed"
+          status: "closed"
+          source: "github"
+          url: "https://github.com/acme/repo/issues/105"
+          legacy_id: "2026-07-05T021109Z-replay-miss"
+          body: "Replay sessions must never fall through to a live agent."
+
+turns:
+  - intent: { name: go_gitops, slots: {} }
+    expect_state: gitops.intercept
+
+  - intent: { name: gitops__issue_status, slots: { id: "105" } }
+    expect_state: gitops.intercept
+    expect_world:
+      gitops__ticket_repo: "acme/repo"
+      gitops__issue_id: "105"
+      gitops__issue_title: "Replay miss must fail closed"
+      gitops__issue_status: "closed"
+      gitops__issue_source: "github"
+      gitops__issue_url: "https://github.com/acme/repo/issues/105"
+      gitops__issue_legacy_id: "2026-07-05T021109Z-replay-miss"
+
+expect_no_errors: true

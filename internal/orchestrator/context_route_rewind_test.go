@@ -99,7 +99,7 @@ func TestContextualRouter_RewindRouteOverridesAndRedispatches(t *testing.T) {
 
 	// Operator rewinds and re-routes the SAME utterance as help (read-only lane).
 	out2, err := orch.RewindRoute(ctx, sid, decisionID, orchestrator.ClassHelp,
-		"operator: this was a help question, not navigation")
+		"operator: this was a help question, not navigation", "")
 	require.NoError(t, err)
 
 	// (b) State restored to pre-turn (start) — help is read-only, never advances.

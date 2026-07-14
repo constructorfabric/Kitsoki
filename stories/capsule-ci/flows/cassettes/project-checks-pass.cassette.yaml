@@ -1,0 +1,29 @@
+kind: host_cassette
+app_id: capsule-ci
+match_on: [handler]
+episodes:
+  - id: project_checks_passed
+    match:
+      handler: host.capsule_ci.project_checks
+    replay: any
+    response:
+      data:
+        verdict:
+          schema: capsule-ci-verdict/v1
+          pipeline: change
+          outcome: passed
+          summary: "Project test and build commands passed."
+          checks:
+            - id: test
+              kind: deterministic
+              outcome: passed
+              evidence: [capsule-ci:project-profile:test]
+            - id: build
+              kind: deterministic
+              outcome: passed
+              evidence: [capsule-ci:project-profile:build]
+          promotion_eligible: true
+          source_digest: sha256:source
+          story_digest: sha256:story
+          environment_digest: sha256:environment
+          envelope_digest: sha256:envelope

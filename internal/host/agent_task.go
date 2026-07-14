@@ -87,31 +87,67 @@ const defaultTaskMaxRetries = 5
 
 // taskAcceptanceOptions carries the parsed acceptance: block.
 type taskAcceptanceOptions struct {
-	SchemaPath  string
-	PostCmd     string
-	PostCmdArgs []postCmdKV
-	MaxRetries  int
+	SchemaPath          string
+	PostCmd             string
+	PostCmdArgs         []postCmdKV
+	MaxRetries          int
+	MinInformationRatio *float64
+	MinInformationBits  *float64
 }
 
 // AgentTaskHandler implements host.agent.task.
 func AgentTaskHandler(ctx context.Context, args map[string]any) (Result, error) {
+	return runAgentVerbWithLadder(ctx, args, "task", agentTaskHandlerOnce)
+}
+
+// agentTaskHandlerOnce is the original AgentTaskHandler body: a single
+// dispatch attempt. See agentDecideHandlerOnce's doc for how
+// runAgentVerbWithLadder drives this once per ladder rung when one is
+// configured, and applyLadderRung for how a rung overrides the resolved
+// agent.
+func agentTaskHandlerOnce(ctx context.Context, args map[string]any) (Result, error) {
 	// ── Mandatory: agent: ─────────────────────────────────────────────────
 	agentName, _ := args["agent"].(string)
 	agentName = strings.TrimSpace(agentName)
+	_, hasInlineContract := agentContractArg(args)
+	if agentName == "" && !hasInlineContract {
+		return Result{Error: "host.agent.task: agent: argument is required — declare a named agent in the agents: block", FailureKind: FailureFatal}, nil
+	}
 	if agentName == "" {
-		return Result{Error: "host.agent.task: agent: argument is required — declare a named agent in the agents: block"}, nil
+		agentName = "<inline>"
 	}
 
 	agent, agentOK := resolveAgent(ctx, args)
 	if !agentOK {
-		return Result{Error: fmt.Sprintf("host.agent.task: unknown agent %q — check the agents: block in app.yaml", agentName)}, nil
+		return Result{Error: fmt.Sprintf("host.agent.task: unknown agent %q — check the agents: block in app.yaml", agentName), FailureKind: FailureFatal}, nil
 	}
 	ctx, agent = applyProvider(ctx, args, agent)
+	ctx, agent = applyLadderRung(ctx, agent)
 
 	// Resolve the worktree up front so the durability barrier below can run on
 	// either dispatch path (plugin or subprocess).
 	workingDir, _ := args["working_dir"].(string)
 	workingDir = appendDefaultCwd(workingDir, agent)
+	sandbox, sandboxErr := parseAgentSandbox(args)
+	if sandboxErr != "" {
+		return Result{Error: "host.agent.task: " + sandboxErr, FailureKind: FailureFatal}, nil
+	}
+	if _, policyErr := RequireAgentLaunchAllowed(ctx, "task", agentName, workingDir); policyErr != "" {
+		return Result{Error: "host.agent.task: " + policyErr, FailureKind: FailureFatal}, nil
+	}
+
+	// Deterministic seed backstop: when this task's context.args carry a target
+	// story + a seed world (e.g. the punch-list maker's item.{story, world_in}),
+	// register a pending seed keyed by (parentSessionID, story) BEFORE spawning the
+	// maker. The maker's fresh studio server pops it in session.new even if the LLM
+	// omits initial_world, so the nested driven session is seeded deterministically
+	// rather than depending on the maker cooperating. This MUST run before the
+	// plugin dispatch below: the codex-native punch-list maker routes through the
+	// plugin path, which early-returns at line ~147 — so registering only on the
+	// subprocess path stranded every plugin-dispatched maker with an empty seed.
+	// Runs on BOTH paths for the same reason the worktree resolve above does. See
+	// pending_seed.go.
+	RegisterPendingSeedFromTaskArgs(ctx, args)
 
 	// B-7: If an agent plugin registry is wired in context, route through
 	// host.Dispatch. For task the prompt is the context.prompt field.
@@ -123,6 +159,9 @@ func AgentTaskHandler(ctx context.Context, args map[string]any) (Result, error) 
 	}
 	// Try plugin dispatch before processing acceptance/tools (which subprocess needs).
 	if pluginRes, handled, pluginErr := TryDispatchVerb(ctx, "task", taskPromptForPlugin, "", agentName, "", withArgs, nil); handled {
+		if sandbox != nil {
+			return Result{Error: "host.agent.task: sandbox is not supported by plugin-dispatched agents; use the subprocess backend or remove sandbox", FailureKind: FailureFatal}, nil
+		}
 		if pluginErr != nil {
 			return Result{Error: pluginErr.Error()}, nil
 		}
@@ -136,10 +175,10 @@ func AgentTaskHandler(ctx context.Context, args map[string]any) (Result, error) 
 	// ── Acceptance block ──────────────────────────────────────────────────
 	acceptance, acceptErr := parseTaskAcceptance(args)
 	if acceptErr != "" {
-		return Result{Error: "host.agent.task: " + acceptErr}, nil
+		return Result{Error: "host.agent.task: " + acceptErr, FailureKind: FailureFatal}, nil
 	}
 	if acceptance.SchemaPath == "" {
-		return Result{Error: "host.agent.task: acceptance.schema is required"}, nil
+		return Result{Error: "host.agent.task: acceptance.schema is required", FailureKind: FailureFatal}, nil
 	}
 
 	maxRetries := acceptance.MaxRetries
@@ -153,7 +192,9 @@ func AgentTaskHandler(ctx context.Context, args map[string]any) (Result, error) 
 	// ── Resolve binary ────────────────────────────────────────────────────
 	bin, binErr := resolveAgentBin(ctx)
 	if binErr != nil {
-		return Result{Error: binErr.Error()}, nil
+		// Same reasoning as agent_decide.go: the selected backend's binary is
+		// the axis the ladder rotates on, so classify as infra, not fatal.
+		return Result{Error: binErr.Error(), FailureKind: FailureInfra}, nil
 	}
 
 	// ── Context prompt (optional) ─────────────────────────────────────────
@@ -163,7 +204,8 @@ func AgentTaskHandler(ctx context.Context, args map[string]any) (Result, error) 
 	}
 
 	// ── Effective tools ───────────────────────────────────────────────────
-	tools := effectiveTools(ctx, args, agent)
+	policy := enforceToolbox(ctx, args, agent, "bypassPermissions")
+	tools := policy.AllowedTools
 
 	// ── Replay mode ───────────────────────────────────────────────────────
 	replayMode := inferReplayMode(agent, tools)
@@ -188,14 +230,14 @@ func AgentTaskHandler(ctx context.Context, args map[string]any) (Result, error) 
 		taskPromptRef, _ = cm["prompt"].(string)
 	}
 	tOverlay, tDefaulted, tOverridden := promptTraceProvenance(ctx, taskPromptRef)
-	appendAgentCalledEvent(ctx, callStart, callID, contextPrompt, AgentCalledPayload{
+	appendAgentCalledEvent(ctx, callStart, callID, contextPrompt, policy.AgentCalledFields(AgentCalledPayload{
 		Verb:           "task",
 		Agent:          agentName,
 		Model:          agent.Model,
 		PromptOverlay:  tOverlay,
 		SpecDefaulted:  tDefaulted,
 		SpecOverridden: tOverridden,
-	})
+	}))
 
 	slog.InfoContext(ctx, "task.start",
 		"agent", agentName,
@@ -226,6 +268,8 @@ func AgentTaskHandler(ctx context.Context, args map[string]any) (Result, error) 
 
 	// ── Build CLI args ────────────────────────────────────────────────────
 	baseCLIArgs := buildBaseCLIArgs(ctx, sysprompt.Task, args, agent)
+	baseCLIArgs = setPermissionMode(baseCLIArgs, policy.CLIMode)
+	baseCLIArgs = appendDisallowedToolsFlag(baseCLIArgs, policy.DeniedTools)
 	if writeModeReadOnly {
 		baseCLIArgs = applyReadOnlyFloorCLIArgs(baseCLIArgs)
 		tools = rewriteToolsForBashMCP(tools)
@@ -243,6 +287,7 @@ func AgentTaskHandler(ctx context.Context, args map[string]any) (Result, error) 
 	var opAskCleanup func()
 	baseCLIArgs, tools, opAskCleanup, _ = attachOperatorAsk(ctx, baseCLIArgs, tools)
 	defer opAskCleanup()
+	policy = policy.WithAllowed(tools)
 	// Read-only floor: route Bash (if requested) through the kitsoki-bash MCP
 	// wrapper under a read-only profile so the subprocess can only run read-only
 	// commands; a mutating command is denied by the profile (the gate's operator
@@ -260,6 +305,14 @@ func AgentTaskHandler(ctx context.Context, args map[string]any) (Result, error) 
 		}
 		defer bashMCPCleanup()
 		baseCLIArgs = append(baseCLIArgs, "--mcp-config", bashMCPPath)
+	}
+	if contractServers := attachStudioMCPServer(effectiveMCPServers(args, agent), tools); len(contractServers) > 0 {
+		contractMCPPath, contractMCPCleanup, mErr := writeMCPConfigTempfile(contractServers, "kitsoki-task-contract-mcp")
+		if mErr != nil {
+			return Result{Error: "host.agent.task: write contract MCP config: " + mErr.Error()}, nil
+		}
+		defer contractMCPCleanup()
+		baseCLIArgs = append(baseCLIArgs, "--mcp-config", contractMCPPath)
 	}
 	if len(tools) > 0 {
 		baseCLIArgs = appendAllowedToolsFlag(baseCLIArgs, tools)
@@ -295,6 +348,9 @@ func AgentTaskHandler(ctx context.Context, args map[string]any) (Result, error) 
 	// concurrent callers don't race on the global env.
 	parentSessionID := kitsokiSessionIDFromCtx(ctx)
 
+	// (The deterministic seed backstop is registered up front, before the plugin
+	// dispatch, so it fires on both the plugin and subprocess paths — see above.)
+
 	// ── Run the acceptance loop ───────────────────────────────────────────
 	var (
 		lastSubmitted any
@@ -313,19 +369,25 @@ func AgentTaskHandler(ctx context.Context, args map[string]any) (Result, error) 
 			// Re-build with state file path.
 			mcpCfg2, _, vcErr2 := buildTaskValidatorMCPConfigWithState(ctx, acceptance, outputFile, stateFilePath)
 			if vcErr2 == nil && mcpCfg2 != "" {
-				// Replace the config.
-				os.Remove(mcpConfigPath)
+				// Replace the VALIDATOR config only. baseCLIArgs may carry
+				// other --mcp-config flags appended earlier (the studio
+				// contract server, the read-only bash wrapper, the
+				// operator-ask bridge) — stripping every --mcp-config here
+				// silently detached the kitsoki studio server from agents
+				// that declare mcp__kitsoki__* tools (scenario-qa's driver
+				// preflight found no kitsoki tools live because of this).
+				oldConfigPath := mcpConfigPath
+				os.Remove(oldConfigPath)
 				mcpConfigPath = mcpCfg2
 				defer os.Remove(mcpConfigPath)
-				// Rebuild baseCLIArgs without the old --mcp-config.
 				var filtered []string
 				skipNext := false
-				for _, a := range baseCLIArgs {
+				for i, a := range baseCLIArgs {
 					if skipNext {
 						skipNext = false
 						continue
 					}
-					if a == "--mcp-config" {
+					if a == "--mcp-config" && i+1 < len(baseCLIArgs) && baseCLIArgs[i+1] == oldConfigPath {
 						skipNext = true
 						continue
 					}
@@ -355,18 +417,76 @@ func AgentTaskHandler(ctx context.Context, args map[string]any) (Result, error) 
 			Stdin:      contextPrompt,
 			WorkingDir: workingDir,
 			SessionID:  parentSessionID,
+			Sandbox:    sandbox,
 		}.Run(ctx)
+		attemptDurationMS := time.Since(callStart).Milliseconds()
 		// H5: capture the claude session ID returned from system.init so
 		// --resume works correctly across iterations (mirrors decide's pattern).
 		if returnedSID != "" {
 			claudeSID = returnedSID
 		}
+		// `codex exec resume <id>` is interactive when the initial exec failed
+		// before it emitted a real thread id (notably a stdin handoff failure).
+		// Retrying that synthetic UUID parks the worker in code mode with no prompt,
+		// burns the cell timeout, and produces no trace usage. Restart the next
+		// attempt as a fresh non-interactive exec instead; the task prompt and
+		// validator MCP are both rebuilt from this stable call context.
+		if AgentBackendFromContext(ctx).Name() == "codex" && cr.ExitCode != 0 {
+			firstRun = true
+		}
 
 		if runErr != nil {
-			return Result{}, runErr
+			errMsg := agentRunErrorMessage("task", runErr, cr.Stderr)
+			slog.InfoContext(ctx, "agent.task.complete",
+				"call_id", callID,
+				"model", agent.Model,
+				"duration_ms", attemptDurationMS,
+				"task_trace_id", taskTraceID,
+				"error", errMsg,
+			)
+			appendAgentErrorEvent(ctx, time.Now(), callID, AgentErrorPayload{
+				Verb:       "task",
+				Agent:      agentName,
+				DurationMS: attemptDurationMS,
+				Error:      errMsg,
+				Meta:       ladderMetaFields(ctx, FailureInfra),
+			})
+			return Result{
+				Error:       errMsg,
+				FailureKind: FailureInfra,
+				Data: map[string]any{
+					"task_trace_id": taskTraceID,
+					"replay_mode":   string(replayMode),
+				},
+			}, nil
 		}
 		if cr.Infra != nil {
-			return Result{Error: fmt.Sprintf("host.agent.task: claude exec failed: %v", cr.Infra)}, nil
+			errMsg := fmt.Sprintf("host.agent.task: claude exec failed: %v", cr.Infra)
+			if s := strings.TrimSpace(cr.Stderr); s != "" {
+				errMsg = fmt.Sprintf("%s\nstderr: %s", errMsg, s)
+			}
+			slog.InfoContext(ctx, "agent.task.complete",
+				"call_id", callID,
+				"model", agent.Model,
+				"duration_ms", attemptDurationMS,
+				"task_trace_id", taskTraceID,
+				"error", errMsg,
+			)
+			appendAgentErrorEvent(ctx, time.Now(), callID, AgentErrorPayload{
+				Verb:       "task",
+				Agent:      agentName,
+				DurationMS: attemptDurationMS,
+				Error:      errMsg,
+				Meta:       ladderMetaFields(ctx, FailureInfra),
+			})
+			return Result{
+				Error:       errMsg,
+				FailureKind: FailureInfra,
+				Data: map[string]any{
+					"task_trace_id": taskTraceID,
+					"replay_mode":   string(replayMode),
+				},
+			}, nil
 		}
 
 		// Observe tool calls in the output for tracing.
@@ -410,9 +530,14 @@ func AgentTaskHandler(ctx context.Context, args map[string]any) (Result, error) 
 				Agent:      agentName,
 				DurationMS: exhaustedDurationMS,
 				Error:      exhaustedErr,
+				Meta:       ladderMetaFields(ctx, FailureCapability),
 			})
+			// The agent ran every acceptance attempt to completion; it simply
+			// never produced a passing submission. Capability failure: the
+			// ladder escalates effort (same model) before trying a stronger one.
 			return Result{
-				Error: exhaustedErr,
+				Error:       exhaustedErr,
+				FailureKind: FailureCapability,
 				Data: map[string]any{
 					"task_trace_id": taskTraceID,
 					"files_changed": filesChanged,
@@ -420,6 +545,17 @@ func AgentTaskHandler(ctx context.Context, args map[string]any) (Result, error) 
 					"replay_mode":   string(replayMode),
 				},
 			}, nil
+		}
+
+		// A Codex exec that exits successfully without calling the validator's
+		// submit tool has no usable continuation turn. `codex exec resume` is
+		// interactive in this case: it can park with no prompt and leave the
+		// enclosing host call permanently running even though the subprocess
+		// already finished. Start the bounded acceptance retry as a fresh exec
+		// with the nudge below instead. A successful validator submission still
+		// breaks above, so normal one-shot tasks are unchanged.
+		if AgentBackendFromContext(ctx).Name() == "codex" {
+			firstRun = true
 		}
 
 		// Nudge the LLM with the rejection reason on subsequent turns.
@@ -461,12 +597,23 @@ func AgentTaskHandler(ctx context.Context, args map[string]any) (Result, error) 
 		"initial_state_hash", initialHash,
 	)
 
+	var taskMeta map[string]any
+	if ladderMeta := ladderMetaFields(ctx, FailureNone); ladderMeta != nil {
+		taskMeta = agentUsageMeta(ctx)
+		if taskMeta == nil {
+			taskMeta = map[string]any{}
+		}
+		for k, v := range ladderMeta {
+			taskMeta[k] = v
+		}
+	}
 	appendAgentReturnedEvent(ctx, time.Now(), callID, AgentReturnedPayload{
 		Verb:       "task",
 		Agent:      agentName,
 		Model:      agent.Model,
 		DurationMS: taskDurationMS,
 		Response:   marshalResponse(map[string]any{"text": lastStdout}),
+		Meta:       taskMeta,
 	})
 
 	return Result{
@@ -493,7 +640,7 @@ const defaultWorktreeDurabilityWaitMS = 15000
 // to the worktree, so the durability barrier skips them.
 func agentHasWriteTools(agent Agent) bool {
 	for _, t := range agent.Tools {
-		if mutationTools[t] {
+		if fileMutationTools[t] {
 			return true
 		}
 	}
@@ -597,6 +744,19 @@ func parseTaskAcceptance(args map[string]any) (taskAcceptanceOptions, string) {
 	case int8, int16, int32:
 		// Best effort.
 	}
+	var numberErr string
+	if opts.MinInformationRatio, numberErr = optionalValidatorFloat(blk, "min_information_ratio", "acceptance"); numberErr != "" {
+		return taskAcceptanceOptions{}, numberErr
+	}
+	if opts.MinInformationBits, numberErr = optionalValidatorFloat(blk, "min_information_bits", "acceptance"); numberErr != "" {
+		return taskAcceptanceOptions{}, numberErr
+	}
+	if opts.MinInformationRatio != nil && (*opts.MinInformationRatio < 0 || *opts.MinInformationRatio > 1) {
+		return taskAcceptanceOptions{}, "acceptance.min_information_ratio: must be between 0 and 1"
+	}
+	if opts.MinInformationBits != nil && *opts.MinInformationBits < 0 {
+		return taskAcceptanceOptions{}, "acceptance.min_information_bits: must be non-negative"
+	}
 
 	if rawArgs, present := blk["post_cmd_args"]; present && rawArgs != nil {
 		argsMap, ok2 := rawArgs.(map[string]any)
@@ -686,10 +846,12 @@ func buildTaskValidatorMCPConfig(ctx context.Context, acceptance taskAcceptanceO
 // process-global KITSOKI_APP_DIR — see buildValidatorMCPServer's doc.
 func buildTaskValidatorMCPConfigWithState(ctx context.Context, acceptance taskAcceptanceOptions, outputFile, stateFilePath string) (string, map[string]any, error) {
 	opts := validatorOptions{
-		PostCmd:       acceptance.PostCmd,
-		PostCmdArgs:   acceptance.PostCmdArgs,
-		MaxRetries:    acceptance.MaxRetries,
-		StateFilePath: stateFilePath,
+		PostCmd:             acceptance.PostCmd,
+		PostCmdArgs:         acceptance.PostCmdArgs,
+		MaxRetries:          acceptance.MaxRetries,
+		MinInformationRatio: acceptance.MinInformationRatio,
+		MinInformationBits:  acceptance.MinInformationBits,
+		StateFilePath:       stateFilePath,
 	}
 	validatorEntry, err := buildValidatorMCPServer(ctx, acceptance.SchemaPath, outputFile, opts)
 	if err != nil {

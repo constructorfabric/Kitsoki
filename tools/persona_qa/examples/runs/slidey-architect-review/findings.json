@@ -1,0 +1,76 @@
+{
+  "run_id": "persona-qa-slidey-architect-review",
+  "summary": {
+    "strength": 4,
+    "weakness": 3,
+    "issue": 0,
+    "fix": 1,
+    "blocked": 0
+  },
+  "items": [
+    {
+      "id": "slidey-strength-reproducible",
+      "kind": "strength",
+      "title": "Decks are reproducible source artifacts",
+      "severity": "low",
+      "status": "open",
+      "scenario": "compose-architecture-deck"
+    },
+    {
+      "id": "slidey-strength-visual-vocabulary",
+      "kind": "strength",
+      "title": "Scene vocabulary matches technical presentation needs",
+      "severity": "low",
+      "status": "open",
+      "scenario": "compose-architecture-deck"
+    },
+    {
+      "id": "slidey-strength-playback",
+      "kind": "strength",
+      "title": "Playback scenes turn demos into inspectable evidence",
+      "severity": "low",
+      "status": "open",
+      "scenario": "reuse-recorded-demo"
+    },
+    {
+      "id": "slidey-strength-audit",
+      "kind": "strength",
+      "title": "Validation and audit commands fit pre-meeting review",
+      "severity": "low",
+      "status": "open",
+      "scenario": "maintain-deck-as-code"
+    },
+    {
+      "id": "slidey-weakness-asset-lifecycle",
+      "kind": "weakness",
+      "title": "Deck-local asset lifecycle needs discipline",
+      "severity": "medium",
+      "status": "open",
+      "scenario": "reuse-recorded-demo"
+    },
+    {
+      "id": "slidey-weakness-render-cost",
+      "kind": "weakness",
+      "title": "Final MP4 render is too slow for casual iteration",
+      "severity": "medium",
+      "status": "open",
+      "scenario": "maintain-deck-as-code"
+    },
+    {
+      "id": "slidey-weakness-schema-feedback",
+      "kind": "weakness",
+      "title": "Authors need validation close to generated decks",
+      "severity": "low",
+      "status": "fixed",
+      "scenario": "compose-architecture-deck"
+    },
+    {
+      "id": "slidey-fix-persona-deck",
+      "kind": "fix",
+      "title": "Generate persona-qa decks directly from run evidence",
+      "severity": "low",
+      "status": "fixed",
+      "scenario": "maintain-deck-as-code"
+    }
+  ]
+}

@@ -24,10 +24,12 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	kitsokimcp "kitsoki/internal/mcp"
 	"kitsoki/internal/render/sourcecolor"
+	"kitsoki/internal/storyauthoring"
 	"kitsoki/internal/sysprompt"
 )
 
@@ -63,6 +65,11 @@ type validatorOptions struct {
 	// MaxRetries caps the inner submit-retry budget. Zero = let the
 	// validator pick its default (5).
 	MaxRetries int
+	// MinInformationRatio and MinInformationBits override the validator's
+	// session-relative content sanity gate. Nil leaves the engine defaults;
+	// an explicit ratio of zero disables it for this call.
+	MinInformationRatio *float64
+	MinInformationBits  *float64
 	// StateFilePath, when non-empty, is forwarded to the validator's
 	// --state-file flag. The host handler creates the path itself when
 	// running multi-iteration retry loops so counters span re-engagements.
@@ -90,6 +97,8 @@ type postCmdKV struct {
 //	    worktree: ".bug-fix/{{ world.ticket }}/worktree"
 //	  post_cmd_cwd: "tools/loopy"
 //	  max_retries: 5
+//	  min_information_ratio: 0.5
+//	  min_information_bits: 256
 //
 // post_cmd_args is a map; iteration order through Go maps is non-
 // deterministic but the resulting argv is sorted by key so the
@@ -145,6 +154,19 @@ func parseValidatorOptions(args map[string]any) (validatorOptions, string) {
 	default:
 		return validatorOptions{}, fmt.Sprintf("validator.max_retries: must be a number (got %T)", v)
 	}
+	var numberErr string
+	if opts.MinInformationRatio, numberErr = optionalValidatorFloat(blk, "min_information_ratio", "validator"); numberErr != "" {
+		return validatorOptions{}, numberErr
+	}
+	if opts.MinInformationBits, numberErr = optionalValidatorFloat(blk, "min_information_bits", "validator"); numberErr != "" {
+		return validatorOptions{}, numberErr
+	}
+	if opts.MinInformationRatio != nil && (*opts.MinInformationRatio < 0 || *opts.MinInformationRatio > 1) {
+		return validatorOptions{}, "validator.min_information_ratio: must be between 0 and 1"
+	}
+	if opts.MinInformationBits != nil && *opts.MinInformationBits < 0 {
+		return validatorOptions{}, "validator.min_information_bits: must be non-negative"
+	}
 
 	if rawArgs, present := blk["post_cmd_args"]; present && rawArgs != nil {
 		argsMap, ok := rawArgs.(map[string]any)
@@ -174,6 +196,43 @@ func parseValidatorOptions(args map[string]any) (validatorOptions, string) {
 	return opts, ""
 }
 
+func optionalValidatorFloat(block map[string]any, key, site string) (*float64, string) {
+	raw, present := block[key]
+	if !present || raw == nil {
+		return nil, ""
+	}
+	var value float64
+	switch typed := raw.(type) {
+	case float64:
+		value = typed
+	case float32:
+		value = float64(typed)
+	case int:
+		value = float64(typed)
+	case int8:
+		value = float64(typed)
+	case int16:
+		value = float64(typed)
+	case int32:
+		value = float64(typed)
+	case int64:
+		value = float64(typed)
+	case uint:
+		value = float64(typed)
+	case uint8:
+		value = float64(typed)
+	case uint16:
+		value = float64(typed)
+	case uint32:
+		value = float64(typed)
+	case uint64:
+		value = float64(typed)
+	default:
+		return nil, fmt.Sprintf("%s.%s: must be a number (got %T)", site, key, raw)
+	}
+	return &value, ""
+}
+
 // buildValidatorMCPServer constructs an mcp_servers entry that runs
 // `kitsoki mcp-validator --schema <abs-path> [--output <path>]
 // [--post-cmd ... --post-cmd-arg k=v ... --max-retries N --state-file <path>]`.
@@ -190,7 +249,10 @@ func parseValidatorOptions(args map[string]any) (validatorOptions, string) {
 // will write each successful submit's payload to that file (atomic, last-call wins)
 // so the parent can recover the canonical JSON.
 func buildValidatorMCPServer(ctx context.Context, schemaPath, outputPath string, opts validatorOptions) (map[string]any, error) {
-	resolved := resolvePromptPathCtx(ctx, schemaPath)
+	resolved, err := resolveValidatorSchemaPath(ctx, schemaPath)
+	if err != nil {
+		return nil, err
+	}
 	if _, err := os.Stat(resolved); err != nil {
 		return nil, fmt.Errorf("schema %q not found: %w", resolved, err)
 	}
@@ -220,6 +282,12 @@ func buildValidatorMCPServer(ctx context.Context, schemaPath, outputPath string,
 	if opts.MaxRetries > 0 {
 		cliArgs = append(cliArgs, "--max-retries", fmt.Sprintf("%d", opts.MaxRetries))
 	}
+	if opts.MinInformationRatio != nil {
+		cliArgs = append(cliArgs, "--min-information-ratio", strconv.FormatFloat(*opts.MinInformationRatio, 'g', -1, 64))
+	}
+	if opts.MinInformationBits != nil {
+		cliArgs = append(cliArgs, "--min-information-bits", strconv.FormatFloat(*opts.MinInformationBits, 'g', -1, 64))
+	}
 	if opts.StateFilePath != "" {
 		cliArgs = append(cliArgs, "--state-file", opts.StateFilePath)
 	}
@@ -227,6 +295,13 @@ func buildValidatorMCPServer(ctx context.Context, schemaPath, outputPath string,
 		"command": bin,
 		"args":    cliArgs,
 	}, nil
+}
+
+func resolveValidatorSchemaPath(ctx context.Context, schemaPath string) (string, error) {
+	if resolved, ok, err := storyauthoring.ResolveSchemaPath(schemaPath); ok || err != nil {
+		return resolved, err
+	}
+	return resolvePromptPathCtx(ctx, schemaPath), nil
 }
 
 // AgentAskWithMCPHandler is no longer a registered verb (Phase 9 unregistered
@@ -660,7 +735,8 @@ func agentAskWithMCPCore(ctx context.Context, rendered, resolvedPrompt string, a
 	}
 	// Thread agent tools (or per-call override) via --allowedTools. Per-call
 	// wins over agent.Tools per D5; effectiveTools emits a warn-line on conflict.
-	if tools := effectiveTools(ctx, args, agent); len(tools) > 0 {
+	tools := effectiveTools(ctx, args, agent)
+	if len(tools) > 0 {
 		cliArgs = appendAllowedToolsFlag(cliArgs, tools)
 	}
 	// Hard-deny AskUserQuestion: headless `-p` auto-resolves it with empty
@@ -753,6 +829,8 @@ func agentAskWithMCPCore(ctx context.Context, rendered, resolvedPrompt string, a
 			mcpServers["validator"] = validatorEntry
 		}
 	}
+
+	mcpServers = attachStudioMCPServer(mcpServers, tools)
 
 	// Materialize mcp_servers (if any) into a temp config file.
 	if len(mcpServers) > 0 {

@@ -1,0 +1,81 @@
+# sync_main_local_ahead - remote sync must not call local-only commits
+# "up to date" just because local main contains origin/main.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: main_ops
+initial_world:
+  integration_branch: main
+  current_branch:     main
+  on_integration:     true
+  working_dir:        "."
+  main_worktree_path: "."
+
+host_handlers:
+  host.run:
+    by_call:
+      refresh_main:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            branch:             main
+            main_worktree_path: "."
+            worktree_list:      { raw: "" }
+            commits_ahead:      10
+            commits_behind:     0
+            has_uncommitted:    false
+            merge_in_progress:  false
+            no_common_ancestor: false
+            upstream_tracking:  false
+      sync_main_exec:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            outcome:  local_ahead
+            branch:   ""
+            worktree: ""
+            output:   "main already contains origin/main, but local main is ahead by 10 commits.\nRun push_main remote=origin or open/merge a PR before treating the remote as synchronized."
+            ahead:    10
+            behind:   0
+            ok:       true
+      push_main_exec:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            outcome:  pushed
+            output:   "To github.com:example/repo.git\n \trefs/heads/main:refs/heads/main\t0000000..1111111"
+            ahead:    10
+            behind:   0
+            ok:       true
+
+turns:
+  - intent: { name: sync_main, slots: { remote: origin } }
+    expect_state: sync_main
+    expect_view_matches: "Ahead:\\s+⚠️ 10 commits ahead[\\s\\S]*Behind:\\s+✅ 0 commits behind[\\s\\S]*⚠️ Local main is ahead[\\s\\S]*local main has 10 commits[\\s\\S]*push_main remote=origin"
+    expect_world:
+      sync_remote: origin
+      sync_result:
+        outcome:  local_ahead
+        branch:   ""
+        worktree: ""
+        output:   "main already contains origin/main, but local main is ahead by 10 commits.\nRun push_main remote=origin or open/merge a PR before treating the remote as synchronized."
+        ahead:    10
+        behind:   0
+        ok:       true
+  - intent: { name: push_main, slots: {} }
+    expect_state: push_main
+    expect_view_matches: "✅ Pushed[\\s\\S]*10 commits published"
+    expect_world:
+      push_remote:        origin
+      push_remote_branch: main
+      push_result:
+        outcome:  pushed
+        output:   "To github.com:example/repo.git\n \trefs/heads/main:refs/heads/main\t0000000..1111111"
+        ahead:    10
+        behind:   0
+        ok:       true
+
+expect_no_errors: true

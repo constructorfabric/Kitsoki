@@ -25,6 +25,9 @@ def main(ctx):
     exit = drive.get("exit", "")
     if exit == "skipped":
         return {"verify_result": {"status": "skipped", "how": "case skipped before drive"}}
+    if drive.get("requires_operator", False) == True:
+        question = drive.get("operator_question", "driver requested operator review")
+        return {"verify_result": {"status": "partial", "how": "operator review required: " + str(question)}}
 
     deliverable = drive.get("deliverable_present", False)
     oracle_pass = drive.get("oracle_pass", None)

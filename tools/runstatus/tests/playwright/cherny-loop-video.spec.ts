@@ -92,7 +92,7 @@ async function expectState(page: Page, state: string): Promise<void> {
   await expect(page.getByTestId("current-state")).toHaveText(state, { timeout: 15000 });
 }
 
-/** Click a slotless intent button (DOM-level so the overlay backdrop never intercepts). */
+/** Click a slotless intent button (DOM-level so the tour popover never intercepts). */
 async function clickIntent(page: Page, intent: string): Promise<void> {
   const btn = page.getByTestId(`intent-btn-${intent}`).first();
   await expect(btn).toBeVisible({ timeout: 15000 });

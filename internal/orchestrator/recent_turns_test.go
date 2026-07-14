@@ -185,3 +185,108 @@ states:
 	require.Equal(t, app.TurnNumber(totalTurns-1), last.RecentTurns[len(last.RecentTurns)-1].Turn,
 		"RecentTurns tail should be the most recent prior turn")
 }
+
+// loadHistoryCountingStore wraps a store.Store and counts LoadHistory calls,
+// so a test can assert Turn() reads the event log exactly once per turn
+// instead of once for loadJourney and a second time for RecentTurns.
+type loadHistoryCountingStore struct {
+	store.Store
+	mu    sync.Mutex
+	calls int
+}
+
+func (s *loadHistoryCountingStore) LoadHistory(sid app.SessionID) (store.History, error) {
+	s.mu.Lock()
+	s.calls++
+	s.mu.Unlock()
+	return s.Store.LoadHistory(sid)
+}
+
+func (s *loadHistoryCountingStore) callCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.calls
+}
+
+// TestOrchestrator_RecentTurnsSingleHistoryRead locks the fix for the
+// dispatch-context-floor double-read: Turn() must derive RecentTurns from
+// the same event-log pass loadJourney already ran (carried on
+// store.JourneyState.History) rather than issuing a second
+// store.LoadHistory call for the same rows. One store.LoadHistory call per
+// Turn(), not two, while truncation semantics (RecentTurnsLimit, ordering)
+// stay identical to the uncapped/capped assertions above.
+func TestOrchestrator_RecentTurnsSingleHistoryRead(t *testing.T) {
+	const appYAML = `
+app:
+  id: recent-turns-single-read
+  version: 0.1.0
+world: {}
+intents:
+  step:
+    title: "Step"
+root: a
+states:
+  a:
+    view: "A."
+    on:
+      step:
+        - target: b
+  b:
+    view: "B."
+    on:
+      step:
+        - target: c
+  c:
+    terminal: true
+    view: "C."
+`
+	def, err := app.LoadBytes([]byte(appYAML))
+	require.NoError(t, err)
+
+	m, err := machine.New(def)
+	require.NoError(t, err)
+
+	raw, err := store.OpenMemory()
+	require.NoError(t, err)
+	defer func() { _ = raw.Close() }()
+
+	counting := &loadHistoryCountingStore{Store: raw}
+
+	h := &recordingHarness{intentName: "step"}
+	orch := orchestrator.New(def, m, counting, h)
+
+	ctx := context.Background()
+	sid, err := orch.NewSession(ctx)
+	require.NoError(t, err)
+
+	// Turn() itself makes two loadJourney passes per call: TryDeterministic's
+	// own pre-LLM routing pass (deterministic.go, runs before the session
+	// lock, unconditionally for apps with no matching routing config), and
+	// Turn's own loadJourney once it falls through to the harness. That
+	// two-call shape is pre-existing and out of scope for this fix (it is a
+	// routing-tier concern, not the RecentTurns concern this test locks).
+	//
+	// What this test asserts is that Turn() does NOT add a *third*
+	// store.LoadHistory call to derive RecentTurns — before the fix,
+	// extractRecentTurns re-queried the store itself instead of reusing
+	// journey.History, so each Turn() cost 3 store reads instead of 2.
+	const loadHistoryCallsPerTurn = 2
+
+	// Turn 1: a → b. No prior turns, so RecentTurns must be empty.
+	_, err = orch.Turn(ctx, sid, "first step")
+	require.NoError(t, err)
+	require.Equal(t, loadHistoryCallsPerTurn, counting.callCount(),
+		"Turn 1 should cost exactly 2 store.LoadHistory calls (TryDeterministic + loadJourney), not a 3rd for RecentTurns")
+
+	// Turn 2: b → c. Exactly one prior turn summary, still no extra read.
+	_, err = orch.Turn(ctx, sid, "second step")
+	require.NoError(t, err)
+	require.Equal(t, 2*loadHistoryCallsPerTurn, counting.callCount(),
+		"Turn 2 should bring the cumulative store.LoadHistory count to 4 (2 more calls, not 3 more)")
+
+	inputs := h.capturedInputs()
+	require.Len(t, inputs, 2)
+	require.Empty(t, inputs[0].RecentTurns, "turn 1 has no prior turns")
+	require.Len(t, inputs[1].RecentTurns, 1, "turn 2 should see exactly one prior turn summary")
+	require.Equal(t, "first step", inputs[1].RecentTurns[0].UserText)
+}

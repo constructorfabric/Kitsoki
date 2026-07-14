@@ -10,7 +10,7 @@ package host_test
 //  2. Validator: reject-with-reason triggers re-submit; success on retry.
 //  3. Validator sandbox: mutating validator rejected.
 //  4. Streaming: tokens flow through AgentStreamer.
-//  5. Loader/runtime: mutation tools on agent rejected at call time.
+//  5. Loader/runtime: mutation tools on agent hard-denied by toolbox policy.
 //  6. Alias: ask_with_mcp (no mutations) → decide with warn (checked via Result).
 //  7. Alias: ask_with_mcp + chat_id → error pointing at converse.
 //  8. Agent fields: system_prompt / model / tools forwarded.
@@ -24,8 +24,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"kitsoki/internal/host"
+	"kitsoki/internal/host/agentruntime"
 	"kitsoki/internal/store"
 )
 
@@ -233,6 +235,9 @@ func TestAgentDecide_ValidatorBlock_Abandoned(t *testing.T) {
 	if !strings.Contains(res.Error, "abandoned") && !strings.Contains(res.Error, "session abandoned") {
 		t.Fatalf("expected abandonment message in error; got %q", res.Error)
 	}
+	if res.FailureKind != host.FailureInfra {
+		t.Fatalf("expected zero-submit abandonment to be infra, got %v", res.FailureKind)
+	}
 }
 
 // ── 3. Validator sandbox: mutating validator rejected ─────────────────────────
@@ -351,6 +356,81 @@ func TestAgentDecide_StreamsToSink(t *testing.T) {
 	_ = eventsReceived
 }
 
+func TestAgentDecide_SandboxPassedToRuntime(t *testing.T) {
+	t.Setenv(host.AgentBinEnv, "/bin/true")
+	schemaPath := makeSchemaFile(t)
+	workingDir := t.TempDir()
+	resultText := "Verdict:\n\n```json\n{\"verdict\":\"yes\"}\n```"
+	streamLine, err := json.Marshal(map[string]any{
+		"type":       "result",
+		"subtype":    "success",
+		"result":     resultText,
+		"session_id": "sess-decide-runtime",
+	})
+	if err != nil {
+		t.Fatalf("marshal stream line: %v", err)
+	}
+	fake := &agentruntime.Fake{
+		Backend:  "fake-fs",
+		Strength: agentruntime.StrengthFSConfined,
+		LaunchResult: agentruntime.Result{
+			Stdout: string(streamLine) + "\n",
+		},
+	}
+	sink := &memSink{}
+	ctx := host.WithAgentRuntimeRegistry(agentCtxForTest(sink), agentruntime.NewRegistry(fake))
+
+	res, err := host.AgentDecideHandler(ctx, map[string]any{
+		"prompt":      "Decide whether the reviewed diff is acceptable.",
+		"schema":      schemaPath,
+		"working_dir": workingDir,
+		"sandbox": map[string]any{
+			"min_strength": "fs_confined",
+			"repo":         "read_only",
+			"network":      "model_only",
+			"resources": map[string]any{
+				"timeout": "2m", "activity_timeout": "45s",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected Go error: %v", err)
+	}
+	if res.Error != "" {
+		t.Fatalf("expected no handler error; got %q", res.Error)
+	}
+	submitted, _ := res.Data["submitted"].(map[string]any)
+	if submitted["verdict"] != "yes" {
+		t.Fatalf("submitted verdict = %#v, want yes", submitted)
+	}
+	if len(fake.Seen) != 1 {
+		t.Fatalf("runtime launches = %d, want 1", len(fake.Seen))
+	}
+	seen := fake.Seen[0]
+	if seen.Resources.Timeout != 2*time.Minute {
+		t.Fatalf("runtime timeout = %v, want 2m", seen.Resources.Timeout)
+	}
+	if seen.Resources.ActivityTimeout != 45*time.Second {
+		t.Fatalf("runtime activity timeout = %v, want 45s", seen.Resources.ActivityTimeout)
+	}
+	if seen.Repo != agentruntime.RepoReadOnly {
+		t.Fatalf("runtime repo policy = %q, want read_only", seen.Repo)
+	}
+	if seen.Network != agentruntime.NetworkModelOnly {
+		t.Fatalf("runtime network policy = %q, want model_only", seen.Network)
+	}
+	if seen.Min != agentruntime.StrengthFSConfined {
+		t.Fatalf("runtime min strength = %q, want fs_confined", seen.Min)
+	}
+	if seen.Dir != workingDir {
+		t.Fatalf("runtime working dir = %q, want %q", seen.Dir, workingDir)
+	}
+	if !hasRuntimeEvent(sink.events, "agent.runtime.start", "fs_confined", 0) ||
+		!hasRuntimeEvent(sink.events, "agent.runtime.end", "fs_confined", 0) {
+		t.Fatalf("expected runtime start/end events, got %#v", sink.events)
+	}
+}
+
 // collectingSink collects StreamEvents for test assertions.
 type collectingSink struct {
 	fn func(host.StreamEvent)
@@ -360,13 +440,15 @@ func (s *collectingSink) OnStreamEvent(_ context.Context, e host.StreamEvent) {
 	s.fn(e)
 }
 
-// ── 5. Mutation tool rejection ────────────────────────────────────────────────
+// ── 5. Mutation tool enforcement ──────────────────────────────────────────────
 
-// TestAgentDecide_MutationTool_Edit_Rejected verifies that the runtime
-// safety net rejects an agent declaring Edit.
-func TestAgentDecide_MutationTool_Edit_Rejected(t *testing.T) {
+// TestAgentDecide_MutationTool_Edit_HardDenied verifies that the shared toolbox
+// policy hard-denies an agent declaring Edit.
+func TestAgentDecide_MutationTool_Edit_HardDenied(t *testing.T) {
 	t.Parallel()
 	schemaPath := makeSchemaFile(t)
+	var captured []string
+	runner := host.FakeDecide("verdict")
 	ctx := host.WithClaudeRunner(
 		host.WithAgents(context.Background(), map[string]host.Agent{
 			"mutator": {
@@ -374,7 +456,10 @@ func TestAgentDecide_MutationTool_Edit_Rejected(t *testing.T) {
 				Tools:        []string{"Edit", "Read"},
 			},
 		}),
-		host.FakeDecide("verdict"),
+		func(ctx context.Context, args []string, stdin, workingDir string) (host.ClaudeRun, error) {
+			captured = append([]string(nil), args...)
+			return runner(ctx, args, stdin, workingDir)
+		},
 	)
 	res, err := host.AgentDecideHandler(ctx, map[string]any{
 		"prompt": "decide",
@@ -384,21 +469,30 @@ func TestAgentDecide_MutationTool_Edit_Rejected(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected Go error: %v", err)
 	}
-	if !strings.Contains(res.Error, "mutation tool") {
-		t.Fatalf("expected mutation-tool error; got %q", res.Error)
+	if res.Error != "" {
+		t.Fatalf("unexpected handler error: %q", res.Error)
+	}
+	denied, ok := hostTestFlagValue(captured, "--disallowedTools")
+	if !ok || !strings.Contains(denied, "Edit") {
+		t.Fatalf("expected Edit in --disallowedTools, got args=%v", captured)
 	}
 }
 
-// TestAgentDecide_MutationTool_Write_Rejected mirrors TestAgentDecide_MutationTool_Edit_Rejected
+// TestAgentDecide_MutationTool_Write_HardDenied mirrors TestAgentDecide_MutationTool_Edit_HardDenied
 // for Write.
-func TestAgentDecide_MutationTool_Write_Rejected(t *testing.T) {
+func TestAgentDecide_MutationTool_Write_HardDenied(t *testing.T) {
 	t.Parallel()
 	schemaPath := makeSchemaFile(t)
+	var captured []string
+	runner := host.FakeDecide("v")
 	ctx := host.WithClaudeRunner(
 		host.WithAgents(context.Background(), map[string]host.Agent{
 			"writer": {Tools: []string{"Write"}},
 		}),
-		host.FakeDecide("v"),
+		func(ctx context.Context, args []string, stdin, workingDir string) (host.ClaudeRun, error) {
+			captured = append([]string(nil), args...)
+			return runner(ctx, args, stdin, workingDir)
+		},
 	)
 	res, err := host.AgentDecideHandler(ctx, map[string]any{
 		"prompt": "decide",
@@ -408,17 +502,26 @@ func TestAgentDecide_MutationTool_Write_Rejected(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected Go error: %v", err)
 	}
-	if !strings.Contains(res.Error, "mutation tool") {
-		t.Fatalf("expected mutation-tool error for Write; got %q", res.Error)
+	if res.Error != "" {
+		t.Fatalf("unexpected handler error: %q", res.Error)
+	}
+	denied, ok := hostTestFlagValue(captured, "--disallowedTools")
+	if !ok || !strings.Contains(denied, "Write") {
+		t.Fatalf("expected Write in --disallowedTools, got args=%v", captured)
 	}
 }
 
-// TestAgentDecide_PerCallMutationTool_Rejected verifies that a per-call
-// tools: list containing a mutation tool is rejected.
-func TestAgentDecide_PerCallMutationTool_Rejected(t *testing.T) {
+// TestAgentDecide_PerCallMutationTool_HardDenied verifies that a per-call
+// tools: list containing a mutation tool is hard-denied.
+func TestAgentDecide_PerCallMutationTool_HardDenied(t *testing.T) {
 	t.Parallel()
 	schemaPath := makeSchemaFile(t)
-	ctx := host.WithClaudeRunner(context.Background(), host.FakeDecide("v"))
+	var captured []string
+	runner := host.FakeDecide("v")
+	ctx := host.WithClaudeRunner(context.Background(), func(ctx context.Context, args []string, stdin, workingDir string) (host.ClaudeRun, error) {
+		captured = append([]string(nil), args...)
+		return runner(ctx, args, stdin, workingDir)
+	})
 	res, err := host.AgentDecideHandler(ctx, map[string]any{
 		"prompt": "decide",
 		"schema": schemaPath,
@@ -427,8 +530,12 @@ func TestAgentDecide_PerCallMutationTool_Rejected(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected Go error: %v", err)
 	}
-	if !strings.Contains(res.Error, "mutation tool") {
-		t.Fatalf("expected mutation-tool rejection; got %q", res.Error)
+	if res.Error != "" {
+		t.Fatalf("unexpected handler error: %q", res.Error)
+	}
+	denied, ok := hostTestFlagValue(captured, "--disallowedTools")
+	if !ok || !strings.Contains(denied, "Edit") {
+		t.Fatalf("expected Edit in --disallowedTools, got args=%v", captured)
 	}
 }
 
@@ -457,7 +564,12 @@ func TestAgentDecide_ReadOnlyTools_Allowed(t *testing.T) {
 		t.Fatalf("unexpected error for read-only tools: %q", res.Error)
 	}
 	rat, _ := res.Data["rationale"].(string)
-	if !strings.Contains(rat, "tools=[Read,Grep,Glob]") {
+	// mcp__validator__submit is always appended for decide (schema: is
+	// mandatory) so the auto-attached validator's submit tool is reachable
+	// under the "default" permission mode decide's read-only ceiling forces
+	// — otherwise the CLI treats it as ungranted and the agent can never
+	// call submit (see agent_decide.go).
+	if !strings.Contains(rat, "tools=[Read,Grep,Glob,mcp__validator__submit]") {
 		t.Fatalf("expected tools in rationale meta; got %q", rat)
 	}
 }
@@ -536,7 +648,9 @@ func TestAgentDecide_PerCallTools_WinsOverAgentTools(t *testing.T) {
 		t.Fatalf("unexpected Go error: %v", err)
 	}
 	rat, _ := res.Data["rationale"].(string)
-	if !strings.Contains(rat, "tools=[Read,Grep]") {
+	// mcp__validator__submit is always appended for decide regardless of the
+	// D5 per-call/agent tools resolution (see agent_decide.go).
+	if !strings.Contains(rat, "tools=[Read,Grep,mcp__validator__submit]") {
 		t.Fatalf("per-call tools did not win; got %q", rat)
 	}
 	if strings.Contains(rat, "Glob") {

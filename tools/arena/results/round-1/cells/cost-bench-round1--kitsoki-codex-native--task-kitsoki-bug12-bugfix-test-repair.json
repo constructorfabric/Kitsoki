@@ -1,0 +1,23 @@
+{
+  "axis": {
+    "task": "kitsoki-bug12-bugfix-test-repair"
+  },
+  "cell_id": "cost-bench-round1--kitsoki-codex-native--task:kitsoki-bug12-bugfix-test-repair",
+  "evidence_refs": [
+    "/workspace/kitsoki/tools/arena/corpus/cost-bench.manifest.yaml#kitsoki-bug12-bugfix-test-repair",
+    "/Users/brad/code/Kitsoki/.worktrees/generalized-usage-rebase/.artifacts/arena/paired-task-work/kitsoki-bug12-bugfix-test-repair--kitsoki--codex--gpt-5.5-score.json"
+  ],
+  "health": "model:result",
+  "job_type": "paired-task",
+  "metrics": {
+    "cost_usd": 1.238873,
+    "host": "local",
+    "tokens": 3493106,
+    "wall_s": 886.791
+  },
+  "notes": "drive.sh exit=0: {\"type\":\"thread.started\",\"thread_id\":\"019f304b-fa3b-7ec3-ae9c-b161fb1330c9\"}; cost_usd=1.238873 (cache-aware estimate over REAL trace usage: 500430 fresh input + 2968448 cache-read input + 24228 output tokens; subscription auth reports no metered cost); [bench] kitsoki/bug12 oracle=fail suite=None -> failed",
+  "target_id": "cost-bench-round1",
+  "trace_ref": "/Users/brad/code/Kitsoki/.worktrees/generalized-usage-rebase/.artifacts/arena/paired-task-work/kitsoki-bug12-bugfix-test-repair--kitsoki--codex--gpt-5.5.jsonl",
+  "variant_id": "kitsoki-codex-native",
+  "verdict": "failed"
+}

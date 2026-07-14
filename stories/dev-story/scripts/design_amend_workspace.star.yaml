@@ -1,0 +1,6 @@
+inputs:
+  target: { type: string, required: true }
+  proposed_slug: { type: string, required: true }
+outputs:
+  slug: { type: string }
+  workspace: { type: string }

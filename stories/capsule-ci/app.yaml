@@ -1,0 +1,434 @@
+app:
+  id: capsule-ci
+  version: 0.1.0
+  title: "Story-native Capsule CI"
+  author: "Kitsoki"
+  license: "CC0"
+
+# This reference story is deliberately a composition skeleton, not a second CI
+# DAG. Project stories import or replace its phase rooms while preserving the
+# normalized trigger and typed verdict contract consumed by capsule ci.
+world:
+  ci_job_id: { type: string, default: "" }
+  ci_pipeline: { type: string, default: "" }
+  ci_trigger: { type: object, default: {} }
+  ci_source: { type: object, default: {} }
+  ci_workspace: { type: object, default: {} }
+  ci_environment: { type: object, default: {} }
+  ci_policy: { type: object, default: {} }
+  ci_verdict: { type: object, default: {} }
+  ci_outcome: { type: string, default: "" }
+  ci_review: { type: object, default: {} }
+  ci_review_decision: { type: object, default: {} }
+  ci_refine_feedback: { type: string, default: "" }
+  ci_review_cycle: { type: int, default: 0 }
+  ci_review_budget: { type: int, default: 2 }
+
+hosts:
+  - host.capsule_ci.project_checks
+  - host.agent.decide
+
+intents:
+  run:
+    description: "Validate the supplied Capsule CI envelope."
+    examples: [run, start]
+    priority: 90
+  checks_passed:
+    description: "Record that required deterministic checks passed."
+    examples: []
+    priority: 1
+  checks_failed:
+    description: "Record a required deterministic check failure."
+    examples: []
+    priority: 1
+  review_passed:
+    description: "Record that a schema-bounded review approved the checked change."
+    examples: []
+    priority: 1
+  review_cassette:
+    description: "Run the optional cassette-backed review room."
+    examples: []
+    priority: 1
+  refine_requested:
+    description: "Route a bounded writer/refinement cycle."
+    examples: []
+    priority: 1
+    slots:
+      feedback: { type: string, required: false }
+  refine_done:
+    description: "Return from a bounded writer/refinement cycle to deterministic checks."
+    examples: []
+    priority: 1
+  budget_exhausted:
+    description: "Park when review or writer budget is exhausted."
+    examples: []
+    priority: 1
+  needs_input:
+    description: "Park honestly for a missing authority or decision."
+    examples: []
+    priority: 1
+  look:
+    description: "Re-render the current CI phase."
+    examples: [look, status]
+    priority: 5
+
+root: idle
+
+states:
+  idle:
+    relevant_world: [ci_pipeline, ci_job_id]
+    view:
+      - heading: "Capsule CI"
+      - kv:
+          pairs:
+            Pipeline: "{{ world.ci_pipeline|default:'(not supplied)' }}"
+            Job: "{{ world.ci_job_id|default:'(not supplied)' }}"
+      - prose: "Run validates the immutable Capsule envelope before project checks begin."
+    on:
+      run:
+        - target: project_checks
+          effects:
+            - invoke: host.capsule_ci.project_checks
+              with:
+                workdir: "{{ world.ci_workspace.path }}"
+                job_id: "{{ world.ci_job_id }}"
+                pipeline: "{{ world.ci_pipeline }}"
+                source_digest: "{{ world.ci_source.digest }}"
+                story_digest: "{{ world.ci_trigger.story_digest }}"
+                environment_digest: "{{ world.ci_environment.digest }}"
+                envelope_digest: "{{ world.ci_trigger.envelope_digest }}"
+              bind:
+                ci_verdict: verdict
+      look:
+        - target: .
+  project_checks:
+    relevant_world: [ci_pipeline, ci_job_id, ci_verdict]
+    view:
+      - heading: "Project checks"
+      - prose: "The checked-in project profile supplied deterministic test/build facts and a typed verdict. Projects can replace this state with the richer prepare/review/refine composition below."
+  prepare:
+    relevant_world: [ci_source, ci_workspace, ci_environment, ci_policy]
+    view:
+      - heading: "Prepare"
+      - prose: "A concrete project composition verifies workspace, environment, policy, and source digests here."
+    on:
+      checks_passed:
+        - target: deterministic_checks
+      checks_failed:
+        - target: failed
+          effects:
+            - set:
+                ci_outcome: "failed"
+                ci_verdict:
+                  schema: capsule-ci-verdict/v1
+                  pipeline: "{{ world.ci_pipeline }}"
+                  outcome: failed
+                  summary: "A required prepare-phase check failed."
+                  checks:
+                    - id: prepare
+                      kind: deterministic
+                      outcome: failed
+                  promotion_eligible: false
+                  source_digest: "{{ world.ci_source.digest }}"
+                  story_digest: "{{ world.ci_trigger.story_digest }}"
+                  environment_digest: "{{ world.ci_environment.digest }}"
+                  envelope_digest: "{{ world.ci_trigger.envelope_digest }}"
+      needs_input:
+        - target: parked
+          effects:
+            - set:
+                ci_outcome: "needs_input"
+                ci_verdict:
+                  schema: capsule-ci-verdict/v1
+                  pipeline: "{{ world.ci_pipeline }}"
+                  outcome: needs_input
+                  summary: "The prepare phase needs an explicit authority or decision."
+                  checks: []
+                  promotion_eligible: false
+                  source_digest: "{{ world.ci_source.digest }}"
+                  story_digest: "{{ world.ci_trigger.story_digest }}"
+                  environment_digest: "{{ world.ci_environment.digest }}"
+                  envelope_digest: "{{ world.ci_trigger.envelope_digest }}"
+      look:
+        - target: .
+  deterministic_checks:
+    relevant_world: [ci_pipeline]
+    view:
+      - heading: "Deterministic checks"
+      - prose: "Project-defined facts and evidence artifacts run here; review and writer phases are ordinary later story rooms, never implicit CI features."
+    on:
+      checks_passed:
+        - target: llm_review
+          effects:
+            - set:
+                ci_review:
+                  deterministic_check:
+                    id: deterministic
+                    kind: deterministic
+                    outcome: passed
+                    evidence: ["capsule-ci:deterministic"]
+      checks_failed:
+        - target: failed
+          effects:
+            - set:
+                ci_outcome: "failed"
+                ci_verdict:
+                  schema: capsule-ci-verdict/v1
+                  pipeline: "{{ world.ci_pipeline }}"
+                  outcome: failed
+                  summary: "A required deterministic check failed."
+                  checks:
+                    - id: deterministic
+                      kind: deterministic
+                      outcome: failed
+                  promotion_eligible: false
+                  source_digest: "{{ world.ci_source.digest }}"
+                  story_digest: "{{ world.ci_trigger.story_digest }}"
+                  environment_digest: "{{ world.ci_environment.digest }}"
+                  envelope_digest: "{{ world.ci_trigger.envelope_digest }}"
+      needs_input:
+        - target: parked
+          effects:
+            - set:
+                ci_outcome: "needs_input"
+                ci_verdict:
+                  schema: capsule-ci-verdict/v1
+                  pipeline: "{{ world.ci_pipeline }}"
+                  outcome: needs_input
+                  summary: "Deterministic checks need input before CI can conclude."
+                  checks: []
+                  promotion_eligible: false
+                  source_digest: "{{ world.ci_source.digest }}"
+                  story_digest: "{{ world.ci_trigger.story_digest }}"
+                  environment_digest: "{{ world.ci_environment.digest }}"
+                  envelope_digest: "{{ world.ci_trigger.envelope_digest }}"
+      look:
+        - target: .
+  llm_review:
+    relevant_world: [ci_review, ci_review_cycle, ci_review_budget]
+    view:
+      - heading: "LLM or policy review"
+      - prose: "A project may bind this room to a cassette-backed reviewer, skip it for deterministic-only CI, or park when no profile/budget is available."
+      - kv:
+          pairs:
+            Cycle: "{{ world.ci_review_cycle }}"
+            Budget: "{{ world.ci_review_budget }}"
+    on:
+      review_passed:
+        - target: adjudicate
+          effects:
+            - set:
+                ci_review:
+                  deterministic_check: "{{ world.ci_review.deterministic_check }}"
+                  review_check:
+                    id: review
+                    kind: llm_decision
+                    outcome: passed
+                    decision_ref: capsule-ci:review-cassette
+      review_cassette:
+        - target: llm_review_cassette
+      refine_requested:
+        - when: "world.ci_review_cycle >= world.ci_review_budget"
+          target: parked
+          effects:
+            - set:
+                ci_outcome: "needs_input"
+                ci_verdict:
+                  schema: capsule-ci-verdict/v1
+                  pipeline: "{{ world.ci_pipeline }}"
+                  outcome: needs_input
+                  summary: "Review requested more refinement than the configured Capsule CI budget."
+                  checks:
+                    - id: deterministic
+                      kind: deterministic
+                      outcome: passed
+                      evidence: ["capsule-ci:deterministic"]
+                    - id: review-budget
+                      kind: policy
+                      outcome: failed
+                      decision_ref: capsule-ci:budget
+                  promotion_eligible: false
+                  source_digest: "{{ world.ci_source.digest }}"
+                  story_digest: "{{ world.ci_trigger.story_digest }}"
+                  environment_digest: "{{ world.ci_environment.digest }}"
+                  envelope_digest: "{{ world.ci_trigger.envelope_digest }}"
+        - target: refine_change
+          effects:
+            - increment: { ci_review_cycle: 1 }
+            - set: { ci_refine_feedback: "{{ slots.feedback }}" }
+      needs_input:
+        - target: parked
+          effects:
+            - set:
+                ci_outcome: "needs_input"
+                ci_verdict:
+                  schema: capsule-ci-verdict/v1
+                  pipeline: "{{ world.ci_pipeline }}"
+                  outcome: needs_input
+                  summary: "The review phase needs an explicit profile, authority, or human decision."
+                  checks:
+                    - id: deterministic
+                      kind: deterministic
+                      outcome: passed
+                      evidence: ["capsule-ci:deterministic"]
+                  promotion_eligible: false
+                  source_digest: "{{ world.ci_source.digest }}"
+                  story_digest: "{{ world.ci_trigger.story_digest }}"
+                  environment_digest: "{{ world.ci_environment.digest }}"
+                  envelope_digest: "{{ world.ci_trigger.envelope_digest }}"
+      budget_exhausted:
+        - target: parked
+          effects:
+            - set:
+                ci_outcome: "needs_input"
+                ci_verdict:
+                  schema: capsule-ci-verdict/v1
+                  pipeline: "{{ world.ci_pipeline }}"
+                  outcome: needs_input
+                  summary: "Capsule CI stopped before spending beyond its review/refinement budget."
+                  checks:
+                    - id: review-budget
+                      kind: policy
+                      outcome: failed
+                      decision_ref: capsule-ci:budget
+                  promotion_eligible: false
+                  source_digest: "{{ world.ci_source.digest }}"
+                  story_digest: "{{ world.ci_trigger.story_digest }}"
+                  environment_digest: "{{ world.ci_environment.digest }}"
+                  envelope_digest: "{{ world.ci_trigger.envelope_digest }}"
+      look:
+        - target: .
+  llm_review_cassette:
+    relevant_world: [ci_review, ci_review_decision]
+    view:
+      - heading: "Cassette-backed review"
+      - prose: "This room exercises the same host.agent.decide seam that a real LLM review uses, but flow tests replay it from a cassette."
+      - kv:
+          pairs:
+            Outcome: "{{ world.ci_review_decision.outcome|default:'pending' }}"
+            Summary: "{{ world.ci_review_decision.summary|default:'' }}"
+    on_enter:
+      - invoke: host.agent.decide
+        once: true
+        id: capsule_ci_review
+        with:
+          prompt: prompts/review.md
+          schema: schemas/review-verdict.json
+        bind:
+          ci_review_decision: submitted
+        on_error: llm_review
+    on:
+      review_passed:
+        - when: "world.ci_review_decision.outcome == 'passed'"
+          target: adjudicate
+          effects:
+            - set:
+                ci_review:
+                  deterministic_check: "{{ world.ci_review.deterministic_check }}"
+                  review_check:
+                    id: review
+                    kind: llm_decision
+                    outcome: passed
+                    decision_ref: capsule-ci:review-cassette
+                    summary: "{{ world.ci_review_decision.summary }}"
+      refine_requested:
+        - target: refine_change
+          effects:
+            - increment: { ci_review_cycle: 1 }
+            - set: { ci_refine_feedback: "{{ slots.feedback }}" }
+      needs_input:
+        - target: parked
+          effects:
+            - set:
+                ci_outcome: "needs_input"
+                ci_verdict:
+                  schema: capsule-ci-verdict/v1
+                  pipeline: "{{ world.ci_pipeline }}"
+                  outcome: needs_input
+                  summary: "Cassette-backed review did not produce a passing decision."
+                  checks:
+                    - id: deterministic
+                      kind: deterministic
+                      outcome: passed
+                      evidence: ["capsule-ci:deterministic"]
+                    - id: review
+                      kind: llm_decision
+                      outcome: failed
+                      decision_ref: capsule-ci:review-cassette
+                  promotion_eligible: false
+                  source_digest: "{{ world.ci_source.digest }}"
+                  story_digest: "{{ world.ci_trigger.story_digest }}"
+                  environment_digest: "{{ world.ci_environment.digest }}"
+                  envelope_digest: "{{ world.ci_trigger.envelope_digest }}"
+      look:
+        - target: .
+  refine_change:
+    relevant_world: [ci_workspace, ci_refine_feedback, ci_review_cycle]
+    view:
+      - heading: "Bounded writer"
+      - prose: "A write-capable project composition grants only the Capsule MCP workspace handle here, then returns to checks."
+    on:
+      refine_done:
+        - target: deterministic_checks
+      needs_input:
+        - target: parked
+          effects:
+            - set:
+                ci_outcome: "needs_input"
+                ci_verdict:
+                  schema: capsule-ci-verdict/v1
+                  pipeline: "{{ world.ci_pipeline }}"
+                  outcome: needs_input
+                  summary: "Writer phase parked without widening authority."
+                  checks: []
+                  promotion_eligible: false
+                  source_digest: "{{ world.ci_source.digest }}"
+                  story_digest: "{{ world.ci_trigger.story_digest }}"
+                  environment_digest: "{{ world.ci_environment.digest }}"
+                  envelope_digest: "{{ world.ci_trigger.envelope_digest }}"
+      look:
+        - target: .
+  adjudicate:
+    relevant_world: [ci_review, ci_source, ci_environment]
+    view:
+      - heading: "Adjudicate"
+      - prose: "This deterministic room builds the typed verdict from required check evidence and digest facts."
+    on:
+      review_passed:
+        - target: passed
+          effects:
+            - set:
+                ci_outcome: "passed"
+                ci_verdict:
+                  schema: capsule-ci-verdict/v1
+                  pipeline: "{{ world.ci_pipeline }}"
+                  outcome: passed
+                  summary: "Required deterministic checks and schema-bounded review passed."
+                  checks:
+                    - id: deterministic
+                      kind: deterministic
+                      outcome: passed
+                      evidence: ["capsule-ci:deterministic"]
+                    - id: review
+                      kind: llm_decision
+                      outcome: passed
+                      decision_ref: capsule-ci:review-cassette
+                  promotion_eligible: true
+                  source_digest: "{{ world.ci_source.digest }}"
+                  story_digest: "{{ world.ci_trigger.story_digest }}"
+                  environment_digest: "{{ world.ci_environment.digest }}"
+                  envelope_digest: "{{ world.ci_trigger.envelope_digest }}"
+      look:
+        - target: .
+  passed:
+    view:
+      - heading: "Passed"
+      - prose: "The runner builds and validates capsule-ci-verdict/v1 before promotion eligibility is derived."
+  failed:
+    view:
+      - heading: "Failed"
+      - prose: "A required check failed; the terminal verdict preserves its evidence."
+  parked:
+    view:
+      - heading: "Needs input"
+      - prose: "The pipeline is parked rather than silently widening authority or spending more agent budget."

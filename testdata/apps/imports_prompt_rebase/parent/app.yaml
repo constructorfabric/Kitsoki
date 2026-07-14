@@ -5,6 +5,8 @@ app:
 
 hosts:
   - host.agent.ask
+  - host.run
+  - host.starlark.run
 
 world: {}
 

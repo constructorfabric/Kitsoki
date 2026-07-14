@@ -18,28 +18,34 @@ import (
 //
 //	type-and-send → Text    fill the composer with Text, click send
 //	click-intent  → Intent  click intent-btn-<Intent>
+//	click-selector → Selector click an explicit, test-id-backed CSS selector
 //	wait-state    → State   poll current-state until it equals State
 //	reveal-turn   → —       ease the last turn to the top, hold, ease the reply
 //	dwell-ms      → Ms      hold on the current frame for Ms (pace-scaled)
 type DriveAction struct {
-	Type   string `yaml:"type" json:"type"`
-	Text   string `yaml:"text,omitempty" json:"text,omitempty"`
-	Intent string `yaml:"intent,omitempty" json:"intent,omitempty"`
-	State  string `yaml:"state,omitempty" json:"state,omitempty"`
-	Ms     int    `yaml:"ms,omitempty" json:"ms,omitempty"`
+	Type     string `yaml:"type" json:"type"`
+	Text     string `yaml:"text,omitempty" json:"text,omitempty"`
+	Intent   string `yaml:"intent,omitempty" json:"intent,omitempty"`
+	Selector string `yaml:"selector,omitempty" json:"selector,omitempty"`
+	State    string `yaml:"state,omitempty" json:"state,omitempty"`
+	Ms       int    `yaml:"ms,omitempty" json:"ms,omitempty"`
 }
 
 // Drive action type constants — the closed set the executor dispatches on.
 const (
-	DriveTypeAndSend = "type-and-send"
-	DriveClickIntent = "click-intent"
-	DriveWaitState   = "wait-state"
-	DriveRevealTurn  = "reveal-turn"
-	DriveDwellMs     = "dwell-ms"
+	DriveTypeAndSend   = "type-and-send"
+	DriveClickIntent   = "click-intent"
+	DriveClickSelector = "click-selector"
+	DriveWaitState     = "wait-state"
+	DriveWaitText      = "wait-text"
+	DriveRevealTurn    = "reveal-turn"
+	DriveDwellMs       = "dwell-ms"
 )
 
-// validate reports whether the action carries the field its Type requires.
-func (d DriveAction) validate() error {
+// Validate reports whether the action carries the field its Type requires.
+// Exported so plan-level formats reusing the drive vocabulary (e.g.
+// internal/storyboard) validate against the same rules the renderer enforces.
+func (d DriveAction) Validate() error {
 	switch d.Type {
 	case DriveTypeAndSend:
 		if d.Text == "" {
@@ -49,9 +55,17 @@ func (d DriveAction) validate() error {
 		if d.Intent == "" {
 			return fmt.Errorf("drive %q requires intent", d.Type)
 		}
+	case DriveClickSelector:
+		if d.Selector == "" {
+			return fmt.Errorf("drive %q requires selector", d.Type)
+		}
 	case DriveWaitState:
 		if d.State == "" {
 			return fmt.Errorf("drive %q requires state", d.Type)
+		}
+	case DriveWaitText:
+		if d.Text == "" {
+			return fmt.Errorf("drive %q requires text", d.Type)
 		}
 	case DriveDwellMs:
 		if d.Ms <= 0 {
@@ -168,14 +182,44 @@ func LoadFeatureManifest(featurePath, repoRoot string) (*TourManifest, DemoBindi
 	return m, b, nil
 }
 
-// LoadTourManifest loads a standalone tour manifest YAML (the --manifest path),
-// which is just the tour block: {export, steps}. No demo binding is implied;
-// the caller supplies --flow / --stories-dir explicitly.
+// LoadTourManifest loads a standalone tour manifest YAML or JSON (the
+// --manifest path). A document declaring "version: 2" is a tour format v2
+// manifest (schemas/tour-v2.schema.json): it is parsed as [TourManifestV2]
+// and downconverted via [ConvertV2ToV1] so the renderer sees the same
+// [TourManifest] shape either way — this is how internal/tour renders v2.
+// A document with no version field (or version other than 2) is the legacy
+// {export, steps} shape. No demo binding is implied; the caller supplies
+// --flow / --stories-dir explicitly.
 func LoadTourManifest(manifestPath string) (*TourManifest, error) {
 	data, err := os.ReadFile(manifestPath)
 	if err != nil {
 		return nil, fmt.Errorf("read manifest %q: %w", manifestPath, err)
 	}
+
+	var versionProbe struct {
+		Version int `yaml:"version" json:"version"`
+	}
+	if err := yaml.Unmarshal(data, &versionProbe); err != nil {
+		return nil, fmt.Errorf("parse manifest %q: %w", manifestPath, err)
+	}
+	if versionProbe.Version == 2 {
+		var v2 TourManifestV2
+		if err := yaml.Unmarshal(data, &v2); err != nil {
+			return nil, fmt.Errorf("parse v2 manifest %q: %w", manifestPath, err)
+		}
+		v2.SpecPath = manifestPath
+		m, err := ConvertV2ToV1(&v2)
+		if err != nil {
+			return nil, fmt.Errorf("render v2 manifest %q: %w", manifestPath, err)
+		}
+		m.SpecPath = manifestPath
+		m.SpecPointerBase = "/steps"
+		if err := m.validate(); err != nil {
+			return nil, err
+		}
+		return m, nil
+	}
+
 	var m TourManifest
 	if err := yaml.Unmarshal(data, &m); err != nil {
 		return nil, fmt.Errorf("parse manifest %q: %w", manifestPath, err)
@@ -203,7 +247,7 @@ func (m *TourManifest) validate() error {
 		}
 		seen[s.ID] = true
 		for j, d := range s.Drive {
-			if err := d.validate(); err != nil {
+			if err := d.Validate(); err != nil {
 				return fmt.Errorf("step %q drive[%d]: %w", s.ID, j, err)
 			}
 		}

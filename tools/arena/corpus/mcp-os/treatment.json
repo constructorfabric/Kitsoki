@@ -1,0 +1,8 @@
+{
+  "schema_version": "mcp_os_treatment/v1",
+  "id": "current-toolbox",
+  "label": "Current Studio MCP toolbox behavior",
+  "mode": "observation-only",
+  "tool_families": ["host.patch", "host.run", "worktree.*", "vcs.*", "session.*", "trace.*"],
+  "statement": "This baseline records the pre-operating-system toolbox. It does not change Studio registration, defaults, or mutation policy."
+}

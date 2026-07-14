@@ -1,64 +1,105 @@
-# aggregate_run.star — fold results.items into world.rollup. Deterministic; the
-# numbers are summed straight from the recorded per-case data — nothing invented.
-#
-# rollup = {
-#   counts:  {processed, solved, partial, failed, skipped, shipped, needs_human},
-#   totals:  {cost_usd, tokens, wall_s},
-#   worked:  [...],   # what worked (qualitative, derived from outcomes)
-#   didnt:   [...],   # what didn't
-#   headline: "...",
-# }
-#
-# Interface (authoritative in aggregate_run.star.yaml):
-#   inputs:  results (object), findings (object)
-#   world:   rollup (object)
-#   outputs: rollup (object)
+# aggregate_run.star — fold results.items into world.rollup. Deterministic; all
+# numbers are summed straight from recorded per-case data.
+
+def _dict(v):
+    if type(v) == "dict":
+        return v
+    return {}
+
+def _items(v):
+    if type(v) == "list":
+        return v
+    return []
+
+def _str(v):
+    if v == None:
+        return ""
+    return str(v)
+
+def _num(v):
+    if v == None or v == "":
+        return 0.0
+    return float(v)
+
+def _int(v):
+    if v == None or v == "":
+        return 0
+    return int(v)
 
 def main(ctx):
-    results = ctx.inputs.get("results", {})
-    items = results.get("items", []) if type(results) == "dict" else []
+    results = _dict(ctx.inputs.get("results", {}))
+    items = _items(results.get("items", []))
+    findings = _dict(ctx.inputs.get("findings", {}))
+    exceptions = _dict(ctx.inputs.get("exceptions", {}))
 
-    counts = {"processed": 0, "solved": 0, "partial": 0, "failed": 0,
-              "skipped": 0, "shipped": 0, "needs_human": 0}
+    counts = {
+        "processed": 0,
+        "solved": 0,
+        "partial": 0,
+        "failed": 0,
+        "skipped": 0,
+        "shipped": 0,
+        "needs_human": 0,
+        "not_reproducible": 0,
+        "abandoned": 0,
+        "github": 0,
+        "local": 0,
+        "exceptions": len(_items(exceptions.get("items", []))),
+    }
     cost = 0.0
     tokens = 0
     wall = 0
 
     for r in items:
+        item = _dict(r)
         counts["processed"] += 1
-        status = r.get("verify_status", "")
+        status = _str(item.get("verify_status", "")).lower()
         if status in counts:
             counts[status] += 1
-        exit = r.get("exit", "")
+        exit = _str(item.get("exit", "")).lower()
         if exit == "shipped":
             counts["shipped"] += 1
         elif exit == "needs-human":
             counts["needs_human"] += 1
-        cost += float(r.get("cost_usd", 0) or 0)
-        tokens += int(r.get("tokens", 0) or 0)
-        wall += int(r.get("wall_s", 0) or 0)
+        elif exit == "not-reproducible":
+            counts["not_reproducible"] += 1
+        elif exit == "abandoned":
+            counts["abandoned"] += 1
+        source_kind = _str(item.get("source_kind", "")).lower()
+        if source_kind == "github":
+            counts["github"] += 1
+        elif source_kind == "local":
+            counts["local"] += 1
+        cost += _num(item.get("cost_usd", 0))
+        tokens += _int(item.get("tokens", 0))
+        wall += _int(item.get("wall_s", 0))
 
-    findings = ctx.inputs.get("findings", {})
-    n_findings = len(findings.get("items", [])) if type(findings) == "dict" else 0
+    n_findings = len(_items(findings.get("items", [])))
 
     worked = []
     didnt = []
     if counts["solved"] > 0:
-        worked.append("%d case(s) independently verified solved" % counts["solved"])
+        worked.append(str(counts["solved"]) + " case(s) independently verified solved")
     if counts["shipped"] > 0:
-        worked.append("%d fix(es) shipped through the inner pipeline" % counts["shipped"])
+        worked.append(str(counts["shipped"]) + " case(s) completed through the inner workflow")
+    if counts["github"] > 0 or counts["local"] > 0:
+        worked.append("backlog mixed " + str(counts["github"]) + " GitHub and " + str(counts["local"]) + " local case(s)")
     if counts["needs_human"] > 0:
-        didnt.append("%d case(s) parked at needs-human (RED→GREEN discipline; human verifies+merges)" % counts["needs_human"])
+        didnt.append(str(counts["needs_human"]) + " case(s) parked at needs-human")
+    if counts["exceptions"] > 0:
+        didnt.append(str(counts["exceptions"]) + " serious exception(s) raised to the operator")
     if counts["failed"] > 0:
-        didnt.append("%d case(s) failed the independent oracle" % counts["failed"])
+        didnt.append(str(counts["failed"]) + " case(s) failed the independent oracle")
     if counts["skipped"] > 0:
-        didnt.append("%d case(s) dropped (ALREADY-FIXED degenerate baseline)" % counts["skipped"])
+        didnt.append(str(counts["skipped"]) + " case(s) dropped (ALREADY-FIXED degenerate baseline)")
 
-    headline = ("Processed %d case(s): %d solved, %d failed, %d needs-human, %d skipped. "
-                "Structure isn't automatically cheaper, but it's more thorough — "
-                "regression test, safe gate-parking, refine loop — and catches bad fixes a naive prompt would ship."
-                ) % (counts["processed"], counts["solved"], counts["failed"],
-                     counts["needs_human"], counts["skipped"])
+    headline = (
+        "Processed " + str(counts["processed"]) + " case(s): " +
+        str(counts["solved"]) + " solved, " +
+        str(counts["partial"]) + " partial, " +
+        str(counts["failed"]) + " failed, " +
+        str(counts["exceptions"]) + " serious exception(s)."
+    )
 
     return {
         "rollup": {

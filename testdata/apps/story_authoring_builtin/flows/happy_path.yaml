@@ -1,0 +1,60 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: start
+initial_world: {}
+
+host_handlers:
+  host.agent.task:
+    data:
+      submitted:
+        summary: "Updated the story."
+        details: "Stubbed authoring pass; no real LLM ran."
+        files_changed: ["rooms/example.yaml"]
+        validation: "stubbed flow"
+
+turns:
+  - intent: { name: author_story, slots: { proposal: "add a clarifying prompt" } }
+    expect_state: story_authoring
+    expect_events:
+      - kind: machine.say
+        effect:
+          text: "Story-authoring intake accepted; return state is start."
+    expect_view_matches: "Story authoring(?s).*Story root.*Return state.*start.*Captured proposal.*add a clarifying prompt.*Last result.*Updated the story"
+    expect_world:
+      story_authoring_request: "add a clarifying prompt"
+      story_authoring_return_state: "start"
+      story_authoring_note:
+        summary: "Updated the story."
+        details: "Stubbed authoring pass; no real LLM ran."
+        files_changed: ["rooms/example.yaml"]
+        validation: "stubbed flow"
+
+  - intent: { name: clear_story_authoring, slots: {} }
+    expect_state: story_authoring
+    expect_events:
+      - kind: machine.say
+        effect:
+          text: "Story-authoring proposal cleared."
+    expect_world:
+      story_authoring_request: ""
+      story_authoring_note: {}
+
+  - intent: { name: story_authoring_capture, slots: { request: "expand the authoring room" } }
+    expect_state: story_authoring
+    expect_events:
+      - kind: machine.say
+        effect:
+          text: "Story-authoring proposal captured for start."
+    expect_view_matches: "Captured proposal(?s).*expand the authoring room.*Last result.*Updated the story"
+    expect_world:
+      story_authoring_request: "expand the authoring room"
+      story_authoring_note:
+        summary: "Updated the story."
+        details: "Stubbed authoring pass; no real LLM ran."
+        files_changed: ["rooms/example.yaml"]
+        validation: "stubbed flow"
+
+  - intent: { name: return_to_story, slots: {} }
+    expect_state: start
+
+expect_no_errors: true

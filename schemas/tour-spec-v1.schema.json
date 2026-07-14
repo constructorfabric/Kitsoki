@@ -1,0 +1,1 @@
+{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"Kitsoki TourSpec v1","type":"object","additionalProperties":false,"required":["version","id","bindings","claims","beats"],"properties":{"version":{"const":1},"id":{"type":"string"},"origin":{"type":"string"},"bindings":{"type":"object"},"claims":{"type":"array"},"beats":{"type":"array","minItems":1}}}

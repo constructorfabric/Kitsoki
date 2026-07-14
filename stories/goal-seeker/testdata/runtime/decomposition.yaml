@@ -1,0 +1,23 @@
+goal_slug: runtime-fixture
+# Hermetic decomposition used by flows/runtime_context_resolves.yaml — carries a
+# `runtime:` block so the flow proves bootstrap's gs_resolve.star reads the goal's
+# declared execution context (base_branch here; the worktree-locating branch is
+# proved deterministically by the Go test in internal/host). This fixture lives
+# directly under the repo root, so gs_resolve takes the DIRECT branch: workdir
+# stays "." and only base_branch is derived from the block.
+runtime:
+  base_branch:   stabilize/runtime-fixture
+  worktree_path: .worktrees/runtime-fixture
+changes:
+  - id: "R1"
+    wall: WT
+    goal_ref: [G1]
+    title: "Runtime fixture change"
+    pipeline: implementation
+    scope: ["stories/goal-seeker/**"]
+    depends_on: []
+    acceptance:
+      - "gs_resolve reads the runtime block and binds base_branch"
+    gate:
+      class: G-FLOW
+      cmd: "true"

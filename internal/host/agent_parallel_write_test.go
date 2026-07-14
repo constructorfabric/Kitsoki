@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -43,6 +44,16 @@ func (s *memSink) History() store.History {
 	return store.History(s.events)
 }
 
+func agentCallEvents(events []store.Event) []store.Event {
+	var out []store.Event
+	for _, ev := range events {
+		if ev.Kind == store.AgentCalled || ev.Kind == store.AgentReturned || ev.Kind == store.AgentError {
+			out = append(out, ev)
+		}
+	}
+	return out
+}
+
 // agentCtxForTest builds a minimal agent context with session+turn+state.
 func agentCtxForTest(sink store.EventSink) context.Context {
 	ctx := context.Background()
@@ -53,6 +64,79 @@ func agentCtxForTest(sink store.EventSink) context.Context {
 	})
 	ctx = host.WithAgentEventSink(ctx, sink)
 	return ctx
+}
+
+func TestAgentAsk_RunErrorClosesTraceSpan(t *testing.T) {
+	t.Parallel()
+
+	sink := &memSink{}
+	dir := t.TempDir()
+	promptPath := filepath.Join(dir, "p.md")
+	if err := os.WriteFile(promptPath, []byte("say hi"), 0o644); err != nil {
+		t.Fatalf("write prompt: %v", err)
+	}
+	ctx := host.WithClaudeRunner(agentCtxForTest(sink), func(context.Context, []string, string, string) (host.ClaudeRun, error) {
+		return host.ClaudeRun{}, context.DeadlineExceeded
+	})
+
+	res, err := host.AgentAskHandler(ctx, map[string]any{"prompt_path": promptPath})
+	if err != nil {
+		t.Fatalf("AgentAskHandler returned Go error instead of domain error: %v", err)
+	}
+	if !strings.Contains(res.Error, "agent stream failed") {
+		t.Fatalf("Result.Error = %q, want stream failure", res.Error)
+	}
+	agentEvents := agentCallEvents(sink.events)
+	if len(agentEvents) != 2 {
+		t.Fatalf("agent events = %#v, all events = %#v; want AgentCalled + AgentError", agentEvents, sink.events)
+	}
+	if agentEvents[0].Kind != store.AgentCalled || agentEvents[1].Kind != store.AgentError {
+		t.Fatalf("event kinds = %s, %s; want agent.call.start, agent.call.error", agentEvents[0].Kind, agentEvents[1].Kind)
+	}
+	if agentEvents[0].CallID == "" || agentEvents[0].CallID != agentEvents[1].CallID {
+		t.Fatalf("call ids not paired: %#v", agentEvents)
+	}
+}
+
+func TestAgentTask_RunErrorClosesTraceSpan(t *testing.T) {
+	t.Parallel()
+
+	sink := &memSink{}
+	dir := t.TempDir()
+	schemaPath := filepath.Join(dir, "ok.schema.json")
+	if err := os.WriteFile(schemaPath, []byte(`{"type":"object","required":["ok"],"properties":{"ok":{"type":"boolean"}}}`), 0o644); err != nil {
+		t.Fatalf("write schema: %v", err)
+	}
+	ctx := host.WithClaudeRunner(agentCtxForTest(sink), func(context.Context, []string, string, string) (host.ClaudeRun, error) {
+		return host.ClaudeRun{}, context.DeadlineExceeded
+	})
+
+	res, err := host.AgentTaskHandler(ctx, map[string]any{
+		"working_dir": dir,
+		"context":     map[string]any{"prompt": "do it"},
+		"acceptance":  map[string]any{"schema": schemaPath, "max_retries": 1},
+		"agent_contract": map[string]any{
+			"system_prompt": "inline maker",
+			"model":         "claude-sonnet-4-6",
+			"tools":         []any{"Read"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("AgentTaskHandler returned Go error instead of domain error: %v", err)
+	}
+	if !strings.Contains(res.Error, "agent stream failed") {
+		t.Fatalf("Result.Error = %q, want stream failure", res.Error)
+	}
+	agentEvents := agentCallEvents(sink.events)
+	if len(agentEvents) != 2 {
+		t.Fatalf("agent events = %#v, all events = %#v; want AgentCalled + AgentError", agentEvents, sink.events)
+	}
+	if agentEvents[0].Kind != store.AgentCalled || agentEvents[1].Kind != store.AgentError {
+		t.Fatalf("event kinds = %s, %s; want agent.call.start, agent.call.error", agentEvents[0].Kind, agentEvents[1].Kind)
+	}
+	if agentEvents[0].CallID == "" || agentEvents[0].CallID != agentEvents[1].CallID {
+		t.Fatalf("call ids not paired: %#v", agentEvents)
+	}
 }
 
 // ── Test 1: AgentCalled + AgentReturned written on success ─────────────────

@@ -1,0 +1,8 @@
+goal_slug: fixture
+changes:
+  - id: "X.2"
+    wall: WX
+    title: Gadget X ships a live demo
+    demo_video: "a short tour of gadget X actually working"
+    kind: feature
+    scope: ["gadget/**"]

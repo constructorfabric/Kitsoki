@@ -39,7 +39,7 @@ turns:
   # The operator describes a concrete, actionable migration. `work` captures it
   # and re-arms the on_enter planner task (stubbed); the plan binds and the
   # workbench rests as the read-only floor with the plan card present.
-  - intent: { name: work, slots: { request: "import the issues folder in the repo to github so we have issues to work with here" } }
+  - intent: { name: landing_capture, slots: { request: "import the issues folder in the repo to github so we have issues to work with here" } }
     expect_state: landing
     # The plan card renders (the "Proposed plan" heading + the goal kv) AND the
     # Accept & apply quick action is offered (the choice item folded into Quick

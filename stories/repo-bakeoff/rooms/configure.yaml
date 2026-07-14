@@ -17,7 +17,7 @@ states:
             Bugs:       "{{ world.bugs|join:', ' }}"
             Candidates: "{{ world.candidates|join:', ' }}"
             Cells:      "{{ world.cells_total }}"
-      - prose: "A cell = (bug × candidate), one hermetic baseline worktree each. Accept to arm the oracles (free, deterministic) before any LLM is spent."
+      - prose: "A cell = (bug × candidate), one hermetic native Capsule baseline each. Accept to arm the oracles (free, deterministic) before any LLM is spent."
       - choice:
           mode: single
           prompt: "Actions"

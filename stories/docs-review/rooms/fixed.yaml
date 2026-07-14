@@ -21,6 +21,7 @@ states:
             "Applied":     '{% if world.fix_artifact.applied == true %}yes{% else %}no{% endif %}'
             "Files":       '{{ world.fix_artifact.files_changed|length|default:"0" }}'
             "Unresolved":  '{{ world.fix_artifact.unresolved|length|default:"0" }}'
+            "Repair report": '{{ world.fix_artifact.report_path|default:"(not written)" }}'
             "Verdict":     '{{ world.artifact_path|default:"(not written)" }}'
       - heading: "Summary"
       - prose: '{{ world.fix_artifact.summary|default:"(no summary)" }}'

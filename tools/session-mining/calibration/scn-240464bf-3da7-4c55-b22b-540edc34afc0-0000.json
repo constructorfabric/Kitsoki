@@ -1,0 +1,24 @@
+{
+  "schema_version": "1.0",
+  "kind": "conversation",
+  "id": "scn-240464bf-3da7-4c55-b22b-540edc34afc0-0000",
+  "source": "mined",
+  "provenance": {
+    "corpus": "claude-code",
+    "session_id": "240464bf-3da7-4c55-b22b-540edc34afc0",
+    "span_idx": 0
+  },
+  "persona": "docs-writer",
+  "goal": "just file the ticket, we'll handle it async, need to commit the bugs to the repo for now - we'll evolve it before we release widely",
+  "turns": [
+    {
+      "role": "user",
+      "text": "just file the ticket, we'll handle it async, need to commit the bugs to the repo for now - we'll evolve it before we release widely",
+      "corrected": false
+    }
+  ],
+  "expected_effects": [
+    "Edit: <path> completed"
+  ],
+  "abandoned": false
+}

@@ -144,9 +144,54 @@ func TestKV_OSC8Wrap_MarkdownValue(t *testing.T) {
 	}
 }
 
-// TestKV_OSC8_NoEscapeForNonMarkdown verifies a non-.md value emits no
-// OSC 8 escape — the linkify is gated strictly on the markdown predicate.
-func TestKV_OSC8_NoEscapeForNonMarkdown(t *testing.T) {
+func TestKV_OSC8Wrap_MarkdownLinkURL(t *testing.T) {
+	value := "[Kitsoku Issue #61](https://github.com/constructorfabric/Kitsoki/issues/61)"
+	kv := KV{
+		Pairs: goyaml.MapSlice{
+			{Key: "Issue", Value: value},
+		},
+	}
+	out, err := kv.Render(80, expr.Env{}, nil)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if !strings.Contains(out, osc8) {
+		t.Fatalf("expected OSC 8 escape around %q, got raw:\n%q", value, out)
+	}
+	if !strings.Contains(out, "https://github.com/constructorfabric/Kitsoki/issues/61") {
+		t.Fatalf("expected issue URL target in raw output:\n%q", out)
+	}
+	if visible := ansi.Strip(out); visible != "Issue:  Kitsoku Issue #61" {
+		t.Fatalf("visible text mismatch:\n got %q\nwant %q", visible, "Issue:  Kitsoku Issue #61")
+	}
+}
+
+func TestKV_OSC8Wrap_MarkdownLinkFileTarget(t *testing.T) {
+	value := "[case-05 trace](.artifacts/dogfood-marathon/bug15-real-tui/traces/case-05.jsonl)"
+	kv := KV{
+		Pairs: goyaml.MapSlice{
+			{Key: "Trace", Value: value},
+		},
+	}
+	out, err := kv.Render(80, expr.Env{}, nil)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if !strings.Contains(out, osc8) {
+		t.Fatalf("expected OSC 8 escape around %q, got raw:\n%q", value, out)
+	}
+	abs, _ := filepath.Abs(".artifacts/dogfood-marathon/bug15-real-tui/traces/case-05.jsonl")
+	if !strings.Contains(out, "file://"+abs) {
+		t.Fatalf("expected trace file target %q in raw output:\n%q", "file://"+abs, out)
+	}
+	if visible := ansi.Strip(out); visible != "Trace:  case-05 trace" {
+		t.Fatalf("visible text mismatch:\n got %q\nwant %q", visible, "Trace:  case-05 trace")
+	}
+}
+
+// TestKV_OSC8_NoEscapeForPlainText verifies ordinary non-link values emit no
+// OSC 8 escape.
+func TestKV_OSC8_NoEscapeForPlainText(t *testing.T) {
 	kv := KV{
 		Pairs: goyaml.MapSlice{
 			{Key: "Note", Value: "docs/proposals/tui-md-links.txt"},

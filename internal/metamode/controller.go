@@ -615,6 +615,21 @@ func (c *Controller) sendLocked(ctx context.Context, s *Session, userText string
 	)
 	out, err := c.Agent.Ask(ctx, in)
 	if err != nil {
+		if in.ClaudeSessionID != "" && isStaleClaudeResumeError(err) {
+			slog.WarnContext(ctx, "metamode.agent.stale_resume_retry",
+				"chat_id", chatID,
+				"mode", mode,
+				"claude_session_id", in.ClaudeSessionID,
+				"err", err.Error(),
+			)
+			if clearErr := s.Chat.SetClaudeSessionID(""); clearErr != nil {
+				return SendResult{Err: clearErr}, fmt.Errorf("metamode.Send: clear stale claude session id: %w", clearErr)
+			}
+			in.ClaudeSessionID = ""
+			out, err = c.Agent.Ask(ctx, in)
+		}
+	}
+	if err != nil {
 		slog.ErrorContext(ctx, "metamode.agent.error",
 			"chat_id", chatID,
 			"mode", mode,
@@ -715,6 +730,15 @@ func (c *Controller) sendLocked(ctx context.Context, s *Session, userText string
 		CommitError:     commitErrString,
 		Err:             nil,
 	}, nil
+}
+
+func isStaleClaudeResumeError(err error) bool {
+	if err == nil {
+		return false
+	}
+	text := err.Error()
+	return strings.Contains(text, "threadresume failed") &&
+		strings.Contains(text, "no rollout found for thread id")
 }
 
 // metamodeCommitSubject builds the commit subject for a meta-mode turn.

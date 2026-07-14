@@ -61,7 +61,9 @@ kitsoki run .kitsoki/stories/kitsoki-dev/app.yaml   # land in main; type `idea` 
 > directory, and this **`proposal-authoring`** skill keep their names — the
 > pipeline emits proposal-shaped design docs into `docs/proposals/`.
 
-It walks the proposal process from `docs/proposals/proposals.md`:
+It walks the proposal process the design shipped from (that design doc,
+`docs/proposals/proposals.md`, has shipped and been retired — this skill
+and the in-story pipeline below are its narrative home now):
 
 1. **intake** — a discovery conversation that distils a crisp idea.
 2. **brief** — scaffolds a pre-filled `001-brief.md` (the shared
@@ -72,7 +74,7 @@ It walks the proposal process from `docs/proposals/proposals.md`:
 3. **existing-state** — the overlap gate: scans in-progress
    (`.workspace/`) and accepted (`docs/proposals/*.md`) proposals + feature
    docs, and steers you to **amend** an existing one rather than create a
-   duplicate (proposals.md's core rule).
+   duplicate (the retired design doc's core rule).
 4. **idea-completeness** — gate on problem / why-kitsoki / usage.
 5. **references** — curates the docs the proposal must build on
    (`004-references.json`).

@@ -1,0 +1,2483 @@
+{
+  "schema_version": "1.0.0",
+  "run_id": "calibration",
+  "corpus": "tools/session-mining/calibration",
+  "surfaces": [
+    "web",
+    "tui",
+    "mcp"
+  ],
+  "targets": [
+    "dev-story",
+    "pets-dev",
+    "slidey-dev"
+  ],
+  "scenario_count": 18,
+  "record_count": 162,
+  "parity_threshold_percent": 90.0,
+  "gate_conditions": [
+    "zero_silent_bounce",
+    "zero_misroute_adjacent",
+    "parity_at_or_above_threshold"
+  ],
+  "rollup": {
+    "cell_id": "usable-kitsoki-gate-calibration",
+    "job_type": "usable-kitsoki-gate",
+    "target_id": "calibration-sweep",
+    "variant_id": "flow-replay",
+    "axis": {},
+    "verdict": "solved",
+    "health": "model:result",
+    "metrics": {
+      "record_count": 162,
+      "silent_bounce_count": 0,
+      "misroute_adjacent_count": 0,
+      "source_completed_count": 162,
+      "both_completed_count": 162,
+      "parity_percent": 100.0,
+      "worst_surface_parity_percent": 100.0,
+      "per_surface_parity_percent": {
+        "web": 100.0,
+        "tui": 100.0,
+        "mcp": 100.0
+      }
+    },
+    "evidence_refs": [
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-1b4ace86-f192-43b0-ab86-16142fec0079-0001.dev-story.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-1b4ace86-f192-43b0-ab86-16142fec0079-0001.dev-story.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-1b4ace86-f192-43b0-ab86-16142fec0079-0001.dev-story.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-1b4ace86-f192-43b0-ab86-16142fec0079-0001.pets-dev.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-1b4ace86-f192-43b0-ab86-16142fec0079-0001.pets-dev.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-1b4ace86-f192-43b0-ab86-16142fec0079-0001.pets-dev.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-1b4ace86-f192-43b0-ab86-16142fec0079-0001.slidey-dev.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-1b4ace86-f192-43b0-ab86-16142fec0079-0001.slidey-dev.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-1b4ace86-f192-43b0-ab86-16142fec0079-0001.slidey-dev.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-240464bf-3da7-4c55-b22b-540edc34afc0-0000.dev-story.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-240464bf-3da7-4c55-b22b-540edc34afc0-0000.dev-story.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-240464bf-3da7-4c55-b22b-540edc34afc0-0000.dev-story.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-240464bf-3da7-4c55-b22b-540edc34afc0-0000.pets-dev.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-240464bf-3da7-4c55-b22b-540edc34afc0-0000.pets-dev.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-240464bf-3da7-4c55-b22b-540edc34afc0-0000.pets-dev.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-240464bf-3da7-4c55-b22b-540edc34afc0-0000.slidey-dev.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-240464bf-3da7-4c55-b22b-540edc34afc0-0000.slidey-dev.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-240464bf-3da7-4c55-b22b-540edc34afc0-0000.slidey-dev.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-2e107a60-10e3-4d70-afe5-ea995adc4d6f-0000.dev-story.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-2e107a60-10e3-4d70-afe5-ea995adc4d6f-0000.dev-story.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-2e107a60-10e3-4d70-afe5-ea995adc4d6f-0000.dev-story.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-2e107a60-10e3-4d70-afe5-ea995adc4d6f-0000.pets-dev.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-2e107a60-10e3-4d70-afe5-ea995adc4d6f-0000.pets-dev.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-2e107a60-10e3-4d70-afe5-ea995adc4d6f-0000.pets-dev.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-2e107a60-10e3-4d70-afe5-ea995adc4d6f-0000.slidey-dev.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-2e107a60-10e3-4d70-afe5-ea995adc4d6f-0000.slidey-dev.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-2e107a60-10e3-4d70-afe5-ea995adc4d6f-0000.slidey-dev.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-687e848b-baa7-4050-aaeb-d38a340fef5a-0000.dev-story.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-687e848b-baa7-4050-aaeb-d38a340fef5a-0000.dev-story.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-687e848b-baa7-4050-aaeb-d38a340fef5a-0000.dev-story.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-687e848b-baa7-4050-aaeb-d38a340fef5a-0000.pets-dev.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-687e848b-baa7-4050-aaeb-d38a340fef5a-0000.pets-dev.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-687e848b-baa7-4050-aaeb-d38a340fef5a-0000.pets-dev.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-687e848b-baa7-4050-aaeb-d38a340fef5a-0000.slidey-dev.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-687e848b-baa7-4050-aaeb-d38a340fef5a-0000.slidey-dev.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-687e848b-baa7-4050-aaeb-d38a340fef5a-0000.slidey-dev.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0000.dev-story.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0000.dev-story.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0000.dev-story.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0000.pets-dev.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0000.pets-dev.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0000.pets-dev.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0000.slidey-dev.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0000.slidey-dev.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0000.slidey-dev.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0001.dev-story.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0001.dev-story.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0001.dev-story.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0001.pets-dev.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0001.pets-dev.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0001.pets-dev.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0001.slidey-dev.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0001.slidey-dev.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0001.slidey-dev.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0002.dev-story.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0002.dev-story.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0002.dev-story.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0002.pets-dev.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0002.pets-dev.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0002.pets-dev.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0002.slidey-dev.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0002.slidey-dev.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0002.slidey-dev.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4d281a2-30e4-4002-9152-59d28d824abc-0000.dev-story.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4d281a2-30e4-4002-9152-59d28d824abc-0000.dev-story.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4d281a2-30e4-4002-9152-59d28d824abc-0000.dev-story.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4d281a2-30e4-4002-9152-59d28d824abc-0000.pets-dev.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4d281a2-30e4-4002-9152-59d28d824abc-0000.pets-dev.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4d281a2-30e4-4002-9152-59d28d824abc-0000.pets-dev.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4d281a2-30e4-4002-9152-59d28d824abc-0000.slidey-dev.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4d281a2-30e4-4002-9152-59d28d824abc-0000.slidey-dev.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4d281a2-30e4-4002-9152-59d28d824abc-0000.slidey-dev.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4d281a2-30e4-4002-9152-59d28d824abc-0001.dev-story.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4d281a2-30e4-4002-9152-59d28d824abc-0001.dev-story.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4d281a2-30e4-4002-9152-59d28d824abc-0001.dev-story.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4d281a2-30e4-4002-9152-59d28d824abc-0001.pets-dev.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4d281a2-30e4-4002-9152-59d28d824abc-0001.pets-dev.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4d281a2-30e4-4002-9152-59d28d824abc-0001.pets-dev.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4d281a2-30e4-4002-9152-59d28d824abc-0001.slidey-dev.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4d281a2-30e4-4002-9152-59d28d824abc-0001.slidey-dev.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4d281a2-30e4-4002-9152-59d28d824abc-0001.slidey-dev.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4ef173f-2335-4490-a2f4-a035a6ae3d85-0000.dev-story.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4ef173f-2335-4490-a2f4-a035a6ae3d85-0000.dev-story.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4ef173f-2335-4490-a2f4-a035a6ae3d85-0000.dev-story.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4ef173f-2335-4490-a2f4-a035a6ae3d85-0000.pets-dev.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4ef173f-2335-4490-a2f4-a035a6ae3d85-0000.pets-dev.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4ef173f-2335-4490-a2f4-a035a6ae3d85-0000.pets-dev.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4ef173f-2335-4490-a2f4-a035a6ae3d85-0000.slidey-dev.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4ef173f-2335-4490-a2f4-a035a6ae3d85-0000.slidey-dev.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4ef173f-2335-4490-a2f4-a035a6ae3d85-0000.slidey-dev.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0000.dev-story.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0000.dev-story.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0000.dev-story.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0000.pets-dev.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0000.pets-dev.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0000.pets-dev.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0000.slidey-dev.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0000.slidey-dev.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0000.slidey-dev.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0001.dev-story.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0001.dev-story.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0001.dev-story.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0001.pets-dev.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0001.pets-dev.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0001.pets-dev.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0001.slidey-dev.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0001.slidey-dev.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0001.slidey-dev.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0002.dev-story.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0002.dev-story.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0002.dev-story.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0002.pets-dev.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0002.pets-dev.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0002.pets-dev.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0002.slidey-dev.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0002.slidey-dev.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0002.slidey-dev.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-20t12-11-15-019ee370-b72b-78b2-90df-425f1252c365-0000.dev-story.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-20t12-11-15-019ee370-b72b-78b2-90df-425f1252c365-0000.dev-story.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-20t12-11-15-019ee370-b72b-78b2-90df-425f1252c365-0000.dev-story.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-20t12-11-15-019ee370-b72b-78b2-90df-425f1252c365-0000.pets-dev.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-20t12-11-15-019ee370-b72b-78b2-90df-425f1252c365-0000.pets-dev.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-20t12-11-15-019ee370-b72b-78b2-90df-425f1252c365-0000.pets-dev.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-20t12-11-15-019ee370-b72b-78b2-90df-425f1252c365-0000.slidey-dev.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-20t12-11-15-019ee370-b72b-78b2-90df-425f1252c365-0000.slidey-dev.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-20t12-11-15-019ee370-b72b-78b2-90df-425f1252c365-0000.slidey-dev.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-20t13-01-55-019ee39f-18dc-73f1-9f35-859bb770bfd2-0000.dev-story.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-20t13-01-55-019ee39f-18dc-73f1-9f35-859bb770bfd2-0000.dev-story.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-20t13-01-55-019ee39f-18dc-73f1-9f35-859bb770bfd2-0000.dev-story.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-20t13-01-55-019ee39f-18dc-73f1-9f35-859bb770bfd2-0000.pets-dev.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-20t13-01-55-019ee39f-18dc-73f1-9f35-859bb770bfd2-0000.pets-dev.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-20t13-01-55-019ee39f-18dc-73f1-9f35-859bb770bfd2-0000.pets-dev.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-20t13-01-55-019ee39f-18dc-73f1-9f35-859bb770bfd2-0000.slidey-dev.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-20t13-01-55-019ee39f-18dc-73f1-9f35-859bb770bfd2-0000.slidey-dev.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-20t13-01-55-019ee39f-18dc-73f1-9f35-859bb770bfd2-0000.slidey-dev.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-22t14-52-39-019eee51-34a1-77e3-af6a-9c82cc702370-0000.dev-story.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-22t14-52-39-019eee51-34a1-77e3-af6a-9c82cc702370-0000.dev-story.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-22t14-52-39-019eee51-34a1-77e3-af6a-9c82cc702370-0000.dev-story.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-22t14-52-39-019eee51-34a1-77e3-af6a-9c82cc702370-0000.pets-dev.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-22t14-52-39-019eee51-34a1-77e3-af6a-9c82cc702370-0000.pets-dev.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-22t14-52-39-019eee51-34a1-77e3-af6a-9c82cc702370-0000.pets-dev.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-22t14-52-39-019eee51-34a1-77e3-af6a-9c82cc702370-0000.slidey-dev.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-22t14-52-39-019eee51-34a1-77e3-af6a-9c82cc702370-0000.slidey-dev.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-22t14-52-39-019eee51-34a1-77e3-af6a-9c82cc702370-0000.slidey-dev.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-22t17-54-26-019eeef7-9fdf-7060-86d0-1b1c25348cd5-0000.dev-story.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-22t17-54-26-019eeef7-9fdf-7060-86d0-1b1c25348cd5-0000.dev-story.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-22t17-54-26-019eeef7-9fdf-7060-86d0-1b1c25348cd5-0000.dev-story.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-22t17-54-26-019eeef7-9fdf-7060-86d0-1b1c25348cd5-0000.pets-dev.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-22t17-54-26-019eeef7-9fdf-7060-86d0-1b1c25348cd5-0000.pets-dev.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-22t17-54-26-019eeef7-9fdf-7060-86d0-1b1c25348cd5-0000.pets-dev.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-22t17-54-26-019eeef7-9fdf-7060-86d0-1b1c25348cd5-0000.slidey-dev.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-22t17-54-26-019eeef7-9fdf-7060-86d0-1b1c25348cd5-0000.slidey-dev.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-22t17-54-26-019eeef7-9fdf-7060-86d0-1b1c25348cd5-0000.slidey-dev.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-26t15-21-48-019f0305-531e-7510-a890-14cc41e8491f-0000.dev-story.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-26t15-21-48-019f0305-531e-7510-a890-14cc41e8491f-0000.dev-story.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-26t15-21-48-019f0305-531e-7510-a890-14cc41e8491f-0000.dev-story.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-26t15-21-48-019f0305-531e-7510-a890-14cc41e8491f-0000.pets-dev.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-26t15-21-48-019f0305-531e-7510-a890-14cc41e8491f-0000.pets-dev.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-26t15-21-48-019f0305-531e-7510-a890-14cc41e8491f-0000.pets-dev.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-26t15-21-48-019f0305-531e-7510-a890-14cc41e8491f-0000.slidey-dev.mcp.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-26t15-21-48-019f0305-531e-7510-a890-14cc41e8491f-0000.slidey-dev.tui.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-26t15-21-48-019f0305-531e-7510-a890-14cc41e8491f-0000.slidey-dev.web.trace.jsonl",
+      ".artifacts/usable-kitsoki-gate/calibration-report.json"
+    ],
+    "trace_ref": ".artifacts/usable-kitsoki-gate/calibration-report.json",
+    "notes": "solved: 162 record(s), parity=100.0% overall, worst_surface_parity=100.0% (threshold 90.0%), silent_bounce=0, misroute_adjacent=0"
+  },
+  "records": [
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-1b4ace86-f192-43b0-ab86-16142fec0079-0001",
+      "persona": "verifier",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-1b4ace86-f192-43b0-ab86-16142fec0079-0001.dev-story.web.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-1b4ace86-f192-43b0-ab86-16142fec0079-0001",
+      "persona": "verifier",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-1b4ace86-f192-43b0-ab86-16142fec0079-0001.pets-dev.web.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-1b4ace86-f192-43b0-ab86-16142fec0079-0001",
+      "persona": "verifier",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-1b4ace86-f192-43b0-ab86-16142fec0079-0001.slidey-dev.web.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-1b4ace86-f192-43b0-ab86-16142fec0079-0001",
+      "persona": "verifier",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-1b4ace86-f192-43b0-ab86-16142fec0079-0001.dev-story.tui.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-1b4ace86-f192-43b0-ab86-16142fec0079-0001",
+      "persona": "verifier",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-1b4ace86-f192-43b0-ab86-16142fec0079-0001.pets-dev.tui.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-1b4ace86-f192-43b0-ab86-16142fec0079-0001",
+      "persona": "verifier",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-1b4ace86-f192-43b0-ab86-16142fec0079-0001.slidey-dev.tui.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-1b4ace86-f192-43b0-ab86-16142fec0079-0001",
+      "persona": "verifier",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-1b4ace86-f192-43b0-ab86-16142fec0079-0001.dev-story.mcp.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-1b4ace86-f192-43b0-ab86-16142fec0079-0001",
+      "persona": "verifier",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-1b4ace86-f192-43b0-ab86-16142fec0079-0001.pets-dev.mcp.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-1b4ace86-f192-43b0-ab86-16142fec0079-0001",
+      "persona": "verifier",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-1b4ace86-f192-43b0-ab86-16142fec0079-0001.slidey-dev.mcp.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-240464bf-3da7-4c55-b22b-540edc34afc0-0000",
+      "persona": "docs-writer",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-240464bf-3da7-4c55-b22b-540edc34afc0-0000.dev-story.web.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-240464bf-3da7-4c55-b22b-540edc34afc0-0000",
+      "persona": "docs-writer",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-240464bf-3da7-4c55-b22b-540edc34afc0-0000.pets-dev.web.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-240464bf-3da7-4c55-b22b-540edc34afc0-0000",
+      "persona": "docs-writer",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-240464bf-3da7-4c55-b22b-540edc34afc0-0000.slidey-dev.web.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-240464bf-3da7-4c55-b22b-540edc34afc0-0000",
+      "persona": "docs-writer",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-240464bf-3da7-4c55-b22b-540edc34afc0-0000.dev-story.tui.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-240464bf-3da7-4c55-b22b-540edc34afc0-0000",
+      "persona": "docs-writer",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-240464bf-3da7-4c55-b22b-540edc34afc0-0000.pets-dev.tui.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-240464bf-3da7-4c55-b22b-540edc34afc0-0000",
+      "persona": "docs-writer",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-240464bf-3da7-4c55-b22b-540edc34afc0-0000.slidey-dev.tui.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-240464bf-3da7-4c55-b22b-540edc34afc0-0000",
+      "persona": "docs-writer",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-240464bf-3da7-4c55-b22b-540edc34afc0-0000.dev-story.mcp.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-240464bf-3da7-4c55-b22b-540edc34afc0-0000",
+      "persona": "docs-writer",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-240464bf-3da7-4c55-b22b-540edc34afc0-0000.pets-dev.mcp.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-240464bf-3da7-4c55-b22b-540edc34afc0-0000",
+      "persona": "docs-writer",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-240464bf-3da7-4c55-b22b-540edc34afc0-0000.slidey-dev.mcp.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-2e107a60-10e3-4d70-afe5-ea995adc4d6f-0000",
+      "persona": "explorer",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-2e107a60-10e3-4d70-afe5-ea995adc4d6f-0000.dev-story.web.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-2e107a60-10e3-4d70-afe5-ea995adc4d6f-0000",
+      "persona": "explorer",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-2e107a60-10e3-4d70-afe5-ea995adc4d6f-0000.pets-dev.web.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-2e107a60-10e3-4d70-afe5-ea995adc4d6f-0000",
+      "persona": "explorer",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-2e107a60-10e3-4d70-afe5-ea995adc4d6f-0000.slidey-dev.web.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-2e107a60-10e3-4d70-afe5-ea995adc4d6f-0000",
+      "persona": "explorer",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-2e107a60-10e3-4d70-afe5-ea995adc4d6f-0000.dev-story.tui.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-2e107a60-10e3-4d70-afe5-ea995adc4d6f-0000",
+      "persona": "explorer",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-2e107a60-10e3-4d70-afe5-ea995adc4d6f-0000.pets-dev.tui.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-2e107a60-10e3-4d70-afe5-ea995adc4d6f-0000",
+      "persona": "explorer",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-2e107a60-10e3-4d70-afe5-ea995adc4d6f-0000.slidey-dev.tui.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-2e107a60-10e3-4d70-afe5-ea995adc4d6f-0000",
+      "persona": "explorer",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-2e107a60-10e3-4d70-afe5-ea995adc4d6f-0000.dev-story.mcp.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-2e107a60-10e3-4d70-afe5-ea995adc4d6f-0000",
+      "persona": "explorer",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-2e107a60-10e3-4d70-afe5-ea995adc4d6f-0000.pets-dev.mcp.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-2e107a60-10e3-4d70-afe5-ea995adc4d6f-0000",
+      "persona": "explorer",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-2e107a60-10e3-4d70-afe5-ea995adc4d6f-0000.slidey-dev.mcp.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-687e848b-baa7-4050-aaeb-d38a340fef5a-0000",
+      "persona": "bugfix-contributor",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-687e848b-baa7-4050-aaeb-d38a340fef5a-0000.dev-story.web.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-687e848b-baa7-4050-aaeb-d38a340fef5a-0000",
+      "persona": "bugfix-contributor",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-687e848b-baa7-4050-aaeb-d38a340fef5a-0000.pets-dev.web.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-687e848b-baa7-4050-aaeb-d38a340fef5a-0000",
+      "persona": "bugfix-contributor",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-687e848b-baa7-4050-aaeb-d38a340fef5a-0000.slidey-dev.web.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-687e848b-baa7-4050-aaeb-d38a340fef5a-0000",
+      "persona": "bugfix-contributor",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-687e848b-baa7-4050-aaeb-d38a340fef5a-0000.dev-story.tui.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-687e848b-baa7-4050-aaeb-d38a340fef5a-0000",
+      "persona": "bugfix-contributor",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-687e848b-baa7-4050-aaeb-d38a340fef5a-0000.pets-dev.tui.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-687e848b-baa7-4050-aaeb-d38a340fef5a-0000",
+      "persona": "bugfix-contributor",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-687e848b-baa7-4050-aaeb-d38a340fef5a-0000.slidey-dev.tui.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-687e848b-baa7-4050-aaeb-d38a340fef5a-0000",
+      "persona": "bugfix-contributor",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-687e848b-baa7-4050-aaeb-d38a340fef5a-0000.dev-story.mcp.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-687e848b-baa7-4050-aaeb-d38a340fef5a-0000",
+      "persona": "bugfix-contributor",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-687e848b-baa7-4050-aaeb-d38a340fef5a-0000.pets-dev.mcp.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-687e848b-baa7-4050-aaeb-d38a340fef5a-0000",
+      "persona": "bugfix-contributor",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-687e848b-baa7-4050-aaeb-d38a340fef5a-0000.slidey-dev.mcp.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0000",
+      "persona": "feature-implementer",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0000.dev-story.web.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0000",
+      "persona": "feature-implementer",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0000.pets-dev.web.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0000",
+      "persona": "feature-implementer",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0000.slidey-dev.web.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0000",
+      "persona": "feature-implementer",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0000.dev-story.tui.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0000",
+      "persona": "feature-implementer",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0000.pets-dev.tui.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0000",
+      "persona": "feature-implementer",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0000.slidey-dev.tui.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0000",
+      "persona": "feature-implementer",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0000.dev-story.mcp.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0000",
+      "persona": "feature-implementer",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0000.pets-dev.mcp.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0000",
+      "persona": "feature-implementer",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0000.slidey-dev.mcp.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0001",
+      "persona": "verifier",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0001.dev-story.web.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0001",
+      "persona": "verifier",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0001.pets-dev.web.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0001",
+      "persona": "verifier",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0001.slidey-dev.web.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0001",
+      "persona": "verifier",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0001.dev-story.tui.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0001",
+      "persona": "verifier",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0001.pets-dev.tui.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0001",
+      "persona": "verifier",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0001.slidey-dev.tui.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0001",
+      "persona": "verifier",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0001.dev-story.mcp.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0001",
+      "persona": "verifier",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0001.pets-dev.mcp.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0001",
+      "persona": "verifier",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0001.slidey-dev.mcp.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0002",
+      "persona": "feature-implementer",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0002.dev-story.web.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0002",
+      "persona": "feature-implementer",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0002.pets-dev.web.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0002",
+      "persona": "feature-implementer",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0002.slidey-dev.web.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0002",
+      "persona": "feature-implementer",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0002.dev-story.tui.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0002",
+      "persona": "feature-implementer",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0002.pets-dev.tui.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0002",
+      "persona": "feature-implementer",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0002.slidey-dev.tui.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0002",
+      "persona": "feature-implementer",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0002.dev-story.mcp.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0002",
+      "persona": "feature-implementer",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0002.pets-dev.mcp.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0002",
+      "persona": "feature-implementer",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0002.slidey-dev.mcp.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-c4d281a2-30e4-4002-9152-59d28d824abc-0000",
+      "persona": "bugfix-contributor",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4d281a2-30e4-4002-9152-59d28d824abc-0000.dev-story.web.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-c4d281a2-30e4-4002-9152-59d28d824abc-0000",
+      "persona": "bugfix-contributor",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4d281a2-30e4-4002-9152-59d28d824abc-0000.pets-dev.web.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-c4d281a2-30e4-4002-9152-59d28d824abc-0000",
+      "persona": "bugfix-contributor",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4d281a2-30e4-4002-9152-59d28d824abc-0000.slidey-dev.web.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-c4d281a2-30e4-4002-9152-59d28d824abc-0000",
+      "persona": "bugfix-contributor",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4d281a2-30e4-4002-9152-59d28d824abc-0000.dev-story.tui.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-c4d281a2-30e4-4002-9152-59d28d824abc-0000",
+      "persona": "bugfix-contributor",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4d281a2-30e4-4002-9152-59d28d824abc-0000.pets-dev.tui.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-c4d281a2-30e4-4002-9152-59d28d824abc-0000",
+      "persona": "bugfix-contributor",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4d281a2-30e4-4002-9152-59d28d824abc-0000.slidey-dev.tui.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-c4d281a2-30e4-4002-9152-59d28d824abc-0000",
+      "persona": "bugfix-contributor",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4d281a2-30e4-4002-9152-59d28d824abc-0000.dev-story.mcp.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-c4d281a2-30e4-4002-9152-59d28d824abc-0000",
+      "persona": "bugfix-contributor",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4d281a2-30e4-4002-9152-59d28d824abc-0000.pets-dev.mcp.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-c4d281a2-30e4-4002-9152-59d28d824abc-0000",
+      "persona": "bugfix-contributor",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4d281a2-30e4-4002-9152-59d28d824abc-0000.slidey-dev.mcp.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-c4d281a2-30e4-4002-9152-59d28d824abc-0001",
+      "persona": "bugfix-contributor",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4d281a2-30e4-4002-9152-59d28d824abc-0001.dev-story.web.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-c4d281a2-30e4-4002-9152-59d28d824abc-0001",
+      "persona": "bugfix-contributor",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4d281a2-30e4-4002-9152-59d28d824abc-0001.pets-dev.web.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-c4d281a2-30e4-4002-9152-59d28d824abc-0001",
+      "persona": "bugfix-contributor",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4d281a2-30e4-4002-9152-59d28d824abc-0001.slidey-dev.web.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-c4d281a2-30e4-4002-9152-59d28d824abc-0001",
+      "persona": "bugfix-contributor",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4d281a2-30e4-4002-9152-59d28d824abc-0001.dev-story.tui.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-c4d281a2-30e4-4002-9152-59d28d824abc-0001",
+      "persona": "bugfix-contributor",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4d281a2-30e4-4002-9152-59d28d824abc-0001.pets-dev.tui.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-c4d281a2-30e4-4002-9152-59d28d824abc-0001",
+      "persona": "bugfix-contributor",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4d281a2-30e4-4002-9152-59d28d824abc-0001.slidey-dev.tui.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-c4d281a2-30e4-4002-9152-59d28d824abc-0001",
+      "persona": "bugfix-contributor",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4d281a2-30e4-4002-9152-59d28d824abc-0001.dev-story.mcp.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-c4d281a2-30e4-4002-9152-59d28d824abc-0001",
+      "persona": "bugfix-contributor",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4d281a2-30e4-4002-9152-59d28d824abc-0001.pets-dev.mcp.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-c4d281a2-30e4-4002-9152-59d28d824abc-0001",
+      "persona": "bugfix-contributor",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4d281a2-30e4-4002-9152-59d28d824abc-0001.slidey-dev.mcp.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-c4ef173f-2335-4490-a2f4-a035a6ae3d85-0000",
+      "persona": "core-maintainer",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4ef173f-2335-4490-a2f4-a035a6ae3d85-0000.dev-story.web.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-c4ef173f-2335-4490-a2f4-a035a6ae3d85-0000",
+      "persona": "core-maintainer",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4ef173f-2335-4490-a2f4-a035a6ae3d85-0000.pets-dev.web.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-c4ef173f-2335-4490-a2f4-a035a6ae3d85-0000",
+      "persona": "core-maintainer",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4ef173f-2335-4490-a2f4-a035a6ae3d85-0000.slidey-dev.web.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-c4ef173f-2335-4490-a2f4-a035a6ae3d85-0000",
+      "persona": "core-maintainer",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4ef173f-2335-4490-a2f4-a035a6ae3d85-0000.dev-story.tui.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-c4ef173f-2335-4490-a2f4-a035a6ae3d85-0000",
+      "persona": "core-maintainer",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4ef173f-2335-4490-a2f4-a035a6ae3d85-0000.pets-dev.tui.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-c4ef173f-2335-4490-a2f4-a035a6ae3d85-0000",
+      "persona": "core-maintainer",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4ef173f-2335-4490-a2f4-a035a6ae3d85-0000.slidey-dev.tui.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-c4ef173f-2335-4490-a2f4-a035a6ae3d85-0000",
+      "persona": "core-maintainer",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4ef173f-2335-4490-a2f4-a035a6ae3d85-0000.dev-story.mcp.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-c4ef173f-2335-4490-a2f4-a035a6ae3d85-0000",
+      "persona": "core-maintainer",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4ef173f-2335-4490-a2f4-a035a6ae3d85-0000.pets-dev.mcp.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-c4ef173f-2335-4490-a2f4-a035a6ae3d85-0000",
+      "persona": "core-maintainer",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-c4ef173f-2335-4490-a2f4-a035a6ae3d85-0000.slidey-dev.mcp.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-f7b1da36-dd82-4111-93d8-706bf032e786-0000",
+      "persona": "verifier",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0000.dev-story.web.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-f7b1da36-dd82-4111-93d8-706bf032e786-0000",
+      "persona": "verifier",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0000.pets-dev.web.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-f7b1da36-dd82-4111-93d8-706bf032e786-0000",
+      "persona": "verifier",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0000.slidey-dev.web.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-f7b1da36-dd82-4111-93d8-706bf032e786-0000",
+      "persona": "verifier",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0000.dev-story.tui.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-f7b1da36-dd82-4111-93d8-706bf032e786-0000",
+      "persona": "verifier",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0000.pets-dev.tui.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-f7b1da36-dd82-4111-93d8-706bf032e786-0000",
+      "persona": "verifier",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0000.slidey-dev.tui.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-f7b1da36-dd82-4111-93d8-706bf032e786-0000",
+      "persona": "verifier",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0000.dev-story.mcp.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-f7b1da36-dd82-4111-93d8-706bf032e786-0000",
+      "persona": "verifier",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0000.pets-dev.mcp.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-f7b1da36-dd82-4111-93d8-706bf032e786-0000",
+      "persona": "verifier",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0000.slidey-dev.mcp.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-f7b1da36-dd82-4111-93d8-706bf032e786-0001",
+      "persona": "verifier",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0001.dev-story.web.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-f7b1da36-dd82-4111-93d8-706bf032e786-0001",
+      "persona": "verifier",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0001.pets-dev.web.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-f7b1da36-dd82-4111-93d8-706bf032e786-0001",
+      "persona": "verifier",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0001.slidey-dev.web.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-f7b1da36-dd82-4111-93d8-706bf032e786-0001",
+      "persona": "verifier",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0001.dev-story.tui.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-f7b1da36-dd82-4111-93d8-706bf032e786-0001",
+      "persona": "verifier",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0001.pets-dev.tui.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-f7b1da36-dd82-4111-93d8-706bf032e786-0001",
+      "persona": "verifier",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0001.slidey-dev.tui.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-f7b1da36-dd82-4111-93d8-706bf032e786-0001",
+      "persona": "verifier",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0001.dev-story.mcp.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-f7b1da36-dd82-4111-93d8-706bf032e786-0001",
+      "persona": "verifier",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0001.pets-dev.mcp.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-f7b1da36-dd82-4111-93d8-706bf032e786-0001",
+      "persona": "verifier",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0001.slidey-dev.mcp.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-f7b1da36-dd82-4111-93d8-706bf032e786-0002",
+      "persona": "maintainer",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0002.dev-story.web.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-f7b1da36-dd82-4111-93d8-706bf032e786-0002",
+      "persona": "maintainer",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0002.pets-dev.web.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-f7b1da36-dd82-4111-93d8-706bf032e786-0002",
+      "persona": "maintainer",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0002.slidey-dev.web.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-f7b1da36-dd82-4111-93d8-706bf032e786-0002",
+      "persona": "maintainer",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0002.dev-story.tui.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-f7b1da36-dd82-4111-93d8-706bf032e786-0002",
+      "persona": "maintainer",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0002.pets-dev.tui.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-f7b1da36-dd82-4111-93d8-706bf032e786-0002",
+      "persona": "maintainer",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0002.slidey-dev.tui.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-f7b1da36-dd82-4111-93d8-706bf032e786-0002",
+      "persona": "maintainer",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0002.dev-story.mcp.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-f7b1da36-dd82-4111-93d8-706bf032e786-0002",
+      "persona": "maintainer",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0002.pets-dev.mcp.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-f7b1da36-dd82-4111-93d8-706bf032e786-0002",
+      "persona": "maintainer",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-f7b1da36-dd82-4111-93d8-706bf032e786-0002.slidey-dev.mcp.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-rollout-2026-06-20t12-11-15-019ee370-b72b-78b2-90df-425f1252c365-0000",
+      "persona": "core-maintainer",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-20t12-11-15-019ee370-b72b-78b2-90df-425f1252c365-0000.dev-story.web.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-rollout-2026-06-20t12-11-15-019ee370-b72b-78b2-90df-425f1252c365-0000",
+      "persona": "core-maintainer",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-20t12-11-15-019ee370-b72b-78b2-90df-425f1252c365-0000.pets-dev.web.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-rollout-2026-06-20t12-11-15-019ee370-b72b-78b2-90df-425f1252c365-0000",
+      "persona": "core-maintainer",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-20t12-11-15-019ee370-b72b-78b2-90df-425f1252c365-0000.slidey-dev.web.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-rollout-2026-06-20t12-11-15-019ee370-b72b-78b2-90df-425f1252c365-0000",
+      "persona": "core-maintainer",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-20t12-11-15-019ee370-b72b-78b2-90df-425f1252c365-0000.dev-story.tui.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-rollout-2026-06-20t12-11-15-019ee370-b72b-78b2-90df-425f1252c365-0000",
+      "persona": "core-maintainer",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-20t12-11-15-019ee370-b72b-78b2-90df-425f1252c365-0000.pets-dev.tui.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-rollout-2026-06-20t12-11-15-019ee370-b72b-78b2-90df-425f1252c365-0000",
+      "persona": "core-maintainer",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-20t12-11-15-019ee370-b72b-78b2-90df-425f1252c365-0000.slidey-dev.tui.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-rollout-2026-06-20t12-11-15-019ee370-b72b-78b2-90df-425f1252c365-0000",
+      "persona": "core-maintainer",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-20t12-11-15-019ee370-b72b-78b2-90df-425f1252c365-0000.dev-story.mcp.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-rollout-2026-06-20t12-11-15-019ee370-b72b-78b2-90df-425f1252c365-0000",
+      "persona": "core-maintainer",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-20t12-11-15-019ee370-b72b-78b2-90df-425f1252c365-0000.pets-dev.mcp.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-rollout-2026-06-20t12-11-15-019ee370-b72b-78b2-90df-425f1252c365-0000",
+      "persona": "core-maintainer",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-20t12-11-15-019ee370-b72b-78b2-90df-425f1252c365-0000.slidey-dev.mcp.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-rollout-2026-06-20t13-01-55-019ee39f-18dc-73f1-9f35-859bb770bfd2-0000",
+      "persona": "core-maintainer",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-20t13-01-55-019ee39f-18dc-73f1-9f35-859bb770bfd2-0000.dev-story.web.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-rollout-2026-06-20t13-01-55-019ee39f-18dc-73f1-9f35-859bb770bfd2-0000",
+      "persona": "core-maintainer",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-20t13-01-55-019ee39f-18dc-73f1-9f35-859bb770bfd2-0000.pets-dev.web.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-rollout-2026-06-20t13-01-55-019ee39f-18dc-73f1-9f35-859bb770bfd2-0000",
+      "persona": "core-maintainer",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-20t13-01-55-019ee39f-18dc-73f1-9f35-859bb770bfd2-0000.slidey-dev.web.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-rollout-2026-06-20t13-01-55-019ee39f-18dc-73f1-9f35-859bb770bfd2-0000",
+      "persona": "core-maintainer",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-20t13-01-55-019ee39f-18dc-73f1-9f35-859bb770bfd2-0000.dev-story.tui.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-rollout-2026-06-20t13-01-55-019ee39f-18dc-73f1-9f35-859bb770bfd2-0000",
+      "persona": "core-maintainer",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-20t13-01-55-019ee39f-18dc-73f1-9f35-859bb770bfd2-0000.pets-dev.tui.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-rollout-2026-06-20t13-01-55-019ee39f-18dc-73f1-9f35-859bb770bfd2-0000",
+      "persona": "core-maintainer",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-20t13-01-55-019ee39f-18dc-73f1-9f35-859bb770bfd2-0000.slidey-dev.tui.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-rollout-2026-06-20t13-01-55-019ee39f-18dc-73f1-9f35-859bb770bfd2-0000",
+      "persona": "core-maintainer",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-20t13-01-55-019ee39f-18dc-73f1-9f35-859bb770bfd2-0000.dev-story.mcp.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-rollout-2026-06-20t13-01-55-019ee39f-18dc-73f1-9f35-859bb770bfd2-0000",
+      "persona": "core-maintainer",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-20t13-01-55-019ee39f-18dc-73f1-9f35-859bb770bfd2-0000.pets-dev.mcp.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-rollout-2026-06-20t13-01-55-019ee39f-18dc-73f1-9f35-859bb770bfd2-0000",
+      "persona": "core-maintainer",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-20t13-01-55-019ee39f-18dc-73f1-9f35-859bb770bfd2-0000.slidey-dev.mcp.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-rollout-2026-06-22t14-52-39-019eee51-34a1-77e3-af6a-9c82cc702370-0000",
+      "persona": "core-maintainer",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-22t14-52-39-019eee51-34a1-77e3-af6a-9c82cc702370-0000.dev-story.web.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-rollout-2026-06-22t14-52-39-019eee51-34a1-77e3-af6a-9c82cc702370-0000",
+      "persona": "core-maintainer",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-22t14-52-39-019eee51-34a1-77e3-af6a-9c82cc702370-0000.pets-dev.web.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-rollout-2026-06-22t14-52-39-019eee51-34a1-77e3-af6a-9c82cc702370-0000",
+      "persona": "core-maintainer",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-22t14-52-39-019eee51-34a1-77e3-af6a-9c82cc702370-0000.slidey-dev.web.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-rollout-2026-06-22t14-52-39-019eee51-34a1-77e3-af6a-9c82cc702370-0000",
+      "persona": "core-maintainer",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-22t14-52-39-019eee51-34a1-77e3-af6a-9c82cc702370-0000.dev-story.tui.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-rollout-2026-06-22t14-52-39-019eee51-34a1-77e3-af6a-9c82cc702370-0000",
+      "persona": "core-maintainer",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-22t14-52-39-019eee51-34a1-77e3-af6a-9c82cc702370-0000.pets-dev.tui.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-rollout-2026-06-22t14-52-39-019eee51-34a1-77e3-af6a-9c82cc702370-0000",
+      "persona": "core-maintainer",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-22t14-52-39-019eee51-34a1-77e3-af6a-9c82cc702370-0000.slidey-dev.tui.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-rollout-2026-06-22t14-52-39-019eee51-34a1-77e3-af6a-9c82cc702370-0000",
+      "persona": "core-maintainer",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-22t14-52-39-019eee51-34a1-77e3-af6a-9c82cc702370-0000.dev-story.mcp.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-rollout-2026-06-22t14-52-39-019eee51-34a1-77e3-af6a-9c82cc702370-0000",
+      "persona": "core-maintainer",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-22t14-52-39-019eee51-34a1-77e3-af6a-9c82cc702370-0000.pets-dev.mcp.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-rollout-2026-06-22t14-52-39-019eee51-34a1-77e3-af6a-9c82cc702370-0000",
+      "persona": "core-maintainer",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-22t14-52-39-019eee51-34a1-77e3-af6a-9c82cc702370-0000.slidey-dev.mcp.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-rollout-2026-06-22t17-54-26-019eeef7-9fdf-7060-86d0-1b1c25348cd5-0000",
+      "persona": "explorer",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-22t17-54-26-019eeef7-9fdf-7060-86d0-1b1c25348cd5-0000.dev-story.web.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-rollout-2026-06-22t17-54-26-019eeef7-9fdf-7060-86d0-1b1c25348cd5-0000",
+      "persona": "explorer",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-22t17-54-26-019eeef7-9fdf-7060-86d0-1b1c25348cd5-0000.pets-dev.web.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-rollout-2026-06-22t17-54-26-019eeef7-9fdf-7060-86d0-1b1c25348cd5-0000",
+      "persona": "explorer",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-22t17-54-26-019eeef7-9fdf-7060-86d0-1b1c25348cd5-0000.slidey-dev.web.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-rollout-2026-06-22t17-54-26-019eeef7-9fdf-7060-86d0-1b1c25348cd5-0000",
+      "persona": "explorer",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-22t17-54-26-019eeef7-9fdf-7060-86d0-1b1c25348cd5-0000.dev-story.tui.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-rollout-2026-06-22t17-54-26-019eeef7-9fdf-7060-86d0-1b1c25348cd5-0000",
+      "persona": "explorer",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-22t17-54-26-019eeef7-9fdf-7060-86d0-1b1c25348cd5-0000.pets-dev.tui.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-rollout-2026-06-22t17-54-26-019eeef7-9fdf-7060-86d0-1b1c25348cd5-0000",
+      "persona": "explorer",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-22t17-54-26-019eeef7-9fdf-7060-86d0-1b1c25348cd5-0000.slidey-dev.tui.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-rollout-2026-06-22t17-54-26-019eeef7-9fdf-7060-86d0-1b1c25348cd5-0000",
+      "persona": "explorer",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-22t17-54-26-019eeef7-9fdf-7060-86d0-1b1c25348cd5-0000.dev-story.mcp.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-rollout-2026-06-22t17-54-26-019eeef7-9fdf-7060-86d0-1b1c25348cd5-0000",
+      "persona": "explorer",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-22t17-54-26-019eeef7-9fdf-7060-86d0-1b1c25348cd5-0000.pets-dev.mcp.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-rollout-2026-06-22t17-54-26-019eeef7-9fdf-7060-86d0-1b1c25348cd5-0000",
+      "persona": "explorer",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-22t17-54-26-019eeef7-9fdf-7060-86d0-1b1c25348cd5-0000.slidey-dev.mcp.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-rollout-2026-06-26t15-21-48-019f0305-531e-7510-a890-14cc41e8491f-0000",
+      "persona": "explorer",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-26t15-21-48-019f0305-531e-7510-a890-14cc41e8491f-0000.dev-story.web.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-rollout-2026-06-26t15-21-48-019f0305-531e-7510-a890-14cc41e8491f-0000",
+      "persona": "explorer",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-26t15-21-48-019f0305-531e-7510-a890-14cc41e8491f-0000.pets-dev.web.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-rollout-2026-06-26t15-21-48-019f0305-531e-7510-a890-14cc41e8491f-0000",
+      "persona": "explorer",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-26t15-21-48-019f0305-531e-7510-a890-14cc41e8491f-0000.slidey-dev.web.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-rollout-2026-06-26t15-21-48-019f0305-531e-7510-a890-14cc41e8491f-0000",
+      "persona": "explorer",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-26t15-21-48-019f0305-531e-7510-a890-14cc41e8491f-0000.dev-story.tui.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-rollout-2026-06-26t15-21-48-019f0305-531e-7510-a890-14cc41e8491f-0000",
+      "persona": "explorer",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-26t15-21-48-019f0305-531e-7510-a890-14cc41e8491f-0000.pets-dev.tui.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-rollout-2026-06-26t15-21-48-019f0305-531e-7510-a890-14cc41e8491f-0000",
+      "persona": "explorer",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-26t15-21-48-019f0305-531e-7510-a890-14cc41e8491f-0000.slidey-dev.tui.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-rollout-2026-06-26t15-21-48-019f0305-531e-7510-a890-14cc41e8491f-0000",
+      "persona": "explorer",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-26t15-21-48-019f0305-531e-7510-a890-14cc41e8491f-0000.dev-story.mcp.trace.jsonl"
+      ],
+      "notes": "target=dev-story; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-rollout-2026-06-26t15-21-48-019f0305-531e-7510-a890-14cc41e8491f-0000",
+      "persona": "explorer",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-26t15-21-48-019f0305-531e-7510-a890-14cc41e8491f-0000.pets-dev.mcp.trace.jsonl"
+      ],
+      "notes": "target=pets-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-rollout-2026-06-26t15-21-48-019f0305-531e-7510-a890-14cc41e8491f-0000",
+      "persona": "explorer",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/calibration-evidence/scn-rollout-2026-06-26t15-21-48-019f0305-531e-7510-a890-14cc41e8491f-0000.slidey-dev.mcp.trace.jsonl"
+      ],
+      "notes": "target=slidey-dev; candidate_completed reduced from S1's per-turn signal, which is a real expected_effects join when the dispatching workbench room's world carries a <room>_expected_effects var, else the dispatch-success proxy -- this record cannot tell which fired for any one turn (see workbench_gate_signal.go); misroute_adjacent is hard-false from S1 today (not computed, documented gap); this record inherits that honest absence rather than a fabricated verdict"
+    }
+  ]
+}

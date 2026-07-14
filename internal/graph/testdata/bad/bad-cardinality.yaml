@@ -1,0 +1,21 @@
+schema: project-object-graph/seed-catalog/v0
+type_registry:
+  - id: core-node
+    schema: graph-type/v0
+  - id: use-case
+    schema: graph-type/v0
+    extends: core-node
+    edge_fields:
+      - id: actor
+        target_type: actor
+        cardinality: one
+nodes:
+  - schema: graph/use-case/v0
+    id: usecase-one
+    title: A use case
+    status: active
+    visibility: public
+    edges:
+      actor:
+        - actor-one
+        - actor-two

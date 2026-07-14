@@ -11,14 +11,14 @@ generated_at: "2026-06-19T00:00:00Z"
 match_on: [handler, call]
 
 episodes:
-  # ── Worktree mint (iface.workspace.create → host.git_worktree.create) ──────
+  # ── Worktree mint (iface.workspace.create → host.capsule_workspace.create) ──────
   # Minted once at launch, before the baseline gate; pins the maker + gate cwd.
   - id: worktree-create
-    match: { handler: host.git_worktree.create }
+    match: { handler: host.capsule_workspace.create }
     response:
       data:
         ok: true
-        path: ".worktrees/cherny-loop"
+        path: ".capsules/workspaces/cherny-loop"
   # ── Baseline + gate runs (host.run, script gate) ──────────────────────────
   - id: gate-0-baseline
     match: { handler: host.run, call: gate-0 }

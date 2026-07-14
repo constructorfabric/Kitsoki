@@ -27,6 +27,21 @@
       },
       "additionalProperties": true
     },
+    "acceptance_coverage": {
+      "description": "One direct assertion receipt per public acceptance-contract requirement when a strict caller provides one.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["requirement_id", "test_path", "assertion"],
+        "properties": {
+          "requirement_id": { "type": "string", "minLength": 1 },
+          "test_path": { "type": "string", "minLength": 1 },
+          "assertion": { "type": "string", "minLength": 1 },
+          "result": { "type": "string" }
+        },
+        "additionalProperties": true
+      }
+    },
     "blockers": {
       "type": "array",
       "items": {

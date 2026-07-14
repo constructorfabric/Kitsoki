@@ -12,30 +12,89 @@ states:
 
   aggregating:
     description: "Rolling up all case results (deterministic)."
-    relevant_world: [results, rollup, findings]
+    relevant_world: [results, rollup, findings, exceptions, journal_path, aggregate_job_id]
     view:
-      - heading: "Dogfood marathon · aggregating"
+      - heading: "Marathon · aggregating"
       - kv:
           pairs:
             Cases:    '{{ world.results.items|length }}'
             Solved:   '{{ world.rollup.counts.solved|default:"…" }}'
             Findings: '{{ world.findings.items|length }}'
+            Exceptions: '{{ world.exceptions.items|length }}'
+            Journal:  '{{ world.journal_path|default:"(pending)" }}'
+            Job:      '{{ world.aggregate_job_id|default:"(starting)" }}'
       - prose: "Folding every case's outcome / cost / tokens / time into the run rollup: counts, totals, what worked, what didn't, and the honest headline."
     on_enter:
       - invoke: host.starlark.run
         id: aggregate_run
+        when: "world.aggregate_job_id == '' && (world.rollup.headline ?? '') == ''"
         once: true
+        background: true
         with:
           script: scripts/aggregate_run.star
           inputs:
-            results:  "{{ world.results }}"
-            findings: "{{ world.findings }}"
+            results:    "{{ world.results }}"
+            findings:   "{{ world.findings }}"
+            exceptions: "{{ world.exceptions }}"
         bind:
-          rollup: rollup
+          aggregate_job_id: job_id
+        on_complete:
+          - set:
+              rollup:           "{{ world.last_job_result.rollup }}"
+              aggregate_job_id: ""
+          - target: aggregate_checkpointing
         on_error: reporting   # a roll-up error still proceeds — the deck shows what it has
-      - emit_intent: aggregated
     on:
       aggregated:
         - target: reporting
+      look:
+        - target: .
+
+  aggregate_checkpointing:
+    description: "Persisting the aggregate checkpoint."
+    relevant_world: [results, rollup, findings, exceptions, journal_path, journal_job_id]
+    view:
+      - heading: "Marathon · aggregate checkpoint"
+      - kv:
+          pairs:
+            Cases:   '{{ world.results.items|length }}'
+            Solved:  '{{ world.rollup.counts.solved|default:"…" }}'
+            Journal: '{{ world.journal_path|default:"(pending)" }}'
+            Job:     '{{ world.journal_job_id|default:"(starting)" }}'
+      - prose: "Persisting the rollup before building the report deck."
+    on_enter:
+      - invoke: host.starlark.run
+        id: persist_journal
+        when: "world.journal_job_id == ''"
+        background: true
+        with:
+          script: scripts/persist_journal.star
+          capabilities:
+            fs:
+              write: [".artifacts/dogfood-marathon/**"]
+          inputs:
+            stage:                 "aggregated"
+            run_id:                "{{ world.run_id }}"
+            run_dir:               "{{ world.run_dir }}"
+            journal_path:          "{{ world.journal_path }}"
+            journal_markdown_path: "{{ world.journal_markdown_path }}"
+            backlog:               "{{ world.backlog }}"
+            results:               "{{ world.results }}"
+            findings:              "{{ world.findings }}"
+            exceptions:            "{{ world.exceptions }}"
+            rollup:                "{{ world.rollup }}"
+            case_index:            "{{ world.case_index }}"
+            cases_processed:       "{{ world.cases_processed }}"
+        bind:
+          journal_job_id: job_id
+        on_complete:
+          - set:
+              journal_status:  "{{ world.last_job_result.journal_status }}"
+              journal_summary: "{{ world.last_job_result.journal_summary }}"
+              last_checkpoint: "{{ world.last_job_result.last_checkpoint }}"
+              journal_job_id:  ""
+          - target: reporting
+        on_error: reporting
+    on:
       look:
         - target: .

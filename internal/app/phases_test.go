@@ -20,6 +20,7 @@ func TestPhases_LoadAndExpand(t *testing.T) {
 		"phase_a_executing", "phase_a_awaiting_reply", "phase_a_error",
 		"phase_b_executing", "phase_b_awaiting_reply", "phase_b_error",
 		"phase_c_executing", "phase_c_awaiting_reply", "phase_c_error",
+		"story_authoring",
 		"terminated",
 	}
 	for _, name := range wantStates {

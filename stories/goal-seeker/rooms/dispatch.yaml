@@ -1,0 +1,251 @@
+states:
+  # dispatch — write a SINGLE-ITEM punch-list/v1 manifest for the next change, then
+  # PAUSE. manifest_path is `set:` synchronously from the deterministic path formula
+  # (the punch-list import's world_in reads it, and a starlark BIND wouldn't settle in
+  # the same emit cascade). gs_manifest writes the real file + binds the change's gate
+  # command for the RED-first check on the next turn.
+  dispatch:
+    description: "Dispatch — write the change's punch-list manifest."
+    relevant_world: [next_change_id, manifest_path, current_change, change_gate_cmd]
+    on_enter:
+      - set:
+          manifest_path: "{{ world.work_dir }}/manifests/{{ world.next_change_id }}.json"
+      - invoke: host.starlark.run
+        id: gs_manifest
+        with:
+          script: scripts/gs_manifest.star
+          capabilities:
+            fs:
+              read: ["**"]
+              write: ["**"]
+          inputs:
+            goal_dir: "{{ world.goal_dir }}"
+            work_dir: "{{ world.work_dir }}"
+            change_id: "{{ world.next_change_id }}"
+        bind:
+          current_change: change
+          change_gate_cmd: gate_cmd
+        on_error: needs_human
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Change:   '{{ world.next_change_id|default:"(none)" }}'
+                Title:    '{{ world.current_change.title|default:"(pending)" }}'
+                Manifest: '{{ world.manifest_path|default:"(pending)" }}'
+          - prose: "Advance to run the RED-first gate check before driving the change."
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - { label: "advance", hint: "RED-first gate check" }
+                - { label: "look" }
+    on:
+      advance:
+        - target: redcheck
+      look:
+        - target: .
+      "*":
+        - default: true
+          target: .
+          effects:
+            - say: "Advance to the RED-first check."
+
+  # redcheck — RED-first (goal.py's RED-before-GREEN). Run the change's gate on the
+  # CURRENT tree (change_gate_cmd settled from dispatch's turn). A gate that ALREADY
+  # PASSES (exit 0) is not RED — the bug isn't present / the work is already done — so
+  # the change is PARKED (not dispatched as a no-op) and the loop self-escapes to the
+  # next ready change (`park`, below) rather than dead-ending at needs_human: a green
+  # gate here is a triage signal (weak gate or already-done work), never a verified
+  # completion. Only a failing (red) gate proceeds into punch-list. advance routes on
+  # the SETTLED exit code (a host.run bind, settled across this turn boundary).
+  redcheck:
+    description: "RED-first — is the change's gate actually red?"
+    relevant_world: [next_change_id, change_gate_cmd, red_exit]
+    on_enter:
+      - invoke: host.run
+        id: redcheck
+        with:
+          cmd: "{{ world.change_gate_cmd }}"
+          cwd: "{{ world.main_worktree_path }}"
+          fail_on_error: false
+        bind:
+          red_exit: exit_code
+        on_error: needs_human
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Change: '{{ world.next_change_id }}'
+                Gate:   '{{ world.change_gate_cmd }}'
+                Exit:   '{{ world.red_exit }}'
+          - prose: "Gate already passes — not RED; parking for triage (not a completion)."
+            when: "world.red_exit == 0"
+          - prose: "Gate is red (bug present); advance to drive the change."
+            when: "world.red_exit != 0"
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - { label: "advance", hint: "drive the change (if red)" }
+                - { label: "look" }
+    on:
+      advance:
+        - when: "world.red_exit == 0"
+          target: park
+        - target: punchlist
+      look:
+        - target: .
+      "*":
+        - default: true
+          target: .
+          effects:
+            - say: "Advance to drive the change."
+
+  # park — RED-first found the gate already green: this is NOT a verified completion
+  # (a green gate here means it's too weak or the change is already done either way it
+  # needs triage), so log a `parked`/`gate_not_red` entry via the same append-only
+  # mechanism record/integrate use, then loop back to evaluate so the fold treats the
+  # change as parked (excluded from ready_id) and the loop picks the NEXT ready change
+  # instead of dead-ending at needs_human or re-picking this same not-RED change
+  # forever (see flows/red_first_refuses.yaml, flows/gate_not_red_parks_and_advances.yaml).
+  park:
+    description: "Park — gate already green (not RED); log gate_not_red and re-evaluate."
+    relevant_world: [next_change_id, change_gate_cmd, last_seq]
+    on_enter:
+      - invoke: host.starlark.run
+        id: gs_append
+        with:
+          script: scripts/gs_append.star
+          capabilities:
+            fs:
+              read: ["**"]
+              write: ["**"]
+          inputs:
+            work_dir:    "{{ world.work_dir }}"
+            change_id:   "{{ world.next_change_id }}"
+            state:       "parked"
+            park_reason: "gate_not_red"
+            summary:     "RED-first: gate `{{ world.change_gate_cmd }}` already passes (exit 0) — parked for triage, not verified complete."
+            kind:        "park"
+            actor:       "system"
+        bind:
+          last_seq: seq
+        on_error: needs_human
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Change: '{{ world.next_change_id }}'
+                Reason: "gate_not_red"
+                Gate:   '{{ world.change_gate_cmd }}'
+                Seq:    '{{ world.last_seq|default:"(pending)" }}'
+          - prose: "Parked (gate_not_red) — not a completion. Advance to re-fold the ledger and pick the next ready change."
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - { label: "advance", hint: "re-fold the ledger and re-evaluate" }
+                - { label: "look" }
+    on:
+      # PAUSE before re-evaluating, same reason as record/needs_human.retry: the
+      # gs_append log WRITE settles across this turn boundary, so the next evaluate's
+      # gs_ledger folds the just-parked entry (a starlark write does not settle inside
+      # a synthetic emit cascade).
+      advance:
+        - target: evaluate
+          effects:
+            - set:
+                verdict: ""
+                summary: ""
+                next_change_id: ""
+                next_pipeline: ""
+                next_action: ""
+                next_gate_cmd: ""
+                last_error: ""
+      look:
+        - target: .
+      "*":
+        - default: true
+          target: .
+          effects:
+            - say: "Advance to re-evaluate."
+
+  # park_failed — sibling of `park`, for the OTHER way a change can fail to reach a
+  # verified completion: the change WAS genuinely RED (redcheck confirmed it), it was
+  # dispatched into the punch-list/pipeline, but the maker drive could not green the
+  # gate (punch-list's own needs-human retries were exhausted and the operator/driver
+  # quit, or the run was abandoned outright — see app.yaml's `punchlist:` import
+  # exits: both `needs-human` and `abandoned` now route HERE instead of straight to
+  # the outer needs_human). Without this escape the loop DEAD-ENDS exactly like the
+  # gate_not_red case: the next re-fold re-derives the SAME ready_id (nothing in the
+  # log says otherwise) and re-dispatches the same undrivable change forever. Park it
+  # (park_reason=drive_failed — NOT a completion, needs triage) and loop back to
+  # evaluate so the fold excludes it from ready_id and the loop advances to the next
+  # ready change. See flows/drive_failed_parks_and_advances.yaml.
+  park_failed:
+    description: "Park (failed) — the maker drive could not green the gate; log drive_failed and re-evaluate."
+    relevant_world: [next_change_id, last_error, last_seq]
+    on_enter:
+      - invoke: host.starlark.run
+        id: gs_append
+        with:
+          script: scripts/gs_append.star
+          capabilities:
+            fs:
+              read: ["**"]
+              write: ["**"]
+          inputs:
+            work_dir:    "{{ world.work_dir }}"
+            change_id:   "{{ world.next_change_id }}"
+            state:       "parked"
+            park_reason: "drive_failed"
+            summary:     "Maker drive could not green the gate: {{ world.last_error }}"
+            kind:        "park"
+            actor:       "system"
+        bind:
+          last_seq: seq
+        on_error: needs_human
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Change: '{{ world.next_change_id }}'
+                Reason: "drive_failed"
+                Error:  '{{ world.last_error }}'
+                Seq:    '{{ world.last_seq|default:"(pending)" }}'
+          - prose: "Parked (drive_failed) — the maker could not land this change. Advance to re-fold the ledger and pick the next ready change."
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - { label: "advance", hint: "re-fold the ledger and re-evaluate" }
+                - { label: "look" }
+    on:
+      # Same PAUSE/clear discipline as `park`'s advance arc.
+      advance:
+        - target: evaluate
+          effects:
+            - set:
+                verdict: ""
+                summary: ""
+                next_change_id: ""
+                next_pipeline: ""
+                next_action: ""
+                next_gate_cmd: ""
+                last_error: ""
+      look:
+        - target: .
+      "*":
+        - default: true
+          target: .
+          effects:
+            - say: "Advance to re-evaluate."

@@ -1,0 +1,66 @@
+app:
+  id: pog-init
+  version: 0.1.0
+
+world:
+  brief_model: { type: object, default: {} }
+  action_plan: { type: array, default: [] }
+  decisions: { type: array, default: [] }
+  verification: { type: array, default: [] }
+
+intents:
+  start:
+    description: "Start the deterministic POG repo bootstrap."
+    examples: ["start", "initialize"]
+
+exports:
+  intents: [start]
+
+exits:
+  done:
+    description: "The repository was initialized or the dry-run plan was produced."
+
+root: brief.intake
+
+states:
+  brief.intake:
+    description: "Parse the brief into product, requirements, use cases, constraints, custody assumptions, and unknowns."
+    view: "Brief intake."
+    on:
+      start:
+        - target: repo.plan
+
+  repo.plan:
+    description: "Render the dry-run action plan for files, git actions, checks, and remote/backend actions."
+    view: "Repository plan."
+    on:
+      start:
+        - target: operator.consent
+
+  operator.consent:
+    description: "Stop at custody, license, visibility, and remote/push decision points."
+    view: "Operator consent."
+    on:
+      start:
+        - target: repo.apply
+
+  repo.apply:
+    description: "Create the repo, install conventions, write catalog/docs/gates, and optionally create the first commit."
+    view: "Repository apply."
+    on:
+      start:
+        - target: repo.verify
+
+  repo.verify:
+    description: "Run pog-doctor, graph lint, and scripts/checks.sh."
+    view: "Repository verify."
+    on:
+      start:
+        - target: handoff
+
+  handoff:
+    description: "Print the initialized dev-story workbench/decomposition entrypoint."
+    view: "Handoff."
+    on:
+      start:
+        - target: "@exit:done"

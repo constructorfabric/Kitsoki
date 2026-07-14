@@ -321,6 +321,66 @@ func TestArtifactsDirTransport_MediaEmit_JournalEvent(t *testing.T) {
 	}
 }
 
+func TestArtifactsDirTransport_DataEmit_JournalEvent(t *testing.T) {
+	root := t.TempDir()
+	src := filepath.Join(t.TempDir(), "completion-state.json")
+	if err := os.WriteFile(src, []byte(`{"schema_version":1}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	store := journal.NewMemStore()
+	jw := journal.NewMemWriter(store)
+	jr := journal.NewMemReader(store)
+
+	ctx := host.WithArtifactJournalWriter(context.Background(), jw)
+	res, err := host.ArtifactsDirTransportHandler(ctx, map[string]any{
+		"artifacts_root": root,
+		"thread":         "qa-completion-state",
+		"src_path":       src,
+		"kind":           "data",
+		"mime":           "application/json",
+		"label":          "QA completion state",
+	})
+	if err != nil || res.Error != "" {
+		t.Fatalf("call: %v / %s", err, res.Error)
+	}
+
+	handle, _ := res.Data["handle"].(map[string]any)
+	emittedID, _ := handle["id"].(string)
+	if emittedID == "" {
+		t.Fatalf("handle id missing: %v", res.Data)
+	}
+
+	found := false
+	seq, errFn := jr.ReplayTyped(app.SessionID(""))
+	for entry := range seq {
+		if entry.Kind != journal.KindArtifactEmitted {
+			continue
+		}
+		var ev journal.ArtifactEvent
+		if err := json.Unmarshal(entry.Body, &ev); err != nil {
+			t.Fatalf("unmarshal ArtifactEvent: %v", err)
+		}
+		if ev.ID == emittedID {
+			found = true
+			if ev.Kind != "data" {
+				t.Fatalf("event.Kind: %q", ev.Kind)
+			}
+			if ev.Mime != "application/json" {
+				t.Fatalf("event.Mime: %q", ev.Mime)
+			}
+			if ev.Label != "QA completion state" {
+				t.Fatalf("event.Label: %q", ev.Label)
+			}
+			break
+		}
+	}
+	_ = errFn()
+	if !found {
+		t.Fatalf("artifact.emitted event with id %q not found in journal", emittedID)
+	}
+}
+
 func TestArtifactsDirTransport_MediaEmit_PathTraversalRejected(t *testing.T) {
 	root := t.TempDir()
 	// src_path is a valid file, but the thread contains ".." path traversal.

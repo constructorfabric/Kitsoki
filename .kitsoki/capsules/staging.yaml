@@ -1,0 +1,13 @@
+schema: capsule-definition/v1
+id: staging
+description: Long-lived protected staging Capsule promoted through the managed main gate.
+source:
+  kind: dev-workspace-script
+  development:
+    base: staging/local
+    target: main
+    branch_prefix: staging/
+    root: .capsules/staging
+    bootstrap: true
+policy:
+  network: none

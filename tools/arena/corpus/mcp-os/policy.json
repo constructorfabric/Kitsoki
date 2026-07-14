@@ -1,0 +1,7 @@
+{
+  "schema_version": "mcp_os_policy/v1",
+  "profile": "baseline-observe-only",
+  "mutation_authority": "unchanged-current-toolbox",
+  "provider_calls": "forbidden",
+  "purpose": "Capture the current behavior before objective, workspace, typed-gate, or policy-compiler slices are introduced."
+}

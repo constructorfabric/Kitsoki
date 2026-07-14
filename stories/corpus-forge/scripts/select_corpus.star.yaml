@@ -1,0 +1,7 @@
+inputs:
+  candidates: { type: list, required: true }
+  task_limit: { type: int, required: true }
+  corpus_role: { type: string, required: true }
+outputs:
+  candidates: { type: list }
+  selected_ids: { type: string }

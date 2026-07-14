@@ -33,7 +33,7 @@ world:
   core__thread:         "issues/bugs/2026-05-14T103205Z-tui-view-render-before-bind.md"
   core__base_branch:    "main"
   core__feature_branch: "fix/tui-view-render-before-bind"
-  core__workdir:        ".worktrees/tui-view-render-before-bind"
+  core__workdir:        ".capsules/workspaces/tui-view-render-before-bind"
   core__workspace_id:   "ws-tui-view-render"
   judge_mode:           "llm_then_human"
   judge_confidence_threshold: 0.8

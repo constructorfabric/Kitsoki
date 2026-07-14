@@ -36,8 +36,22 @@ gears-rust recipe is the private/heavy Rust reference path.
 Start from a local checkout of the target repo:
 
 ```sh
-GEARS_RUST_REPO=/Users/brad/code/gears-rust
+BUGFIX_BAKEOFF_REPO=/path/to/checkout
 ```
+
+Or start from an initialized meta checkout:
+
+```sh
+BUGFIX_BAKEOFF_META_REPO=/path/to/meta-checkout
+git -C "$BUGFIX_BAKEOFF_META_REPO" submodule update --init src/cyberfabric/gears-rust
+```
+
+The manifest declares `repo_subdir: src/cyberfabric/gears-rust`, so every
+`--repo-dir /path/to/meta-checkout` command resolves to the submodule
+checkout. Passing `/path/to/checkout` still works as the standalone
+single-repo form. In both forms, the checkout must have the benchmark
+`baseline_sha` and `fix_sha` commits reachable; `bench.py preflight` reports the
+missing commits before any model spend.
 
 For another private repo, use a dedicated manifest under
 `tools/bugfix-bakeoff/external/projects/<name>/` and pass
@@ -75,14 +89,14 @@ no-drive worktree/prompt preparation via `drive_cell.sh --no-drive`, and the
 `repo-bakeoff` story flows without calling a live model:
 
 ```sh
-GEARS_RUST_REPO=/Users/brad/code/gears-rust make gears-history-smoke
+BUGFIX_BAKEOFF_REPO=/path/to/checkout make gears-history-smoke
 ```
 
 By default this smokes `bug1` with `opus-4.8`. Override the matrix before a live
 run so the free proof matches the cell you intend to drive:
 
 ```sh
-GEARS_RUST_REPO=/Users/brad/code/gears-rust \
+BUGFIX_BAKEOFF_REPO=/path/to/checkout \
 GEARS_HISTORY_BUGS=bug1,bug4 \
 GEARS_HISTORY_CANDIDATES=opus-4.8,gpt-5.3-spark \
 make gears-history-smoke
@@ -92,7 +106,7 @@ Before calling the reference path product-ready for the current gears-rust
 corpus, run the full armable-fixture smoke:
 
 ```sh
-GEARS_RUST_REPO=/Users/brad/code/gears-rust make gears-history-full-smoke
+BUGFIX_BAKEOFF_REPO=/path/to/checkout make gears-history-full-smoke
 ```
 
 That verifies `bug1,bug4,bug5,bug9` RED@baseline/GREEN@fix, renders the full
@@ -206,7 +220,16 @@ fallback.
 Before spending on a live model, prove the corpus:
 
 ```sh
-GEARS_RUST_REPO=/Users/brad/code/gears-rust make gears-bakeoff
+BUGFIX_BAKEOFF_REPO=/path/to/checkout make gears-bakeoff
+```
+
+Equivalent meta-repo form:
+
+```sh
+python3 tools/bugfix-bakeoff/external/bench.py verify \
+  --project gears-rust \
+  --bug bug1,bug4,bug5,bug9 \
+  --repo-dir /path/to/meta-checkout
 ```
 
 The same proof can run through the drivable `repo-bakeoff` story by seeding:

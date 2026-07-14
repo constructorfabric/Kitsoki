@@ -154,6 +154,17 @@ func (p *routingPipeline) markHit(t RoutingTier, intent, detail string, confiden
 // pipeline (winner==0 but no layers) is NOT resolved — guard on layers too.
 func (p routingPipeline) resolved() bool { return len(p.layers) > 0 && p.winner >= 0 }
 
+// winnerTier returns the winning layer's key ("deterministic" | "semantic" |
+// "local-llm" | "main-llm"), or "" when unresolved. Used to snapshot the
+// route's tier for the `/route` feedback command (WS-C C4) once the pipeline
+// is about to be discarded/reset.
+func (p routingPipeline) winnerTier() string {
+	if !p.resolved() || p.winner >= len(p.layers) {
+		return ""
+	}
+	return p.layers[p.winner].key
+}
+
 // hitDetailFor extracts the backend/reason to show on a winning layer from a
 // hit message: the LLM layer shows the model/backend (e.g. agent.local), the
 // cache layer shows "cache", deterministic/semantic show nothing.
@@ -220,7 +231,11 @@ func (p routingPipeline) renderResolved() string {
 	}
 	line := "  " + glyphHit + " routed via " + via
 	if p.intent != "" {
-		line += " → " + p.intent
+		intentLabel := p.intent
+		if strings.Contains(intentLabel, "__") {
+			intentLabel = humanIntentLabel(intentLabel)
+		}
+		line += " → " + intentLabel
 	}
 	if p.showConf {
 		line += fmt.Sprintf("  (%.2f)", p.confidence)

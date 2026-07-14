@@ -1,0 +1,24 @@
+inputs:
+  platform:       { type: string, required: true }
+  operator_user:  { type: string, required: false }
+  agent_user:     { type: string, required: true }
+  group_name:     { type: string, required: true }
+  capsule_root:   { type: string, required: true }
+  wrapper_bin:    { type: string, required: true }
+  protected_root: { type: string, required: true }
+  codex_bin:      { type: string, required: true }
+  claude_bin:     { type: string, required: true }
+  sample_capsule: { type: string, required: true }
+
+outputs:
+  setup_summary:       { type: string }
+  config_snippet:      { type: string }
+  account_steps:       { type: string }
+  group_commands:      { type: string }
+  wrapper_commands:    { type: string }
+  sudoers_snippet:     { type: string }
+  assignment_commands: { type: string }
+  validation_commands: { type: string }
+  receipt_markdown:    { type: string }
+  security_notes:      { type: string }
+

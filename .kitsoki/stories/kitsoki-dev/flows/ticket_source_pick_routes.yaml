@@ -1,0 +1,65 @@
+# ticket_source_pick_routes -- the composed picker keeps source labels visible,
+# uses a global row index, and routes get through the selected source identity.
+# Stubs only: no GitHub request, local mutation, or LLM usage.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: core.ticket_search
+initial_world: {}
+
+host_handlers:
+  host.ticket_federation:
+    by_op:
+      search:
+        data:
+          ok: true
+          tickets:
+            - { id: "frontmatterless", title: "Frontmatter-less local report", status: "", type: bug, index: 1, ref: "local:frontmatterless", source: local, source_label: Local, source_kind: local, source_mode: local, source_repo: "", url: ".artifacts/issues/bugs/frontmatterless.md" }
+            - { id: "77", title: "Fork issue", status: open, type: bug, index: 2, ref: "origin:77", source: origin, source_label: bsacrobatix/Kitsoki, source_kind: github, source_mode: remote, source_repo: bsacrobatix/Kitsoki, url: "https://github.com/bsacrobatix/Kitsoki/issues/77" }
+            - { id: "77", title: "Upstream issue with the same provider-local id", status: open, type: bug, index: 3, ref: "upstream:77", source: upstream, source_label: constructorfabric/Kitsoki, source_kind: github, source_mode: remote, source_repo: constructorfabric/Kitsoki, url: "https://github.com/constructorfabric/Kitsoki/issues/77" }
+          source_groups:
+            - { id: local, label: Local, kind: local, mode: local, repo: "", count: 1, tickets: [{ id: "frontmatterless", title: "Frontmatter-less local report", status: "", type: bug, index: 1, ref: "local:frontmatterless", source: local, source_label: Local, source_kind: local, source_mode: local, source_repo: "" }] }
+            - { id: origin, label: bsacrobatix/Kitsoki, kind: github, mode: remote, repo: bsacrobatix/Kitsoki, count: 1, tickets: [{ id: "77", title: "Fork issue", status: open, type: bug, index: 2, ref: "origin:77", source: origin, source_label: bsacrobatix/Kitsoki, source_kind: github, source_mode: remote, source_repo: bsacrobatix/Kitsoki }] }
+            - { id: upstream, label: constructorfabric/Kitsoki, kind: github, mode: remote, repo: constructorfabric/Kitsoki, count: 1, tickets: [{ id: "77", title: "Upstream issue with the same provider-local id", status: open, type: bug, index: 3, ref: "upstream:77", source: upstream, source_label: constructorfabric/Kitsoki, source_kind: github, source_mode: remote, source_repo: constructorfabric/Kitsoki }] }
+          provider_errors: []
+      get:
+        data:
+          id: "77"
+          title: "Upstream issue with the same provider-local id"
+          body: "upstream body"
+          status: open
+          type: bug
+          url: "https://github.com/constructorfabric/Kitsoki/issues/77"
+          source: upstream
+          source_label: constructorfabric/Kitsoki
+          source_kind: github
+          source_mode: remote
+          source_repo: constructorfabric/Kitsoki
+          ref: "upstream:77"
+
+turns:
+  - intent: { name: core__search_tickets, slots: { query: open } }
+    expect_state: core.ticket_searching
+    expect_view_matches: "Local[\\s\\S]*Frontmatter-less local report[\\s\\S]*bsacrobatix/Kitsoki[\\s\\S]*Fork issue[\\s\\S]*constructorfabric/Kitsoki[\\s\\S]*Upstream issue"
+
+  - intent: { name: core__pick_ticket, slots: { n: 3 } }
+    expect_state: core.ticket_search
+    expect_host_calls:
+      - handler: host.ticket_federation.get
+        args:
+          id: "77"
+          ref: "upstream:77"
+          source: upstream
+          repo: constructorfabric/Kitsoki
+        times: 1
+    expect_world:
+      core__ticket_id: "77"
+      core__ticket_source: upstream
+      core__ticket_source_label: constructorfabric/Kitsoki
+      core__ticket_source_kind: github
+      core__ticket_source_mode: remote
+      core__ticket_source_repo: constructorfabric/Kitsoki
+      core__ticket_repo: constructorfabric/Kitsoki
+    expect_view_matches: "Source:[\\s\\S]*constructorfabric/Kitsoki"
+
+expect_no_errors: true

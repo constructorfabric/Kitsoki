@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +10,11 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"kitsoki/internal/host"
+	"kitsoki/internal/orchestrator"
+	"kitsoki/internal/reportmeta"
+	"kitsoki/internal/webconfig"
 )
 
 // TestBugSlug covers the freeform-title → filesystem-slug mapping.
@@ -64,6 +70,29 @@ func TestRenderBugMarkdown_FullStoryPayload(t *testing.T) {
 		Severity:   "med",
 		Status:     "open",
 		TraceRef:   "traces/2026-05-13T103200Z-cloak.jsonl",
+		Runtime: reportmeta.Snapshot{
+			Engine: reportmeta.Engine{
+				Version:        "1.2.3",
+				Revision:       "abcdef1234567890",
+				RevisionShort:  "abcdef123456",
+				Dirty:          "false",
+				ChecksumSHA256: "sha256:engine",
+			},
+			Story: reportmeta.Story{
+				AppID:          "cloak-of-darkness",
+				Version:        "0.1.0",
+				Entry:          "testdata/apps/cloak/app.yaml",
+				ChecksumSHA256: "sha256:story",
+			},
+			PublicStories: []reportmeta.PublicStory{{
+				Name:           "bug",
+				AppID:          "bug-story",
+				Version:        "0.2.0",
+				Source:         "embedded",
+				Path:           "internal/basestories/stories/bug/app.yaml",
+				ChecksumSHA256: "sha256:public",
+			}},
+		},
 	})
 
 	// Identity section.
@@ -88,6 +117,17 @@ func TestRenderBugMarkdown_FullStoryPayload(t *testing.T) {
 	require.Contains(t, got, "# --- evidence ---")
 	require.Contains(t, got, `trace_ref: "traces/2026-05-13T103200Z-cloak.jsonl"`)
 	require.Contains(t, got, "related: []")
+	// Runtime section.
+	require.Contains(t, got, "# --- runtime ---")
+	require.Contains(t, got, `engine_version: "1.2.3"`)
+	require.Contains(t, got, `engine_revision: "abcdef1234567890"`)
+	require.Contains(t, got, `engine_checksum_sha256: "sha256:engine"`)
+	require.Contains(t, got, `story_app_id: "cloak-of-darkness"`)
+	require.Contains(t, got, `story_app_version: "0.1.0"`)
+	require.Contains(t, got, `story_checksum_sha256: "sha256:story"`)
+	require.Contains(t, got, "public_stories_json:")
+	require.Contains(t, got, `\"name\":\"bug\"`)
+	require.Contains(t, got, `\"checksum_sha256\":\"sha256:public\"`)
 	// Body.
 	require.Contains(t, got, "# TUI hangs on Esc")
 	require.Contains(t, got, "Expected the Esc menu to open.")
@@ -154,6 +194,24 @@ func TestRenderBugMarkdown_MinimalPayload(t *testing.T) {
 	require.Contains(t, got, "related: []")
 }
 
+func TestRenderBugMarkdown_Labels(t *testing.T) {
+	ts := time.Date(2026, 5, 13, 10, 32, 5, 0, time.UTC)
+	got := renderBugMarkdown(bugRecord{
+		ID:      "2026-05-13T103205Z-labelled",
+		Title:   "labelled",
+		Body:    "body",
+		Target:  "kitsoki",
+		FiledAt: ts,
+		Status:  "open",
+		Labels:  []string{"source-autonomous", "mcp"},
+	})
+
+	require.Contains(t, got, "labels:\n")
+	require.Contains(t, got, `  - "source-autonomous"`)
+	require.Contains(t, got, `  - "mcp"`)
+	require.NotContains(t, got, "labels: []")
+}
+
 // TestYAMLQuoteLine escapes embedded quotes and newlines so the
 // front-matter line stays parseable.
 func TestYAMLQuoteLine(t *testing.T) {
@@ -206,6 +264,8 @@ func TestBugCreateCmd_WritesMarkdownFile(t *testing.T) {
 	require.Contains(t, body, `target: "story"`)
 	require.Contains(t, body, `app_id: "cloak"`)
 	require.Contains(t, body, `state_path: "main.foyer"`)
+	require.Contains(t, body, `engine_version: "0.0.1-scaffold"`)
+	require.Contains(t, body, `engine_checksum_sha256: "sha256:`)
 	require.Contains(t, body, `severity: "med"`)
 	require.Contains(t, body, `status: "open"`)
 	require.Contains(t, body, "labels: []")
@@ -213,6 +273,245 @@ func TestBugCreateCmd_WritesMarkdownFile(t *testing.T) {
 	require.Contains(t, body, "Pressing Esc froze the TUI.")
 	require.Contains(t, body, "1. Run cloak")
 	require.Contains(t, body, "2. Press Esc")
+}
+
+func TestBugCreateCmd_LocalArtifactSinkWritesArtifactTicketRoot(t *testing.T) {
+	tmp := t.TempDir()
+	root := newRootCmd()
+	root.SetArgs([]string{
+		"bug", "create",
+		"--target", "story",
+		"--sink", "local-artifact",
+		"--title", "Report bug modal loops",
+		"--body", "Submitting a local report loops back to the review modal.",
+		"--severity", "P2",
+		"--target-dir", tmp,
+		"--clock-now", "1747130000",
+	})
+	var out, errBuf bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&errBuf)
+
+	require.NoError(t, root.Execute())
+
+	relPath := strings.TrimSpace(out.String())
+	wantRel := filepath.Join(".artifacts", "issues", "bugs", "2025-05-13T095320Z-report-bug-modal-loops.md")
+	require.Equal(t, wantRel, relPath)
+
+	artifactRoot := filepath.Join(tmp, ".artifacts")
+	abs := filepath.Join(tmp, relPath)
+	contents, err := os.ReadFile(abs)
+	require.NoError(t, err)
+	require.Contains(t, string(contents), `title: "Report bug modal loops"`)
+
+	get, err := host.LocalFilesTicketHandler(context.Background(), map[string]any{
+		"op":   "get",
+		"root": artifactRoot,
+		"id":   "2025-05-13T095320Z-report-bug-modal-loops",
+	})
+	require.NoError(t, err)
+	require.Empty(t, get.Error)
+	require.Equal(t, "Report bug modal loops", get.Data["title"])
+	require.Equal(t, "P2", get.Data["severity"])
+
+	comment, err := host.LocalFilesTicketHandler(context.Background(), map[string]any{
+		"op":     "comment",
+		"root":   artifactRoot,
+		"id":     "2025-05-13T095320Z-report-bug-modal-loops",
+		"body":   "Confirmed while stabilizing locally.",
+		"author": "developer",
+	})
+	require.NoError(t, err)
+	require.Empty(t, comment.Error)
+
+	updated, err := os.ReadFile(abs)
+	require.NoError(t, err)
+	require.Contains(t, string(updated), "Confirmed while stabilizing locally.")
+
+	listRoot := newRootCmd()
+	listRoot.SetArgs([]string{
+		"bug", "list",
+		"--target", "story",
+		"--sink", "local-artifact",
+		"--target-dir", tmp,
+	})
+	var listOut bytes.Buffer
+	listRoot.SetOut(&listOut)
+	require.NoError(t, listRoot.Execute())
+	require.Contains(t, listOut.String(), "2025-05-13T095320Z-report-bug-modal-loops\tP2\topen\tReport bug modal loops")
+
+	showRoot := newRootCmd()
+	showRoot.SetArgs([]string{
+		"bug", "show", "2025-05-13T095320Z-report-bug-modal-loops",
+		"--target", "story",
+		"--sink", "local-artifact",
+		"--target-dir", tmp,
+	})
+	var showOut bytes.Buffer
+	showRoot.SetOut(&showOut)
+	require.NoError(t, showRoot.Execute())
+	require.Contains(t, showOut.String(), "Confirmed while stabilizing locally.")
+}
+
+func TestBugCreateCmd_PrivacySubstitutesHighEntropy(t *testing.T) {
+	tmp := t.TempDir()
+	secret := "mF9xQ2rT8vLp0AqZ7nByC4dEuGhJkM3sW6yI"
+	root := newRootCmd()
+	root.SetArgs([]string{
+		"bug", "create",
+		"--target", "story",
+		"--title", "Opaque token leak",
+		"--body", "Saw token " + secret,
+		"--target-dir", tmp,
+		"--clock-now", "1747130000",
+	})
+	var out, errBuf bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&errBuf)
+
+	require.NoError(t, root.Execute())
+	require.Contains(t, errBuf.String(), "bug privacy check: starting")
+	require.Contains(t, errBuf.String(), "deterministic substitutions")
+
+	relPath := strings.TrimSpace(out.String())
+	data, err := os.ReadFile(filepath.Join(tmp, relPath))
+	require.NoError(t, err)
+	require.NotContains(t, string(data), secret)
+	require.Contains(t, string(data), "[REDACTED]")
+
+	entries, err := os.ReadDir(filepath.Join(tmp, "issues", "bugs"))
+	require.NoError(t, err)
+	require.Len(t, entries, 2, "original bug plus depersonalized follow-up")
+	var followUp string
+	for _, entry := range entries {
+		if entry.Name() != filepath.Base(relPath) {
+			body, readErr := os.ReadFile(filepath.Join(tmp, "issues", "bugs", entry.Name()))
+			require.NoError(t, readErr)
+			followUp = string(body)
+		}
+	}
+	require.NotContains(t, followUp, secret)
+	require.Contains(t, followUp, "high_entropy")
+}
+
+func TestBugCreateCmd_LocalArtifactPrivacyFollowUpUsesArtifactRoot(t *testing.T) {
+	tmp := t.TempDir()
+	secret := "mF9xQ2rT8vLp0AqZ7nByC4dEuGhJkM3sW6yI"
+	root := newRootCmd()
+	root.SetArgs([]string{
+		"bug", "create",
+		"--target", "story",
+		"--sink", "local-artifact",
+		"--title", "Opaque local artifact token leak",
+		"--body", "Saw token " + secret,
+		"--target-dir", tmp,
+		"--clock-now", "1747130000",
+	})
+	var out, errBuf bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&errBuf)
+
+	require.NoError(t, root.Execute())
+	relPath := strings.TrimSpace(out.String())
+	require.True(t, strings.HasPrefix(filepath.ToSlash(relPath), ".artifacts/issues/bugs/"), relPath)
+	require.Contains(t, errBuf.String(), "depersonalized follow-up filed at "+filepath.ToSlash(filepath.Join(".artifacts", "issues", "bugs")))
+
+	entries, err := os.ReadDir(filepath.Join(tmp, ".artifacts", "issues", "bugs"))
+	require.NoError(t, err)
+	require.Len(t, entries, 2, "original bug plus depersonalized follow-up")
+	if _, err := os.Stat(filepath.Join(tmp, "issues", "bugs")); !os.IsNotExist(err) {
+		t.Fatalf("local-artifact privacy follow-up should not create committed issues/bugs, stat err=%v", err)
+	}
+}
+
+func TestBugPrivacyCheckerFromConfigUsesExplicitHarnessLadderOnly(t *testing.T) {
+	require.Nil(t, bugPrivacyCheckerFromConfig(webconfig.WebConfig{}, t.TempDir()))
+
+	checker := bugPrivacyCheckerFromConfig(webconfig.WebConfig{
+		HarnessLadder: &webconfig.HarnessLadder{
+			Models: []webconfig.HarnessLadderModel{{
+				Backend:  "codex",
+				Provider: "codex-native",
+				Model:    "gpt-5.5",
+			}},
+		},
+	}, t.TempDir())
+	require.NotNil(t, checker)
+}
+
+func TestBugPrivacyCheckerFromRuntimeConfigUsesDefaultProfile(t *testing.T) {
+	checker := bugPrivacyCheckerFromRuntimeConfig(webconfig.WebConfig{
+		DefaultProfile: "codex-native",
+		HarnessProfiles: map[string]webconfig.HarnessProfile{
+			"codex-native": {
+				Backend: "codex",
+				Model:   "gpt-5.5",
+				Effort:  "high",
+			},
+		},
+	}, t.TempDir(), bugPrivacyRuntimeConfig{})
+
+	got, ok := checker.(host.BugPrivacyAgentChecker)
+	require.True(t, ok)
+	require.Equal(t, []host.LadderModel{{
+		Backend:  "codex",
+		Provider: "codex-native",
+		Model:    "gpt-5.5",
+	}}, got.Ladder.Models)
+	require.Equal(t, []string{"high"}, got.Ladder.Efforts)
+	require.Equal(t, 1, got.Ladder.MaxAttempts)
+}
+
+func TestBugPrivacyCheckerResolverUsesCurrentSelection(t *testing.T) {
+	resolver := bugPrivacyCheckerResolverFromConfig(webconfig.WebConfig{
+		DefaultProfile: "claude-native",
+		HarnessProfiles: map[string]webconfig.HarnessProfile{
+			"claude-native": {Backend: "claude", Model: "opus"},
+			"codex-native":  {Backend: "codex", Model: "gpt-5.5", Effort: "medium"},
+		},
+	}, t.TempDir(), bugPrivacyRuntimeConfig{})
+
+	checker := resolver(orchestrator.ProfileSelection{
+		Profile: "codex-native",
+		Model:   "gpt-5.5-mini",
+		Effort:  "low",
+	})
+	got, ok := checker.(host.BugPrivacyAgentChecker)
+	require.True(t, ok)
+	require.Equal(t, []host.LadderModel{{
+		Backend:  "codex",
+		Provider: "codex-native",
+		Model:    "gpt-5.5-mini",
+	}}, got.Ladder.Models)
+	require.Equal(t, []string{"low"}, got.Ladder.Efforts)
+}
+
+func TestBugPrivacyCheckerFromRuntimeConfigUsesActiveBackend(t *testing.T) {
+	checker := bugPrivacyCheckerFromRuntimeConfig(webconfig.WebConfig{}, t.TempDir(), bugPrivacyRuntimeConfig{
+		AgentBackend: "codex",
+		ClaudeModel:  "gpt-5.5",
+	})
+
+	got, ok := checker.(host.BugPrivacyAgentChecker)
+	require.True(t, ok)
+	require.Equal(t, []host.LadderModel{{
+		Backend: "codex",
+		Model:   "gpt-5.5",
+	}}, got.Ladder.Models)
+	require.Equal(t, 1, got.Ladder.MaxAttempts)
+}
+
+func TestBugPrivacyCheckerFromRuntimeConfigUsesDefaultLiveLadder(t *testing.T) {
+	require.Nil(t, bugPrivacyCheckerFromRuntimeConfig(webconfig.WebConfig{}, t.TempDir(), bugPrivacyRuntimeConfig{}))
+
+	checker := bugPrivacyCheckerFromRuntimeConfig(webconfig.WebConfig{}, t.TempDir(), bugPrivacyRuntimeConfig{
+		UseDefaultLiveLadder: true,
+	})
+	got, ok := checker.(host.BugPrivacyAgentChecker)
+	require.True(t, ok)
+	require.Equal(t, []host.LadderModel{host.DefaultLadderConfig().Models[0]}, got.Ladder.Models)
+	require.Equal(t, []string{host.DefaultLadderConfig().Efforts[0]}, got.Ladder.Efforts)
+	require.Equal(t, 1, got.Ladder.MaxAttempts)
 }
 
 // TestBugCreateCmd_TargetRequired asserts that --target must be set
@@ -250,6 +549,39 @@ func TestBugCreateCmd_TargetRequired(t *testing.T) {
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "story or kitsoki")
 	})
+}
+
+func TestBugCreateCmd_GitHubMissingAuthExplainsSetup(t *testing.T) {
+	t.Setenv("GH_TOKEN", "")
+	t.Setenv("GITHUB_TOKEN", "")
+	t.Setenv("HOME", t.TempDir())
+	restoreGHCLI := host.SetGHCLITokenForTest(func(context.Context) string { return "" })
+	defer restoreGHCLI()
+
+	root := newRootCmd()
+	root.SetArgs([]string{
+		"bug", "create",
+		"--target", "kitsoki",
+		"--title", "Report bug cannot file",
+		"--body", "Expected a clean auth prompt.",
+		"--github", "owner/repo",
+	})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	err := root.Execute()
+	require.Error(t, err)
+	for _, want := range []string{
+		"GitHub auth is not configured",
+		"kitsoki gh-agent login",
+		"kitsoki gh-agent setup app --name <app-name> --local-only",
+		"kitsoki gh-agent setup attach --repo <owner/repo>",
+		"kitsoki gh-agent token",
+		"GH_TOKEN/GITHUB_TOKEN",
+	} {
+		require.Contains(t, err.Error(), want)
+	}
 }
 
 // TestBugCreateCmd_KitsokiTarget asserts --target kitsoki with an
@@ -513,9 +845,9 @@ func TestBugShowCmd_HappyPath(t *testing.T) {
 		"--target-dir", tmp,
 		"--clock-now", "1747130000",
 	})
-	var createOut bytes.Buffer
+	var createOut, createErr bytes.Buffer
 	createRoot.SetOut(&createOut)
-	createRoot.SetErr(&createOut)
+	createRoot.SetErr(&createErr)
 	require.NoError(t, createRoot.Execute())
 
 	relPath := strings.TrimSpace(createOut.String())

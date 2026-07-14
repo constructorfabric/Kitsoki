@@ -28,6 +28,15 @@ these shapes.
     "adjudication_note": ""         // rationale for the override (empty otherwise)
   },
 
+  "evidence": {
+    "oracle": {
+      "command": "go test ./...",  // executed only after candidate completion
+      "exit_code": 1,
+      "output_tail": "...",        // bounded to the final 4,000 characters; common credential forms redacted
+      "truncated": false
+    }
+  },
+
   "compliance": {
     "reproduced_red": true,         // demonstrated the bug RED before fixing
     "added_regression_test": true,  // wrote its OWN test (separate from oracle)
@@ -54,6 +63,10 @@ these shapes.
   "notes": "free text — e.g. oracle noncompile because candidate fixed differently"
 }
 ```
+
+`evidence.oracle` is post-run scorer evidence, never candidate prompt material.
+It preserves a bounded diagnostic when the scorer deletes its private scratch
+tree; it does not change the oracle verdict or quality rules.
 
 `quality` rules: `solved` = oracle_pass && build_pass!=false && suite_pass;
 `partial` = oracle_pass but a regression or build issue, OR bug plausibly fixed

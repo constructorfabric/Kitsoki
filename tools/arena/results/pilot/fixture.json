@@ -1,0 +1,19 @@
+{
+  "kind": "arena_pilot_fixture",
+  "version": 1,
+  "goal_change": "WB.3",
+  "spec": "../../specs/cost-efficiency-pilot.yaml",
+  "cells": "cells.json",
+  "expected_cell_count": 12,
+  "expected_targets": ["cost-bench-pilot"],
+  "expected_variants": [
+    "kitsoki-codex-native",
+    "kitsoki-synthetic-claude",
+    "single-briefed-codex-native",
+    "single-briefed-synthetic-claude"
+  ],
+  "notes": [
+    "No live LLM calls are made by the replay gate.",
+    "Payloads preserve pilot-shaped costs, trace refs, evidence refs, and deterministic oracle verdicts."
+  ]
+}

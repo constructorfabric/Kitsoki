@@ -1,4 +1,4 @@
-# jump_to_each_target — port of cyber-repo's
+# jump_to_each_target — port of focused-engineering's
 # stories/bugfix/flows/jump_to.yaml (provider-neutral).
 #
 # Per-phase jump_to ladders advance the pipeline forward to a later
@@ -31,7 +31,7 @@ initial_world:
 host_handlers:
   host.append_to_file: { data: { ok: true } }
   host.inbox.add:      { data: { ok: true } }
-  host.git_worktree:   { data: { ok: true, log: "" } }
+  host.capsule_workspace:   { data: { ok: true, log: "" } }
   host.git:            { data: { ok: true, sha: "abc", diff: "" } }
   host.local:          { data: { ok: true, log: "PASS", passed: 1, failed: 0 } }
   host.agent.task:
@@ -71,7 +71,7 @@ initial_world:
 host_handlers:
   host.append_to_file: { data: { ok: true } }
   host.inbox.add:      { data: { ok: true } }
-  host.git_worktree:   { data: { ok: true, log: "" } }
+  host.capsule_workspace:   { data: { ok: true, log: "" } }
   host.git:            { data: { ok: true, sha: "abc", diff: "" } }
   host.local:          { data: { ok: true, log: "PASS", passed: 1, failed: 0 } }
   host.agent.task:
@@ -111,7 +111,7 @@ initial_world:
 host_handlers:
   host.append_to_file: { data: { ok: true } }
   host.inbox.add:      { data: { ok: true } }
-  host.git_worktree:   { data: { ok: true, log: "" } }
+  host.capsule_workspace:   { data: { ok: true, log: "" } }
   host.git:            { data: { ok: true, sha: "abc", diff: "" } }
   host.local:          { data: { ok: true, log: "PASS", passed: 1, failed: 0 } }
   host.agent.task:
@@ -151,7 +151,7 @@ initial_world:
 host_handlers:
   host.append_to_file: { data: { ok: true } }
   host.inbox.add:      { data: { ok: true } }
-  host.git_worktree:   { data: { ok: true, log: "" } }
+  host.capsule_workspace:   { data: { ok: true, log: "" } }
   host.git:            { data: { ok: true, sha: "abc", diff: "" } }
   host.local:          { data: { ok: true, log: "PASS", passed: 1, failed: 0 } }
   host.agent.task:
@@ -191,7 +191,7 @@ initial_world:
 host_handlers:
   host.append_to_file: { data: { ok: true } }
   host.inbox.add:      { data: { ok: true } }
-  host.git_worktree:   { data: { ok: true, log: "" } }
+  host.capsule_workspace:   { data: { ok: true, log: "" } }
   host.git:            { data: { ok: true, sha: "abc", diff: "" } }
   host.local:          { data: { ok: true, log: "PASS", passed: 1, failed: 0 } }
   host.agent.task:
@@ -231,7 +231,7 @@ initial_world:
 host_handlers:
   host.append_to_file: { data: { ok: true } }
   host.inbox.add:      { data: { ok: true } }
-  host.git_worktree:   { data: { ok: true, log: "" } }
+  host.capsule_workspace:   { data: { ok: true, log: "" } }
   host.git:            { data: { ok: true, sha: "abc", diff: "" } }
   host.local:          { data: { ok: true, log: "PASS", passed: 1, failed: 0 } }
   host.agent.task:
@@ -271,7 +271,7 @@ initial_world:
 host_handlers:
   host.append_to_file: { data: { ok: true } }
   host.inbox.add:      { data: { ok: true } }
-  host.git_worktree:   { data: { ok: true, log: "" } }
+  host.capsule_workspace:   { data: { ok: true, log: "" } }
   host.git:            { data: { ok: true, sha: "abc", diff: "" } }
   host.local:          { data: { ok: true, log: "PASS", passed: 1, failed: 0 } }
   host.agent.task:
@@ -311,7 +311,7 @@ initial_world:
 host_handlers:
   host.append_to_file: { data: { ok: true } }
   host.inbox.add:      { data: { ok: true } }
-  host.git_worktree:   { data: { ok: true, log: "" } }
+  host.capsule_workspace:   { data: { ok: true, log: "" } }
   host.git:            { data: { ok: true, sha: "abc", diff: "" } }
   host.local:          { data: { ok: true, log: "PASS", passed: 1, failed: 0 } }
   host.agent.task:
@@ -355,7 +355,7 @@ initial_world:
 host_handlers:
   host.append_to_file: { data: { ok: true } }
   host.inbox.add:      { data: { ok: true } }
-  host.git_worktree:   { data: { ok: true, log: "" } }
+  host.capsule_workspace:   { data: { ok: true, log: "" } }
   host.git:            { data: { ok: true, sha: "abc", diff: "" } }
   host.local:          { data: { ok: true, log: "PASS", passed: 1, failed: 0 } }
   host.agent.task:

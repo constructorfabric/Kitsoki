@@ -43,8 +43,8 @@ bugs:
     title: "Concurrent dogfood sessions share one checkout — destructive git (WIP clobbered)"
     severity: P1
     component: host
-    fix_sha: 67ac5fb1
-    baseline_sha: ea2ca55a
+    fix_sha: 67ac5fb1bc0d04ced1cf34aafb4fd0556f84750c
+    baseline_sha: ea2ca55a1306d87ef9e0d73236cae6dd5f860c57
     fix_source: "."   # fix spans internal/host + internal/orchestrator; overlay whole tree for GREEN leg
     oracle_test: testdata/bug9.go
     oracle_match: "TestRepro_ConcurrentSessionsShareCheckout_DestroysWIP"
@@ -74,8 +74,8 @@ bugs:
     title: "host.agent.decide with validator.post_cmd reports 'abandoned' when the payload WAS captured"
     severity: P1
     component: runtime
-    fix_sha: ea2ca55a
-    baseline_sha: 45276b88
+    fix_sha: ea2ca55a1306d87ef9e0d73236cae6dd5f860c57
+    baseline_sha: 45276b881b0a0fd4950beb1f21107ae402e6a089
     fix_source: "."   # fix spans internal/host + a root file; overlay whole tree for GREEN leg
     oracle_test: testdata/bug12.go
     oracle_match: "TestRepro_PostCmdInfraFailureMisreportedAsSemanticRejection|TestRepro_PostCmdCwdIsDroppedOnDecidePath"
@@ -94,8 +94,8 @@ bugs:
     title: "Web transport doesn't surface a background_completion turn's failure (looks hung)"
     severity: P2
     component: web
-    fix_sha: 45276b88
-    baseline_sha: 85ff4917
+    fix_sha: 45276b881b0a0fd4950beb1f21107ae402e6a089
+    baseline_sha: 85ff4917d87953206e1fbba66246599322119b4c
     fix_source: tools/runstatus
     oracle_test: testdata/bug14.test.ts
     oracle_match: "background_completion failure surfacing"
@@ -111,6 +111,105 @@ bugs:
       the web transport — currentView is not refreshed, so the turn's
       last_error / say never reaches the UI and the run looks hung. A failing
       background_completion turn must refresh currentView so its error surfaces.
+
+  - id: bug15
+    ticket_ref: issues/bugs/2026-06-12T022551Z-background-job-killed-by-caller-ctx-cancel.md
+    title: "Background work dies when the submitting web request returns"
+    severity: P1
+    component: runtime
+    fix_sha: af995fc
+    baseline_sha: 0c9a0ff
+    fix_source: .
+    oracle_test: testdata/bug15.go
+    oracle_match: "TestRepro_BackgroundJobSurvivesSubmittingContextCancellation"
+    oracle:
+      target: internal/jobs/jobs_background_caller_cancel_oracle_test.go
+      run: 'go test ./internal/jobs/ -run {match} -count=1'
+    ticket: |
+      A background host call must outlive the request/turn that submitted it.
+      In web mode, cancelling the submitting request currently cancels the
+      scheduler job immediately, leaving the UI waiting forever. Preserve
+      context values needed for tracing, but detach caller cancellation so only
+      the scheduler's explicit Cancel operation terminates the background job.
+
+  - id: bug16
+    ticket_ref: issues/bugs/1187.md
+    title: "Studio resolver hard-errors when --stories-dir lacks a library story"
+    severity: P1
+    component: mcp
+    fix_sha: 2437a23da
+    baseline_sha: 2170566c
+    fix_source: .
+    oracle_test: testdata/bug16.go
+    oracle_match: "TestRepro_StoriesDirFallsThroughForMissingLibraryStory|TestRepro_StoriesDirStillOverridesWhenPresent"
+    oracle:
+      target: cmd/kitsoki/resolver_bug1187_oracle_test.go
+      run: 'go test ./cmd/kitsoki/ -run "{match}" -count=1'
+    ticket: |
+      When `kitsoki mcp --stories-dir <project stories>` loads a downstream
+      story that imports a library story such as `@kitsoki/dev-story`, the
+      resolver must fall through to the Kitsoki library if that library story
+      is absent from the project stories directory. Project stories that do
+      exist in `--stories-dir` must continue to override the library.
+
+  - id: bug17
+    ticket_ref: issues/bugs/2026-06-03T121407Z-agent-decide-silent-abandon-empty-artifact.md
+    title: "Schema-invalid recovered decide verdict silently succeeds"
+    severity: P1
+    component: runtime
+    fix_sha: 82734e37
+    baseline_sha: f4f322eaf996ab4193491e993313b0a762e928d1
+    fix_source: .
+    oracle_test: testdata/bug17.go
+    oracle_match: "TestRepro_RecoveredCodeBlockMustSatisfySchema"
+    oracle:
+      target: internal/host/agent_decide_empty_artifact_oracle_test.go
+      run: 'go test ./internal/host/ -run {match} -count=1'
+    ticket: |
+      When host.agent.decide recovers fenced JSON after a model does not call
+      submit, it must validate that payload against the declared schema before
+      treating it as a successful verdict. An empty or schema-invalid recovered
+      object must return a visible failure rather than advancing with an empty
+      artifact. Add focused tests and run `go test ./internal/host -count=1`.
+
+  - id: bug18
+    ticket_ref: issues/bugs/2026-06-03T121406Z-bf-silent-onerror-bounce-and-autostart-latch.md
+    title: "on_error redirects silently hide the host failure from the operator"
+    severity: P1
+    component: orchestrator
+    fix_sha: 65f8f218
+    baseline_sha: 422c83b2357e18127c530bb45f6ca3da30a35722
+    fix_source: .
+    oracle_test: testdata/bug18.go
+    oracle_match: "TestRepro_OnErrorRedirectSurfacesFailure"
+    oracle:
+      target: internal/orchestrator/on_error_banner_oracle_test.go
+      run: 'go test ./internal/orchestrator/ -run {match} -count=1'
+    ticket: |
+      A host-call failure redirected through `on_error` must be visible in the
+      rendered destination view. A destination room that does not itself render
+      `world.last_error` must still show a concise failure banner, rather than
+      silently bouncing the operator to an apparently normal screen.
+      Add focused tests and run `go test ./internal/orchestrator -count=1`.
+
+  - id: bug19
+    ticket_ref: issues/bugs/2026-06-23T100426Z-studio-concurrent-sessions-agent-schema-bleed.md
+    title: "Concurrent studio sessions resolve validator schemas from another story"
+    severity: P1
+    component: mcp
+    fix_sha: 31c96b09
+    baseline_sha: 0350fe9901b3f611c6c37f70162513cd75959501
+    fix_source: .
+    oracle_test: testdata/bug19.go
+    oracle_match: "TestRepro_ValidatorSchemaUsesPerCallRenderer"
+    oracle:
+      target: internal/host/concurrent_schema_bleed_oracle_test.go
+      run: 'go test ./internal/host/ -run {match} -count=1'
+    ticket: |
+      Concurrent live Studio sessions must resolve a relative agent validator
+      schema against the dispatching session's story directory, not the most
+      recently opened session's global app directory. Add focused tests and run
+      `go test ./internal/host -count=1`.
 
 treatments: [kitsoki, single]
 

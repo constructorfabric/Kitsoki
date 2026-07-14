@@ -16,30 +16,33 @@ states:
             - { label: "look", intent: look }
     on_enter:
       - set: { board_route: "" }
-      - invoke: host.run
+      - invoke: host.starlark.run
         id: "punch_board-{{ world.processed_count }}-{{ world._record_status }}"
         with:
-          cmd: python3
-          args:
-            - "stories/punch-list/scripts/punch_board.py"
-            - "{{ world.state_path }}"
-            - "{{ world.current_item_id }}"
-            - "{{ world._record_status }}"
-            - "{{ world._record_error }}"
+          script: scripts/punch_board.star
+          capabilities:
+            fs:
+              read: ["**"]
+              write: ["**"]
+          inputs:
+            state_path:  "{{ world.state_path }}"
+            mark_id:     "{{ world.current_item_id }}"
+            mark_status: "{{ world._record_status }}"
+            mark_error:  "{{ world._record_error }}"
         bind:
-          punch_items: "stdout_json.items"
-          current_item: "stdout_json.next_item"
-          current_item_id: "stdout_json.next_item_id"
-          punch_results: "stdout_json.results"
-          board_route: "stdout_json.route"
-          has_pending: "stdout_json.has_pending"
-          processed_count: "stdout_json.processed_count"
-          count_summary: "stdout_json.count_summary"
-          passed_count: "stdout_json.passed_count"
-          partial_count: "stdout_json.partial_count"
-          failed_count: "stdout_json.failed_count"
-          skipped_count: "stdout_json.skipped_count"
-          pending_count: "stdout_json.pending_count"
+          punch_items: "items"
+          current_item: "next_item"
+          current_item_id: "next_item_id"
+          punch_results: "results"
+          board_route: "route"
+          has_pending: "has_pending"
+          processed_count: "processed_count"
+          count_summary: "count_summary"
+          passed_count: "passed_count"
+          partial_count: "partial_count"
+          failed_count: "failed_count"
+          skipped_count: "skipped_count"
+          pending_count: "pending_count"
         on_error: needs_human
       - set:
           _record_status: ""

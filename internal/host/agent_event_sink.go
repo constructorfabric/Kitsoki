@@ -95,19 +95,72 @@ func AgentCallCtxFrom(ctx context.Context) AgentCallCtx {
 
 // agentUsageBox accumulates the token usage reported by the claude CLI
 // transport (runClaudeStreamJSON, or the buffered json envelope path) during a
-// single agent host call. The transport records the result event's usage here
-// via recordAgentUsage; appendAgentReturnedEvent reads it via agentUsageMeta
-// so the AgentReturned event carries per-invocation tokens without every verb
-// handler threading a ClaudeRun through its (sometimes deep) call tree.
+// single agent host call. The transport records each result event's usage
+// here via recordAgentUsage; appendAgentReturnedEvent reads it via
+// agentUsageMeta so the AgentReturned event carries per-invocation tokens
+// without every verb handler threading a ClaudeRun through its (sometimes
+// deep) call tree.
 //
-// The orchestrator installs one fresh box per host-call dispatch. Last write
-// wins, so a validator retry loop surfaces the final round's usage. The mutex
-// guards the subprocess-reader goroutine vs. the handler; in practice the
-// handler reads only after the claude call has returned.
+// The orchestrator installs one fresh box per host-call dispatch, but a
+// single host-call dispatch can itself make MULTIPLE provider requests: a
+// validator retry loop (decide/ask/task) issues several `claude --resume`
+// calls under one call_id, and host.agent.codeact's step loop issues one
+// claude call per step, all under one box. recordAgentUsage SUMS the known
+// numeric usage buckets across every call into this box instead of
+// overwriting, so the box's final usage/cost is the call's total spend, not
+// just its last retry/step. Before this fix, last-write-wins silently
+// discarded every retry/step but the final one — the root cause of the
+// "$0.006 for a $0.034 call" false-cheap accounting in
+// .context/2026-07-11-gx10-small-model-study-adversarial-review.md. The
+// mutex guards the subprocess-reader goroutine vs. the handler; in practice
+// the handler reads only after the claude call has returned.
 type agentUsageBox struct {
 	mu    sync.Mutex
 	usage map[string]any
 	cost  float64
+}
+
+// summableUsageKeys are the numeric usage fields recordAgentUsage sums across
+// retries/resumes/steps within one box. Any other key in a later usage map
+// (e.g. a string field a future transport might add) overwrites, matching the
+// historical last-write-wins behavior for non-numeric fields — only the
+// numeric spend buckets are load-bearing for cost/token accounting and must
+// never be dropped.
+var summableUsageKeys = []string{
+	"input_tokens",
+	"output_tokens",
+	"cache_creation_input_tokens",
+	"cache_read_input_tokens",
+	"total_tokens",
+}
+
+// sumUsage merges next into prev, summing every key in summableUsageKeys
+// (present in either map) and otherwise letting next's value win for any key
+// not in that list. prev may be nil (first call in a box's lifetime).
+func sumUsage(prev, next map[string]any) map[string]any {
+	if prev == nil {
+		out := make(map[string]any, len(next))
+		for k, v := range next {
+			out[k] = v
+		}
+		return out
+	}
+	out := make(map[string]any, len(prev)+len(next))
+	for k, v := range prev {
+		out[k] = v
+	}
+	summable := make(map[string]bool, len(summableUsageKeys))
+	for _, k := range summableUsageKeys {
+		summable[k] = true
+	}
+	for k, v := range next {
+		if summable[k] {
+			out[k] = usageInt64(out, k) + usageInt64(next, k)
+			continue
+		}
+		out[k] = v
+	}
+	return out
 }
 
 type agentUsageBoxKey struct{}
@@ -123,9 +176,11 @@ func agentUsageBoxFrom(ctx context.Context) *agentUsageBox {
 	return b
 }
 
-// recordAgentUsage stores token usage + cost into the box in ctx, if one is
+// recordAgentUsage sums token usage + cost into the box in ctx, if one is
 // installed. No-op when no box is present (e.g. direct unit-test calls) or when
 // there's nothing to record, so the transport can call it unconditionally.
+// Summing (not overwriting) is what makes the box correct across a call's
+// internal retries/resumes/steps — see agentUsageBox's doc comment.
 func recordAgentUsage(ctx context.Context, usage map[string]any, cost float64) {
 	if usage == nil && cost == 0 {
 		return
@@ -136,10 +191,10 @@ func recordAgentUsage(ctx context.Context, usage map[string]any, cost float64) {
 	}
 	b.mu.Lock()
 	if usage != nil {
-		b.usage = usage
+		b.usage = sumUsage(b.usage, usage)
 	}
 	if cost != 0 {
-		b.cost = cost
+		b.cost += cost
 	}
 	b.mu.Unlock()
 }
@@ -184,7 +239,8 @@ func AgentUsageFrom(ctx context.Context) map[string]any {
 
 // agentUsageMeta builds the AgentReturned.Meta map from the usage box in ctx,
 // or returns nil when no usage was recorded (so Meta stays omitempty). The
-// shape is {"usage": {…claude usage object…}, "cost_usd": <float>}.
+// shape is {"usage": {…claude usage object…}, "cache": {…CacheUsage…},
+// "cost_usd": <float>}.
 func agentUsageMeta(ctx context.Context) map[string]any {
 	b := agentUsageBoxFrom(ctx)
 	if b == nil {
@@ -198,11 +254,66 @@ func agentUsageMeta(ctx context.Context) map[string]any {
 	meta := map[string]any{}
 	if b.usage != nil {
 		meta["usage"] = b.usage
+		if cache := cacheUsageFromMap(b.usage); cache != nil {
+			meta["cache"] = cache
+		}
 	}
 	if b.cost != 0 {
 		meta["cost_usd"] = b.cost
 	}
 	return meta
+}
+
+// ── Cache-usage surfacing (dispatch-context-floor task 1.2) ─────────────────
+//
+// The claude CLI's stream-json `result` event already reports
+// cache_read_input_tokens / cache_creation_input_tokens (parsed in
+// agent_runner.go and stashed into the usage box above), so the raw numbers
+// already reach agent.call.complete inside Meta.usage. What was missing —
+// per the dispatch-context-floor spike (.context/2026-07-05-s3-spike-cache-fields.md)
+// — was a named, typed surface mirroring internal/harness/live.go's
+// UsageInfo (CacheReadTokens / CacheCreateTokens / CacheHit), the same shape
+// LiveHarness already logs for routing calls, so a trace consumer doesn't
+// have to know the claude-CLI-specific snake_case key names to compute
+// cache-hit visibility for host.agent.* dispatch.
+
+// CacheUsage is the named cache-usage surface for a single agent host-call,
+// derived from the claude CLI's reported usage object. Hit is true only when
+// this call actually read from the cache; a call that merely wrote a new
+// cache-eligible prefix (CreationTokens > 0, ReadTokens == 0 — e.g. the very
+// first call after a prompt-shape change) is a cache miss, not a hit.
+type CacheUsage struct {
+	ReadTokens     int64 `json:"read_tokens"`
+	CreationTokens int64 `json:"creation_tokens"`
+	Hit            bool  `json:"hit"`
+}
+
+// cacheUsageFromMap derives a CacheUsage from the raw usage map the claude CLI
+// transport recorded (recordAgentUsage), or nil when the map carries neither
+// cache key — e.g. a transport that reports no cache accounting at all (the
+// copilot path, per mergeOutputTokens above) — so Meta.cache stays omitted
+// rather than falsely reporting an all-zero cache result for a transport that
+// never measured caching in the first place.
+func cacheUsageFromMap(usage map[string]any) *CacheUsage {
+	if usage == nil {
+		return nil
+	}
+	_, hasRead := usage["cache_read_input_tokens"]
+	_, hasCreate := usage["cache_creation_input_tokens"]
+	if !hasRead && !hasCreate {
+		return nil
+	}
+	// usageInt64 (quota_control.go) already extracts an integer usage field
+	// from a raw usage map, tolerating both the float64 shape json.Unmarshal
+	// produces and a plain int/int64 a test or in-process caller might
+	// construct directly — reused here rather than duplicated.
+	read := usageInt64(usage, "cache_read_input_tokens")
+	create := usageInt64(usage, "cache_creation_input_tokens")
+	return &CacheUsage{
+		ReadTokens:     read,
+		CreationTokens: create,
+		Hit:            read > 0,
+	}
 }
 
 // ── EventSink context plumbing ────────────────────────────────────────────────
@@ -243,9 +354,17 @@ func EventSinkFromAgentCtx(ctx context.Context) store.EventSink {
 // This ensures deterministic replay while staying under atomic write limits.
 // See agent_dispatch.go appendAgentCalledEventWithEpisode for details.
 type AgentCalledPayload struct {
-	Verb  string `json:"verb"`
-	Agent string `json:"agent,omitempty"`
-	Model string `json:"model,omitempty"`
+	Verb         string   `json:"verb"`
+	Agent        string   `json:"agent,omitempty"`
+	Model        string   `json:"model,omitempty"`
+	Toolbox      string   `json:"toolbox,omitempty"`
+	AllowedTools []string `json:"allowed_tools,omitempty"`
+	DeniedTools  []string `json:"denied_tools,omitempty"`
+	Effect       string   `json:"effect,omitempty"`
+	// Backend is the selected coding-agent backend for this call. It is stamped
+	// centrally from the context so live, plugin, and cassette traces expose the
+	// same provenance field.
+	Backend string `json:"backend,omitempty"`
 	// Profile is the active harness profile name in effect for this call, when a
 	// session selected one (TUI /provider, web picker). It records which
 	// operator-selected backend/endpoint answered — never the env secrets behind
@@ -255,6 +374,11 @@ type AgentCalledPayload struct {
 	// Effort is the reasoning effort in effect for this call (the active profile's
 	// effort or its operator override), when one was selected. Empty otherwise.
 	Effort string `json:"effort,omitempty"`
+	// RuntimeKind records the execution boundary for a codeact call. CLI-backed
+	// CodeAct must be paired with agent.runtime receipts; direct_api has no
+	// local subprocess and must not fabricate those receipts. Empty preserves
+	// compatibility for the other host.agent verbs and legacy traces.
+	RuntimeKind string `json:"runtime_kind,omitempty"`
 	// Prompt is the inline rendered prompt, present when it is small enough to
 	// embed (≤ the offload threshold). Larger prompts are written to a sidecar
 	// file and referenced via PromptFile instead. Exactly one of Prompt /
@@ -324,6 +448,12 @@ type AgentErrorPayload struct {
 	Agent      string `json:"agent,omitempty"`
 	DurationMS int64  `json:"duration_ms"`
 	Error      string `json:"error"`
+	// Meta mirrors AgentReturnedPayload.Meta for a failed call — today used
+	// only to carry the active harness-ladder rung (ladder_rung /
+	// ladder_failure_kind, see ladderMetaFields in ladder.go) so a rung's
+	// failing attempts are visible in the trace, not just its eventual
+	// winner. Omitted (nil) on every call with no ladder installed.
+	Meta map[string]any `json:"meta,omitempty"`
 	// Substitution mirrors AgentReturnedPayload.Substitution: when the
 	// local-model → agent.claude validation-reject fallback (step 4) was
 	// attempted but the fallback ALSO failed, the closing AgentError carries
@@ -366,6 +496,9 @@ func appendAgentCalledEvent(ctx context.Context, ts time.Time, callID string, pr
 		if payload.Effort == "" {
 			payload.Effort = ap.Provider.Effort
 		}
+	}
+	if payload.Backend == "" {
+		payload.Backend = AgentBackendFromContext(ctx).Name()
 	}
 
 	// Guarantee a prompt reference: offload large prompts to a sidecar file,
@@ -499,6 +632,9 @@ func appendAgentStreamEvent(ctx context.Context, ts time.Time, callID string, ev
 		"type":    ev.Type,
 		"subtype": ev.Subtype,
 	}
+	if ev.Severity != "" {
+		payload["severity"] = ev.Severity
+	}
 	if ev.Tool != "" {
 		payload["tool"] = ev.Tool
 	}
@@ -531,6 +667,81 @@ func appendAgentStreamEvent(ctx context.Context, ts time.Time, callID string, ev
 		Kind:      store.AgentStreamEvent,
 		StatePath: oc.StatePath,
 		CallID:    callID,
+		Payload:   raw,
+	})
+	if ev.ActionState == "" || ev.Tool == "" {
+		return
+	}
+	action, err := json.Marshal(map[string]any{
+		"schema": "agent-action/v1", "method": ev.Tool, "action_id": ev.ActionID,
+		"parent_call_id": callID, "outcome_class": ev.ActionState,
+		"duration_available": false, "result_summary_available": false,
+		"arguments_summary": ev.Preview,
+	})
+	if err != nil {
+		return
+	}
+	_ = sink.Append(store.Event{Turn: oc.Turn, Ts: ts, Kind: store.EventKind("agent.action"), StatePath: oc.StatePath, CallID: callID, Payload: action})
+}
+
+type storeAgentNotice struct {
+	Type            string          `json:"type"`
+	Subtype         string          `json:"subtype,omitempty"`
+	Severity        string          `json:"severity,omitempty"`
+	Text            string          `json:"text"`
+	Backend         string          `json:"backend,omitempty"`
+	Provider        string          `json:"provider,omitempty"`
+	Model           string          `json:"model,omitempty"`
+	Effort          string          `json:"effort,omitempty"`
+	Error           string          `json:"error,omitempty"`
+	Bin             string          `json:"bin,omitempty"`
+	WorkingDir      string          `json:"working_dir,omitempty"`
+	Args            []string        `json:"args,omitempty"`
+	PID             int             `json:"pid,omitempty"`
+	DurationMS      int64           `json:"duration_ms,omitempty"`
+	ExitCode        int             `json:"exit_code,omitempty"`
+	RawEventCount   int             `json:"raw_event_count,omitempty"`
+	ProviderEnvKeys []string        `json:"provider_env_keys,omitempty"`
+	EnvPresent      map[string]bool `json:"env_present,omitempty"`
+	UID             int             `json:"uid,omitempty"`
+	IsRoot          bool            `json:"is_root,omitempty"`
+	IsSandbox       bool            `json:"is_sandbox,omitempty"`
+}
+
+// appendAgentNoticeEvent records an operator-facing agent breadcrumb that is
+// not tied to a provider stream event. It is deliberately stored as
+// agent.stream so existing timeline surfaces show the notice without a new
+// trace vocabulary.
+func appendAgentNoticeEvent(ctx context.Context, ts time.Time, notice storeAgentNotice) {
+	if sink := StreamSinkFrom(ctx); sink != nil && notice.Text != "" {
+		sink.OnStreamEvent(ctx, StreamEvent{
+			Type:     notice.Type,
+			Subtype:  notice.Subtype,
+			Severity: notice.Severity,
+			Preview:  onelinePreview(notice.Text, 120),
+			Text:     notice.Text,
+			Backend:  notice.Backend,
+			Provider: notice.Provider,
+			Model:    notice.Model,
+			Effort:   notice.Effort,
+			Error:    notice.Error,
+		})
+	}
+	sink := EventSinkFromAgentCtx(ctx)
+	if sink == nil || notice.Text == "" {
+		return
+	}
+	oc := AgentCallCtxFrom(ctx)
+	raw, err := json.Marshal(notice)
+	if err != nil {
+		return
+	}
+	_ = sink.Append(store.Event{
+		Turn:      oc.Turn,
+		Ts:        ts,
+		Kind:      store.AgentStreamEvent,
+		StatePath: oc.StatePath,
+		CallID:    CallIDFrom(ctx),
 		Payload:   raw,
 	})
 }

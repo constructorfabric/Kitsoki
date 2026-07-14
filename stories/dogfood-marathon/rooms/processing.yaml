@@ -1,81 +1,96 @@
 # processing — the per-case DISPATCHER + checkpoint. The marathon re-enters here
-# once per case; the operator advances the loop one case per turn with `next_case`
-# (the same operator-driven cadence the dogfood-marathon skill describes — you
-# answer each case's checkpoints as an honest operator). One case per turn also
-# keeps each turn's internal emit chain under the engine's emit-depth cap
-# (EmitIntentMaxDepth) — a whole backlog can't auto-run in a single turn.
+# once per case; when autonomous=true, the checkpoint emits `next_case` on entry
+# and only parks for serious exception review. The long `driving` step runs as a
+# background job, so each case completion is a later synthetic turn instead of a
+# single recursive emit chain.
 #
-# Loop shape (mirrors stories/bugfix's guarded-emit gate + stories/slidey-edit's
-# cycle/budget cap):
+# Loop shape: guarded emit checkpoint plus a cycle/budget cap:
 #
-#   on entry (checkpoint): show the tally; if drained → `next_case` aggregates.
+#   on entry (checkpoint): show the tally; autonomous runs emit `next_case`.
 #   next_case:
 #     if case_index >= |backlog|  OR  cases_processed >= case_budget:
 #         → aggregating                         (the loop guard, committed world)
 #     else:
-#         pick current_case = backlog.items[case_index]; → triaging
+#         → picking_case (pick current_case = backlog.items[case_index]) → triaging
 #
-# Each per-case room (triaging → driving → verifying → recording) auto-emits the
-# next internal intent; recording's `record_done` increments case_index +
-# cases_processed and returns to THIS checkpoint. The budget cap guarantees the
+# Each per-case room auto-emits until `driving`, which launches the inner drive
+# in the background. Its completion targets `recording`; recording increments
+# case_index + cases_processed and returns here. The budget cap guarantees the
 # loop terminates even if case_index plumbing ever regressed.
 
 states:
 
   processing:
     description: "Per-case checkpoint — advance to the next case or drain to the report."
-    relevant_world: [backlog, case_index, case_budget, cases_processed, current_case, results]
+    relevant_world: [backlog, case_index, case_budget, cases_processed, current_case, results, last_result, exceptions, journal_path, journal_status, autonomous]
     view:
-      - heading: "Dogfood marathon · processing"
+      - heading: "Marathon · queue checkpoint"
       - kv:
           pairs:
             Backlog:   '{{ world.backlog.items|length }}'
-            At case:   '{{ world.case_index }}'
+            Progress:  '{{ world.cases_processed }} / {{ world.backlog.items|length }} complete'
+            Queue index: '{{ world.case_index }}'
             Processed: '{{ world.cases_processed }}'
             Recorded:  '{{ world.results.items|length }}'
+            Exceptions: '{{ world.exceptions.items|length }}'
             Budget:    '{{ world.case_budget }}'
-      - prose: "Walking the backlog one case at a time: triage → drive the inner pipeline → independently verify → record. `next_case` to process the next case (or roll up the run when the backlog is drained)."
-      - heading: "Actions"
-      - list:
+            Mode:      '{% if world.autonomous %}autonomous{% else %}operator-paced{% endif %}'
+            Journal:   '{{ world.journal_path|default:"(pending)" }}'
+            Checkpoint: '{{ world.journal_status|default:"—" }}'
+      - heading: "Last case"
+        when: "world.last_result.case_id"
+      - kv:
+          pairs:
+            Case:   '{{ world.last_result.case_id|default:"—" }}'
+            Title:  '{{ world.last_result.title|default:"—" }}'
+            Source: '{{ world.last_result.source_url|default:world.last_result.source_path|default:world.last_result.source_repo|default:"—" }}'
+            Exit:   '{{ world.last_result.exit|default:"—" }}'
+            Verify: '{{ world.last_result.verify_status|default:"—" }}'
+            Tokens: '{{ world.last_result.tokens_display|default:"0" }}'
+            Time:   '{{ world.last_result.wall_s_display|default:"0" }}s'
+            Trace:  '{{ world.last_result.trace|default:"—" }}'
+        when: "world.last_result.case_id"
+      - prose: "Walking the queue one case at a time: triage → drive the configured inner workflow → independently verify → record. Autonomous mode starts the next case automatically and parks only for a serious exception."
+      - choice:
+          mode: single
+          prompt: "Actions"
           items:
-            - label: "next_case"
-              hint:  "process the next case (or aggregate when drained)"
+            - label: "process next case"
+              hint:  "manual advance when autonomous mode is disabled"
+              intent: next_case
             - label: "look"
               hint:  "re-render the tally"
+              intent: look
             - label: "quit"
               hint:  "abandon the marathon"
+              intent: quit
     on_enter:
-      # Auto-advance the FIRST case on arrival from intake (case_index 0, nothing
-      # recorded yet) so the marathon flows straight in; subsequent cases are
-      # operator-paced via `next_case`. Guarded on committed world (no fresh bind).
-      - when: "world.cases_processed == 0 && world.case_index == 0 && len(world.results.items) == 0 && len(world.backlog.items) > 0"
-        emit_intent: next_case
+      - emit_intent: next_case
+        when: "world.autonomous && world.exception_pending == ''"
     on:
       next_case:
         # Loop guard on COMMITTED world: drained (index past the backlog) OR
         # budget hit → aggregate.
         - when: "world.case_index >= len(world.backlog.items) || world.cases_processed >= world.case_budget"
           target: aggregating
-        # Otherwise pick the case at case_index (starlark — the template
-        # mini-language can't index a list by a variable) and enter triage.
-        - target: triaging
+        # Otherwise select the case in a dedicated room. Transition-effect host
+        # calls do not publish their binds before the target state's on_enter,
+        # so the picked case must settle before triaging reads current_case_json.
+        - target: picking_case
           effects:
-            - invoke: host.starlark.run
-              id: pick_case
-              with:
-                script: scripts/pick_case.star
-                inputs:
-                  backlog:         "{{ world.backlog }}"
-                  case_index:      "{{ world.case_index }}"
-                  cases_processed: "{{ world.cases_processed }}"
-                  case_budget:     "{{ world.case_budget }}"
-              bind:
-                current_case:    current_case
-                current_case_id: current_case_id
             - set:
+                current_case:      {}
+                current_case_id:   ""
+                current_case_json: "{}"
+                pick_job_id:   ""
                 triage_verdict: {}
+                triage_job_id:  ""
                 drive_result:   {}
+                drive_job_id:   ""
                 verify_result:  {}
+                verify_job_id:  ""
+                record_job_id:  ""
+                journal_job_id: ""
       quit:
         - target: "@exit:abandoned"
           effects:

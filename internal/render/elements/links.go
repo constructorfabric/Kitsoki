@@ -1,8 +1,10 @@
 package elements
 
 import (
+	"net/url"
 	"path/filepath"
 	"regexp"
+	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -24,12 +26,46 @@ import (
 // lock-step without a cross-package dependency.
 var markdownPathRe = regexp.MustCompile(`\S+\.md$`)
 
+// markdownLinkRe matches the simple inline-link form used in typed kv values:
+// [visible label](https://example.test/target) or [visible label](.artifacts/x).
+// It intentionally stays small: one link, one target, no nested brackets. Rich
+// Markdown belongs in a template/prose renderer; kv needs predictable columns.
+var markdownLinkRe = regexp.MustCompile(`^\[([^\]\n]+)\]\(([^)\s]+)\)$`)
+
 // isMarkdownPath reports whether s names a markdown artifact the operator
 // can open — the TUI mirror of the web's isMarkdownPath. The value is
 // expected pre-trimmed by the caller (the kv renderer linkifies only a
 // single, already-fitting path token).
 func isMarkdownPath(s string) bool {
 	return markdownPathRe.MatchString(s)
+}
+
+// parseKVLink reports the visible label + target for a single-token/link kv
+// value that can safely become a terminal hyperlink without changing visible
+// layout. Supported forms are:
+//
+//   - [label](https://...) or [label](relative/path)
+//   - raw http(s) URLs
+//   - legacy markdown artifact paths (*.md)
+func parseKVLink(s string) (label, target string, ok bool) {
+	v := strings.TrimSpace(s)
+	if v == "" || v != s || strings.Contains(v, "\n") {
+		return "", "", false
+	}
+	if m := markdownLinkRe.FindStringSubmatch(v); m != nil {
+		label = strings.TrimSpace(m[1])
+		target = strings.TrimSpace(m[2])
+		return label, target, label != "" && target != ""
+	}
+	if isHTTPURL(v) || isMarkdownPath(v) {
+		return v, v, true
+	}
+	return "", "", false
+}
+
+func isHTTPURL(s string) bool {
+	u, err := url.Parse(s)
+	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
 }
 
 // osc8Underline style — a lipgloss underline applied to the visible link
@@ -53,15 +89,23 @@ var osc8Underline = lipgloss.NewStyle().Underline(true)
 // text is left exactly as supplied (typically the original relative path)
 // so the column/width math is byte-identical to the plain render.
 func osc8Link(text, path string) string {
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		// Can't form a stable target — render plain rather than a link to
-		// a relative URL the OS would resolve unpredictably.
-		return text
+	return osc8LinkTarget(text, path)
+}
+
+func osc8LinkTarget(text, target string) string {
+	href := target
+	if !isHTTPURL(target) {
+		abs, err := filepath.Abs(target)
+		if err != nil {
+			// Can't form a stable target — render plain rather than a link to
+			// a relative URL the OS would resolve unpredictably.
+			return text
+		}
+		href = "file://" + abs
 	}
 	const (
 		osc = "\x1b]8;;"
 		st  = "\x1b\\"
 	)
-	return osc + "file://" + abs + st + osc8Underline.Render(text) + osc + st
+	return osc + href + st + osc8Underline.Render(text) + osc + st
 }

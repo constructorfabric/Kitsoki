@@ -1,0 +1,14 @@
+# conformant-kit — S4 fixture: a kit whose sole story passes every
+# standalone contract check kitverify adds (exit requires, exports.intents
+# existence, interface op-shape checking against opschema.Builtins), plus a
+# conformance flow that kitsoki kit verify runs end to end. Paired with
+# ../nonconformant-kit, which breaks each of these on purpose.
+schema: kit/v1
+kit: conformant
+namespace: kitsoki-test
+version: 0.1.0
+title: Conformant checker kit (S4 fixture)
+provides:
+  stories: [checker]
+conformance:
+  flows: ["stories/checker/flows/*.yaml"]

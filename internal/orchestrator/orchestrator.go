@@ -26,6 +26,7 @@ import (
 	"kitsoki/internal/expr"
 	"kitsoki/internal/harness"
 	"kitsoki/internal/host"
+	"kitsoki/internal/inbox"
 	"kitsoki/internal/intent"
 	"kitsoki/internal/jobs"
 	"kitsoki/internal/journal"
@@ -33,6 +34,7 @@ import (
 	"kitsoki/internal/render"
 	"kitsoki/internal/semroute"
 	"kitsoki/internal/store"
+	"kitsoki/internal/storyauthoring"
 	"kitsoki/internal/trace"
 	"kitsoki/internal/transport"
 	"kitsoki/internal/turncache"
@@ -92,11 +94,29 @@ type Orchestrator struct {
 	// static agentBackendName. Seeded by WithHarnessProfiles from .kitsoki.yaml;
 	// empty leaves the legacy static path untouched. selection is read on every
 	// dispatch (resolveSelection) and written from a surface goroutine
-	// (SetSelection) — guarded by selMu. See docs/architecture/harness-profiles.md.
+	// (SetSelection) — guarded by selMu. See docs/guide/agents/harness-profiles.md.
 	harnessProfiles map[string]HarnessProfile
 	defaultProfile  string
 	selection       ProfileSelection
 	selMu           sync.RWMutex
+
+	// harnessLadder is the operator-declared automatic multi-provider
+	// fallback + effort/model escalation ladder (`.kitsoki.yaml`
+	// `harness_ladder:`, see internal/webconfig.HarnessLadder /
+	// internal/host/ladder.go). Zero value (Enabled() == false) is the
+	// default and leaves every host.agent.decide / host.agent.task dispatch
+	// on today's single-attempt behavior — set via WithHarnessLadderConfig.
+	harnessLadder host.LadderConfig
+	// ladderSession carries the session-local sticky fallback rung. A successful
+	// ladder fallback pins later host.agent.* calls to that rung until the
+	// operator changes the profile/model/effort selection.
+	ladderSession *host.LadderSessionState
+
+	// agentLaunchPolicy is the deterministic preflight guard applied before
+	// external coding-agent CLIs are forked by host.agent.*. It rejects protected
+	// roots/branches and, when configured, requires an opened capsule workspace.
+	// Zero value is disabled.
+	agentLaunchPolicy host.AgentLaunchPolicy
 
 	// modelCache memoises the always-on model ids fetched from a profile's
 	// ModelsEndpoint (keyed by profile name), guarded by its own mutex so a fetch
@@ -130,10 +150,9 @@ type Orchestrator struct {
 	// semantic-routing stack (semroute + turn-cache + default_intent sink +
 	// free-form fallback). nil means "no override — defer to the per-app
 	// routing.enabled config"; a non-nil value overrides it. Set via
-	// WithSemanticRouting from the CLI (--semantic-routing / KITSOKI_SEMANTIC_ROUTING),
-	// which defaults it to false so production routing is an isolated main-model
-	// decision (harness.RunTurn). The zero-cost exact display/example match
-	// (TryDeterministic) runs regardless of this gate. See
+	// WithSemanticRouting from explicit CLI/env overrides
+	// (--semantic-routing / KITSOKI_SEMANTIC_ROUTING). The zero-cost exact
+	// display/example match (TryDeterministic) runs regardless of this gate. See
 	// semanticStackEnabled and docs/architecture/semantic-routing.md.
 	semanticOverride *bool
 
@@ -395,6 +414,7 @@ func New(def *app.AppDef, m machine.Machine, s store.Store, h harness.Harness, o
 		pending:         make(map[app.SessionID]*pendingClarify),
 		cancelListeners: make(map[app.SessionID]context.CancelFunc),
 		sessionLocks:    make(map[app.SessionID]*sync.Mutex),
+		ladderSession:   host.NewLadderSessionState(),
 		clk:             clock.Real(),
 	}
 	for _, opt := range opts {
@@ -518,6 +538,12 @@ func WithAgentBackendName(name string) Option {
 	return func(o *Orchestrator) { o.agentBackendName = name }
 }
 
+// WithAgentLaunchPolicy installs the pre-launch guard for host.agent.* calls.
+// Disabled/zero policies are safe no-ops.
+func WithAgentLaunchPolicy(policy host.AgentLaunchPolicy) Option {
+	return func(o *Orchestrator) { o.agentLaunchPolicy = policy.Normalized() }
+}
+
 // WithLogger sets the logger used for structured tracing.
 func WithLogger(l *slog.Logger) Option {
 	return func(o *Orchestrator) {
@@ -624,9 +650,8 @@ func WithAgentRegistry(reg *agent.Registry) Option {
 // the turn-cache, the default_intent sink, and the app free-form fallback; the
 // zero-cost exact display/example match still runs. Passing true forces the
 // full stack on regardless of per-app config. Not calling this option at all
-// leaves routing deferred to the per-app routing.enabled config (the posture
-// used by tests and the flow runner). The CLI wires this from
-// --semantic-routing / KITSOKI_SEMANTIC_ROUTING, defaulting to false.
+// leaves routing deferred to the per-app routing.enabled config. The CLI wires
+// this only when --semantic-routing or KITSOKI_SEMANTIC_ROUTING is explicit.
 func WithSemanticRouting(enabled bool) Option {
 	return func(o *Orchestrator) { o.semanticOverride = &enabled }
 }
@@ -1035,15 +1060,26 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 	// strings / unique examples) survives so typed menu labels and canonical
 	// command text still resolve without an LLM hop; everything else falls
 	// straight through to the main-model interpreter (harness.RunTurn) as an
-	// isolated routing decision. The TUI already runs MatchDeterministic before
-	// Turn, so for it this is a cheap no-op; other surfaces (kitsoki turn, MCP
-	// drive/submit) gain the same fast path here. Set --semantic-routing /
+	// isolated routing decision. Every surface (TUI, kitsoki turn, MCP
+	// drive/submit, web) calls Turn directly and gains this fast path here;
+	// the TUI no longer runs a separate MatchDeterministic pre-pass (it used
+	// to, but that duplicated this exact check and could drift from it — see
+	// tui.go's dispatchInput). Set --semantic-routing /
 	// KITSOKI_SEMANTIC_ROUTING (or per-app routing.enabled when no override is
 	// wired) to develop/test the full stack. See
 	// docs/architecture/semantic-routing.md.
 	if len(cfg.supplementSlots) == 0 && !o.semanticStackEnabled() {
 		if outcome, hit, detErr := o.TryDeterministic(ctx, sid, input); detErr != nil {
 			return nil, detErr
+		} else if hit {
+			return outcome, nil
+		}
+		// Room-local conversational sinks are deterministic and authored
+		// explicitly on the active state. Keep them available even when the
+		// broader semantic stack is disabled so discovery/chat rooms do not
+		// fall through to the main-turn LLM for plain prose.
+		if outcome, hit, defErr := o.routeViaDefaultIntent(ctx, sid, input); defErr != nil {
+			return nil, defErr
 		} else if hit {
 			return outcome, nil
 		}
@@ -1121,22 +1157,14 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 		slog.String("mode", "normal"),
 	)
 
-	// Build RecentTurns from the event history. The store call here is a
-	// second pass over the same rows loadJourney already read, but the slice
-	// isn't carried on JourneyState today and snapshotting through the
-	// journey type would be a bigger refactor. Bounded to RecentTurnsLimit
-	// so prompt size stays predictable.
-	//
-	// On error: log and pass nil. RecentTurns is purely advisory — a missing
-	// history must not abort the turn.
-	history, histErr := o.store.LoadHistory(sid)
-	if histErr != nil {
-		tl.Debug(ctx, trace.EvTurnStart,
-			slog.String("recent_turns_load_error", histErr.Error()),
-		)
-		history = nil
-	}
-	recent := extractRecentTurns(history)
+	// Build RecentTurns from the event history loadJourney already read.
+	// journey.History carries the exact rows BuildJourney replayed to
+	// produce State/World/Turn above (either o.store.LoadHistory's
+	// since-snapshot slice or the eventSink's in-memory slice, depending on
+	// which branch loadJourney took) — reusing it here avoids a second store
+	// round trip over the same rows. Bounded to RecentTurnsLimit so prompt
+	// size stays predictable.
+	recent := extractRecentTurns(journey.History)
 
 	in := harness.TurnInput{
 		SessionID:      app.SessionID(sid),
@@ -1217,7 +1245,7 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 			// behavior below is byte-identical to before: maybeOffRamp is scoped
 			// to off-ramp rooms via the State.AgentOffRamp gate, so it returns
 			// (nil, false) in the common case (see offpath.go's isNoMatchCode).
-			if outcome, ok := o.maybeOffRamp(ctx, sid, journey.State, input,
+			if outcome, ok := o.maybeOffRamp(ctx, sid, journey.State, journey.World, input,
 				codeLLMClarification, 0, allowedNames, turnNum); ok {
 				return outcome, nil
 			}
@@ -1239,6 +1267,29 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 		)
 		return nil, fmt.Errorf("orchestrator: harness.RunTurn: %w", err)
 	}
+
+	// F4 (small-model routing instability): a bounded, deterministic
+	// re-prompt for a malformed transition call, applied BEFORE any of the
+	// routing/LLMToolCall trace events below so a rescued retry's params (not
+	// the original malformed attempt's) are what gets logged and parsed.
+	// Weaker models (Qwen3.6-27B in the GX10 study — see
+	// .artifacts/issues/bugs/2026-07-11-small-model-transition-args-instability.md)
+	// intermittently emit a structurally invalid transition tool call (slots
+	// double-encoded as a JSON string, a missing 'intent' field, ...) on the
+	// very first routing turn, in a DIFFERENT malformed shape each attempt —
+	// so a fixed per-shape coercion (like the existing R1
+	// double-encoded-JSON-string tolerance in toSlots) cannot cover the whole
+	// class. Give the harness a bounded number of chances to self-correct
+	// with the exact parse error fed back as a corrective system-prompt
+	// fragment — the same "tell the model what broke and let it retry" shape
+	// the decide verb's validator retry loop already uses for schema-invalid
+	// submissions. Bounded (maxMalformedTransitionRetries) so a persistently
+	// broken backend still fails fast rather than looping forever.
+	if _, probeErr := parseIntentCall(params); probeErr != nil {
+		params, _, probeErr = o.retryMalformedTransition(ctx, tl, in, params, probeErr)
+		_ = probeErr // final parseIntentCall below re-derives and reports this
+	}
+
 	tl.Debug(ctx, trace.EvTurnRouted,
 		slog.Duration("dur", harnessDur),
 		slog.String("outcome", "hit"),
@@ -1264,7 +1315,10 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 		"intent": extractIntentName(params),
 	}, turnNum)
 
-	// 4. Parse the intent call from params.
+	// 4. Parse the intent call from params. By this point
+	// retryMalformedTransition above has already given the harness bounded
+	// chances to self-correct a malformed transition call, so a parseErr here
+	// is either a non-retryable malformation or a retry-exhausted one.
 	call, parseErr := parseIntentCall(params)
 	if parseErr != nil {
 		return nil, fmt.Errorf("orchestrator: parse intent call: %w", parseErr)
@@ -1377,7 +1431,7 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 			// instead of persisting a rejection (Task 1.3/1.4). Inert for every
 			// other code flowing through here (GUARD_FAILED, INVALID_SLOT_VALUE,
 			// INTENT_NOT_ALLOWED_IN_STATE, …) and when the room has no off-ramp.
-			if outcome, ok := o.maybeOffRamp(ctx, sid, journey.State, input, ve.Code, harnessConfidence(params), allowedNames, turnNum); ok {
+			if outcome, ok := o.maybeOffRamp(ctx, sid, journey.State, journey.World, input, ve.Code, harnessConfidence(params), allowedNames, turnNum); ok {
 				return outcome, nil
 			}
 
@@ -1459,6 +1513,12 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 		Turn:      turnNum,
 		StatePath: result.NewState,
 	})
+	// dispatchState is the room whose on_enter host calls are about to fire —
+	// captured before hostRedirect can reassign result.NewState, so
+	// transitionedTurnEndWithGateSignal's usable-kitsoki-gate signal
+	// (room-workbench Task 1.4(b)) attributes this turn's dispatch to the
+	// room that actually owned it, not wherever an on_error redirect lands.
+	dispatchState := result.NewState
 	hostEvents, hostWorld, hostView, hostRedirect, hostErr := o.dispatchHostCalls(ctx, sid, result.HostCalls, result.World, result.NewState)
 	if hostErr != nil {
 		// A cancelled execution context (operator hit Stop — see
@@ -1478,28 +1538,22 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 			result.View = hostView
 		}
 	}
+	dispatchFailed := hostRedirect != ""
 	// Honour an on_error: redirect from the host dispatch.  The redirect
 	// state's on_enter has already run via dispatchHostCalls, and a
 	// TransitionApplied event was appended for replay; here we update
 	// result.NewState so subsequent allowed-intent / terminal-state /
 	// turn-end logic targets the redirected state, not the original.
+	//
+	// The never-silent error banner itself is no longer applied here:
+	// dispatchHostCalls/dispatchHostCallsDetailed apply it once, in the
+	// shared applyErrorBannerSeam seam (host_dispatch.go), before result.View
+	// is even set above — so it is already present by the time we reach this
+	// point, for every caller that routes through that seam (Turn,
+	// submitDirect, ContinueTurn, OneShot, RunInitialOnEnter), not just this
+	// one call site.
 	if hostRedirect != "" {
 		result.NewState = hostRedirect
-
-		// Usability safety-net: an on_error: redirect routed this turn to a
-		// destination room. If that room's view does not itself surface the
-		// failure (most stories don't reference {{ world.last_error }}), the
-		// operator would see a silently re-rendered room with no clue why the
-		// turn bounced. Append a concise, consistently-formatted banner so the
-		// reason is ALWAYS visible. Gated on (redirect happened AND last_error
-		// is set), and skipped when the view already shows the error text, so
-		// it never fires on success and never double-shows for the good
-		// citizens that already render last_error.
-		if msg, ok := result.World.Vars["last_error"].(string); ok && msg != "" {
-			if !strings.Contains(result.View, msg) {
-				result.View = appendErrorBanner(result.View, msg)
-			}
-		}
 	}
 
 	// Post-bind emit_intent dispatch (see settlePostBindEmits doc).
@@ -1530,7 +1584,7 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 
 	successEvents := append(prefix, result.Events...)
 	endEvent := newOrchestratorEvent(store.TurnEnded,
-		transitionedTurnEnd(result.NewState, result.View), turnNum)
+		transitionedTurnEndWithGateSignal(o.def, result.NewState, result.View, dispatchState, dispatchFailed, result.World.Vars), turnNum)
 	successEvents = append(successEvents, endEvent)
 	if inputEvent.Kind != "" {
 		successEvents = append([]store.Event{inputEvent}, successEvents...)
@@ -1586,12 +1640,8 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 	// pre-existing timeout on the state we just exited.
 	o.armTimeoutForState(sid, journey.State, result.NewState)
 
-	// Compute updated allowed intents in the new state.
-	newAllowed := o.machine.AllowedIntents(result.NewState, result.World)
-	newAllowedNames := make([]string, len(newAllowed))
-	for i, ai := range newAllowed {
-		newAllowedNames[i] = ai.Name
-	}
+	// Compute updated visible allowed intents in the new state.
+	newAllowedNames := allowedNamesFromMachine(o.machine, result.NewState, result.World)
 
 	mode := ModeTransitioned
 
@@ -1912,6 +1962,19 @@ func (o *Orchestrator) submitDirect(ctx context.Context, sid app.SessionID, inte
 	)
 	emitRoutingStream(ctx, turnNum, intentName, prov)
 
+	// Conversation lane (agent_off_ramp.capture_free_text): the room's
+	// synthesized <room>_discuss intent diverts to a persistent per-room
+	// converse turn BEFORE the machine runs — no transition, no world
+	// mutation, no room re-render. Every live entry path (routed free text,
+	// menu submit, MCP drive) converges here, so this is the single divert
+	// point. See offramp_conversation.go.
+	if outcome, ok, convErr := o.maybeConversationDivert(ctx, sid, journey.State, journey.World, intentName, slots, userInput, turnNum); ok || convErr != nil {
+		if convErr != nil {
+			return nil, fmt.Errorf("orchestrator: SubmitDirect: %w", convErr)
+		}
+		return outcome, nil
+	}
+
 	call := intent.IntentCall{
 		Intent: intentName,
 		Slots:  world.Slots(slots),
@@ -2023,10 +2086,7 @@ func (o *Orchestrator) submitDirect(ctx context.Context, sid app.SessionID, inte
 		if appendErr := o.appendEventsAndJournal(sid, failureEvents, sdFailJEntries); appendErr != nil {
 			return nil, fmt.Errorf("orchestrator: SubmitDirect: append failure events: %w", appendErr)
 		}
-		allowedNames := make([]string, 0)
-		for _, ai := range o.machine.AllowedIntents(journey.State, journey.World) {
-			allowedNames = append(allowedNames, ai.Name)
-		}
+		allowedNames := allowedNamesFromMachine(o.machine, journey.State, journey.World)
 		return &TurnOutcome{
 			Mode:           ModeRejected,
 			NewState:       journey.State,
@@ -2066,6 +2126,7 @@ func (o *Orchestrator) submitDirect(ctx context.Context, sid app.SessionID, inte
 		Turn:      turnNum,
 		StatePath: result.NewState,
 	})
+	dispatchState := result.NewState
 	hostEvents, hostWorld, hostView, hostRedirect, hostErr := o.dispatchHostCalls(ctx, sid, result.HostCalls, result.World, result.NewState)
 	if hostErr != nil {
 		// A cancelled execution context (operator hit Stop — see
@@ -2085,6 +2146,7 @@ func (o *Orchestrator) submitDirect(ctx context.Context, sid app.SessionID, inte
 			result.View = hostView
 		}
 	}
+	dispatchFailed := hostRedirect != ""
 	if hostRedirect != "" {
 		result.NewState = hostRedirect
 	}
@@ -2100,7 +2162,7 @@ func (o *Orchestrator) submitDirect(ctx context.Context, sid app.SessionID, inte
 
 	successEvents := append([]store.Event{sdInputEvent, startEvent}, result.Events...)
 	endEvent := newOrchestratorEvent(store.TurnEnded,
-		transitionedTurnEnd(result.NewState, result.View), turnNum)
+		transitionedTurnEndWithGateSignal(o.def, result.NewState, result.View, dispatchState, dispatchFailed, result.World.Vars), turnNum)
 	successEvents = append(successEvents, endEvent)
 	for i := range successEvents {
 		successEvents[i].Turn = turnNum
@@ -2127,11 +2189,7 @@ func (o *Orchestrator) submitDirect(ctx context.Context, sid app.SessionID, inte
 	// (Re-)arm any Timeout: declared on the new state.
 	o.armTimeoutForState(sid, journey.State, result.NewState)
 
-	newAllowed := o.machine.AllowedIntents(result.NewState, result.World)
-	newAllowedNames := make([]string, len(newAllowed))
-	for i, ai := range newAllowed {
-		newAllowedNames[i] = ai.Name
-	}
+	newAllowedNames := allowedNamesFromMachine(o.machine, result.NewState, result.World)
 
 	mode := ModeTransitioned
 	newStateDef := lookupStateByPath(o.def, result.NewState)
@@ -2197,7 +2255,6 @@ func (o *Orchestrator) OneShot(ctx context.Context, in OneShotInput) (*OneShotRe
 
 	var (
 		call intent.IntentCall
-		err  error
 	)
 	switch {
 	case in.Intent != "":
@@ -2206,26 +2263,7 @@ func (o *Orchestrator) OneShot(ctx context.Context, in OneShotInput) (*OneShotRe
 			Slots:  world.Slots(in.Slots),
 		}
 	case in.Input != "":
-		allowed := o.machine.AllowedIntents(in.State, w)
-		allowedNames := make([]string, len(allowed))
-		for i, a := range allowed {
-			allowedNames[i] = a.Name
-		}
-		params, runErr := o.harness.RunTurn(ctx, harness.TurnInput{
-			SessionID:      app.SessionID("oneshot"),
-			TurnNumber:     1,
-			UserText:       in.Input,
-			StatePath:      in.State,
-			World:          w,
-			AllowedIntents: allowedNames,
-		})
-		if runErr != nil {
-			return nil, fmt.Errorf("orchestrator: OneShot: harness.RunTurn: %w", runErr)
-		}
-		call, err = parseIntentCall(params)
-		if err != nil {
-			return nil, fmt.Errorf("orchestrator: OneShot: parse intent call: %w", err)
-		}
+		return o.oneShotInput(ctx, in, worldBefore)
 	default:
 		return nil, fmt.Errorf("orchestrator: OneShot: exactly one of Intent or Input must be set")
 	}
@@ -2303,6 +2341,133 @@ func (o *Orchestrator) OneShot(ctx context.Context, in OneShotInput) (*OneShotRe
 	return out, nil
 }
 
+func (o *Orchestrator) oneShotInput(ctx context.Context, in OneShotInput, worldBefore map[string]any) (*OneShotResult, error) {
+	sid, err := o.NewSession(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("orchestrator: OneShot: new session: %w", err)
+	}
+	if _, err := o.Teleport(ctx, sid, inbox.TeleportTarget{State: in.State, Slots: in.World}); err != nil {
+		return nil, fmt.Errorf("orchestrator: OneShot: teleport: %w", err)
+	}
+	outcome, err := o.Turn(ctx, sid, in.Input)
+	if err != nil {
+		return nil, err
+	}
+	journey, err := o.loadJourney(sid)
+	if err != nil {
+		return nil, fmt.Errorf("orchestrator: OneShot: load result journey: %w", err)
+	}
+
+	intentName, slots := intentAcceptedFromEvents(outcome.Events)
+	result := &OneShotResult{
+		Mode:           outcome.Mode,
+		Intent:         intentName,
+		Slots:          slots,
+		PrevState:      in.State,
+		NextState:      outcome.NewState,
+		WorldBefore:    worldBefore,
+		WorldAfter:     copyWorldVars(journey.World),
+		Effects:        effectsFromEvents(outcome.Events),
+		HostCalls:      hostCallsFromEvents(outcome.Events),
+		View:           outcome.View,
+		AllowedIntents: outcome.AllowedIntents,
+		ErrorCode:      string(outcome.ErrorCode),
+		ErrorMessage:   outcome.ErrorMessage,
+		GuardHint:      outcome.GuardHint,
+		SlotsNeeded:    outcome.SlotsNeeded,
+	}
+	if result.WorldAfter == nil {
+		result.WorldAfter = worldBefore
+	}
+	return result, nil
+}
+
+func copyWorldVars(w world.World) map[string]any {
+	out := make(map[string]any, len(w.Vars))
+	for k, v := range w.Vars {
+		out[k] = v
+	}
+	return out
+}
+
+func intentAcceptedFromEvents(events []store.Event) (string, map[string]any) {
+	for _, ev := range events {
+		if ev.Kind != store.IntentAccepted {
+			continue
+		}
+		var payload struct {
+			Intent string         `json:"intent"`
+			Slots  map[string]any `json:"slots"`
+		}
+		if err := json.Unmarshal(ev.Payload, &payload); err != nil {
+			return "", nil
+		}
+		return payload.Intent, payload.Slots
+	}
+	for _, ev := range events {
+		if ev.Kind != store.TransitionApplied {
+			continue
+		}
+		var payload struct {
+			Intent string         `json:"intent"`
+			Slots  map[string]any `json:"slots"`
+		}
+		if err := json.Unmarshal(ev.Payload, &payload); err != nil {
+			return "", nil
+		}
+		if payload.Intent != "" {
+			return payload.Intent, payload.Slots
+		}
+	}
+	return "", nil
+}
+
+func hostCallsFromEvents(events []store.Event) []HostCallSummary {
+	var out []HostCallSummary
+	for _, ev := range events {
+		switch ev.Kind {
+		case store.HostDispatched:
+			var payload struct {
+				Namespace string         `json:"namespace"`
+				Args      map[string]any `json:"args"`
+			}
+			if err := json.Unmarshal(ev.Payload, &payload); err != nil {
+				continue
+			}
+			out = append(out, HostCallSummary{Namespace: payload.Namespace, Args: payload.Args})
+		case store.HostReturned:
+			var payload struct {
+				Namespace string         `json:"namespace"`
+				Data      map[string]any `json:"data"`
+				Error     string         `json:"error"`
+			}
+			if err := json.Unmarshal(ev.Payload, &payload); err != nil {
+				continue
+			}
+			found := false
+			for i := len(out) - 1; i >= 0; i-- {
+				if out[i].Namespace != payload.Namespace {
+					continue
+				}
+				if out[i].Data == nil && out[i].Error == "" {
+					out[i].Data = payload.Data
+					out[i].Error = payload.Error
+					found = true
+					break
+				}
+			}
+			if !found {
+				out = append(out, HostCallSummary{
+					Namespace: payload.Namespace,
+					Data:      payload.Data,
+					Error:     payload.Error,
+				})
+			}
+		}
+	}
+	return out
+}
+
 // effectsFromEvents flattens EffectApplied events into EffectSummary form.
 func effectsFromEvents(events []store.Event) []EffectSummary {
 	var out []EffectSummary
@@ -2319,12 +2484,15 @@ func effectsFromEvents(events []store.Event) []EffectSummary {
 	return out
 }
 
-// allowedNamesFromMachine collects intent names allowed in (state, world).
+// allowedNamesFromMachine collects visible intent names allowed in (state, world).
 func allowedNamesFromMachine(m machine.Machine, state app.StatePath, w world.World) []string {
 	allowed := m.AllowedIntents(state, w)
-	out := make([]string, len(allowed))
-	for i, ai := range allowed {
-		out[i] = ai.Name
+	out := make([]string, 0, len(allowed))
+	for _, ai := range allowed {
+		if ai.Hidden || storyauthoring.HideIntentFromMenu(string(state), ai.Name) {
+			continue
+		}
+		out = append(out, ai.Name)
 	}
 	return out
 }
@@ -2417,17 +2585,12 @@ func (o *Orchestrator) ContinueTurn(ctx context.Context, sid app.SessionID, supp
 		}
 
 		// Other validation error.
-		allowedNames := make([]string, 0)
-		if ai := o.machine.AllowedIntents(journey.State, journey.World); len(ai) > 0 {
-			for _, a := range ai {
-				allowedNames = append(allowedNames, a.Name)
-			}
-		}
+		allowedNames := allowedNamesFromMachine(o.machine, journey.State, journey.World)
 		// Agent off-ramp: routed through the same helper so the rejection
 		// sites can't drift (Task 1.3). This is the slot-continuation path —
 		// it carries no fresh free-text utterance, so maybeOffRamp's empty-input
 		// guard makes it inert here; the call exists for parity, not effect.
-		if outcome, ok := o.maybeOffRamp(ctx, sid, journey.State, "", ve.Code, call.Confidence, allowedNames, turnNum); ok {
+		if outcome, ok := o.maybeOffRamp(ctx, sid, journey.State, journey.World, "", ve.Code, call.Confidence, allowedNames, turnNum); ok {
 			return outcome, nil
 		}
 		// Rejection path: TypedView/RenderEnv/Renderer intentionally
@@ -2448,6 +2611,7 @@ func (o *Orchestrator) ContinueTurn(ctx context.Context, sid app.SessionID, supp
 	}
 
 	// Success: dispatch host calls then persist events.
+	dispatchState := result.NewState
 	hostEvents, hostWorld, hostView, hostRedirect, hostErr := o.dispatchHostCalls(ctx, sid, result.HostCalls, result.World, result.NewState)
 	if hostErr != nil {
 		// A cancelled execution context (operator hit Stop — see
@@ -2467,6 +2631,7 @@ func (o *Orchestrator) ContinueTurn(ctx context.Context, sid app.SessionID, supp
 			result.View = hostView
 		}
 	}
+	dispatchFailed := hostRedirect != ""
 	if hostRedirect != "" {
 		result.NewState = hostRedirect
 	}
@@ -2481,7 +2646,7 @@ func (o *Orchestrator) ContinueTurn(ctx context.Context, sid app.SessionID, supp
 
 	successEvents := append([]store.Event{startEvent}, result.Events...)
 	endEvent := newOrchestratorEvent(store.TurnEnded,
-		transitionedTurnEnd(result.NewState, result.View), turnNum)
+		transitionedTurnEndWithGateSignal(o.def, result.NewState, result.View, dispatchState, dispatchFailed, result.World.Vars), turnNum)
 	successEvents = append(successEvents, endEvent)
 
 	for i := range successEvents {
@@ -2524,11 +2689,7 @@ func (o *Orchestrator) ContinueTurn(ctx context.Context, sid app.SessionID, supp
 	delete(o.pending, sid)
 	o.mu.Unlock()
 
-	newAllowed := o.machine.AllowedIntents(result.NewState, result.World)
-	newAllowedNames := make([]string, len(newAllowed))
-	for i, ai := range newAllowed {
-		newAllowedNames[i] = ai.Name
-	}
+	newAllowedNames := allowedNamesFromMachine(o.machine, result.NewState, result.World)
 
 	mode := ModeTransitioned
 	newStateDef := lookupStateByPath(o.def, result.NewState)
@@ -2678,13 +2839,14 @@ func (o *Orchestrator) RenderState(state app.StatePath, w world.World) (string, 
 // the ANSI-stripped 80-col text, collapsing the room's typed elements
 // (banner, kv, prose paragraphs, choice→buttons) into one monospace blob.
 //
-// No-op when a typed view is already present (the non-binding fast path) or
-// when the state has no element-array view (RenderStateTyped returns a nil
-// typed view for legacy string / extends / template_file views — those are
-// served as text by design). Pure render; safe to call after all post-bind
-// settling (emit recursion, auto-gate) has fixed the final state/world.
+// Re-render even when TypedView is already populated. A same-room transition
+// has an initial typed view from the pre-bind world, which is just as stale as
+// a nil view after its on_enter host call binds. RenderStateTyped returns nil
+// for legacy string / extends / template_file views, which remain text-only.
+// This is pure rendering and is safe after all post-bind settling (emit
+// recursion, auto-gate) has fixed the final state/world.
 func (o *Orchestrator) refreshTypedViewAfterBind(res *machine.TurnResult) {
-	if res == nil || res.TypedView != nil {
+	if res == nil {
 		return
 	}
 	if _, tv, env, rr, err := o.machine.RenderStateTyped(res.NewState, res.World); err == nil && tv != nil {
@@ -2739,11 +2901,7 @@ func (o *Orchestrator) CurrentView(_ context.Context, sid app.SessionID) (*TurnO
 		return nil, fmt.Errorf("current view: load journey: %w", err)
 	}
 
-	allowed := o.machine.AllowedIntents(j.State, j.World)
-	allowedNames := make([]string, 0, len(allowed))
-	for _, ai := range allowed {
-		allowedNames = append(allowedNames, ai.Name)
-	}
+	allowedNames := allowedNamesFromMachine(o.machine, j.State, j.World)
 
 	out := &TurnOutcome{
 		Mode:           ModeTransitioned,
@@ -2823,7 +2981,7 @@ func (o *Orchestrator) loadJourney(sid app.SessionID) (*store.JourneyState, erro
 	startWorld := initialWorld
 	if hasSnap {
 		startState = snap.StatePath
-		if err := json.Unmarshal(snap.WorldJSON, &startWorld.Vars); err != nil {
+		if err := json.Unmarshal(snap.WorldJSON, &startWorld); err != nil {
 			return nil, fmt.Errorf("unmarshal snapshot world: %w", err)
 		}
 	}
@@ -2850,6 +3008,64 @@ func (o *Orchestrator) loadJourney(sid app.SessionID) (*store.JourneyState, erro
 	o.seedSessionID(js.World, sid)
 
 	return js, nil
+}
+
+// maxMalformedTransitionRetries bounds how many extra harness.RunTurn calls
+// retryMalformedTransition will spend trying to rescue a malformed transition
+// tool call. Small enough that a persistently broken backend/model still
+// fails the turn quickly (2 extra LLM calls, worst case), large enough to
+// absorb the "different malformed shape every attempt" behavior observed from
+// Qwen3.6-27B in the GX10 study (see
+// .artifacts/issues/bugs/2026-07-11-small-model-transition-args-instability.md).
+const maxMalformedTransitionRetries = 2
+
+// retryMalformedTransition re-invokes the harness up to
+// maxMalformedTransitionRetries times when its first transition tool call
+// failed to parse (missing/malformed 'intent', slots that don't coerce to a
+// map, ...), feeding the exact parse error back as a corrective
+// system-prompt fragment each time so the model can self-correct instead of
+// failing the whole turn on one malformed call. Returns the last params tried
+// (rescued or not), the successfully parsed call when a retry succeeded (zero
+// value otherwise — callers re-derive via parseIntentCall so this return is
+// advisory only), and the final parse error (nil on success).
+//
+// This is deliberately NOT a general "retry any harness error" loop: it only
+// fires when RunTurn itself succeeded (returned a params, not an error) but
+// the params failed to parse as a valid transition call — the exact F4
+// failure class. A harness-level error (timeout, refusal, ClarifyResponse)
+// is handled by the existing caller-side branches and is not retried here.
+func (o *Orchestrator) retryMalformedTransition(ctx context.Context, tl *trace.TurnLogger, in harness.TurnInput, params mcp.CallToolParams, parseErr error) (mcp.CallToolParams, intent.IntentCall, error) {
+	lastParams := params
+	lastErr := parseErr
+	for attempt := 1; attempt <= maxMalformedTransitionRetries && lastErr != nil; attempt++ {
+		tl.Debug(ctx, trace.EvTurnRouted,
+			slog.String("outcome", "malformed_transition_retry"),
+			slog.Int("attempt", attempt),
+			slog.String("error", lastErr.Error()),
+		)
+		retryIn := in
+		retryIn.SystemPrompt = strings.TrimSpace(in.SystemPrompt + "\n\n" + fmt.Sprintf(
+			"Your previous `transition` tool call could not be parsed (%s). "+
+				"Call `transition` again with a valid JSON object: `intent` must be a plain string "+
+				"(not empty, not JSON-encoded), and `slots` (if present) must be a JSON object, not "+
+				"a JSON-encoded string.", lastErr.Error()))
+		retryParams, runErr := o.harness.RunTurn(ctx, retryIn)
+		if runErr != nil {
+			// The harness itself failed on the retry (timeout, clarify,
+			// refusal, ...) — stop retrying and let the caller's normal
+			// harness-error handling take over on the ORIGINAL params/error,
+			// since a further wrapped error here would lose the caller's
+			// existing ClarifyResponse/error-type handling.
+			return lastParams, intent.IntentCall{}, parseErr
+		}
+		lastParams = retryParams
+		call, callErr := parseIntentCall(retryParams)
+		if callErr == nil {
+			return lastParams, call, nil
+		}
+		lastErr = callErr
+	}
+	return lastParams, intent.IntentCall{}, lastErr
 }
 
 // parseIntentCall extracts an IntentCall from the harness's CallToolParams.
@@ -2981,6 +3197,27 @@ func transitionedTurnEnd(to app.StatePath, view string) map[string]any {
 	}
 	if v := recordedView(view); v != "" {
 		p["view"] = v
+	}
+	return p
+}
+
+// transitionedTurnEndWithGateSignal is transitionedTurnEnd plus the
+// room-workbench Task 1.4(b) usable-kitsoki-gate signal (see
+// workbench_gate_signal.go's doc comment for the full contract and its
+// documented S4 gap). dispatchingState is the state whose on_enter host
+// calls this turn dispatched (captured by the caller right after
+// machine.Turn, before any on_error redirect reassigns result.NewState);
+// dispatchFailed is whether that dispatch took its on_error redirect. world
+// is the post-dispatch world snapshot, used only to look up the optional S6
+// expected_effects join input (see workbench_gate_signal.go). When
+// dispatchingState is not a workbench: room (the common case), the payload
+// is byte-identical to plain transitionedTurnEnd.
+func transitionedTurnEndWithGateSignal(def *app.AppDef, to app.StatePath, view string, dispatchingState app.StatePath, dispatchFailed bool, world map[string]any) map[string]any {
+	p := transitionedTurnEnd(to, view)
+	if sig := workbenchGateSignal(def, dispatchingState, dispatchFailed, view, world); sig != nil {
+		for k, v := range sig {
+			p[k] = v
+		}
 	}
 	return p
 }
@@ -3128,9 +3365,28 @@ func agentsForContext(def *app.AppDef) map[string]host.Agent {
 			DefaultCwd:           a.Cwd,
 			InheritClaudeDefault: a.InheritClaudeDefault,
 			Provider:             a.Provider,
+			Harness:              a.Harness,
 		}
 		if len(a.Tools) > 0 {
 			agent.Tools = append([]string(nil), a.Tools...)
+		}
+		agent.Toolbox = a.Toolbox
+		if a.MCP != nil {
+			if len(a.MCP.Tools) > 0 {
+				agent.MCPTools = append([]string(nil), a.MCP.Tools...)
+			}
+			if len(a.MCP.Servers) > 0 {
+				agent.MCPServers = make(map[string]any, len(a.MCP.Servers))
+				for k, v := range a.MCP.Servers {
+					agent.MCPServers[k] = v
+				}
+			}
+		}
+		if a.Permissions != nil {
+			agent.Permissions.Mode = a.Permissions.Mode
+			if len(a.Permissions.DisallowedTools) > 0 {
+				agent.Permissions.DisallowedTools = append([]string(nil), a.Permissions.DisallowedTools...)
+			}
 		}
 		if a.BashProfile != nil {
 			agent.BashProfile = convertBashProfile(a.BashProfile)
@@ -3139,6 +3395,13 @@ func agentsForContext(def *app.AppDef) map[string]host.Agent {
 			v := *a.ExternalSideEffect
 			agent.ExternalSideEffect = &v
 		}
+		if a.TokenBudget != nil {
+			agent.TokenBudget = &host.BudgetThresholds{
+				WarnTokens:   a.TokenBudget.WarnTokens,
+				RefuseTokens: a.TokenBudget.RefuseTokens,
+			}
+		}
+		agent.Effect = a.Effect
 		out[name] = agent
 	}
 	return out
@@ -3158,7 +3421,7 @@ func providersForContext(def *app.AppDef) map[string]host.Provider {
 		if p == nil {
 			continue
 		}
-		prov := host.Provider{Model: p.Model, Effort: p.Effort}
+		prov := host.Provider{Backend: p.Backend, Model: p.Model, Effort: p.Effort}
 		if len(p.Env) > 0 {
 			prov.Env = make(map[string]string, len(p.Env))
 			for k, v := range p.Env {
@@ -3193,6 +3456,14 @@ func projectContextFor(def *app.AppDef) host.ProjectContext {
 // banner the runtime appends when a redirected room does not surface the
 // failure itself. Kept as one format so every story bounce looks identical.
 const errorBannerFormat = "⚠ Action failed: %s"
+
+// ErrorBannerMarker is the fixed, message-independent prefix of
+// errorBannerFormat. Callers outside this package (the G-FLOW flow-fixture
+// gate in internal/testrunner) use it to detect "did this turn's view carry
+// the never-silent banner" without depending on the exact failure message,
+// which varies per redirect. Kept in sync with errorBannerFormat by
+// derivation rather than a second literal.
+var ErrorBannerMarker = strings.TrimSuffix(errorBannerFormat, "%s")
 
 func appendErrorBanner(view, msg string) string {
 	banner := fmt.Sprintf(errorBannerFormat, msg)

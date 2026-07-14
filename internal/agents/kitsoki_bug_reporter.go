@@ -1,6 +1,10 @@
 package agents
 
-import _ "embed"
+import (
+	_ "embed"
+
+	"kitsoki/internal/reportcontract"
+)
 
 //go:embed kitsoki_bug_reporter.md
 var kitsokiBugReporterPrompt string
@@ -10,10 +14,8 @@ var kitsokiBugReporterPrompt string
 // invoking `kitsoki bug create --target kitsoki`. Surfaced through
 // the builtin `kitsoki.bug` meta mode.
 //
-// Tool surface (informational — every claude subprocess currently
-// runs with --permission-mode bypassPermissions, so this list
-// documents intent for prompt authors and code reviewers rather
-// than acting as a runtime gate):
+// Tool surface: the shared reportcontract.BugFilerTools profile. It is
+// deliberately narrower than the editing agents and wider than the improvers.
 //
 //   - Read + Grep + Glob — the agent's prompt directs it to read the
 //     [context]-supplied `trace_file` to reconstruct what happened
@@ -40,12 +42,7 @@ func kitsokiBugReporter() Agent {
 		Name:         NameKitsokiBugReporter,
 		SystemPrompt: kitsokiBugReporterPrompt,
 		Model:        "",
-		Tools: []string{
-			"Read",
-			"Glob",
-			"Grep",
-			"Bash(kitsoki bug create*)",
-		},
-		DefaultCwd: "${KITSOKI_REPO}",
+		Tools:        reportcontract.BugFilerTools(),
+		DefaultCwd:   "${KITSOKI_REPO}",
 	}
 }

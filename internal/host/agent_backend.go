@@ -40,6 +40,13 @@ type Invocation struct {
 	// copilot also folds it into a `-C` flag (so it survives even if a caller
 	// ignores cmd.Dir) — both are honoured.
 	WorkingDir string
+	// PromptForBudget is the prompt text used for pre-dispatch quota estimates
+	// when it differs from Stdin. Codex carries base instructions through a
+	// model_instructions_file config override, so Stdin alone would undercount.
+	PromptForBudget string
+	// Cleanup removes any temporary files created during translation. Callers
+	// that execute an Invocation must defer it after translation.
+	Cleanup func()
 }
 
 // classifiedEvent is the backend-neutral distillation of one streamed JSONL
@@ -61,9 +68,11 @@ type classifiedEvent struct {
 	// Tool / ToolArgs describe the FIRST tool invocation in this event (a
 	// compact preview of its args). Tools holds every tool invocation in
 	// declaration order. Empty for non-tool events.
-	Tool     string
-	ToolArgs string
-	Tools    []StreamToolUse
+	Tool        string
+	ToolArgs    string
+	Tools       []StreamToolUse
+	ActionID    string
+	ActionState string
 	// IsResult marks the terminal event of a run. ResultText, when non-empty,
 	// is the authoritative final reply text carried by that event (claude
 	// only; copilot leaves it empty and the reply is the last assistant
@@ -160,6 +169,16 @@ func WithAgentBackendNamed(ctx context.Context, name string) context.Context {
 	return WithAgentBackend(ctx, b)
 }
 
+// TranslateAgentInvocationForBackend exposes the backend translation step for
+// CLI planning surfaces. It does not resolve or execute a binary; it only maps
+// the neutral claude-shaped argv/stdin/working-dir triple onto the concrete
+// backend invocation that runClaudeOneShot would execute with the same backend
+// installed on ctx.
+func TranslateAgentInvocationForBackend(ctx context.Context, name string, claudeArgs []string, stdin, workingDir string) Invocation {
+	ctx = WithAgentBackendNamed(ctx, name)
+	return AgentBackendFromContext(ctx).TranslateInvocation(claudeArgs, stdin, workingDir)
+}
+
 // ResolveAgentBackendName maps a user-facing backend name ("", "claude",
 // "copilot") to a backend, defaulting to claude on empty/unknown so a typo
 // degrades safely to the battle-tested path. ok reports whether name was a
@@ -170,6 +189,8 @@ func ResolveAgentBackendName(name string) (b agentBackend, ok bool) {
 		return copilotBackend{}, true
 	case "codex":
 		return codexBackend{}, true
+	case "agy":
+		return agyBackend{}, true
 	case "claude", "":
 		return claudeBackend{}, name == "claude"
 	default:

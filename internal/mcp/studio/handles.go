@@ -164,11 +164,12 @@ type StudioSession struct {
 	// the loaded webconfig); defaultProfile is the selection a session starts on
 	// when session.new omits an explicit profile. Empty map ⇒ legacy
 	// default-backend path (the WithHarnessProfiles no-op contract).
-	harnessProfiles map[string]orchestrator.HarnessProfile
-	defaultProfile  string
-	chatStore       *chats.Store
-	configureHosts  HostRegistryConfigurer
-	currentSID      string
+	harnessProfiles   map[string]orchestrator.HarnessProfile
+	defaultProfile    string
+	agentLaunchPolicy host.AgentLaunchPolicy
+	chatStore         *chats.Store
+	configureHosts    HostRegistryConfigurer
+	currentSID        string
 }
 
 // SetHarnessProfiles seeds the operator-declared harness profiles new driving
@@ -180,6 +181,14 @@ func (ss *StudioSession) SetHarnessProfiles(profiles map[string]orchestrator.Har
 	defer ss.mu.Unlock()
 	ss.harnessProfiles = profiles
 	ss.defaultProfile = defaultProfile
+}
+
+// SetAgentLaunchPolicy seeds the machine-local pre-launch guard new driving
+// sessions inherit for host.agent.* calls. Disabled policies are safe no-ops.
+func (ss *StudioSession) SetAgentLaunchPolicy(policy host.AgentLaunchPolicy) {
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
+	ss.agentLaunchPolicy = policy.Normalized()
 }
 
 // SetChatStore seeds the concrete chat store used by driving sessions for
@@ -309,6 +318,14 @@ func (ss *StudioSession) OpenSession(p OpenSessionParams) (*SessionHandle, error
 	return sh, nil
 }
 
+// takePendingSeed is the seam OpenDrivingSession uses to consume the deterministic
+// seed backstop for a story. It defaults to host.TakePendingSeedForStory (which
+// reads KITSOKI_SESSION_ID from the studio server's own env and pops the matching
+// on-disk seed, consume-once); a test overrides it to inject a seed without the
+// process env / filesystem. Returns (nil,false) when no seed is registered — the
+// no-op path that keeps a non-backstopped session.new byte-identical to today.
+var takePendingSeed = host.TakePendingSeedForStory
+
 // OpenDrivingSessionParams configures OpenDrivingSession.
 type OpenDrivingSessionParams struct {
 	// Key is the requested handle key. Empty auto-assigns a fresh "s<N>" key.
@@ -347,17 +364,50 @@ type OpenDrivingSessionParams struct {
 // test to assert no live harness is ever driven).
 func (ss *StudioSession) OpenDrivingSession(ctx context.Context, p OpenDrivingSessionParams) (*SessionHandle, error) {
 	ss.mu.Lock()
-	defer ss.mu.Unlock()
 
 	mode := p.Mode.normalize()
+
+	// Deterministic seed backstop: if the parent (goal-seeker) registered a
+	// pending seed for this story under our KITSOKI_SESSION_ID lineage, apply it
+	// so a maker that opened session.new WITHOUT initial_world still seeds the
+	// nested story. The explicit InitialWorld arg wins per-key (the seed only
+	// fills gaps), so behaviour is identical whether or not the maker cooperated.
+	// Consume-once: the seed is popped here so a sequential second open gets none.
+	// No lineage / no registered seed ⇒ takePendingSeed returns false and this is
+	// a byte-identical no-op. See internal/host/pending_seed.go.
+	if seed, ok := takePendingSeed(p.StoryPath); ok {
+		merged := make(map[string]any, len(seed)+len(p.InitialWorld))
+		for k, v := range seed {
+			merged[k] = v
+		}
+		for k, v := range p.InitialWorld {
+			merged[k] = v // explicit initial_world wins on conflicting keys
+		}
+		p.InitialWorld = merged
+	}
 
 	key := p.Key
 	if key == "" {
 		ss.nextID++
 		key = fmt.Sprintf("s%d", ss.nextID)
 	} else if _, exists := ss.sessions[key]; exists {
+		ss.mu.Unlock()
 		return nil, &openError{Code: ErrBadRequest, Msg: fmt.Sprintf("session handle %q is already open", key)}
 	}
+
+	sh := &SessionHandle{
+		Key:           key,
+		Mode:          mode,
+		RecordingPath: p.RecordingPath,
+		StoryPath:     p.StoryPath,
+		TracePath:     p.TracePath,
+	}
+	ss.sessions[key] = sh
+	harnessProfiles := cloneHarnessProfiles(ss.harnessProfiles)
+	defaultProfile := ss.defaultProfile
+	chatStore := ss.chatStore
+	configureHosts := ss.configureHosts
+	ss.mu.Unlock()
 
 	// A direct-submit replay session does not need a routing cassette: it can
 	// use the runtime's no-route harness and still accept session.submit calls.
@@ -370,6 +420,7 @@ func (ss *StudioSession) OpenDrivingSession(ctx context.Context, p OpenDrivingSe
 		// def for prompt context (replay ignores it).
 		h, err = ss.build(mode, p.RecordingPath, p.StoryPath)
 		if err != nil {
+			ss.removeOpeningSession(key, sh)
 			return nil, &openError{Code: ErrHarness, Msg: fmt.Sprintf("build %s harness: %v", mode, err)}
 		}
 	}
@@ -377,6 +428,18 @@ func (ss *StudioSession) OpenDrivingSession(ctx context.Context, p OpenDrivingSe
 	// Resolve the session's profile selection: an explicit per-session profile
 	// wins, else the boot-time default. Both are no-ops when no profiles are
 	// declared (the map is empty).
+	if p.Profile != "" && len(harnessProfiles) > 0 {
+		if _, ok := harnessProfiles[p.Profile]; !ok {
+			ss.removeOpeningSession(key, sh)
+			if h != nil {
+				_ = h.Close()
+			}
+			return nil, &openError{
+				Code: ErrBadRequest,
+				Msg:  fmt.Sprintf("unknown harness profile %q", p.Profile),
+			}
+		}
+	}
 	//
 	// A live session with no explicit profile is the silent-synthetic landmine:
 	// the boot-time default may be a synthetic/emulated backend, and the caller
@@ -385,44 +448,68 @@ func (ss *StudioSession) OpenDrivingSession(ctx context.Context, p OpenDrivingSe
 	// profiles ARE declared, fail loud rather than fall back — the caller must
 	// name the backend they want. The legacy single-default path (no profiles
 	// declared, len==0) is untouched, and replay/default sessions are unaffected.
-	if mode == HarnessLive && p.Profile == "" && len(ss.harnessProfiles) > 0 {
+	if mode == HarnessLive && p.Profile == "" && len(harnessProfiles) > 0 {
+		ss.removeOpeningSession(key, sh)
+		if h != nil {
+			_ = h.Close()
+		}
 		return nil, &openError{
 			Code: ErrBadRequest,
 			Msg: fmt.Sprintf(
 				"harness:live requires an explicit profile= when backends are declared "+
 					"(no profile given; boot default is %q, which may be synthetic). "+
 					"Pass one of the declared profiles to select a real LLM backend.",
-				ss.defaultProfile,
+				defaultProfile,
 			),
 		}
 	}
 	selectedProfile := p.Profile
 	if selectedProfile == "" {
-		selectedProfile = ss.defaultProfile
+		selectedProfile = defaultProfile
 	}
 
 	// newSessionRuntime takes ownership of h: on a returned error h is already
 	// closed; on success rt.Close tears it down.
-	rt, err := newSessionRuntime(ctx, p.StoryPath, p.TracePath, h, ss.harnessProfiles, selectedProfile, p.InitialWorld, p.HostCassette, p.ImportResolver, ss.chatStore, ss.configureHosts)
+	failClosedAgentReplay := mode == HarnessReplay
+	rt, err := newSessionRuntime(ctx, p.StoryPath, p.TracePath, h, harnessProfiles, selectedProfile, p.InitialWorld, p.HostCassette, failClosedAgentReplay, p.ImportResolver, chatStore, configureHosts, ss.agentLaunchPolicy)
 	if err != nil {
 		// h was already closed inside newSessionRuntime on error.
+		ss.removeOpeningSession(key, sh)
 		return nil, err
 	}
 
-	sh := &SessionHandle{
-		Key:           key,
-		SID:           rt.sid,
-		Mode:          mode,
-		RecordingPath: p.RecordingPath,
-		StoryPath:     p.StoryPath,
-		TracePath:     p.TracePath,
-		Harness:       h,
-		Driver:        rt.driver,
-		Runtime:       rt,
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
+	if ss.sessions[key] != sh {
+		rt.releaseWorktreeOwners()
+		rt.Close()
+		return nil, &openError{Code: ErrUnknownHandle, Msg: fmt.Sprintf("no open session handle %q", key)}
 	}
-	ss.sessions[key] = sh
+	sh.SID = rt.sid
+	sh.Harness = h
+	sh.Driver = rt.driver
+	sh.Runtime = rt
 	ss.currentSID = string(rt.sid)
 	return sh, nil
+}
+
+func (ss *StudioSession) removeOpeningSession(key string, sh *SessionHandle) {
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
+	if ss.sessions[key] == sh {
+		delete(ss.sessions, key)
+	}
+}
+
+func cloneHarnessProfiles(in map[string]orchestrator.HarnessProfile) map[string]orchestrator.HarnessProfile {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]orchestrator.HarnessProfile, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
 }
 
 // ResolveSession returns the handle for key, or a structured tool error
@@ -529,6 +616,35 @@ func (ss *StudioSession) DrivingSessions() []*SessionHandle {
 		out = append(out, sh)
 	}
 	return out
+}
+
+// CurrentDrivingSession returns the most recently opened live driving handle.
+// If that marker is empty or stale, a single open driving session is treated as
+// the current session. Multiple open sessions with no current marker are
+// intentionally ambiguous.
+func (ss *StudioSession) CurrentDrivingSession() (*SessionHandle, bool) {
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
+
+	if ss.currentSID != "" {
+		if sh, ok := ss.sessionByIDLocked(ss.currentSID); ok && sh.Runtime != nil {
+			return sh, true
+		}
+	}
+	var only *SessionHandle
+	for _, sh := range ss.sessions {
+		if sh.Runtime == nil {
+			continue
+		}
+		if only != nil {
+			return nil, false
+		}
+		only = sh
+	}
+	if only != nil {
+		return only, true
+	}
+	return nil, false
 }
 
 // sortSessionKeys orders handle keys so auto-assigned "s<N>" keys sort

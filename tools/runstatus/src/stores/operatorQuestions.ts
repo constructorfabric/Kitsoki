@@ -64,8 +64,9 @@ export const useOperatorQuestionStore = defineStore("operatorQuestions", () => {
 
   /**
    * Answer the active question and advance the queue. answers is keyed by each
-   * question's text → chosen label (single) or labels (multiSelect). On RPC
-   * failure the question is left at the head so the operator can retry.
+   * question's text → chosen label/custom answer (single) or labels
+   * (multiSelect). On RPC failure the question is left at the head so the
+   * operator can retry.
    */
   async function answer(
     answers: Record<string, string | string[]>

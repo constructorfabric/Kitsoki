@@ -1,0 +1,11 @@
+# Project-owned routing layer for the freestanding Codex driver. Keep general
+# Kitsoki reports at the shared project; a developer's ignored .local.toml may
+# extend this file and choose a personal intake repository.
+extends = "../../.codex/agents/kitsoki-mcp-driver.toml"
+
+developer_instructions_append = """
+This is the Kitsoki project's kitsoki-dev instance. For ordinary unresolved
+Kitsoki story or product findings, call issue.create with sink "github" and
+repo "constructorfabric/Kitsoki". Keep local iterative developer findings in
+.artifacts/issues/bugs when the local artifact sink is the requested boundary.
+"""

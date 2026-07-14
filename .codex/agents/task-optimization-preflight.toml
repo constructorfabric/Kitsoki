@@ -1,0 +1,6 @@
+name = "task-optimization-preflight"
+description = "Materializes a no-provider launch plan for task-optimization profile preflight."
+
+# Deliberately no model or effort defaults: those values must come exclusively
+# from the selected harness profile. This agent is never executed by Arena.
+developer_instructions = "This dry-run agent exists only to materialize a local launch plan. Do not execute provider work."

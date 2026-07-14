@@ -1,0 +1,33 @@
+kind: recording
+app_id: kitsoki-dev
+app_version: 0.1.0
+generated_at: "2026-07-08T00:00:00Z"
+generator: "tools/tui-bridge dogfood real-tui demo fixture"
+entries:
+  - state: core.landing
+    input: "I want to do a dogfood marathon"
+    intent:
+      name: core__landing_capture
+      slots:
+        request: "I want to do a dogfood marathon"
+    confidence: 1.0
+    majority_of: 1
+  - state: core.dogfood.idle
+    input: "start the marathon"
+    intent:
+      name: core__dogfood__start
+      slots:
+        backlog_sources: "local:tools/tui-bridge/fixtures/dogfood-bugs"
+        backlog_limit: 15
+        run_id: "bug15-real-tui"
+        profile: "codex-native"
+        model: "gpt-5.5"
+    confidence: 1.0
+    majority_of: 1
+  - state: core.dogfood.exception_review
+    input: "park case and continue"
+    intent:
+      name: core__dogfood__ack_exception
+      slots: {}
+    confidence: 1.0
+    majority_of: 1

@@ -2,12 +2,13 @@
 #
 # Entering `ideas` fires on_enter: the `ideas_review` decide proposes section
 # moves and host.artifacts_dir persists the report (ideas_review_path). `apply`
-# hands that report to the deterministic reconcile script (host.run, id
-# `reconcile`) which rewrites the backlog, then re-arms the scan (self-loop).
+# hands that report to the deterministic reconcile script (host.starlark.run,
+# id `reconcile`) which rewrites the backlog, then re-arms the scan (self-loop).
 #
 # Asserts: the reconcile call receives ideas_path + the persisted report path
-# (proving on_enter's bind reached the apply arc), the apply result binds, and
-# the room stays in `ideas`.
+# (proving on_enter's bind reached the apply arc), the real script executes
+# against an inspect cassette, the apply result binds, and the room stays in
+# `ideas`.
 
 test_kind: flow
 app: ../app.yaml
@@ -17,6 +18,8 @@ app: ../app.yaml
 initial_state: landing
 initial_world:
   judge_mode: "human"
+
+starlark_inspect_cassette: ../cassettes/ideas_reconcile.inspect.yaml
 
 host_handlers:
   host.agent.decide:
@@ -33,15 +36,6 @@ host_handlers:
               - { item: "react UI", rationale: "high-visibility surface; partial scaffolding exists", effort: "large" }
   host.artifacts_dir:
     data: { ok: true, path: ".artifacts/ideas-review/latest.json", message_id: "latest.json#1" }
-  host.run:
-    by_call:
-      reconcile:
-        data:
-          ok: true
-          exit_code: 0
-          stdout: '{"moved":2,"not_found":[],"sections":{"done":15,"partial":9,"ideas":48}}'
-          stdout_json: { moved: 2, not_found: [], sections: { done: 15, partial: 9, ideas: 48 } }
-
 turns:
   # Enter the reviewer — on_enter runs the decide + persists the report.
   - intent: { name: go_ideas, slots: {} }
@@ -54,10 +48,10 @@ turns:
   - intent: { name: apply, slots: {} }
     expect_state: ideas
     expect_world:
-      ideas_apply_result: { moved: 2, not_found: [], sections: { done: 15, partial: 9, ideas: 48 } }
+      ideas_apply_result: { moved: 2, not_found: [], sections: { done: 1, partial: 1, ideas: 1 }, written_path: "ideas.md" }
     expect_host_calls:
-      - handler: host.run
-        args: { call: "reconcile", args: ["stories/dev-story/scripts/ideas_reconcile.py", "ideas.md", ".artifacts/ideas-review/latest.json"] }
+      - handler: host.starlark.run
+        args: { call: "reconcile" }
 
   # Out-of-range pick is a guarded no-op — stays in `ideas` (only 1 candidate).
   - intent: { name: pick, slots: { n: 5 } }

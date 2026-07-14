@@ -1,0 +1,47 @@
+# ticket_future_source_pick_routes -- provider-neutral dev-story metadata and
+# presentation accept a non-GitHub remote row through the ticket interface and
+# never populate the legacy GitHub-only ticket_repo key. The default local
+# binding is stubbed with federation-shaped output here; provider composition
+# itself is covered by host.ticket_federation tests and the kitsoki-dev wrapper.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: ticket_search
+initial_world:
+  ticket_sources:
+    - { id: local, label: Local, provider: host.local_files.ticket, kind: local, mode: local, args: { root: ".artifacts" } }
+    - { id: work, label: "ACME Engineering", provider: host.acme.ticket, kind: acme, mode: remote, args: { project: ENG } }
+
+host_handlers:
+  host.local_files.ticket:
+    by_op:
+      search:
+        data:
+          tickets:
+            - { id: ENG-42, title: "Future provider ticket", status: open, type: bug, index: 1, ref: "work:ENG-42", source: work, source_label: "ACME Engineering", source_kind: acme, source_mode: remote, source_repo: ENG, url: "https://tickets.example/ENG-42" }
+          source_groups:
+            - { id: work, label: "ACME Engineering", kind: acme, mode: remote, repo: ENG, count: 1, tickets: [{ id: ENG-42, title: "Future provider ticket", status: open, type: bug, index: 1, ref: "work:ENG-42", source: work, source_label: "ACME Engineering", source_kind: acme, source_mode: remote, source_repo: ENG }] }
+          provider_errors: []
+      get:
+        data: { id: ENG-42, title: "Future provider ticket", body: "body", status: open, type: bug, url: "https://tickets.example/ENG-42", source: work, source_label: "ACME Engineering", source_kind: acme, source_mode: remote, source_repo: ENG, ref: "work:ENG-42" }
+
+turns:
+  - intent: { name: search_tickets, slots: { query: open } }
+    expect_state: ticket_searching
+    expect_view_matches: "ACME Engineering[\\s\\S]*Future provider ticket"
+
+  - intent: { name: pick_ticket, slots: { n: 1 } }
+    expect_state: ticket_search
+    expect_host_calls:
+      - handler: host.local_files.ticket.get
+        args: { id: ENG-42, source: work, ref: "work:ENG-42", repo: ENG }
+        times: 1
+    expect_world:
+      ticket_source: work
+      ticket_source_label: "ACME Engineering"
+      ticket_source_kind: acme
+      ticket_source_mode: remote
+      ticket_source_repo: ENG
+      ticket_repo: ""
+
+expect_no_errors: true

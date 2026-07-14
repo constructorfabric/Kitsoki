@@ -47,7 +47,7 @@ Default no-cost evidence collection:
 3. Run the committed transcript-derived coverage flagship:
    `bash tools/session-mining/examples/git-ops/run.sh --keep {{ args.output_root }}/git-ops-coverage`
 4. Aggregate all local evidence:
-   `python3 tools/session-mining/eval_pilot_report.py --root stories --intent-root {{ args.output_root }}/intent-reports --coverage-root {{ args.output_root }} --markdown {{ args.markdown_path }} --deck {{ args.deck_path }} --summary {{ args.summary_path }}`
+   `host.session_mining.run --op eval_pilot_report --root stories --intent-root {{ args.output_root }}/intent-reports --coverage-root {{ args.output_root }} --markdown {{ args.markdown_path }} --deck {{ args.deck_path }} --summary {{ args.summary_path }}`
 
 Live evidence policy:
 

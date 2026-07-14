@@ -1,0 +1,11 @@
+inputs:
+  surfaces:        { type: string, required: true }
+  output_root:     { type: string, required: true }
+  markdown_path:   { type: string, required: true }
+  visual_policy:   { type: string, required: true }
+  provider_result: { type: object }
+  tui_result:      { type: object }
+  web_result:      { type: object }
+  vscode_result:   { type: object }
+outputs:
+  parity_result:   { type: object }

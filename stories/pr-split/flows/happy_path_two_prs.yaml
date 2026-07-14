@@ -1,0 +1,63 @@
+# happy_path_two_prs — planning (agent buckets into core + harness, starlark
+# serializes) → accept → splitting (2 PRs opened) → done. No LLM: the agent and
+# every host call are stubbed.
+#
+# The harness bypasses the initial state's on_enter, so we seed the post-detection
+# world (as if idle's classifier already ran) and drive the internal `proceed`
+# intent to ENTER planning, which runs its on_enter (agent + starlark serialize).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+# idle's on_enter (list_commits) is bypassed for the seeded initial state, so we
+# seed the post-classification world directly, then drive `proceed` to enter
+# planning (its agent runs in that next turn, seeing these commits).
+initial_world:
+  integration_branch: main
+  working_dir:        "."
+  repo:               o/r
+  remote:             origin
+  dry_run:            false
+  source_branch:      feat/x
+  commit_count:       3
+  commits:
+    rendered: "- aaaaaaa1 [core] fix core\n- bbbbbbb2 [harness] add tool\n- ccccccc3 [harness] tool test"
+    items:
+      - { sha: aaaaaaa1, subject: "fix core",  files: "internal/x.go", concern: core,    ambiguous: false }
+      - { sha: bbbbbbb2, subject: "add tool",  files: "tools/bugfix-bakeoff/external/t.py", concern: harness, ambiguous: false }
+      - { sha: ccccccc3, subject: "tool test", files: "tools/bugfix-bakeoff/external/t_test.py", concern: harness, ambiguous: false }
+
+host_handlers:
+  host.git:
+    by_call:
+      open_prs:
+        data:
+          ok:        true
+          opened_prs:
+            items:
+              - { concern: core,    branch: "feat/x-split-core",    url: "https://github.com/o/r/pull/1", commits: 1 }
+              - { concern: harness, branch: "feat/x-split-harness", url: "https://github.com/o/r/pull/2", commits: 2 }
+  host.agent.decide:
+    data:
+      ok: true
+      submitted:
+        buckets:
+          - { concern: core,    title: "core: fix core",    body: "Core fix.",     shas: ["aaaaaaa1"] }
+          - { concern: harness, title: "harness: add tool", body: "Harness tool.", shas: ["bbbbbbb2", "ccccccc3"] }
+  host.starlark.run:
+    by_call:
+      serialize_plan:
+        data:
+          ok: true
+          buckets_json: '{"buckets":[{"concern":"core","title":"core: fix core","body":"Core fix.","shas":["aaaaaaa1"]},{"concern":"harness","title":"harness: add tool","body":"Harness tool.","shas":["bbbbbbb2","ccccccc3"]}]}'
+
+turns:
+  - intent: { name: proceed, slots: {} }
+    expect_state: planning
+  - intent: { name: accept, slots: {} }
+    expect_state: done
+    expect_world:
+      opened_prs:
+        items:
+          - { concern: core,    branch: "feat/x-split-core",    url: "https://github.com/o/r/pull/1", commits: 1 }
+          - { concern: harness, branch: "feat/x-split-harness", url: "https://github.com/o/r/pull/2", commits: 2 }

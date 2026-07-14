@@ -54,6 +54,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 )
 
@@ -149,6 +150,18 @@ type LocalLLMAgent struct {
 	endpoint string
 	sidecar  localSidecar
 	client   *http.Client
+	// apiKeyEnv, when non-empty, names an environment variable holding a bearer
+	// token sent as `Authorization: Bearer <key>` on every request. This is the
+	// authenticated-endpoint path (e.g. GLM-5.2's API): the secret never enters
+	// YAML — only the env-var name does — and it is read at call time.
+	apiKeyEnv string
+	// jsonSchema, when true, sends `response_format: json_schema` for ANY
+	// SchemaJSON present, independent of the llama.cpp grammar-subset gate. This
+	// is the OpenAI-native constrained-output path (an OpenAI-compatible endpoint
+	// honours json_schema natively, even for schemas like discriminated unions
+	// that are outside llama.cpp's GBNF subset). The legacy grammar path stays
+	// subset-gated and is mutually exclusive with this one.
+	jsonSchema bool
 }
 
 // NewLocalLLM creates a LocalLLMAgent.
@@ -180,6 +193,28 @@ func (o *LocalLLMAgent) WithHTTPClient(client *http.Client) *LocalLLMAgent {
 	if client != nil {
 		o.client = client
 	}
+	return o
+}
+
+// WithAPIKeyEnv names the environment variable holding the bearer token to send
+// as `Authorization: Bearer <key>` on every request. Empty disables auth (the
+// managed-sidecar / unauthenticated-endpoint default). The value is the env-var
+// NAME, not the secret itself; the secret is read at call time so it never has
+// to be materialized in YAML or on the struct. A non-empty name whose env var is
+// unset at call time is a hard transport_error, not a silent unauthenticated
+// request.
+func (o *LocalLLMAgent) WithAPIKeyEnv(name string) *LocalLLMAgent {
+	o.apiKeyEnv = name
+	return o
+}
+
+// WithJSONSchema enables the OpenAI-native `response_format: json_schema`
+// constrained-output path: when set, Ask sends json_schema for any SchemaJSON
+// present regardless of the llama.cpp grammar-subset gate. Use this for
+// OpenAI-compatible endpoints (e.g. GLM-5.2) that honour json_schema natively,
+// including for schemas outside the GBNF subset (discriminated unions, etc.).
+func (o *LocalLLMAgent) WithJSONSchema(enabled bool) *LocalLLMAgent {
+	o.jsonSchema = enabled
 	return o
 }
 
@@ -218,13 +253,25 @@ func (o *LocalLLMAgent) Ask(ctx context.Context, req AskRequest) (AskResponse, e
 		}
 	}
 
-	// Decide whether to grammar-constrain. Only when grammar is enabled, a
-	// schema is present, and that schema is inside the translatable subset.
+	// Decide whether to request a schema-shaped response. Two independent
+	// paths, mutually exclusive:
+	//
+	//   - jsonSchema (OpenAI-native): send response_format: json_schema for ANY
+	//     schema present, regardless of the llama.cpp grammar subset. An
+	//     OpenAI-compatible endpoint (e.g. GLM-5.2) honours json_schema natively,
+	//     including for schemas the GBNF translator would reject (discriminated
+	//     unions with if/then/const/enum).
+	//   - grammar (llama.cpp GBNF): best-effort grammar-constrained decoding,
+	//     gated on the translatable subset. ValidateSubmission remains the sole
+	//     authority on shape; this only biases the first decode.
+	//
+	// jsonSchema wins when both are set: an OpenAI-compatible endpoint ignores
+	// the GBNF concept entirely, and the subset gate is meaningless there.
 	grammarApplied := false
+	jsonSchemaApplied := false
 	var rf *responseFormat
-	if o.grammar && req.SchemaJSON != nil && GrammarSubsetOK(req.SchemaJSON) == nil {
-		grammarApplied = true
-		rf = &responseFormat{
+	maybeRF := func() *responseFormat {
+		return &responseFormat{
 			Type: "json_schema",
 			JSONSchema: &jsonSchemaSpec{
 				Name:   "submission",
@@ -232,6 +279,14 @@ func (o *LocalLLMAgent) Ask(ctx context.Context, req AskRequest) (AskResponse, e
 				Schema: req.SchemaJSON,
 			},
 		}
+	}
+	switch {
+	case o.jsonSchema && req.SchemaJSON != nil:
+		jsonSchemaApplied = true
+		rf = maybeRF()
+	case o.grammar && req.SchemaJSON != nil && GrammarSubsetOK(req.SchemaJSON) == nil:
+		grammarApplied = true
+		rf = maybeRF()
 	}
 
 	bodyBytes, err := json.Marshal(chatRequest{
@@ -256,6 +311,21 @@ func (o *LocalLLMAgent) Ask(ctx context.Context, req AskRequest) (AskResponse, e
 		}
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
+	if o.apiKeyEnv != "" {
+		// Authenticated-endpoint path: read the bearer token from the named env
+		// var at call time (the secret never lives on the struct or in YAML). A
+		// configured-but-unset var is a hard transport_error rather than a silent
+		// unauthenticated request — the former is debuggable, the latter would
+		// surface as a confusing 401 from the provider.
+		key := strings.TrimSpace(os.Getenv(o.apiKeyEnv))
+		if key == "" {
+			return AskResponse{}, &AskError{
+				Kind:   "transport_error",
+				Detail: fmt.Sprintf("local_llm agent: api key env var %s is not set", o.apiKeyEnv),
+			}
+		}
+		httpReq.Header.Set("Authorization", "Bearer "+key)
+	}
 
 	httpResp, err := o.client.Do(httpReq)
 	if err != nil {
@@ -314,6 +384,7 @@ func (o *LocalLLMAgent) Ask(ctx context.Context, req AskRequest) (AskResponse, e
 			"prompt_tokens":     cr.Usage.PromptTokens,
 			"completion_tokens": cr.Usage.CompletionTokens,
 			"grammar":           grammarApplied,
+			"json_schema":       jsonSchemaApplied,
 		},
 		Transcript: o.buildTranscript(req.PromptText, cr),
 	}, nil

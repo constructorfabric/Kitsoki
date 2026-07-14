@@ -45,6 +45,7 @@ var allBackends = []struct {
 	{"claude", claudeBackend{}},
 	{"copilot", copilotBackend{}},
 	{"codex", codexBackend{}},
+	{"agy", agyBackend{}},
 }
 
 // TestConformance_DefaultBackendIsClaude pins the load-bearing default: a
@@ -98,6 +99,14 @@ func TestConformance_StreamParse(t *testing.T) {
 			fixture:       "codex/ask_simple.jsonl",
 			wantReply:     `{"answer":"hello"}`,
 			wantSessionID: "00000000-0000-0000-0000-000000000000",
+			wantUsageKey:  "output_tokens",
+		},
+		{
+			name:          "agy/simple",
+			backend:       agyBackend{},
+			fixture:       "agy/ask_simple.jsonl",
+			wantReply:     "pong",
+			wantSessionID: "42e07c25-6fef-4771-aa40-1f263352723b",
 			wantUsageKey:  "output_tokens",
 		},
 		{
@@ -180,13 +189,16 @@ func TestConformance_ToolEventsClassified(t *testing.T) {
 		}
 	})
 	t.Run("codex/mcp_tool_call", func(t *testing.T) {
-		ev := mustUnmarshal(t, `{"type":"item.completed","item":{"type":"mcp_tool_call","tool":"kitsoki-validator__submit","arguments":{"answer":"hello"}}}`)
+		ev := mustUnmarshal(t, `{"type":"item.completed","item":{"id":"item_1","type":"mcp_tool_call","tool":"kitsoki-validator__submit","arguments":{"answer":"hello"}}}`)
 		ce := codexBackend{}.Classify(ev)
 		if ce.Tool != "kitsoki-validator__submit" {
 			t.Errorf("codex mcp_tool_call Tool = %q, want kitsoki-validator__submit", ce.Tool)
 		}
 		if len(ce.Tools) != 1 || ce.Tools[0].Name != "kitsoki-validator__submit" {
 			t.Errorf("codex mcp_tool_call Tools = %+v, want one submit tool", ce.Tools)
+		}
+		if ce.ActionID != "item_1" || ce.ActionState != "completed" {
+			t.Errorf("codex completed action = %q/%q, want item_1/completed", ce.ActionID, ce.ActionState)
 		}
 	})
 	t.Run("codex/mcp_tool_call_started", func(t *testing.T) {
@@ -201,6 +213,55 @@ func TestConformance_ToolEventsClassified(t *testing.T) {
 		if len(ce.Tools) != 1 || ce.Tools[0].Name != "kitsoki-validator__submit" {
 			t.Errorf("codex mcp_tool_call started Tools = %+v, want one submit tool", ce.Tools)
 		}
+		if ce.ActionID != "item_1" || ce.ActionState != "started" {
+			t.Errorf("codex started action = %q/%q, want item_1/started", ce.ActionID, ce.ActionState)
+		}
+	})
+}
+
+func TestConformance_ReasoningEventsUseThinkingChannel(t *testing.T) {
+	t.Run("codex/text", func(t *testing.T) {
+		ev := mustUnmarshal(t, `{"type":"item.completed","item":{"type":"reasoning","text":"I will inspect the file first."}}`)
+		ce := codexBackend{}.Classify(ev)
+		if ce.Type != "assistant" {
+			t.Fatalf("codex reasoning type = %q, want assistant", ce.Type)
+		}
+		if ce.Thinking != "I will inspect the file first." {
+			t.Fatalf("codex reasoning Thinking = %q", ce.Thinking)
+		}
+		if ce.Text != "" {
+			t.Fatalf("codex reasoning polluted Text = %q", ce.Text)
+		}
+	})
+	t.Run("codex/summary_array", func(t *testing.T) {
+		ev := mustUnmarshal(t, `{"type":"item.completed","item":{"type":"reasoning","summary":[{"type":"summary_text","text":"First."},{"type":"summary_text","text":"Second."}]}}`)
+		ce := codexBackend{}.Classify(ev)
+		if ce.Thinking != "First.\nSecond." {
+			t.Fatalf("codex reasoning summary Thinking = %q", ce.Thinking)
+		}
+	})
+	t.Run("copilot/reasoning", func(t *testing.T) {
+		ev := mustUnmarshal(t, `{"type":"assistant.reasoning","data":{"content":"I need to run a specific command."}}`)
+		ce := copilotBackend{}.Classify(ev)
+		if ce.Thinking != "I need to run a specific command." {
+			t.Fatalf("copilot reasoning Thinking = %q", ce.Thinking)
+		}
+		if ce.Text != "" {
+			t.Fatalf("copilot reasoning polluted Text = %q", ce.Text)
+		}
+	})
+	t.Run("copilot/message_reasoningText", func(t *testing.T) {
+		ev := mustUnmarshal(t, `{"type":"assistant.message","data":{"content":"","reasoningText":"I need to run a specific command.","toolRequests":[{"name":"bash","arguments":{"command":"echo hi"}}]}}`)
+		ce := copilotBackend{}.Classify(ev)
+		if ce.Thinking != "I need to run a specific command." {
+			t.Fatalf("copilot message reasoningText Thinking = %q", ce.Thinking)
+		}
+		if ce.Text != "" {
+			t.Fatalf("copilot message reasoningText polluted Text = %q", ce.Text)
+		}
+		if ce.Tool != "bash" {
+			t.Fatalf("copilot message reasoningText lost tool = %q", ce.Tool)
+		}
 	})
 }
 
@@ -214,7 +275,7 @@ func TestConformance_ArgvTranslation(t *testing.T) {
 		"--permission-mode", "bypassPermissions",
 		"--setting-sources", "project,local",
 		"--disable-slash-commands",
-		"--append-system-prompt", "SYS-PROMPT",
+		"--system-prompt", "SYS-PROMPT",
 		"--model", "some-model",
 		"--effort", "low",
 		"--mcp-config", "/tmp/cfg.json",
@@ -230,6 +291,19 @@ func TestConformance_ArgvTranslation(t *testing.T) {
 		}
 		if inv.Stdin != stdin || inv.WorkingDir != wd {
 			t.Errorf("claude stdin/wd = %q/%q, want %q/%q", inv.Stdin, inv.WorkingDir, stdin, wd)
+		}
+	})
+
+	t.Run("claude/resume_strip", func(t *testing.T) {
+		resumeArgs := append(append([]string(nil), claudeArgs...), "--resume", "uuid-123")
+		inv := claudeBackend{}.TranslateInvocation(resumeArgs, stdin, wd)
+		for _, arg := range inv.Args {
+			if arg == "--system-prompt" || arg == "SYS-PROMPT" || arg == "--exclude-dynamic-system-prompt-sections" {
+				t.Errorf("claude resume invocation must not contain system prompt flags or values; got %v", inv.Args)
+			}
+		}
+		if !hasFlagValue(inv.Args, "--resume", "uuid-123") {
+			t.Errorf("claude resume invocation missing --resume flag/value; got %v", inv.Args)
 		}
 	})
 
@@ -291,6 +365,19 @@ func TestConformance_ArgvTranslation(t *testing.T) {
 	})
 
 	t.Run("codex/rewrite", func(t *testing.T) {
+		codexHome := t.TempDir()
+		t.Setenv("CODEX_HOME", codexHome)
+		t.Setenv("HOME", t.TempDir())
+		mustWrite(t, filepath.Join(codexHome, "config.toml"), `
+[mcp_servers.kitsoki-validator]
+command = "/old/kitsoki"
+
+[mcp_servers.slidey]
+command = "/bin/slidey"
+
+[mcp_servers.codex_app]
+command = "/bin/codex-app"
+`)
 		// Write a real --mcp-config file so the TOML override conversion runs.
 		cfgPath := filepath.Join(t.TempDir(), "cfg.json")
 		mustWrite(t, cfgPath, `{"mcpServers":{"kitsoki-validator":{"command":"/bin/kitsoki","args":["mcp-validator","--schema","/tmp/s.json"]}}}`)
@@ -300,26 +387,60 @@ func TestConformance_ArgvTranslation(t *testing.T) {
 			"--setting-sources", "project,local",
 			"--disable-slash-commands",
 			"--strict-mcp-config",
-			"--append-system-prompt", "SYS-PROMPT",
+			"--system-prompt", "SYS-PROMPT",
 			"--model", "some-model",
 			"--effort", "low",
 			"--mcp-config", cfgPath,
 			"--output-format", "stream-json", "--verbose",
 		}
 		inv := codexBackend{}.TranslateInvocation(args, stdin, wd)
+		defer inv.Cleanup()
 		got := strings.Join(inv.Args, " ")
 
-		// Prompt stays on stdin with the system prompt prepended.
-		if inv.Stdin != codexMCPToolSearchPreamble+"\n\n---\n\nSYS-PROMPT\n\n---\n\n"+stdin {
-			t.Errorf("codex stdin = %q, want tool-search preamble + system prompt prepended", inv.Stdin)
+		// User prompt stays on stdin; the system prompt becomes Codex base
+		// instructions via model_instructions_file.
+		if inv.Stdin != codexMCPToolSearchPreamble+"\n\n---\n\n"+stdin {
+			t.Errorf("codex stdin = %q, want tool-search preamble + user prompt only", inv.Stdin)
 		}
 		if !strings.Contains(inv.Stdin, "tool_search") {
 			t.Errorf("codex stdin missing the MCP tool-search discovery preamble; got %q", inv.Stdin)
 		}
+		if !strings.Contains(inv.Stdin, "query `submit`") {
+			t.Errorf("codex stdin must direct structured workers to discover validator submit first; got %q", inv.Stdin)
+		}
+		if strings.Contains(inv.Stdin, "SYS-PROMPT") {
+			t.Errorf("codex stdin must not contain replacing system prompt; got %q", inv.Stdin)
+		}
+		sysFile := codexModelInstructionsFile(t, inv.Args)
+		rawSys, err := os.ReadFile(sysFile)
+		if err != nil {
+			t.Fatalf("read codex model_instructions_file %q: %v", sysFile, err)
+		}
+		if string(rawSys) != "SYS-PROMPT" {
+			t.Fatalf("model_instructions_file content = %q, want SYS-PROMPT", string(rawSys))
+		}
+		if inv.PromptForBudget != "SYS-PROMPT\n\n---\n\n"+inv.Stdin {
+			t.Errorf("PromptForBudget = %q, want system prompt + stdin", inv.PromptForBudget)
+		}
 		// No MCP config registered ⇒ no preamble (nothing deferred to discover).
-		noMCP := codexBackend{}.TranslateInvocation([]string{"-p", "--append-system-prompt", "S"}, "body", wd)
+		noMCP := codexBackend{}.TranslateInvocation([]string{"-p", "--system-prompt", "S"}, "body", wd)
+		defer noMCP.Cleanup()
 		if strings.Contains(noMCP.Stdin, "tool_search") {
 			t.Errorf("codex injected the tool-search preamble with no MCP config; stdin=%q", noMCP.Stdin)
+		}
+		if noMCP.Stdin != "body" {
+			t.Errorf("codex no-MCP stdin = %q, want bare body", noMCP.Stdin)
+		}
+		if strings.Contains(strings.Join(noMCP.Args, " "), "--disable=apps") {
+			t.Errorf("codex no-MCP invocation must not disable app connectors; args=%v", noMCP.Args)
+		}
+		noMCPFile := codexModelInstructionsFile(t, noMCP.Args)
+		rawNoMCP, err := os.ReadFile(noMCPFile)
+		if err != nil {
+			t.Fatalf("read codex no-MCP model_instructions_file %q: %v", noMCPFile, err)
+		}
+		if string(rawNoMCP) != "S" {
+			t.Fatalf("no-MCP model_instructions_file content = %q, want S", string(rawNoMCP))
 		}
 		// Base exec flags.
 		if len(inv.Args) == 0 || inv.Args[0] != "exec" {
@@ -347,19 +468,34 @@ func TestConformance_ArgvTranslation(t *testing.T) {
 		// MCP config converted to `-c mcp_servers.*` overrides.
 		mustContain(t, got, `mcp_servers.kitsoki-validator.command="/bin/kitsoki"`)
 		mustContain(t, got, `mcp_servers.kitsoki-validator.args=["mcp-validator","--schema","/tmp/s.json"]`)
+		mustContain(t, got, `mcp_servers.kitsoki-validator.enabled=true`)
+		mustContain(t, got, `mcp_servers.slidey={`)
+		mustContain(t, got, `mcp_servers.codex_app={`)
+		mustContain(t, got, `enabled=false`)
+		// A Kitsoki-supplied MCP config is a scoped tool surface; Codex app
+		// connectors are a separate inherited capability category and must not
+		// be added to that surface implicitly.
+		mustContain(t, got, "--disable=apps")
 
 		// A claude model id is dropped (some-model is not claude-shaped → kept as -m).
 		if !hasFlagValue(inv.Args, "-m", "some-model") {
 			t.Errorf("codex dropped a non-claude model; args=%v", inv.Args)
 		}
+		if !hasFlagValue(inv.Args, "-c", "model_reasoning_effort=\"low\"") {
+			t.Errorf("codex did not translate declared effort to model_reasoning_effort; args=%v", inv.Args)
+		}
 		cb := codexBackend{}
+		maxEffort := cb.TranslateInvocation([]string{"-p", "--effort", "max"}, "p", "")
+		if !hasFlagValue(maxEffort.Args, "-c", "model_reasoning_effort=\"xhigh\"") {
+			t.Errorf("codex max effort must map to GPT-compatible xhigh; args=%v", maxEffort.Args)
+		}
 		mi := cb.TranslateInvocation([]string{"-p", "--model", "claude-haiku-4-5-20251001"}, "p", "")
 		if strings.Contains(strings.Join(mi.Args, " "), "-m ") {
 			t.Errorf("codex forwarded a claude model id; args=%v", mi.Args)
 		}
 
 		// Claude-only flags must be gone.
-		for _, dropped := range []string{"--permission-mode", "--setting-sources", "--disable-slash-commands", "--effort", "--verbose", "--append-system-prompt", "--mcp-config", "stream-json", "--output-format", "--strict-mcp-config"} {
+		for _, dropped := range []string{"--permission-mode", "--setting-sources", "--disable-slash-commands", "--effort", "--verbose", "--system-prompt", "--mcp-config", "stream-json", "--output-format", "--strict-mcp-config"} {
 			if strings.Contains(got, dropped) {
 				t.Errorf("codex args still contain dropped flag %q: %v", dropped, inv.Args)
 			}
@@ -396,7 +532,7 @@ func TestConformance_ArgvTranslation(t *testing.T) {
 			"--model", "gpt-5", "--mcp-config", cfgPath, "--add-dir", "/x",
 		}, "p", wd)
 		resumeJoined := strings.Join(resumeFull.Args, " ")
-		for _, banned := range []string{"--dangerously-bypass-approvals-and-sandbox", "-m", "mcp_servers.", "--add-dir", "-C"} {
+		for _, banned := range []string{"--dangerously-bypass-approvals-and-sandbox", "--disable=apps", "-m", "mcp_servers.", "--add-dir", "-C"} {
 			if strings.Contains(resumeJoined, banned) {
 				t.Errorf("codex exec resume must not carry %q (resume rejects it); args=%v", banned, resumeFull.Args)
 			}
@@ -415,6 +551,62 @@ func TestConformance_ArgvTranslation(t *testing.T) {
 		absWD, _ := filepath.Abs("docs/decks")
 		if !hasFlagValue(relArgs, "-C", absWD) {
 			t.Errorf("codex -C must be absolute for a relative workingDir; want -C %s; args=%v", absWD, relArgs)
+		}
+	})
+
+	t.Run("agy/rewrite", func(t *testing.T) {
+		inv := agyBackend{}.TranslateInvocation(claudeArgs, stdin, wd)
+		got := strings.Join(inv.Args, " ")
+
+		if inv.Stdin != "" {
+			t.Errorf("agy stdin = %q, want empty (prompt is an arg)", inv.Stdin)
+		}
+		if !hasFlagValue(inv.Args, "--print", "SYS-PROMPT\n\n---\n\nUSER PROMPT") {
+			t.Errorf("agy --print arg missing prepended system prompt; args=%v", inv.Args)
+		}
+		mustContain(t, got, "--dangerously-skip-permissions")
+		mustContain(t, got, "--output-format json")
+		if !hasFlagValue(inv.Args, "--model", "some-model") {
+			t.Errorf("agy missing --model some-model; args=%v", inv.Args)
+		}
+		// A claude model id must be dropped.
+		cb := agyBackend{}
+		mi := cb.TranslateInvocation([]string{"-p", "--model", "claude-haiku-4-5-20251001"}, "p", "")
+		if strings.Contains(strings.Join(mi.Args, " "), "--model") {
+			t.Errorf("agy forwarded a claude model id; args=%v", mi.Args)
+		}
+		// A genuine model id IS forwarded.
+		ci := cb.TranslateInvocation([]string{"-p", "--model", "gemini-3.5-flash"}, "p", "")
+		if !hasFlagValue(ci.Args, "--model", "gemini-3.5-flash") {
+			t.Errorf("agy dropped a non-claude model; args=%v", ci.Args)
+		}
+
+		// Claude-only flags must be gone.
+		for _, dropped := range []string{"--permission-mode", "--setting-sources", "--disable-slash-commands", "--effort", "--verbose", "--append-system-prompt", "--mcp-config", "stream-json"} {
+			if strings.Contains(got, dropped) {
+				t.Errorf("agy args still contain dropped flag %q: %v", dropped, inv.Args)
+			}
+		}
+
+		// Resume maps to --conversation and suppresses the system prompt on warm runs.
+		resume := cb.TranslateInvocation([]string{"-p", "--resume", "uuid-123", "--system-prompt", "SYS-PROMPT"}, "USER-PROMPT", "")
+		if !hasFlagValue(resume.Args, "--conversation", "uuid-123") {
+			t.Errorf("agy --resume not translated to --conversation; args=%v", resume.Args)
+		}
+		if hasFlagValue(resume.Args, "--print", "SYS-PROMPT\n\n---\n\nUSER-PROMPT") {
+			t.Errorf("agy warm run must not prepend system prompt; args=%v", resume.Args)
+		}
+		if !hasFlagValue(resume.Args, "--print", "USER-PROMPT") {
+			t.Errorf("agy warm run missing user prompt; args=%v", resume.Args)
+		}
+
+		// Session-id maps to --conversation and prepends system prompt on cold runs.
+		session := cb.TranslateInvocation([]string{"-p", "--session-id", "uuid-456", "--system-prompt", "SYS-PROMPT"}, "USER-PROMPT", "")
+		if !hasFlagValue(session.Args, "--conversation", "uuid-456") {
+			t.Errorf("agy --session-id not translated to --conversation; args=%v", session.Args)
+		}
+		if !hasFlagValue(session.Args, "--print", "SYS-PROMPT\n\n---\n\nUSER-PROMPT") {
+			t.Errorf("agy cold run must prepend system prompt; args=%v", session.Args)
 		}
 	})
 }
@@ -457,6 +649,7 @@ func TestConformance_ValidatorToolName(t *testing.T) {
 		"claude":  "mcp__kitsoki-validator__submit",
 		"copilot": "kitsoki-validator-submit",
 		"codex":   "submit",
+		"agy":     "mcp__kitsoki-validator__submit",
 	}
 	for _, b := range allBackends {
 		got := b.backend.ValidatorToolName("kitsoki-validator")
@@ -479,6 +672,7 @@ func TestConformance_StubRoundTrip(t *testing.T) {
 		{"claude", claudeBackend{}, WithClaudeRunner, "claude/ask_simple.jsonl", "pong"},
 		{"copilot", copilotBackend{}, WithCopilotRunner, "copilot/ask_simple.jsonl", "pong"},
 		{"codex", codexBackend{}, WithCodexRunner, "codex/ask_simple.jsonl", `{"answer":"hello"}`},
+		{"agy", agyBackend{}, WithAgyRunner, "agy/ask_simple.jsonl", "pong"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -535,4 +729,19 @@ func mustContain(t *testing.T, haystack, needle string) {
 	if !strings.Contains(haystack, needle) {
 		t.Errorf("expected %q to contain %q", haystack, needle)
 	}
+}
+
+func codexModelInstructionsFile(t *testing.T, args []string) string {
+	t.Helper()
+	for i := 0; i+1 < len(args); i++ {
+		if args[i] != "-c" {
+			continue
+		}
+		const prefix = "model_instructions_file="
+		if v, ok := strings.CutPrefix(args[i+1], prefix); ok {
+			return strings.Trim(v, `"`)
+		}
+	}
+	t.Fatalf("codex args missing model_instructions_file override: %v", args)
+	return ""
 }

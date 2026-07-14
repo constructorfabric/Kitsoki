@@ -1,16 +1,16 @@
 # publish_to_durable — accept PUBLISHES the PRD out of the per-PRD workspace
-# into its durable docs home (Gap #4).
+# into its durable home (Gap #4).
 #
 # A focused fixture for the publish-on-accept half of the workspace work:
 # it seeds drafting directly (a workspace already minted at the search gate)
-# so the ONLY moving part is the accept arc's host.run(prd_publish.py) call.
-# The stub mirrors the real script's envelope — prd_publish.py moves
-# 004-prd.md to <publish_durable_path>/<slug>.md and prints {"prd_file": …};
-# the accept arc binds prd_file from stdout_json, so the run ends with the
-# deliverable OUT of the gitignored .artifacts/ scratch tree.
+# so the ONLY moving part is the accept arc's host.starlark.run(prd_publish.star)
+# call. The real script copies 004-prd.md to <publish_durable_path>/<slug>.md
+# and returns {"prd_file": ...}. In this automated fixture the durable home is
+# under /tmp so flow tests never write tracked or review-artifact docs.
 #
-# Intent-only (no LLM): the author task and the publish script are both
-# stubbed. Companion to slug_collision.yaml (the uniquify half).
+# Intent-only (no LLM): the author task is stubbed; publish runs the real
+# Starlark helper against an inspect cassette. Companion to slug_collision.yaml
+# (the uniquify half).
 
 test_kind: flow
 app: ../app.yaml
@@ -19,10 +19,12 @@ initial_world:
   idea:                 "A CLI for X that helps developers do Y."
   workdir:              "."
   judge_mode:           "human"
-  publish_durable_path: "docs/prd"
+  publish_durable_path: "/tmp/kitsoki-prd-fixtures"
   # The workspace minted at the search gate (this flow enters at drafting).
   prd_slug:             "example-cli"
   prd_workspace:        ".artifacts/prd/example-cli"
+
+starlark_inspect_cassette: ../cassettes/publish_example_cli_workspace.inspect.yaml
 
 host_handlers:
   host.agent.task:
@@ -35,27 +37,16 @@ host_handlers:
         confidence:          0.84
         needs_clarification: false
         follow_up_questions: []
-  # accept fires scripts/prd_publish.py; the stub returns the durable path the
-  # real script would compute (docs/prd/<slug-from-title>.md).
-  host.run:
-    by_call:
-      publish:
-        data:
-          ok: true
-          exit_code: 0
-          stdout: '{"prd_file":"docs/prd/example-cli.md"}'
-          stdout_json: { prd_file: "docs/prd/example-cli.md" }
-
 turns:
   # accept → publish moves the draft to the durable home and binds prd_file,
-  # then @exit:done. The deliverable now lives under docs/prd/, not .artifacts/.
+  # then @exit:done.
   - intent: { name: accept, slots: {} }
     expect_state: __exit__done
     expect_world:
       status:   "done"
-      prd_file: "docs/prd/example-cli.md"
+      prd_file: "/tmp/kitsoki-prd-fixtures/example-cli.md"
     expect_host_calls:
-      - handler: host.run
+      - handler: host.starlark.run
         args: { call: "publish" }
 
 expect_terminal: true

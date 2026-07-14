@@ -11,8 +11,8 @@ initial_world:
   session_cost_usd: 0.60
 
 host_handlers:
-  # Worktree minted at launch (iface.workspace.create -> host.git_worktree).
-  host.git_worktree: { data: { ok: true, path: ".worktrees/cherny-loop" } }
+  # Worktree minted at launch (iface.workspace.create -> host.capsule_workspace).
+  host.capsule_workspace: { data: { ok: true, path: ".capsules/workspaces/cherny-loop" } }
   host.run:           { data: { ok: false, exit_code: 1, stdout: "FAIL" } }
   host.agent.task:   { data: { submitted: { summary: "expensive change" } } }
   host.artifacts_dir: { data: { ok: true } }

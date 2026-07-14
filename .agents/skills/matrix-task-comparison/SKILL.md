@@ -6,11 +6,11 @@ description: Run a controlled matrix comparison of approaches over a set of task
 # Matrix task comparison
 
 Compare approaches on the **same** tasks under **identical** conditions, score
-each cell on outcome / compliance / cost / time, roll up, and deck it. The
-reference implementation — the worked first instance — is
-[`tools/bugfix-bakeoff/`](../../../tools/bugfix-bakeoff/) (kitsoki's `bugfix`
-pipeline vs a naive single prompt, across an Opus/Sonnet/GLM/GPT model grid, on
-real fixed bugs). This skill is the reusable *method*; cite those files, do not
+each cell on outcome / compliance / cost / time, roll up, and deck it. Arena is
+the canonical planner, scheduler, resumer, and artifact owner. The external
+bugfix adapter owns project manifests and hidden-oracle materialization, while
+`internal/agentbench` owns trace/lifecycle/usage scoring. This skill is the
+reusable *method*; cite those files, do not
 <!-- For an EXTERNAL repo (not kitsoki's own bugs) — "should I use kitsoki for my
 project?" — use the [`external-repo-bakeoff`](../external-repo-bakeoff/SKILL.md)
 skill + [`tools/bugfix-bakeoff/external`](../../../tools/bugfix-bakeoff/external)
@@ -19,11 +19,16 @@ drivable workflow. The live drive there uses the headless MCP primitive
 [`tools/mcp-drive/drive.sh`](../../../tools/mcp-drive/README.md). -->
 
 re-derive them, and do **not** hardcode the bug9/12/14 specifics into a new
-study.
+study. For iterative process versions, use a `task-optimization/v1` study so
+the corpus lock, learning/confirmation split, preflight, no-spend plan, and
+immutable attempt receipts are reviewable. Canonical review output is JSON,
+Markdown, and a `.slidey.json` deck regenerated offline; do not render MP4 or
+bundle HTML unless explicitly requested.
 
-> **Harness consolidated (2026-06).** The reference impl is now the ONE
-> manifest-driven harness under
-> [`tools/bugfix-bakeoff/external/`](../../../tools/bugfix-bakeoff/external) —
+> **Harness ownership.** Arena schedules immutable attempts. The adapter under
+> [`tools/bugfix-bakeoff/external/`](../../../tools/bugfix-bakeoff/external)
+> supplies project/oracle adaptation; it must not grow a competing scheduler or
+> weaker trace scorer. The legacy adapter remains —
 > kitsoki's own bugs are just `projects/kitsoki`. The legacy four-piece flow
 > (`prepare.sh` · `run_cell.sh` · `score.py` · `bakeoff.yaml`) was retired; map
 > the old names to the new pieces:
@@ -31,7 +36,7 @@ study.
 > | legacy | now |
 > |---|---|
 > | `bakeoff.yaml` | `external/projects/<name>/manifest.yaml` + `external/candidates.yaml` |
-> | `prepare.sh` + `run_cell.sh` | `external/drive_cell.sh` (one cell, worktree+drive+score) |
+> | `prepare.sh` + `run_cell.sh` | `external/drive_cell.sh` (one managed cell workspace + drive + score) |
 > | `score.py` | `external/bench.py score` / `verify` / `cost` / `summarize` |
 > | (new) | `external/escalate.sh` — cheap→expensive model/effort ladder |
 > | `aggregate.py` | `aggregate.py` (kept; reads the external manifest + candidates.yaml) |
@@ -45,7 +50,9 @@ study.
 
 ## The design — three axes → cells
 
-A **cell** = `(task × candidate × contender)`. Three axes:
+A **cell** = `(task × candidate × contender × repeat)`; each provider request
+is an immutable attempt, and a valid scored attempt must be resumed rather than
+overwritten or automatically rerun. Three axes:
 
 - **Structure axis (the contenders).** The approaches under test, e.g. kitsoki
   pipeline vs naive single-prompt+guidance; or two stories; or pipeline-vs-pipeline.
@@ -57,12 +64,20 @@ A **cell** = `(task × candidate × contender)`. Three axes:
 - **Task axis.** The tasks/cases — for the bake-off, real fixed bugs, each with a
   `baseline_sha`, a hidden `oracle_test`, and `affected_test_pkgs`.
 
-**One hermetic worktree per cell** — never shared.
-`drive_cell.sh` cuts the per-cell worktree (a detached `git worktree add` on its
-own branch, keyed by `(project, task, candidate)`) at the task's `baseline_sha`
-before driving. A shared checkout *is* concurrent-checkout bug #9 — hard-isolate
-by `(task, candidate, contender)`. Re-running `drive_cell.sh` reuses an existing
-worktree at the right SHA.
+**One hermetic Capsule workspace per cell** — never shared. `drive_cell.sh` must
+acquire a managed clone-backed workspace keyed by `(project, task, candidate,
+contender)` at the task's `baseline_sha` before driving. A shared checkout *is*
+concurrent-checkout bug #9. If `--no-drive` cannot report a typed managed
+workspace handle, stop and migrate the harness before spending. Re-running a
+cell may reacquire the same clean workspace only through its Capsule lease.
+
+For the shipped external bake-off adapter, distinguish the artifact-local
+Capsule identity from story world. `prepared/*.json.capsule_workspace_id` is the
+lifecycle/cleanup handle in the bake-off's generated Capsule project.
+`stories/bench-bugfix` runs in Kitsoki's separate project control plane, so its
+`initial_world.workspace_id` stays empty and it uses the already-authorized,
+sentinel-backed `workdir`. Never copy the artifact-local id into that story
+field; that resolves the right id against the wrong instance store.
 
 ## MANDATORY pre-flight — confirm each baseline is genuinely RED
 
@@ -73,14 +88,14 @@ already-merged behavioural fix, so `<fix>^` was already GREEN → a degenerate c
 that proves nothing. (#1/#2/#8 were dropped for exactly this; only #9/#12/#14
 reproduced.)
 
-For each task, run the oracle at the baseline and confirm RED *before* scheduling:
+For each task, prepare through the free harness path, then run the oracle at the
+reported managed workspace and confirm RED *before* scheduling:
 
 ```bash
-cd .worktrees/bakeoff-<task>-<any>-<any>     # any prepared worktree at baseline
-# go oracle: copy the oracle in from the fix, run it, expect FAIL/noncompile
-git show <fix_sha>:<oracle_test> > <oracle_test>
-go test -run '^TestXxx$' ./path/to/oracle/pkg ; echo "rc=$?"   # MUST be non-zero
-git checkout -- <oracle_test> 2>/dev/null; rm -f <oracle_test>  # leave tree clean
+tools/bugfix-bakeoff/external/drive_cell.sh \
+  --project <name> --bug <task> --candidate <candidate> --no-drive
+python3 tools/bugfix-bakeoff/external/bench.py verify \
+  --project <name> --bug <task>
 ```
 
 A baseline that is GREEN is a study finding (note it), not a cell to run.
@@ -90,7 +105,7 @@ A baseline that is GREEN is a study finding (note it), not a cell to run.
 - **Hidden oracle.** Each task's oracle = the real fix's own regression test,
   kept **out of the candidate's tree**. `bench.py score` overlays it (the isolated
   oracle test file injected/written into a throwaway scratch copy of the candidate
-  tree), runs it there, and never touches the candidate worktree, so the tree is
+  tree), runs it there, and never touches the candidate workspace, so the tree is
   never polluted. The candidate must never see it (that would leak the answer).
 - **Oracles are often wording/impl-coupled** → they false-fail a behaviourally
   correct fix done a different way (Opus refused with different wording; the
@@ -105,7 +120,7 @@ A baseline that is GREEN is a study finding (note it), not a cell to run.
   # Deterministic grade (oracle GREEN/RED). bench.py writes the cell JSON; edit its
   # outcome.adjudicated/adjudication_note when a judge overrides on behaviour.
   python3 tools/bugfix-bakeoff/external/bench.py score \
-    --project <name> --bug <task> --tree <worktree> \
+    --project <name> --bug <task> --tree <workspace> \
     --candidate <cand> --treatment <contender> \
     --out tools/bugfix-bakeoff/results/cells/<task>-<cand>-<contender>.json
   ```
@@ -154,7 +169,8 @@ Per `results/SCHEMA.md`, every cell scores three families:
     --allowedTools Bash Edit Write Read Glob Grep MultiEdit
   ```
   The scoped allowlist is mandatory — the classifier blocks
-  `--dangerously-skip-permissions`; worktrees are disposable. Resume guidance
+  `--dangerously-skip-permissions`; managed cell workspaces are bounded and
+  cleanup-controlled. Resume guidance
   turns with `claude -p --resume <sid> "<msg>"`.
 - **kitsoki / MCP cells** (and single/`session` for GLM, GPT) — studio-MCP
   `session_new` under the candidate's **profile** (the profile/agent-def controls
@@ -169,8 +185,8 @@ Per `results/SCHEMA.md`, every cell scores three families:
     oracle, not the pipeline's internal CI).
 - **Guidance turns** are operator-driven, **oracle-gated**, and **counted** (cap
   e.g. 5). Give fair behavioural feedback (what a reviewer running the scenario
-  sees) *without* revealing the hidden oracle. The worktree is **reused** on a
-  resumed turn — do not re-prepare.
+  sees) *without* revealing the hidden oracle. Reacquire the same managed
+  workspace lease on a resumed turn; do not prepare a second checkout.
 
 ## Aggregation + offline regeneration (zero re-spend)
 
@@ -210,21 +226,33 @@ path.) `summary.json` and the `agenteval.Report` files are the durable artifacts
 7. **Aggregate.** `aggregate.py [--emit-agenteval]` → `summary.json`.
 8. **Report + deck.** `eval_pilot_report.py --markdown --deck` (offline).
 
-## How this connects to the `task-bakeoff` story
+## Workflow ownership
 
-A kitsoki story `stories/task-bakeoff/` (being built in parallel) wraps this
-method into a **drivable workflow** that produces the slidey report directly:
-the rooms encode Setup → manifest → pre-flight → run cells → score → adjudicate →
-aggregate, calling the same `tools/bugfix-bakeoff/*` scripts as host steps, and
-the final room renders the deck (the `--deck` HTML / a slidey spec). When that
-story lands, drive it with `kitsoki-mcp-driver`; until then run this skill's
-manual runbook. Keep the scripts the single source of truth — the story orchestrates
-them, it does not reimplement scoring/pricing.
+`stories/task-bakeoff/` is a retired replay-compatibility story. Do not add
+rooms, launch paths, cell scheduling, score logic, or decks to it. Arena is the
+only current workflow boundary for comparison and optimization studies:
+
+```sh
+# No provider request: resolve the effective local profiles and write receipts.
+python3 tools/arena/arena.py task-optimization preflight \
+  --study tools/arena/specs/bugfix-task-optimization-v1.yaml \
+  --out .artifacts/task-optimization/bugfix-codeact-v1
+
+# No provider request: materialize the immutable cell plan and review inputs.
+python3 tools/arena/arena.py task-optimization plan \
+  --study tools/arena/specs/bugfix-task-optimization-v1.yaml \
+  --out .artifacts/task-optimization/bugfix-codeact-v1
+```
+
+Use the `model-task-engineering` story only to review those offline artifacts.
+A provider run requires an explicit operator instruction, `--live`, and the
+study-specific live gate. The legacy external adapter remains the project/oracle
+adapter; it must not become a competing scheduler or trace scorer.
 
 ## Common pitfalls (from the learnings doc)
 
 1. **Degenerate baseline** (#1 above) — GREEN-at-baseline tasks prove nothing.
-2. **Shared checkout** — one worktree per cell, always; sharing is the bug.
+2. **Shared checkout** — one managed Capsule workspace per cell, always; sharing is the bug.
 3. **Status-only compliance** — candidates commit their work; diff
    `baseline..HEAD` ∪ working tree.
 4. **Wrong/stale price table** — verify Opus $5/$25, Sonnet $3/$15 before trusting USD.
@@ -254,7 +282,7 @@ them, it does not reimplement scoring/pricing.
 `drive_cell.sh`/`escalate.sh` are the only cost-bearing pieces and are run
 **manually**, never in CI or automatically. `bench.py`/`aggregate.py` are
 deterministic and free; the reference impl ships offline tests against fixture transcripts/
-worktrees (oracle runner + cost extractor are dependency-injected). The committed
+capsule-backed workspaces (oracle runner + cost extractor are dependency-injected). The committed
 `summary.json` lets the whole study re-derive its report/deck with zero spend.
 
 ## Maintenance

@@ -8,7 +8,7 @@ an `Error` envelope.
 This document is the user-facing reference for every built-in. The
 authoritative source is `internal/host/`. To extend the registry with
 your own handler, see
-[`developer-guide.md` §5.2](developer-guide.md#52-adding-a-new-built-in-host-handler).
+[`developer-guide.md` §5.2](../guide/development/developer-guide.md#52-adding-a-new-built-in-host-handler).
 For a shorter family index, see [`hosts/`](hosts/README.md).
 
 For the effect-level shape (`invoke:`, `with:`, `bind:`, `on_error:`,
@@ -17,9 +17,14 @@ For the effect-level shape (`invoke:`, `with:`, `bind:`, `on_error:`,
 For named-capability composition (`host_interfaces:` declared on a
 sub-story, rebound by importers) see [`imports.md`](../stories/imports.md) §11.
 
+For the Starlark-specific authoring experience shared by
+`host.starlark.run` and `host.agent.codeact` — stdlib, `ctx` capability
+grants, sandboxing, validation, cassettes, and promotion — see
+[`starlark.md`](starlark.md).
+
 For invoking agent handlers directly from scripts, CI jobs, or
 validator subprocesses — without a running state machine — see
-[`docs/architecture/agent-cli.md`](agent-cli.md). That document covers
+[`docs/guide/agents/cli.md`](../guide/agents/cli.md). That document covers
 `kitsoki agent <verb>`, `kitsoki agent-serve` (unix-socket daemon),
 the JSON-RPC method shapes, and `KITSOKI_SESSION_ID` trace continuity.
 
@@ -49,11 +54,13 @@ carrier handler when the op name is dispatched from `with:` args.
 | [`host.agent.extract`](#hostagentextract) | Tiered resolver: synonyms → slot_template → llm. Returns typed JSON + `resolved_by`. |
 | [`host.agent.ask`](#hostagentask) | Read-only inspection call: read tools + Bash under a profile; no mutation. Returns prose + optional typed JSON. |
 | [`host.agent.decide`](#hostagentdecide) | Typed LLM verdict (schema required; submit auto-attached; read-only tools optional). |
+| [`host.agent.codeact`](#hostagentcodeact) | Bounded agent loop that emits capability-scoped Starlark snippets, then `done(payload)`. |
 | [`host.agent.task`](#hostagenttask) | Agentic verb with full tool surface, acceptance loop, and replay artifacts (Mode A/B/C). |
 | [`host.agent.converse`](#hostagentconverse) | Free-form conversational Claude session with permission_mode control. |
 | [`host.transport.post`](#hosttransportpost) | Post a message to a registered transport (TUI / Jira / Bitbucket). |
 | [`host.workspace_manager.get`](#hostworkspace_managerget) | Load a structured workspace context (repos, issue, PRs). |
-| [`host.git_worktree`](#hostgit_worktree-workspace-interface) | `workspace` provider: per-session `.worktrees/<id>` create/list/get/sync/cleanup. |
+| [`host.capsule_workspace`](#hostcapsule_workspace-workspace-interface) | `workspace` provider: checked-in Capsule definitions create/get/status/sync/commit/close under `.capsules/workspaces/<id>`. |
+| [`host.git_worktree`](#hostgit_worktree-compatibility-workspace-interface) | Compatibility `workspace` provider: legacy `name/base/sync` contract backed by the development Capsule provider plus linked-worktree cleanup. |
 | [`host.jobs.answer_clarification`](#hostjobsanswer_clarification) | Resume a paused background job with the user's answer. |
 | [`host.chat.resolve`](#hostchatresolve) | Get-or-create a persistent chat thread for a `(app, room, scope_key)`. |
 | [`host.chat.list`](#hostchatlist) | List chat threads matching `(app, room, scope_key)`. |
@@ -84,6 +91,7 @@ arguments. The default `host` for "shell out and capture stdout".
 | Field | Type | Required | Notes |
 |---|---|---|---|
 | `cmd` | string | yes | The program (argv-mode) or shell command (bash-mode). |
+| `script` | string | no | App-relative script path inserted before `args`. This always selects argv-mode. Imported-story paths are rebased to the defining child story, avoiding parent/global `KITSOKI_APP_DIR` ambiguity. |
 | `args` | list | no | Present → argv-mode: `cmd` is exec'd directly with these positional args, no shell. Use this whenever an argument is templated from world or slot data. |
 | `cwd` | string | no | Working directory. |
 | `fail_on_error` | bool | no | Default `false`. When `true`, a non-zero exit populates `Result.Error` so `on_error:` fires instead of returning success-with-data. |
@@ -112,29 +120,33 @@ Run a small, author-supplied [Starlark](https://github.com/google/starlark-go)
 script in a tightly restricted, **deterministic** interpreter and bind its
 named outputs into world. This is the escape hatch for glue that is too fiddly
 for the expr-lang `with:`/guard vocabulary (shaping a payload, deriving several
-fields, calling a plain HTTP API) but too small to justify a bespoke Go
+fields, writing a small artifact, calling a plain HTTP API) but too small to justify a bespoke Go
 handler. Unlike `host.run` it is sandboxed, introspectable, and replayable: no
-environment, no clock, no randomness — and only a narrow read-only filesystem +
+environment, no clock, no randomness — and only a narrow filesystem +
 allow-listed-probe surface (`ctx.fs` / `ctx.probe`, below), never a shell — so a
 recorded run replays byte-for-byte.
 
 The authoritative source is `internal/host/starlark/` (the sandbox) and
 `internal/host/starlark_run.go` (the `host.Handler` adapter); see
-`internal/host/starlark/doc.go` for the design rationale.
+`internal/host/starlark/doc.go` for the design rationale. For a narrative
+authoring guide that also covers CodeAct and sandbox layering, see
+[`starlark.md`](starlark.md).
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
 | `script` | string | yes | Path to the `.star` file, relative to the app root. The loader resolves it against the manifest dir, rejects `../` escapes, and requires both the `.star` and its `.star.yaml` sidecar to exist at load time. By dispatch the path is absolute. Templated (`{{…}}`) paths skip the load-time check and are validated at runtime. |
 | `inputs` | object | no | The named inputs exposed to the script as `ctx.inputs["name"]`. Type-validated against the sidecar's `inputs:` block before evaluation. Values are templated like any other `with:` arg — **wrap every value in `{{ }}`** (a *sole* `{{ expr }}` preserves the typed value, so a declared `int` stays an `int`). A **bare** `world.foo` is NOT evaluated — it reaches the script as the literal string `"world.foo"`, silently breaking resolution (the general rule: [state-machine.md §7.1](../stories/state-machine.md#71-expressions-vs-templates--which-syntax-goes-where)). The loader rejects bare-expression inputs at load (see below). |
+| `capabilities` | object | no | The capability grants for this run. Defaults expose only pure helpers plus `ctx.inputs` and read-only `ctx.world`; `ctx.http`, `ctx.fs`, `ctx.probe`, and `ctx.host` are absent unless granted here. The loader rejects unknown capability keys and obvious static script/grant mismatches. |
 
 Returns: the script's `main(ctx)` **must return a dict**; each key/value becomes
 a named output. The output dict is validated against the sidecar's `outputs:`
 block (see below), then handed to the effect's `bind:` exactly like any other
 handler's `Result.Data`. Bind only the keys you name — nothing reaches world
-unasked-for. One reserved key, `__http_exchanges`, is added automatically: a
-body-free list of `{method, url, status}` for the HTTP calls the script made,
-so they ride the `harness.returned` trace event. Authors **must not** declare an
-output named `__http_exchanges`.
+unasked-for. Two reserved trace-summary keys are added automatically when the
+script uses those capabilities: `__http_exchanges`, a body-free list of
+`{method, url, status}` for HTTP calls, and `__inspections`, a body-free list of
+`{op, target, status}` for `ctx.fs` / `ctx.probe` calls. Authors **must not**
+declare outputs with those names.
 
 Number conversion back to Go: an integer becomes `int64` (or `float64` when out
 of `int64` range); a float becomes `float64`. The sidecar's `int` and `number`
@@ -178,21 +190,23 @@ domain error (see below).
 
 ### The `ctx` surface (deliberately narrow)
 
-`main` takes one argument, `ctx`, a struct with **exactly five** attributes and
-nothing else. The narrowness *is* the sandbox: any unknown attribute (e.g.
-`ctx.env`) fails at eval with a clear Starlark "has no `.X` field" traceback,
-surfaced as a domain error. There is no static AST analyzer — the fixed `ctx` is
-the enforcement.
+`main` takes one argument, `ctx`, a struct with `inputs`, read-only `world` by
+default, and only the external attributes granted by `with.capabilities`. The
+narrowness *is* the sandbox: an ungranted attribute (for example `ctx.http`
+without an `http` grant, or `ctx.env` always) fails at eval with a clear
+Starlark "has no `.X` field" traceback, surfaced as a domain error.
 
 ```
 ctx.inputs["name"]                          # dict of the resolved, type-checked inputs
 ctx.world.get("key")                        # read-only world snapshot; None when absent
-ctx.http.get(url, headers={})               # -> response
-ctx.http.post(url, body=..., headers={})    # -> response
-ctx.fs.read(path)                           # -> string (repo-relative, read-only, 1 MiB cap)
-ctx.fs.exists(path)                         # -> bool
-ctx.fs.glob(pattern)                        # -> [path] (sorted, repo-relative)
-ctx.probe(name, args=[])                    # -> {exit: int, out: string} (allow-listed only)
+ctx.http.get(url, headers={}, auth=None)    # -> response (only with http grant)
+ctx.http.post(url, body=..., headers={}, auth=None) # -> response (only with http grant)
+ctx.fs.read(path)                           # -> string (only with fs.read grant)
+ctx.fs.exists(path)                         # -> bool (only with fs.read grant)
+ctx.fs.glob(pattern)                        # -> [path] (only with fs.read grant)
+ctx.fs.write(path, content)                 # -> path (only with fs.write grant)
+ctx.probe(name, args=[])                    # -> {exit: int, out: string} (only with probe/vcs/github grant)
+ctx.host.call(name, args={})                # -> dict (only with exact host.verbs grant)
 ```
 
 - `ctx.inputs` is a **dict**, accessed by key (not attribute).
@@ -204,51 +218,99 @@ ctx.probe(name, args=[])                    # -> {exit: int, out: string} (allow
 - `ctx.http.post` `body` may be a Starlark dict (JSON-encoded, `Content-Type`
   defaulted to `application/json`) or a string (sent verbatim). `headers` is a
   dict of string→string.
+- `ctx.http.get/post` `auth` may be a string or list of strings when the
+  injected HTTP client supports auth policy, such as `ticket_provider/v1`
+  runners. It is symbolic: the script names host-side auth policies, and the
+  transport resolves env/secrets and applies request headers after Starlark
+  constructs the request. Secret values are never exposed as Starlark values.
 - The **response** object exposes `.status` (int), `.headers` (dict), `.text()`
   (string method) and `.json()` (parses the body to a Starlark value; a parse
   error is a Starlark error). A response is truthy iff its status is in
   `200..299`. A non-2xx status is **not** an error — branch on it in-script.
 
-#### Read-only inspection: `ctx.fs` and `ctx.probe`
+Example grants:
 
-`ctx.fs` and `ctx.probe` are the **read-only filesystem + allow-listed-process
-boundary** — the sibling of `ctx.http` for the working tree and a few curated
-probes. They exist so a verify gate can assert against reality ("does this file
-exist", "does `gh issue list` show ≥ N issues") while keeping the determinism +
-record/replay contract intact. `ctx.env` is still absent — there is deliberately
-no environment surface.
+```yaml
+capabilities:
+  stdlib: [json, math, yaml]       # default; can be narrowed
+  world: read                      # default; use none/false to hide ctx.world
+  http:
+    methods: [GET]
+    hosts: ["api.github.com"]      # optional; omitted means any host
+    cassette_required: true        # require an injected HTTP cassette/replay client
+  fs:
+    read: ["docs/**", ".artifacts/**"]
+    write: [".artifacts/reports/**"]
+    max_bytes: 1048576
+  vcs: read                        # grants git.status and git.ls_files probes
+  github:
+    issues: read                   # grants gh.issue.list
+  host:
+    verbs: ["host.graph.load"]
+```
 
-- `ctx.fs.read/exists/glob` are **read-only and repo-scoped**: every path is
-  resolved against the run's working directory, cleaned, and rejected if it
-  escapes via `..` or an absolute prefix. There is no write/delete — mutation
-  stays with a write-mode-gated agent step, never the gate. A read is capped at
-  1 MiB.
+The host vocabulary also includes the agent ladder (`host.agent.ask`,
+`decide`, `task`, `extract`, and `converse`) for project-supplied orchestration
+scripts. These are never implicit: the effect must grant each exact verb, and
+the call still passes through that verb's normal tool, provider, sandbox, and
+trace policy. Automated flows must replace agent calls with host-handler
+stubs/cassettes; granting an agent verb does not make a test live-spend safe.
+
+`http`, `fs`, `probe`, `github`, and `host` are opt-in: the matching `ctx`
+attribute is absent unless the effect grants it. The production adapter only
+installs the live HTTP client when `http` is granted and
+`http.cassette_required` is not set, and only installs the working-dir-rooted
+inspector when `fs`/`probe`/`github` capabilities are granted. If
+`http.cassette_required: true`, a flow/test/runtime must already have injected a
+Starlark HTTP client, normally through `starlark_http_cassette:`. The runtime
+then enforces HTTP methods/hosts, fs read/write path patterns, probe names, and
+host verbs.
+
+#### Filesystem/probe boundary: `ctx.fs` and `ctx.probe`
+
+`ctx.fs` and `ctx.probe` are the **filesystem + allow-listed-process boundary**
+— the sibling of `ctx.http` for the working tree and a few curated probes. They
+exist so a glue script can assert against reality ("does this file exist", "does
+GitHub list ≥ N issues") and write small deterministic artifacts while
+keeping the record/replay contract intact. `ctx.env` is still absent — there is
+deliberately no environment surface.
+
+- `ctx.fs.read/exists/glob/write` are **repo-scoped** by default: every relative
+  path is resolved against the run's working directory, cleaned, and rejected if
+  it escapes via `..`. Absolute paths are rejected except for paths under `/tmp`
+  or the platform temp dir, used by flow fixtures for disposable outputs that
+  should stay out of the checkout. Reads and writes are each capped at 1 MiB.
+  `write` replaces exactly one file, creating parent directories as needed, and
+  returns the normalized path. There is no delete, chmod, rename, shell,
+  environment, or clock surface.
 - `ctx.probe(name, args=[])` is an **allow-list, not a shell.** `name` must be on
-  a fixed global vocabulary of read-only probes; each maps to a static argv
-  template exec'd directly (no shell, no word-splitting), with `args` substituted
-  positionally. The current allow-list: `gh.issue.list`, `git.status`,
-  `git.ls_files` (see `probeAllowList` in `internal/host/starlark/inspect.go`). A
-  non-zero exit is **not** an error — it is returned in the result's `exit` so a
-  script can branch on a clean failure, exactly like a non-2xx HTTP status; an
-  unknown name is an error.
+  a fixed global vocabulary of read-only probes. GitHub probes such as
+  `gh.issue.list` use native GitHub API calls; local VCS probes such as
+  `git.status` and `git.ls_files` map to static argv templates exec'd directly
+  (no shell, no word-splitting), with `args` substituted positionally (see
+  `internal/host/starlark/inspect.go`). A non-zero exit is **not** an error — it
+  is returned in the result's `exit` so a script can branch on a clean failure,
+  exactly like a non-2xx HTTP status; an unknown name is an error.
 
-Both funnel through one `Inspector` interface (`internal/host/starlark/inspect.go`)
+All filesystem/probe calls funnel through one `Inspector` interface (`internal/host/starlark/inspect.go`)
 — the inspection-side analogue of `HTTPClient`. It is injected via
 `WithInspector`/`InspectorFromContext` (mirroring `WithHTTP`); the default is a
 **deny-all** inspector so a script that touches the disk without an injected
 inspector fails loud. In production the adapter installs a working-dir-rooted
-inspector; a flow fixture injects a **`ReplayInspector`** backed by an inspect
-cassette, so the *real* script runs with its fs/probe served from disk — no real
-process, fully deterministic, no LLM and no cost. Each call records a body-free
-`{op, target, status}` summary for the trace (full payloads stay in cassettes),
-exactly as HTTP exchanges do.
+inspector only when `capabilities` grants `fs`, `vcs`, or `github`; a flow
+fixture injects a **`ReplayInspector`** backed by an inspect cassette, so the
+*real* script runs with its fs/probe served from disk — no real process, fully
+deterministic, no LLM and no cost. Each call records a body-free `{op, target,
+status}` summary for the trace (full payloads stay in cassettes), exactly as
+HTTP exchanges do.
 
 The worked example is the dev-story ad-hoc plan's verify gate
 ([`stories/dev-story/verify/issues_migrated.star`](../../stories/dev-story/verify/issues_migrated.star));
 see [docs/stories/ad-hoc-plan.md](../stories/ad-hoc-plan.md) for the full
 propose → accept → apply → verify story it sits behind.
 
-Predeclared stdlib: `json` and `math` **only** (no `time`, no `random`).
+Predeclared stdlib: `json`, `math`, and decode-only `yaml` **only** (no
+`time`, no `random`).
 `FileOptions` are strict defaults (no `set` builtin, no global reassignment, no
 recursion); execution is capped at 10,000,000 steps to turn an accidental hot
 loop into a clean error.
@@ -271,7 +333,7 @@ flowchart TD
     http["ctx.http.*<br/>HTTPClient recording / replay"]
     fs["ctx.fs / ctx.probe<br/>rooted allow-list / replay"]
     validateOut{"Validate returned dict<br/>declared outputs + types"}
-    result["Result.Data<br/>outputs + __http_exchanges"]
+    result["Result.Data<br/>outputs + trace summaries"]
     bind["effect bind"]
     domain["DomainError<br/>Result.Error -> on_error"]
 
@@ -288,9 +350,9 @@ flowchart TD
 ### Record / replay (HTTP cassettes)
 
 All network access funnels through one `HTTPClient` interface — the sandbox's
-only I/O boundary. In production the adapter injects a recording client (real
-`net/http`, 30s timeout) that records a body-free `{method, url, status}`
-summary per call. In a flow fixture the testrunner injects a **replay client**
+only I/O boundary. In production the adapter injects a recording client only
+when `capabilities.http` is granted (real `net/http`, 30s timeout) and policy
+checks methods/hosts before dispatch. In a flow fixture the testrunner injects a **replay client**
 backed by an HTTP cassette, so the *real* script runs with its network served
 from disk — no socket, fully deterministic, no LLM and no cost.
 
@@ -416,13 +478,14 @@ is present in the tree.)
 
 ## Agent verb summary
 
-Five verbs ordered by blast radius. Pick the narrowest one that fits.
+Six verbs ordered by blast radius. Pick the narrowest one that fits.
 
 | Verb | Blast radius | Schema required | Mutation | Transcript |
 |---|---|---|---|---|
 | `host.agent.extract` | Deterministic-first | yes | no | no |
 | `host.agent.decide` | LLM-only verdict | yes | no | no |
 | `host.agent.ask` | LLM inspection | optional | no | no |
+| `host.agent.codeact` | Bounded Starlark loop | optional | only granted `ctx` surfaces | step journal |
 | `host.agent.task` | Agentic write | yes (acceptance) | yes | journal |
 | `host.agent.converse` | Open conversation | no | optional | ChatStore |
 
@@ -431,14 +494,165 @@ Five verbs ordered by blast radius. Pick the narrowest one that fits.
 1. Can a synonym list or slot template answer the input? → `extract`.
 2. Does the call require a typed structured verdict with no file mutations? → `decide`.
 3. Do you just need prose or an optional typed annotation from a read-only agent? → `ask`.
-4. Does the agent need to edit files, run commands, or loop until a `submit()` is accepted? → `task`.
-5. Is this a multi-turn conversation the user drives? → `converse`.
+4. Should an agent explore, but only by emitting scoped Starlark snippets over
+   declared capabilities? → `codeact`.
+5. Does the agent need to edit files, run commands, or loop until a `submit()` is accepted? → `task`.
+6. Is this a multi-turn conversation the user drives? → `converse`.
 
-All five verbs share the same streaming path (`AgentStreamer.Run`), the same
-agent-declaration lookup, and the same `KITSOKI_SESSION_ID` propagation. The
+The agent verbs share named-agent lookup and `KITSOKI_SESSION_ID` propagation;
+the CLI-backed paths run through `AgentStreamer.Run` while plugin/direct-API
+paths preserve the same handler result contracts. The
 persona table pattern — one named agent per role, declared in `agents:` — is
 documented with worked examples in `stories/bugfix/AGENT-BRIEF.md` and
 `stories/bugfix/README.md`.
+
+## host.agent.codeact
+
+Bounded "code-act" agent loop. Instead of giving the model an open Claude Code
+toolbox, Kitsoki asks the named agent for one Starlark snippet per step, runs
+that snippet through the same capability-scoped evaluator as
+`host.starlark.run`, and feeds either the returned dict or a structured error
+back to the next step. The loop ends when the agent emits `done(payload)` that
+passes `schema:` validation, or when the step budget is exhausted.
+
+Use CodeAct when a task is still exploratory but the available actions should be
+strictly `ctx.world`, `ctx.http`, `ctx.fs`, `ctx.probe`, or `ctx.host.call`
+surfaces you explicitly grant. Promote stable CodeAct trajectories to
+`host.starlark.run` once the transform is known.
+
+### Arguments
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `agent` | string | yes | Named agent from the top-level `agents:` block. Supplies system prompt, provider/model, and launch policy context. |
+| `goal` | string | yes | Natural-language objective for the loop. This is the stable instruction every step sees with the remaining budget and prior observation/error. |
+| `capabilities` | object | no | Shared Starlark capability authority for every emitted snippet. Same schema as `host.starlark.run`. Absent means pure stdlib plus read-only `ctx.world`; external surfaces are absent. Unknown keys fail app load. |
+| `budget` | int | no | Maximum snippet/done attempts. Default: `5` when absent or non-positive. |
+| `schema` | string | no | JSON Schema path for the final `done(payload)`. Invalid payloads are rejected and fed back as the next step's error instead of terminating. |
+| `working_dir` | string | no | Working directory for the agent subprocess and the production inspector root fallback. Agent `DefaultCwd` is used when omitted. |
+
+`sandbox:` is deliberately invalid on CodeAct. `sandbox:` is the external-agent
+runtime policy for `task`/write-capable `converse`; CodeAct's boundary is the
+Starlark capability sandbox described here and in [`starlark.md`](starlark.md).
+The loader rejects a `sandbox:` block on `host.agent.codeact` so a copied
+task-shaped effect cannot silently run under the wrong assumptions.
+
+### Return values
+
+| Field | Type | Notes |
+|---|---|---|
+| `terminated` | string | `"done"` or `"budget_exhausted"`. |
+| `payload` | object | The schema-valid final payload when `terminated == "done"`; empty on budget exhaustion. |
+| `steps` | list | Per-step journal entries containing the emitted snippet, observation, and optional error message. |
+
+### Capability enforcement
+
+CodeAct snippets run as anonymous Starlark files named `<codeact-snippet>`.
+They use the same `def main(ctx): ...` entry point as `host.starlark.run`, but
+there is no sidecar because the snippet is generated per step. Snippets should
+read session state through `ctx.world.get(key)` and whatever external `ctx`
+surfaces the effect grants; the final `done(payload)` schema is the typed output
+contract for the whole loop.
+
+Capability enforcement is not prompt-only:
+
+- `ctx.http`, `ctx.fs`, `ctx.probe`, and `ctx.host` are not present unless
+  `with.capabilities` grants them.
+- HTTP methods/hosts, fs read/write patterns, probe names, and host verbs are
+  checked by runtime policy wrappers before the production adapter is called.
+- `http.cassette_required: true` requires an injected Starlark HTTP client; a
+  live production recording client is not installed behind the author's back.
+- A snippet failure becomes a structured CodeAct error envelope and the next
+  agent step receives it for self-correction.
+
+### Example
+
+```yaml
+hosts:
+  - host.agent.codeact
+
+agents:
+  triager:
+    system_prompt: "Use scoped Starlark snippets to inspect and submit a verdict."
+
+states:
+  triaging:
+    on_enter:
+      - invoke: host.agent.codeact
+        once: true
+        with:
+          agent: triager
+          budget: 6
+          capabilities:
+            world: read
+            vcs: read
+          schema: schemas/triage_verdict.json
+          goal: >-
+            Triage {{ world.ticket_id }} against the current tree. Do not fix
+            anything. Return whether the bug is still live with code evidence.
+        bind:
+          triage: payload
+          codeact_steps: steps
+        on_error: triage_failed
+```
+
+Flow fixtures can stub or replay the whole `host.agent.codeact` result through
+`host_cassette` for zero-LLM coverage. If the loop produces a deterministic
+transform that should become part of the story, promote it to a checked-in
+`scripts/*.star` + sidecar and replace the effect with `host.starlark.run`; the
+promoted flow should no longer dispatch `host.agent.codeact`.
+
+### Cache-usage visibility and the pre-dispatch budget gate
+
+Every `host.agent.*` call already gets a byte-stable, cache-eligible system
+prompt for free (see [system-prompt.md](system-prompt.md)'s layering order).
+Two more things ride on top of that: **what caching actually bought** (visible
+after the call) and **whether an oversized call should even be sent**
+(decided before it).
+
+**Cache-usage visibility.** The claude CLI's `stream-json` terminal `result`
+event already reports `cache_read_input_tokens` / `cache_creation_input_tokens`
+alongside `input_tokens` / `output_tokens` — kitsoki parses the whole usage
+object onto `agent.call.complete`'s `Meta.usage` map unchanged, and additionally
+derives a small typed view, `Meta.cache` (`host.CacheUsage{ReadTokens,
+CreationTokens, Hit}`, `internal/host/agent_event_sink.go`), mirroring the
+`UsageInfo` shape `LiveHarness` already reports for routing calls
+(`internal/harness/live.go`). `Hit` is true only when `ReadTokens > 0` — a
+call that merely writes a new cache-eligible prefix (first call after a
+prompt-shape change) is a miss, not a hit. `Meta.cache` is omitted entirely
+(not a false all-zero struct) for a transport that reports no cache
+accounting at all (e.g. `copilot`). No new event kind — this is an additive
+field on the event every dispatch already emits.
+
+**Pre-dispatch budget gate.** `host.agent.decide` and `host.agent.task` route
+through a shared wrap point, `runAgentVerbWithLadder` (`internal/host/ladder.go`),
+before any rung is dispatched. That wrap now runs a deterministic, LLM-free
+size check (`internal/host/budget_gate.go`): marshal the call's args + the
+resolved agent's system-prompt body, divide by a fixed chars-per-token ratio,
+and compare against a `BudgetThresholds{WarnTokens, RefuseTokens}` pair
+resolved per-agent (`agents: <name>: token_budget: {warn_tokens,
+refuse_tokens}`, `internal/app/types.go`'s `TokenBudgetDecl`) → else a
+per-verb default → else a generic fallback. Three outcomes:
+
+| Estimate vs. thresholds | Outcome | Effect |
+|---|---|---|
+| ≤ WarnTokens | `proceed` | dispatch unchanged |
+| > WarnTokens, ≤ RefuseTokens | `escalate` | ladder's walk starts one rung up (skips the cheapest tier) |
+| > RefuseTokens, or an invalid agent-declared override | `refuse` | terminal `FailureFatal` **before any `claude` subprocess is spawned** — never metered |
+
+Every decision — proceed, escalate, or refuse — is recorded as a new trace
+event, `agent.dispatch.budget_checked` (`internal/store/event.go`), carrying
+`{verb, estimated_tokens, budget_warn_tokens, budget_refuse_tokens, decision,
+reason, rung}`, so a reviewer can reconstruct why a call was allowed,
+escalated, or refused without re-running it. Shipped per-verb defaults are
+generous (300k warn / 1M refuse — well above the largest single call observed
+in the token-bloat finding) so the gate is present and recording from day one
+without any existing story refusing or escalating calls on rollout; an author
+tightens it deliberately via the per-agent `token_budget:` override, validated
+both at story-load time (`internal/app/loader.go`) and again at runtime
+(fail-closed if invalid either way). `host.agent.ask`/`.converse` don't route
+through `runAgentVerbWithLadder` today and so aren't covered by the gate yet —
+extending it there means extending the ladder wrap to those verbs first.
 
 ### Ambient context — editor and screen
 
@@ -698,8 +912,11 @@ tool allowlist or working directory; the loader rejects it at app-load time.
 | `acceptance.post_cmd` | string | no | Verifier command run after schema validation passes. Exit code 0 = accepted; non-zero = rejected (LLM gets the stdout as rejection reason). |
 | `acceptance.post_cmd_args` | map | no | `{ key: value }` forwarded as `--key value` to the post_cmd subprocess. |
 | `acceptance.max_retries` | int | no | Retry budget for the acceptance loop (default: 5). |
+| `acceptance.min_information_ratio` | number | no | Minimum information score relative to the richest submission attempt (default: 0.5; `0` disables). |
+| `acceptance.min_information_bits` | number | no | Richest-attempt floor before the relative gate activates (default: 256 Shannon bits). |
 | `context.prompt` | string | no | Prompt text or path injected into the agent's first turn as stdin. |
 | `context.args` | map | no | Template variables for `context.prompt`. |
+| `sandbox` | map | no | Runtime policy for the agent subprocess. See [`sandbox:` runtime policy](#sandbox-runtime-policy). |
 
 ### Return values
 
@@ -765,7 +982,7 @@ gated:
   routes through the **write-mode gate** (`internal/host/write_mode_gate.go`),
   which classifies the call (`effect ≥ write`), short-circuits an active
   turn/session grant, else forwards an **action proposal** to the operator via
-  the [operator-ask bridge](operator-ask.md#second-consumer-the-write-mode-gates-action-proposals).
+  the [operator-ask bridge](operator-ask.md#other-consumer-the-write-mode-gates-action-proposals).
   With no operator attached the gate **denies** (headless) and the agent stays
   read-only;
 - the operator's opt-in (or denial) is recorded as a `machine.write_mode_granted`
@@ -785,6 +1002,62 @@ cassette is affected. The classification today keys on the
 `readOnlyDeniedTools` set and the read-only `bash_profile` verdict (the static
 signals that exist) and upgrades to the full `pure | read | write | external`
 effect class when the effect-taxonomy slice lands.
+
+### `sandbox:` Runtime Policy
+
+Before any external coding-agent launch, an optional global
+[`agent_launch_policy:`](../guide/agents/launch-policy.md) preflight may reject the
+resolved `working_dir` when it is in a protected checkout/branch or outside an
+opened capsule. That guard answers "may this agent start here?" and applies even
+when a call does not declare `sandbox:`.
+
+`host.agent.task` and write-capable `host.agent.converse` can opt into the agent
+runtime layer with `with.sandbox`. The current OSS backend is `supervised`: it
+does process-group launch/kill, timeout/cancel cleanup, a temporary HOME/XDG
+environment, provider/Kitsoki env allowlisting, and final diff capture. It is
+not filesystem confinement; repo/rw/hidden/network policy is recorded as
+degraded when the selected backend cannot enforce it.
+
+```yaml
+invoke: host.agent.task
+with:
+  agent: implementer
+  working_dir: "{{ world.worktree }}"
+  sandbox:
+    min_strength: supervised
+    repo: read_only
+    rw: ["{{ world.work_dir }}", ".worktrees"]
+    hidden: [".env", ".git/config"]
+    network: inherit
+    degrade: warn
+    resources:
+      timeout: 8m
+  acceptance:
+    schema: schemas/result.json
+```
+
+Trace events make the boundary auditable:
+
+- `agent.runtime.start` records backend, strength, requested minimum strength,
+  repo/rw/hidden/network policy, and `degraded[]`.
+- `agent.runtime.end` records exit code, whether Kitsoki killed the process
+  tree, duration, and final diff byte count.
+
+CLI-backed launches also emit `agent.process` diagnostics in the trace stream:
+`start`, `no_output`, and `finish`. The `start` row records redacted argv,
+working directory, pid, uid/root/sandbox posture, provider env key names, and
+common env-key presence; `finish` records duration, exit/infra summary, and raw
+stream-event count. For direct non-sandboxed launches, set
+`KITSOKI_AGENT_ACTIVITY_TIMEOUT=90s` (or another duration) to cancel prolonged
+stdout inactivity and force a terminal `agent.call.error` instead of leaving an
+in-flight `agent.call.start`. Sandboxed launches should prefer
+`sandbox.resources.activity_timeout`.
+
+`degrade: fail` aborts before launch when no backend satisfies
+`min_strength`. `degrade: warn` may run the strongest available backend, but the
+trace must show the degradation; a degraded start must not look like a confined
+run. Plugin-dispatched `host.agent.task` calls currently fail closed when
+`sandbox:` is present because the process boundary is outside the local runtime.
 
 ### Built-in sub-agent MCP tools
 
@@ -997,6 +1270,43 @@ Implementation: [`internal/host/artifacts_dir_transport.go`](../../internal/host
 
 ---
 
+## host.fs.writable_dir
+
+Resolves a configured "durable path" world var to itself when it accepts
+writes, or to a caller-supplied fallback directory otherwise. Exists because
+several story-level durable-path defaults (e.g. dev-story's
+`design_durable_path`, default `docs/proposals`) are appropriate for that
+story's own dogfood checkout but are NOT writable in every context the story
+can run in — most notably Kitsoki's own primary checkout, which is
+intentionally read-only (see the repo's `AGENTS.md`). Without this check, a
+room that mints a workspace folder or writes an artifact under the configured
+path hard-fails with a raw `mkdir ...: permission denied` the first time it
+runs somewhere read-only, instead of degrading to a location that is always
+writable.
+
+The intended usage is a ONE-TIME room-level resolve, early, that rebinds the
+story's own "durable path" world var to whatever this returns — so every
+downstream step (workspace minting, artifact writes, publish) sees a writable
+root without each re-deriving it. See `stories/dev-story/rooms/design_search.yaml`'s
+`resolve_durable_path` step for the reference usage.
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `path` | string | yes | The configured directory to check. It need not exist yet — writability is probed against the nearest existing ancestor, since that is what actually governs whether a later `mkdir -p` under it would succeed. |
+| `fallback` | string | yes | The directory to use instead when `path` is not writable. Not itself re-validated — pick one you already know is safe (e.g. `.context/designs`, the repo's conventional local-runtime scratch dir). |
+
+Returns: `{ path, used_fallback }`. `path` is either the input `path`
+(writable) or `fallback` (not); `used_fallback` is `true` when the fallback was
+returned.
+
+Writability is probed with a real create-then-remove of a hidden marker file
+(not a permission-bit inspection), so the answer holds under uid/gid
+mismatches, ACLs, and a read-only bind mount alike.
+
+Implementation: [`internal/host/fs_writable_dir.go`](../../internal/host/fs_writable_dir.go).
+
+---
+
 ## host.workspace_manager.get
 
 Shells out to a `workspace-manager` CLI and parses the JSON output
@@ -1014,51 +1324,233 @@ Returns the parsed object as `Result.Data`. Bind individual fields
 
 ---
 
-## host.git_worktree (`workspace` interface)
+## host.capsule_workspace (`workspace` interface)
 
-Git-worktree-backed `workspace` provider
+Capsule-backed `workspace` provider
+([`internal/host/capsule_workspace.go`](../../internal/host/capsule_workspace.go)).
+This is the forward story-facing interface for stories that can express their
+workspace policy as a checked-in `.kitsoki/capsules/<definition>.yaml`
+definition. It opens the project Capsule manager with repository-local
+definitions and materializes the workspace under the project-managed
+`.capsules/workspaces` root; branch, source, bootstrap, and scope policy come
+from the definition rather than from ad hoc story arguments.
+
+The handler dispatches `list` / `create` / `get` / `status` / `sync` /
+`commit` / `close` / `cleanup_scan` / `cleanup_apply` via the `op` arg. It
+should be granted to agents when the desired
+authority is "manage Capsule workspaces in this project" rather than "run
+general git plumbing". A scoped MCP agent can receive only the Capsule MCP
+server; an in-story agent can receive this host binding for the same
+least-authority lifecycle.
+
+Every return, including domain errors, carries `diagnostics` in `Result.Data`.
+The orchestrator records that map in `harness.returned` and mirrors it in
+`host_error.data` on failures, so a trace shows the handler, op, repo,
+definition, workspace id, generation, path, provider, state, branch/head,
+dirty flag, low-level VCS status error when present, and a remediation hint.
+
+`list` args:
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `repo` | string | no | Project root. |
+
+`list` returns stable, id-sorted workspace records with id, generation,
+definition, provider, state, owner, path when resolvable, branch/head, source
+ref, dirty flag, and any VCS status error.
+
+`create` args:
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `id` | string | yes | Workspace identity and instance key. |
+| `definition` | string | no | Checked-in Capsule definition id, for example `development`, `staging`, or a story-specific fixture. Empty defaults to `development` during the story-contract migration. |
+| `repo` | string | no | Project root. Empty means resolve the current git top-level. |
+| `owner` | string | no | Logical owner for close/lease semantics. Defaults to `host`. |
+
+`get` args:
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `id` | string | yes | Workspace identity. |
+| `repo` | string | no | Project root. |
+
+`status` args:
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `id` | string | yes | Workspace identity. |
+| `repo` | string | no | Project root. |
+
+`sync` args:
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `id` | string | yes | Workspace identity. |
+| `repo` | string | no | Project root. |
+
+`sync` is a transitional compatibility barrier for imported stories that still
+call `workspace.sync`. It verifies and reports the Capsule workspace status; it
+does not perform git remote synchronization.
+
+`commit` args:
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `id` | string | yes | Existing workspace identity. |
+| `message` | string | yes | Commit message passed to the Capsule VCS operation. |
+| `repo` | string | no | Project root. |
+
+`close` args:
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `id` | string | yes | Existing workspace identity. |
+| `owner` | string | no | Must match the logical owner when the provider enforces ownership. |
+| `repo` | string | no | Project root. |
+
+Returns `ok`, `id`, `generation`, `path`, `branch`, `state`, `head`, `dirty`,
+and `diagnostics` for create/get/status/sync/commit operations where those
+fields are available. `close` returns `ok`, `id`, `closed`, and `diagnostics`.
+
+`cleanup_scan` args:
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `repo` | string | no | Project root. |
+| `exclude` | string | no | Case-insensitive substring filter against id/path/branch/state. |
+| `protected` | string | no | Comma-separated branch names that must not be recommended. |
+
+`cleanup_scan` returns reviewable Capsule candidates and a `recommended_count`.
+It recommends only integrated or failed workspaces that are not dirty and do not
+use a protected branch. Active, dirty, protected, and already-closed workspaces
+are still visible with a reason, so disk-pressure troubleshooting can separate
+"safe to close" from "needs operator review".
+
+`cleanup_apply` args:
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `candidates` | list | yes | The candidate list returned by `cleanup_scan`. |
+| `owner` | string | no | Fallback owner when a candidate lacks owner metadata. |
+| `repo` | string | no | Project root. |
+
+`cleanup_apply` closes only candidates marked `recommended: true` and rechecks
+that the live Capsule state is still `integrated` or `failed`. It returns
+`deleted`, `skipped`, and `errors`, all mirrored into diagnostics for postmortem
+traces.
+
+Stories that still need dynamic `name` / `base` arguments can remain on
+`host.git_worktree` until their `host_interfaces` contract is migrated to
+checked-in definitions. New generated project instances bind `workspace` to
+`host.capsule_workspace` and emit `.kitsoki/capsules/development.yaml`.
+
+## host.git_worktree (compatibility `workspace` interface)
+
+Compatibility `workspace` provider
 ([`internal/host/git_worktree.go`](../../internal/host/git_worktree.go)). A
 single prefix-fallback handler dispatches `list` / `get` / `create` / `sync` /
-`cleanup_scan` / `cleanup_apply` via the `op` arg. Worktrees live under
-`<repo>/.worktrees/<id>` where the id == the worktree dir basename.
+`cleanup_scan` / `cleanup_apply` / `clone_create` /
+`clone_cleanup_scan` / `clone_cleanup_apply` via the `op` arg. The default
+`create` path delegates to
+[`scripts/dev-workspace.sh`](../../scripts/dev-workspace.sh), which materializes
+clone-backed capsule workspaces under `<repo>/.capsules/workspaces/<id>`, writes
+the capsule/clone sentinels, and keeps git plumbing out of agents. Legacy linked
+worktree list/cleanup remains for old local checkouts. The operator-facing
+lifecycle runbook is [`../dev-workspaces.md`](../dev-workspaces.md).
+
+New stories should prefer `host.capsule_workspace` when they can choose a
+checked-in Capsule definition. Keep this provider for old story contracts that
+still speak in `name`, `base`, and `sync`, or for cleanup of legacy linked
+worktrees.
 
 `create` args:
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
 | `name` | string | yes | The new feature branch. |
-| `id` | string | no | On-disk dir basename. Defaults to the slashes-flattened `name` (`fix/foo` → `fix-foo`). Authors that bind `workspace_id` from world state pass it here so `sync` (which keys on the id) finds the dir. |
-| `base` | string | no | Branch the new worktree is rooted at. |
-| `session_id` | string | no | Owning kitsoki session. When set, a successful `git worktree add` writes a `.kitsoki-owner` sentinel into the worktree. |
+| `id` | string | no | Workspace id / on-disk clone dir basename. Defaults to the slashes-flattened `name` (`fix/foo` -> `fix-foo`). Authors that bind `workspace_id` from world state pass it here so `sync` (which keys on the id) finds the workspace. |
+| `base` | string | no | Branch or commit the workspace is rooted at. |
+| `session_id` | string | no | Owning kitsoki session. Recorded in `.kitsoki-clone`, `capsule-manifest.json`, and the compatibility `.kitsoki-owner` marker. |
 
 ### Per-session isolation (no shared checkouts)
 
 Two concurrent sessions on the same ticket must never share one on-disk
-worktree: a routine `git checkout -- <file>` in one session silently and
-unrecoverably reverts the other's uncommitted WIP. The host-side
-`.kitsoki-owner` sentinel prevents it:
+workspace: a routine checkout/revert in one session silently and unrecoverably
+reverts the other's uncommitted WIP. The script-owned workspace metadata
+prevents it:
 
 - The orchestrator projects its per-session SessionID into the story world as
   `world.session_id` (an ephemeral, replay-safe seed recomputed each
   `loadJourney`, alongside `world.ide.connected`).
   [`stories/bugfix`](../../stories/bugfix/rooms/idle.yaml) threads it into
-  `workspace.create` (the worktree dir itself stays ticket-scoped,
-  `bf-<ticket>`, preserving the stable on-disk path contract).
-- `create` consults the `.kitsoki-owner` sentinel before its idempotency
-  short-circuit returns an existing tree. A matching or absent sentinel still
+  `workspace.create`; the story also includes the session id in the workspace id
+  so same-ticket sessions get distinct paths.
+- `create` consults the script-written session metadata before its idempotency
+  short-circuit returns an existing tree. A matching or absent session still
   short-circuits to `{ok:true}` (so legitimate same-session re-entry after a
-  restart works); a sentinel naming a *different* session fails loudly:
+  restart works); metadata naming a *different* session fails loudly:
   `workspace.create: <id> is already checked out by session <owner>; refusing
   to share …`. So a second session racing the same ticket is refused rather
   than handed the first's live tree — even if a caller forgets the session
   dimension in the id.
 
-(Keying the worktree dir per-session so distinct same-ticket sessions get
-*distinct* dirs — coexistence rather than refusal — is a possible future
-enhancement; it is not needed to close the destructive bug, which the sentinel
-already does.)
-
 Regression: [`concurrent_checkout_repro_test.go`](../../internal/host/concurrent_checkout_repro_test.go).
+
+### Legacy worktree cleanup
+
+`cleanup_scan` returns reviewable candidates for two independent cleanup
+classes:
+
+- Whole linked worktrees and branch-only leftovers. These are recommended only
+  when the branch is merged into `base` (default `main`), not protected, not
+  dirty, and not excluded by the `exclude` refinement string.
+- Generated cache directories inside linked worktrees. These use `kind:
+  "cache"`, `actions: ["cache_remove"]`, and `preserves_branch: true`; they are
+  recommended even when the containing worktree is dirty or unmerged because
+  compiler/module caches do not carry branch state. The recognized generated
+  directory basenames are `.cache`, `go-cache`, `go-build-cache`,
+  `go-mod-cache`, `bf-73-go-build`, and `paired-task-work`.
+
+`cleanup_apply` still deletes only candidates whose `recommended` field is
+`true`. For `kind: "cache"` candidates it validates that the path is under
+`<repo>/.worktrees` and has a recognized generated-cache basename, makes the
+tree owner-writable, and removes only that cache directory; it does not delete
+the branch or containing worktree.
+
+### Managed clone capsules
+
+Linked worktrees isolate files and indexes, but they still share refs, stash,
+reflogs, hooks/config, the worktree registry, and Git lock files. The default
+workspace path now uses managed clone capsules for both human-supervised and
+autonomous runs. `create` and `clone_create` both delegate to
+`scripts/dev-workspace.sh create`; `clone_create` remains as an explicit op name
+for callers that already use it.
+
+`clone_create` args:
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `id` | string | yes | On-disk clone dir basename under the clone root. Must be a single path segment. |
+| `name` | string | no | Local branch to create in the clone. |
+| `base` | string | no | Branch or commit to check out, or the start point for `name`. |
+| `root` | string | no | Clone root. Defaults to `<repo>/.capsules/workspaces`. Relative paths are resolved under `repo`. |
+| `session_id` | string | no | Recorded in the clone sentinel for operator forensics. |
+
+Each managed clone gets a `.kitsoki-clone` sentinel plus a capsule-compatible
+`.kitsoki-capsule` / `capsule-manifest.json`, with its id, source repo,
+branch/base, session id, and creation time. Cleanup only considers directories
+with the clone sentinel.
+
+`clone_cleanup_scan` returns candidates from the clone root. A clone is
+recommended only when it is Kitsoki-owned, clean (`git status --porcelain` is
+empty), and older than `min_age_hours` (default: `24`). `exclude` suppresses
+matching ids, paths, or branches for review refinement.
+
+`clone_cleanup_apply` deletes only candidates whose `recommended` field is
+`true`, whose path is still under the clone root, and whose `.kitsoki-clone`
+sentinel is still present. It does not delete branches in the source repo
+because clone refs are intentionally isolated.
 
 ---
 
@@ -1399,27 +1891,34 @@ Source: [`internal/host/diff_open.go`](../../internal/host/diff_open.go).
 ## Agent declaration
 
 Named agents live in the top-level `agents:` block of `app.yaml`.
-Each entry bundles the system prompt, model, tool surface, and (for
-the new agent verbs) the Bash restriction profile and external-side-effect
-flag into a reusable persona that any `host.agent.*` call can reference
-by name via `agent: <name>` in the effect's `with:` block.
+Each entry bundles the system prompt, model, tool surface, effect class,
+and (for the new agent verbs) the Bash restriction profile into a reusable
+persona that any `host.agent.*` call can reference by name via `agent:
+<name>` in the effect's `with:` block. Reusable tool grants may live in
+top-level `toolboxes:` and be referenced by `toolbox:`.
 
 ```yaml
+toolboxes:
+  read_only: { tools: [Read, Grep, Glob], effect: read }
+  research:  { tools: [Read, Grep, Glob, WebFetch], effect: external }
+  writer:   { tools: [Read, Edit, Write, Bash], effect: write }
+
 agents:
   failure-explainer:
     system_prompt_path: prompts/explain_failure.md
     model: claude-sonnet-4-6
-    tools: [Read, Grep, Glob, Bash, WebFetch]
+    toolbox: research
     bash_profile:
       commands: [git, jq, grep, kubectl]   # required when Bash is in tools + ask/decide
-    external_side_effect: true             # WebFetch → inferred true; explicit confirms
+    effect: external                       # optional when it matches the toolbox join
 
   file-only-implementer:
     system_prompt_path: prompts/implementer.md
     model: claude-sonnet-4-6
-    tools: [Read, Edit, Write, Bash]
+    toolbox: writer
+    tools_remove: [Bash]
     # No bash_profile needed — Bash is unrestricted in task/converse verbs.
-    external_side_effect: false            # file mutations only — no network
+    effect: write                          # file mutations only — no network
 ```
 
 ### Fields
@@ -1430,9 +1929,13 @@ agents:
 | `model` | No | Forwarded as `--model` to claude. Defaults to the engine model when absent. |
 | `inherit_claude_default` | No | Escape hatch: `true` opts the agent out of layering and back to `--append-system-prompt` onto Claude Code's default (no kitsoki/project grounding). Default `false`. See [system-prompt.md](system-prompt.md). |
 | `tools` | No | Forwarded as `--allowedTools <csv>`. Normalised to `host.X` form by the loader. |
+| `toolbox` | No | Name of a top-level `toolboxes:` entry. Mutually exclusive with inline `tools`. |
+| `tools_add` / `tools_remove` | No | Specialize a named toolbox before effect classification. |
 | `cwd` | No | Default working directory for claude when the effect omits `working_dir:`. Env vars (`$VAR`, `${VAR}`) are expanded at load time. |
 | `bash_profile` | Conditional | Required when `Bash` is in `tools` and the agent is used with `host.agent.ask` or `host.agent.decide`. Three forms (see below). |
-| `external_side_effect` | No | Declares whether the agent touches external state (network, remote APIs). The loader infers a default from the tool surface and emits a warn-line when declared and inferred values disagree. |
+| `effect` | No | Declares the resolved class: `pure`, `read`, `write`, or `external`. If absent, the loader joins the tool surface. A declared `pure`/`read` class with write/external tools is a load error. |
+| `external_side_effect` | No | Deprecated alias for `effect`; kept for old stories during the migration window. |
+| `token_budget` | No | `{warn_tokens, refuse_tokens}` override of the pre-dispatch budget gate's per-verb defaults for `decide`/`task` calls through this agent. See [Cache-usage visibility and the pre-dispatch budget gate](#cache-usage-visibility-and-the-pre-dispatch-budget-gate). |
 
 ### `bash_profile` forms
 
@@ -1459,17 +1962,24 @@ when it detects the conflict so accidental overrides surface in the trace.
 chain is: effect `working_dir:` > `agent.cwd` > prompt-file directory
 (for `host.agent.ask`).
 
-### `external_side_effect` inference
+### Toolboxes and enforcement
 
-The loader infers `external_side_effect` from the tool list when the
-field is absent:
+Toolboxes are resolved at load time. An agent may use a named box plus
+`tools_add:` / `tools_remove:`, or it may use inline `tools:`, but not both.
+If a toolbox declares `effect:`, that assertion must equal the join over its
+tools.
 
-- `host.WebFetch` or `host.WebSearch` in `tools` → inferred `true`
-- all other tool combinations → inferred `false`
+Every agent verb uses the same tool-layer policy:
 
-An explicit declaration overrides the inference. A mismatch (e.g.
-declaring `false` on an agent with `WebFetch`) is a warn-line at load
-time, not an error — the author's explicit value wins.
+- `pure` / `read`: `--permission-mode default`, the resolved tools are the
+  allowlist, and write/exec mutators are hard-denied.
+- `write` / `external`: the resolved tools are the allowlist and the caller's
+  permission mode is honored. Runtime filesystem confinement is the separate
+  sandbox layer.
+
+Agent-call trace events include the resolved `toolbox`, `effect`,
+`allowed_tools`, and `denied_tools` fields so offline conformance checks can
+verify the call stayed within its declared grant.
 
 ---
 
@@ -1542,6 +2052,8 @@ validator:
     catalog: "data/catalog.yaml"
   post_cmd_cwd: "tools/verifiers"
   max_retries: 3
+  min_information_ratio: 0.5
+  min_information_bits: 256
 ```
 
 | Field | Type | Notes |
@@ -1550,6 +2062,15 @@ validator:
 | `post_cmd_args` | map | Key/value pairs forwarded as `--key value` to the subprocess. Sorted by key for deterministic argv. |
 | `post_cmd_cwd` | string | CWD for the subprocess. Relative paths resolve against the app dir. |
 | `max_retries` | int | Per-submission retry budget. Default 5. |
+| `min_information_ratio` | number | Reject a schema-valid payload below this fraction of the richest parsed attempt in the validator session. Default 0.5; `0` disables. |
+| `min_information_bits` | number | Activate the relative gate only after the richest attempt reaches this scalar-content Shannon score. Default 256. |
+
+The information gate compares normalized scalar values, excluding object keys
+because they are schema scaffolding. It persists the session maximum in the
+validator state file, so a resumed agent cannot replace a substantive but
+structurally invalid attempt with a much smaller placeholder that happens to
+satisfy the schema. Both settings are deliberately per-call knobs for model
+evaluation and threshold optimization.
 
 ### Examples
 
@@ -1620,7 +2141,7 @@ All agent call sites in this codebase were migrated from `host.agent.ask_with_mc
 and `host.agent.talk` to the five-verb schema above during agent-split Phases 6–9
 (see git log for the `agent-split` commit series). The `kitsoki migrate-agent`
 codemod (`cmd/kitsoki/migrate_agent.go`) automated the bulk of the migration;
-the classification rules it applies are documented in [`agent-cli.md`](agent-cli.md).
+the classification rules it applies are documented in [`agent-cli.md`](../guide/agents/cli.md).
 
 One Go-level entry point survives the migration: `host.AgentAskWithMCPHandler`
 in `internal/host/agent_ask_with_mcp.go` is called from `internal/metamode/adapter.go`
@@ -1813,34 +2334,111 @@ tour recorder mirrors the JSON shape in
 
 ---
 
+## host.ticket_federation — named ticket-source composition
+
+`host.ticket_federation` is a provider-neutral `ticket` host_interface binding
+for projects that need local tickets and one or more remote trackers in the
+same picker. Its `sources` argument is an ordered list:
+
+```yaml
+- id: local
+  label: Local
+  provider: host.local_files.ticket
+  kind: local
+  mode: local
+  args: {root: .artifacts}
+- id: origin
+  label: bsacrobatix/Kitsoki
+  provider: host.gh.ticket
+  kind: github
+  mode: remote
+  args: {repo: bsacrobatix/Kitsoki}
+```
+
+`search` and `list_mine` fan out concurrently and return both a flattened
+`tickets` list (with one global picker index) and ordered `source_groups`.
+Every row carries `source`, `source_label`, `source_kind`, `source_mode`,
+`source_repo`, and a globally unambiguous `ref` (`<source-id>:<provider-id>`).
+Per-source errors and warnings remain visible while healthy sources continue to
+return rows. With one local store, a remote row's historical `legacy_id`
+suppresses the matching local copy. With multiple local stores the row must
+also carry `legacy_source` or a source-qualified `legacy_ref`, so migration from
+one store never hides an equal id in another. Equal issue numbers in two remote
+repositories always remain distinct.
+
+`get`, `comment`, `transition`, and the extended ticket operations route to
+exactly one source. Callers pass the selected row's `source` or `ref`; a raw
+GitHub URL can also select the one configured source whose repository matches
+the URL. A bare provider-local id is rejected when multiple sources make it
+ambiguous.
+
+Source `args` are provider defaults. Live operation arguments win for generic
+payload keys, including fields introduced by future providers; known ticket
+payload fields are never taken from static configuration. The legacy locator
+keys `repo`, `root`, and `workdir` are source-owned automatically. Future
+providers declare any additional source identity keys (for example `project`
+or `queue`) in `locator_keys`; those keys are re-pinned from `args` so an outer
+story fallback cannot redirect the call.
+
+Provider names are capabilities, not arbitrary commands. The registry marks
+ticket providers explicitly through `RegisterTicketProvider`; the federation
+refuses ordinary hosts such as `host.run` even if mutable world data names
+them. Built-in local/GitHub providers and loader-resolved
+`ticket_provider/v1` Starlark bindings receive that marker. A raw `.star` path
+in `sources` is not resolved: use a direct script-form `host_bindings.ticket`
+entry, or expose the implementation as a statically registered ticket host.
+
+Implementation and regressions:
+[`internal/host/ticket_federation.go`](../../internal/host/ticket_federation.go)
+and
+[`internal/host/ticket_federation_test.go`](../../internal/host/ticket_federation_test.go).
+`host.local_github.ticket` remains a compatibility adapter for older
+single-local-plus-single-GitHub instances.
+
 ## host.gh.ticket — GitHub Issues-backed tracker
 
-The `ticket` host_interface backed by the GitHub `gh` CLI. It mirrors the
-file-backed `host.local_files.ticket` surface so the dogfood app
-(`.kitsoki/stories/kitsoki-dev`) rebinds `iface.ticket → host.gh.ticket` without touching
-room YAML. Auth rides the operator's existing `gh auth` — kitsoki handles no
-tokens. Every op degrades cleanly (a `Result.Error`, not a crash) when `gh` is
-missing/unauthenticated, so rooms route the `on_error:` arc. All shell-outs go
-through the one `cliExec` seam so they're testable with a stubbed runner (no real
-GitHub in tests). Implementation:
+The `ticket` host_interface backed by the native GitHub REST API. It mirrors the
+file-backed `host.local_files.ticket` surface so dev-story instances can rebind
+`iface.ticket → host.gh.ticket` without touching room YAML. Multi-source
+instances, including `kitsoki-dev`, list this provider inside
+`host.ticket_federation` alongside their local and other remote sources. Auth
+uses `GH_TOKEN` / `GITHUB_TOKEN`, including tokens
+minted by the GitHub App path for headless runs. Every op degrades cleanly (a
+`Result.Error`, not a crash) when auth or transport fails, so rooms route the
+`on_error:` arc. Tests inject a fake HTTP API; no real GitHub or local `gh`
+binary is required. Implementation:
 [`internal/host/github.go`](../../internal/host/github.go) +
 [`github_create.go`](../../internal/host/github_create.go) +
 [`github_bug.go`](../../internal/host/github_bug.go).
 
-| op | gh call | Returns |
+| op | GitHub API operation | Returns |
 |---|---|---|
-| `create` | `gh issue create --repo … --title … --body … --label …` | `{id, number, url, warning?}` |
-| `search` | `gh issue list --search …` | `{tickets: [{id,title,status,priority,assignee,url,type,source}]}` |
-| `get` | `gh issue view … --json …` | `{id,title,body,status,…,type,source,legacy_id?,comments, kitsoki_meta?}` |
-| `comment` | `gh issue comment … --body …` | `{ok, comment_id}` |
-| `transition` | `gh issue close` / `gh issue reopen` | `{ok}` |
-| `list_mine` | `gh issue list --assignee …` | `{tickets: […]}` |
+| `create` | `POST /repos/{owner}/{repo}/issues` | `{id, number, url, warning?}` |
+| `search` | `GET /search/issues` (`sort=created&order=desc`, newest-first) | `{tickets: [{id,title,status,priority,assignee,url,type,source}]}` |
+| `get` | `GET /repos/{owner}/{repo}/issues/{number}` + comments | `{id,title,body,status,…,type,source,legacy_id?,comments, kitsoki_meta?}` |
+| `comment` | `POST /repos/{owner}/{repo}/issues/{number}/comments` | `{ok, comment_id}` |
+| `transition` | `PATCH /repos/{owner}/{repo}/issues/{number}` | `{ok}` |
+| `list_mine` | `GET /search/issues` with `assignee:` (newest-first) | `{tickets: […]}` |
 
-**Repo pin.** Every call takes a `repo` arg (`owner/repo`); the dogfood pins it
-to `constructorfabric/Kitsoki` via the `ticket_repo` world key
-(`.kitsoki/stories/kitsoki-dev/app.yaml`) so it never silently resolves the operator's
-`origin` (a personal fork). The slug is data, not a Go constant — a fork-of-a-
-fork or downstream project overrides the world key.
+**Repo pin.** Every call takes a `repo` arg (`owner/repo`). Direct
+GitHub-backed instances may use `ticket_repo`. Federated instances put the
+explicit slug in each source's `args.repo`; the resolved slug is returned as
+`source_repo`/`ticket_repo` so a later pick, comment, or transition cannot drift
+to another configured repository. Symbolic remote names remain supported for
+legacy direct bindings, but generated federation profiles use explicit slugs
+because managed capsule clones do not necessarily carry the source checkout's
+`origin` and `upstream` remotes.
+
+**External repo binding (onboarding passthrough).** Project onboarding
+(`stories/dev-story/scripts/init_onboarding.star` calling the native
+`host.dev.onboarding` capability) closes the
+same loop for external repos: discovery always adds local `.artifacts` intake,
+then adds every distinct GitHub repository found in configured remotes. Apply
+writes the ordered list to `tracker.sources`, binds
+`ticket: host.ticket_federation`, and projects it as
+`world.ticket_sources`. The source list in the onboarded profile—not an
+ambient remote name—is the source of truth for later search, fetch, comment,
+and transition operations.
 
 **Label vocabulary.** `create` maps the bug-format axes onto a fixed GitHub label
 set, applied by `create` and understood by `transition`:
@@ -1903,7 +2501,7 @@ Three paths reach it:
 - **CLI** — `kitsoki bug create --github <owner/repo>` files a text-only issue
   (the CLI captures no evidence) and prints the URL.
 - **Design pipeline** — publishing a design mints a GitHub **feature** issue
-  (`target:kitsoki` + `comp:proposal`, body links the proposal) when the
+  (`target:<repo-name>` + `comp:proposal`, body links the proposal) when the
   instance sets `ticket_repo`, instead of `issues/features/<id>.md` (see the
   [dev-story README](../../stories/dev-story/README.md)).
 
@@ -1922,7 +2520,7 @@ archive ([`issues/DEPRECATED.md`](../../issues/DEPRECATED.md)). Implementation:
 
 ## Adding your own host
 
-See [`developer-guide.md` §5.2](developer-guide.md#52-adding-a-new-built-in-host-handler).
+See [`developer-guide.md` §5.2](../guide/development/developer-guide.md#52-adding-a-new-built-in-host-handler).
 The contract is small: implement `host.Handler` (a function with
 signature `func(ctx context.Context, args map[string]any) (Result, error)`),
 document the `with:` and bind-able result keys, and register it in

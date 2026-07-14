@@ -1,0 +1,59 @@
+# loading_existing — resolve a deck name/path before entering rendering.
+#
+# Host-call binds from an idle transition are not available to rendering's
+# on_enter in the same turn. Keep the deterministic lookup in its own room, then
+# render only after `deck.spec_path` has been bound to the resolved spec.
+
+states:
+
+  loading_existing:
+    description: "Resolve an existing slidey deck name/path, then render it deterministically."
+    relevant_world: [pending_deck_spec_path, deck, source_deck, workspace]
+    view:
+      - heading: "Slidey deck editor · loading existing deck"
+      - kv:
+          pairs:
+            Requested: '{{ world.pending_deck_spec_path|default:"(pending)" }}'
+            Deck:      '{{ world.deck.spec_path|default:"(resolving)" }}'
+            Workspace: '{{ world.workspace|default:"(pending)" }}'
+      - prose: "Resolving the selected deck before rendering, so the render step uses the concrete spec path."
+      - heading: "Actions"
+      - list:
+          items:
+            - label: "quit"
+              hint: "abandon the editor"
+            - label: "look"
+    on_enter:
+      - invoke: host.starlark.run
+        id: resolve_deck
+        once: true
+        with:
+          script: scripts/resolve_deck.star
+          capabilities:
+            fs:
+              read: ["**"]
+          inputs:
+            spec_path: "{{ world.pending_deck_spec_path }}"
+            summary:   "{{ world.pending_deck_summary }}"
+            decks_dir: "{{ world.decks_dir }}"
+        bind:
+          source_deck: source_deck
+          deck:        deck
+          workspace:   workspace
+        on_error: idle
+
+      - when: "trim(world.deck.spec_path ?? '') != '' && trim(world.source_deck.spec_path ?? '') == trim(world.deck.spec_path ?? '')"
+        emit_intent: accept
+    on:
+      accept:
+        - target: rendering
+          effects:
+            - set:
+                pending_deck_spec_path: ""
+                pending_deck_summary: ""
+      quit:
+        - target: "@exit:abandoned"
+          effects:
+            - set: { abandon_reason: "abandoned_at_existing_deck_load" }
+      look:
+        - target: .

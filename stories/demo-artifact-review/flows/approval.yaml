@@ -1,0 +1,22 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: review
+initial_world:
+  project_id: project-a
+  session_id: session-a
+  artifact_id: artifact-a
+turns:
+  - intent: { name: revise_mockup, slots: { revision: mockup-r2 } }
+    expect_state: review
+    expect_world: { mockup_revision: { kind: mockup, ref: mockup-r2, schema_version: 1 } }
+  - intent: { name: revise_rrweb, slots: { revision: rrweb-r3 } }
+    expect_state: review
+    expect_world: { rrweb_revision: { kind: rrweb, ref: rrweb-r3, schema_version: 1 } }
+  - intent: { name: revise_deck, slots: { revision: deck-r4 } }
+    expect_state: review
+    expect_world: { deck_revision: { kind: slidey, ref: deck-r4, schema_version: 1 } }
+  - intent: { name: approve, slots: {} }
+    expect_state: __exit__reviewed
+    expect_world: { review_status: approved }
+expect_terminal: true
+expect_no_errors: true

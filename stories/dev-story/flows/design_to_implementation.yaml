@@ -26,7 +26,7 @@ app: ../app.yaml
 initial_state: design_done
 initial_world:
   # Pin the engine-seeded session identity so the per-session-working-folder
-  # feature's worktree id (`impl-{ticket}-{session_id}`) is DETERMINISTIC in
+  # feature's workspace id (`impl-{ticket}-{session_id}`) is DETERMINISTIC in
   # flow mode and `expect_world` can assert it. seedSessionID only fills
   # session_id when absent, so this explicit value is preserved (it is the
   # documented deterministic-id seam; orchestrator.seedSessionID).
@@ -49,6 +49,8 @@ host_handlers:
     data: { ok: true, message_id: "msg-1" }
   host.inbox.add:
     data: { ok: true, id: "ib-1" }
+  host.artifacts_dir:
+    data: { ok: true, path: ".artifacts/implementation-flow-artifact.md", message_id: "artifact-1" }
   host.git:
     data:
       ok:       true
@@ -59,7 +61,7 @@ host_handlers:
       state:    "success"
       checks:   ""
       comments: ""
-  host.git_worktree:
+  host.capsule_workspace:
     data: { ok: true, log: "" }
   host.local:
     data: { ok: true, log: "PASS", state: "success", passed: 1, failed: 0 }
@@ -70,7 +72,35 @@ host_handlers:
       title: "Per-session working folder"
       body:  "Implement the accepted proposal."
       url:   "docs/proposals/per-session-working-folder.md"
-      tickets: "F-2026-06-11T120000Z-per-session-working-folder: Per-session working folder"
+      tickets:
+        - id:    "F-2026-06-11T120000Z-per-session-working-folder"
+          title: "Per-session working folder"
+          type:  "feature"
+          status: "open"
+  host.run:
+    by_call:
+      roadmap_ledger_implementation_started:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: '{"ok":true,"ledger":".artifacts/roadmap/progress.yaml","event_id":"evt-impl-started","item_id":"feature/F-2026-06-11T120000Z-per-session-working-folder","changed":true}'
+          stdout_json:
+            ok: true
+            ledger: ".artifacts/roadmap/progress.yaml"
+            event_id: "evt-impl-started"
+            item_id: "feature/F-2026-06-11T120000Z-per-session-working-folder"
+            changed: true
+      roadmap_ledger_implementation_completed:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: '{"ok":true,"ledger":".artifacts/roadmap/progress.yaml","event_id":"evt-impl-completed","item_id":"feature/F-2026-06-11T120000Z-per-session-working-folder","changed":true}'
+          stdout_json:
+            ok: true
+            ledger: ".artifacts/roadmap/progress.yaml"
+            event_id: "evt-impl-completed"
+            item_id: "feature/F-2026-06-11T120000Z-per-session-working-folder"
+            changed: true
   host.agent.decide:
     data:
       ok: true
@@ -99,36 +129,28 @@ host_handlers:
       submitted: *impl_artifact
 
 turns:
-  # The done room's `implement` action → go_implementation → impl.idle.
+  # The done room's `implement` action → go_implementation →
+  # impl.review_task_awaiting_reply. impl.idle auto-starts when a ticket is already
+  # projected, so workspace provisioning and ticket fetch happen in one turn.
   # world_in: projects the proposal's ticket keys into impl__<key>, then
   # impl.idle.on_enter derives the workspace identity from the ticket and
-  # creates the worktree — so impl__workdir / impl__workspace_id /
+  # creates the managed capsule workspace — so impl__workdir / impl__workspace_id /
   # impl__feature_branch are PROVISIONED here, not seeded.
   - intent: { name: go_implementation, slots: {} }
-    expect_state: impl.idle
+    expect_state: impl.review_task_awaiting_reply
     expect_world:
       impl__ticket_id:      "F-2026-06-11T120000Z-per-session-working-folder"
       impl__ticket_url:     "docs/proposals/per-session-working-folder.md"
       impl__workspace_id:   "impl-F-2026-06-11T120000Z-per-session-working-folder-flowsess"
       impl__feature_branch: "feature/F-2026-06-11T120000Z-per-session-working-folder-flowsess"
-      impl__workdir:        ".worktrees/impl-F-2026-06-11T120000Z-per-session-working-folder-flowsess"
+      impl__workdir:        ".capsules/workspaces/impl-F-2026-06-11T120000Z-per-session-working-folder-flowsess"
       impl__impl_provision_attempted: true
 
-  - intent: { name: impl__start, slots: {} }
-    expect_state: impl.review_task_executing
-  - intent: { name: impl__proceed, slots: {} }
-    expect_state: impl.review_task_awaiting_reply
   - intent: { name: impl__accept, slots: {} }
-    expect_state: impl.write_code_executing
-  - intent: { name: impl__proceed, slots: {} }
     expect_state: impl.write_code_awaiting_reply
   - intent: { name: impl__accept, slots: {} }
-    expect_state: impl.test_executing
-  - intent: { name: impl__proceed, slots: {} }
     expect_state: impl.test_awaiting_reply
   - intent: { name: impl__accept, slots: {} }
-    expect_state: impl.review_executing
-  - intent: { name: impl__proceed, slots: {} }
     expect_state: impl.review_awaiting_reply
   - intent: { name: impl__accept, slots: {} }
     expect_state: impl.handoff
@@ -144,5 +166,12 @@ turns:
     expect_state: landing
     expect_world:
       status: "merged"
+      roadmap_implementation_completion_pending: false
+      roadmap_implementation_completed_result:
+        ok: true
+        ledger: ".artifacts/roadmap/progress.yaml"
+        event_id: "evt-impl-completed"
+        item_id: "feature/F-2026-06-11T120000Z-per-session-working-folder"
+        changed: true
 
 expect_no_errors: true

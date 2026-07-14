@@ -14,7 +14,9 @@ host_handlers:
     data: { ok: true, message_id: "msg-1" }
   host.inbox.add:
     data: { ok: true, id: "ib-1" }
-  host.git_worktree:
+  host.artifacts_dir:
+    data: { ok: true, path: ".artifacts/implementation-flow-artifact.md", message_id: "artifact-1" }
+  host.capsule_workspace:
     data: { ok: true, log: "" }
   host.git:
     data: { ok: true, sha: "abc123", diff: "" }
@@ -34,6 +36,7 @@ host_handlers:
         summary_markdown: "Stub artifact."
         scope:            "small."
         acceptance_criteria: ["criterion one"]
+        report_path:      ".artifacts/implementation/TKT-QUIT/code-report.md"
         affected_files:   ["x.go"]
         confidence:       0.6
         reasoning:        "stub."
@@ -47,20 +50,12 @@ host_handlers:
 
 turns:
   - intent: { name: start, slots: {} }
-    expect_state: review_task_executing
-  - intent: { name: proceed, slots: {} }
     expect_state: review_task_awaiting_reply
   - intent: { name: accept, slots: {} }
-    expect_state: write_code_executing
-  - intent: { name: proceed, slots: {} }
     expect_state: write_code_awaiting_reply
   - intent: { name: accept, slots: {} }
-    expect_state: test_executing
-  - intent: { name: proceed, slots: {} }
     expect_state: test_awaiting_reply
   - intent: { name: accept, slots: {} }
-    expect_state: review_executing
-  - intent: { name: proceed, slots: {} }
     expect_state: review_awaiting_reply
   - intent: { name: quit, slots: {} }
     expect_state: __exit__abandoned

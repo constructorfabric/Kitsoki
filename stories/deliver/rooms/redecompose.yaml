@@ -1,0 +1,153 @@
+# redecompose — managed re-decompose: apply a DELTA to a prior decomposition
+# instead of overwriting it (proposal: deliver-canonical-decomposition B2c).
+#
+# Entered from `decompose` when scripts/detect_prior_decomposition.star finds
+# decomposition_path already on disk. Two-step, mirroring decompose+lint's
+# shape:
+#
+#   redecompose        — host.agent.task: the decomposer agent reads the epic
+#                         + the PRIOR manifest and WRITES an additive delta
+#                         document (trigger/provenance/operations) to
+#                         redecompose_delta_path, then submits a lightweight
+#                         confirmation ({trigger, added}) validated against
+#                         schemas/redecompose-delta.json.
+#   redecompose_apply   — host.starlark.run: host.decomposition.update
+#                         (the decompose-update transaction) versions the
+#                         prior graph, applies the delta, and writes the
+#                         updated manifest back to decomposition_path — the
+#                         SAME transaction stories/decompose-update/ wraps,
+#                         invoked directly here with --list-key briefs (a
+#                         deliver manifest, not the dev-workflow ledger
+#                         decompose-update's own flow drives) and
+#                         --skip-validate (deliver's own `lint` room, entered
+#                         next, is the deterministic check for this shape).
+#
+# ok   → lint (re-validates the updated decomposition_path fresh)
+# error/failure → redecompose_error → @exit:needs-human
+
+states:
+
+  redecompose:
+    description: "Author a managed delta against the prior decomposition (no blind overwrite)."
+    relevant_world: [epic_path, decomposition_path, redecompose_delta_path, refine_feedback, redecompose_trigger, redecompose_added]
+    view:
+      - prose: "A decomposition already exists at {{ world.decomposition_path }} — authoring an additive delta instead of overwriting it."
+      - prose: "Delta: {{ world.redecompose_trigger|default:'(pending)' }} (adds {{ world.redecompose_added|default:''|length }} brief(s))"
+        when: "world.redecompose_trigger != ''"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "look"
+              intent: look
+    on_enter:
+      - invoke: host.agent.task
+        id: redecompose_delta
+        once: true
+        with:
+          agent: decomposer
+          acceptance:
+            schema: schemas/redecompose-delta.json
+          context:
+            prompt: prompts/redecompose_delta.md
+            args:
+              epic_path:          "{{ world.epic_path }}"
+              decomposition_path: "{{ world.decomposition_path }}"
+              delta_path:         "{{ world.redecompose_delta_path }}"
+              refine_feedback:    "{{ world.refine_feedback }}"
+        bind:
+          redecompose_trigger: submitted.trigger
+          redecompose_added:   submitted.added
+        on_error: redecompose_error
+      - emit_intent: redecompose_delta_authored
+    on:
+      redecompose_delta_authored:
+        - target: redecompose_apply
+      look:
+        - target: .
+
+  redecompose_apply:
+    description: "Apply the managed delta via the decompose-update transaction (no LLM)."
+    relevant_world: [decomposition_path, redecompose_delta_path, redecompose_versions_dir, redecompose_event_log, redecompose_apply_ok, redecompose_apply_route]
+    view:
+      - prose: "Applying the delta to {{ world.decomposition_path }} via the native managed-delta transaction…"
+      - kv:
+          pairs:
+            OK: '{{ world.redecompose_apply_ok }}'
+      - code: '{{ world.redecompose_apply_stdout|default:"(pending)" }}'
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "look"
+              intent: look
+    on_enter:
+      # Reset BEFORE the invoke so a `when:` guarded on == 'ok' / == 'fail'
+      # never accidentally matches a stale/default value (the board.yaml /
+      # lint.yaml pattern — see decompose.yaml's comment for why a negated
+      # guard, or branching on redecompose_apply_ok's bool default directly,
+      # breaks the flow-test harness's discovery pass).
+      - set: { redecompose_apply_route: "" }
+      - invoke: host.starlark.run
+        id: redecompose_apply
+        with:
+          script: scripts/decomposition_update.star
+          inputs:
+            op: apply
+            base: "{{ world.decomposition_path }}"
+            delta: "{{ world.redecompose_delta_path }}"
+            out: "{{ world.decomposition_path }}"
+            versions_dir: "{{ world.redecompose_versions_dir }}"
+            event_log: "{{ world.redecompose_event_log }}"
+            list_key: briefs
+            skip_validate: true
+          capabilities:
+            host:
+              verbs: [host.decomposition.update]
+        bind:
+          redecompose_apply_ok:     "result.ok"
+          redecompose_apply_stdout: "result.summary"
+          redecompose_apply_route:  "result.route"
+        on_error: redecompose_error
+      - when: "world.redecompose_apply_route == 'ok'"
+        emit_intent: redecompose_applied
+      - when: "world.redecompose_apply_route == 'fail'"
+        emit_intent: redecompose_apply_failed
+    on:
+      redecompose_applied:
+        - target: lint
+      redecompose_apply_failed:
+        - target: redecompose_error
+          effects:
+            - set:
+                last_error: "decompose-update transaction rejected the managed delta: {{ world.redecompose_apply_stdout }}"
+      look:
+        - target: .
+
+  # redecompose_error — delta authoring or apply-transaction failure; auto-routes
+  # to @exit:needs-human, mirroring decompose_error/review_error's shape.
+  redecompose_error:
+    description: "Managed re-decompose failed — routing to @exit:needs-human."
+    relevant_world: [last_error, decomposition_path]
+    view:
+      - prose: "The managed re-decompose of {{ world.decomposition_path }} failed."
+      - code: '{{ world.last_error|default:"(no error detail)" }}'
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "look"
+              intent: look
+    on_enter:
+      - emit_intent: bail
+    on:
+      # See stories/deliver/rooms/decompose.yaml decompose_error for why the
+      # pass-through set: is needed once deliver is imported (dev-story's
+      # `deliver` import).
+      bail:
+        - target: "@exit:needs-human"
+          effects:
+            - set:
+                last_error: "{{ world.last_error }}"
+      look:
+        - target: .

@@ -13,7 +13,7 @@
 #
 #   configure  deterministic: pick the project (projects/<name>/manifest.yaml) +
 #              the candidate models; compute the cell roster (bug × candidate).
-#   prepare    DETERMINISTIC + FREE + REAL: host.run → `bench.py preflight` checks
+#   prepare    DETERMINISTIC + FREE + REAL: host.bakeoff.run → `bench.py preflight` checks
 #              repo/candidate readiness, then `bench.py verify` arms every hidden
 #              oracle (RED@baseline / GREEN@real-fix), then prepare and audit
 #              no-drive cell handoffs — proves the bake-off is valid BEFORE any
@@ -24,7 +24,7 @@
 #              never in CI/auto (AGENTS.md no-LLM rule). Tracks the roster.
 #   scoring    deterministic: run `bench.py completion` for an explicit evidence
 #              verdict, then read the per-cell verdicts the harness wrote
-#              (results/cells/*.json) into a summary. host.run, free.
+#              (results/cells/*.json) into a summary. host.bakeoff.run, free.
 #   reporting  deterministic: present the generated markdown report + slidey
 #              deck spec from the summary.
 #   slideshow  deterministic: host.slidey.render → static-HTML deck + sidecar to
@@ -44,7 +44,7 @@ app:
   license: "CC0"
 
 hosts:
-  - host.run                # bench.py verify / scoring; (manual) drive_cell.sh
+  - host.bakeoff.run                # bench.py verify / scoring; (manual) drive_cell.sh
   - host.slidey.render      # baked static-HTML report
   - host.artifacts_dir
 
@@ -128,6 +128,9 @@ intents:
     priority: 1
   run_more:
     description: "(internal) completion still needs manual cell drives — route back to running before rechecking."
+    priority: 1
+  summarize:
+    description: "(internal) completion is ready — roll cell verdicts into the final report summary."
     priority: 1
   repaired:
     description: "(internal) the deterministic repair loop finished — recheck completion."

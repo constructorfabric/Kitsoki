@@ -1,0 +1,36 @@
+# fixer_job_failure — an infrastructure failure (including the activity
+# watchdog) must produce the ordinary blocked terminal/report, never leave the
+# one-shot session parked in fixing_executing with no artifact.
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  test_cmd: "make test"
+  max_cycles: 3
+
+host_handlers:
+  host.run:
+    by_call:
+      run_initial:
+        data: { exit_code: 1, ok: false, stdout: "--- FAIL: TestFoo\nFAIL\n" }
+        delay: "10ms"
+  host.agent.task:
+    by_call:
+      fix:
+        infra_error: "agent stream activity timeout after 90s"
+  host.inbox.add:
+    data: { ok: true }
+
+turns:
+  - intent: { name: start }
+    advance_clock: "2s"
+    expect_state: __exit__needs-human
+    expect_world:
+      outcome: "blocked"
+      cycle: 1
+      report_path: ".artifacts/fix-tests/report-blocked.md"
+
+expect_terminal: true
+expect_operation_policy: fix_tests
+expect_operation_status: waiting
+expect_no_errors: true

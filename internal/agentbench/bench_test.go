@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestScoreTracePassesBudgetsAndExpectations(t *testing.T) {
@@ -161,6 +162,60 @@ func TestScoreTraceTreatsAgentCallCompleteAsTerminal(t *testing.T) {
 	}
 	if report.Metrics.InputTokens != 1000 || report.Metrics.OutputTokens != 250 || report.Metrics.CostUSD != 0.25 {
 		t.Fatalf("usage metrics = %+v", report.Metrics)
+	}
+}
+
+// CLI CodeAct is a two-layer execution: the outer host call is not enough to
+// prove that its one-or-more generator subprocesses were supervised. A scored
+// campaign trace must contain a paired runtime receipt for every CLI CodeAct
+// step, all under the outer call ID.
+func TestScoreTraceRequiresPairedCLICodeactRuntimeReceipts(t *testing.T) {
+	complete := filepath.Join(t.TempDir(), "complete.jsonl")
+	if err := os.WriteFile(complete, []byte(strings.Join([]string{
+		`{"ts":"2026-07-12T01:00:00Z","kind":"agent.call.start","state_path":"implement","call_id":"codeact-1","payload":{"verb":"codeact","runtime_kind":"cli"}}`,
+		`{"ts":"2026-07-12T01:00:01Z","kind":"agent.runtime.start","state_path":"implement","call_id":"codeact-1","payload":{"strength":"supervised"}}`,
+		`{"ts":"2026-07-12T01:00:02Z","kind":"agent.runtime.end","state_path":"implement","call_id":"codeact-1","payload":{"exit_code":0}}`,
+		`{"ts":"2026-07-12T01:00:03Z","kind":"agent.call.complete","state_path":"implement","call_id":"codeact-1","payload":{}}`,
+	}, "\n")+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	report, err := ScoreTrace(complete, Case{ID: "codeact-runtime-complete"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.Passed || report.Metrics.RuntimeAccountingStatus != "complete" || report.Metrics.RuntimeStarts != 1 || report.Metrics.RuntimeEnds != 1 {
+		t.Fatalf("complete runtime receipts = %+v failures=%v", report.Metrics, report.Failures)
+	}
+
+	missingEnd := filepath.Join(t.TempDir(), "missing-end.jsonl")
+	if err := os.WriteFile(missingEnd, []byte(strings.Join([]string{
+		`{"ts":"2026-07-12T01:00:00Z","kind":"agent.call.start","state_path":"implement","call_id":"codeact-2","payload":{"verb":"codeact","runtime_kind":"cli"}}`,
+		`{"ts":"2026-07-12T01:00:01Z","kind":"agent.runtime.start","state_path":"implement","call_id":"codeact-2","payload":{"strength":"supervised"}}`,
+		`{"ts":"2026-07-12T01:00:02Z","kind":"agent.call.complete","state_path":"implement","call_id":"codeact-2","payload":{}}`,
+	}, "\n")+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	report, err = ScoreTrace(missingEnd, Case{ID: "codeact-runtime-missing-end"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Passed || report.Metrics.RuntimeAccountingStatus != "partial" || report.Metrics.AccountingStatus != "partial" {
+		t.Fatalf("missing runtime end was accepted: %+v failures=%v", report.Metrics, report.Failures)
+	}
+	assertFailureContains(t, report.Failures, "runtime receipt lifecycle")
+}
+
+func TestScoreTraceRecordsDirectAPICodeactWithoutSubprocessReceipt(t *testing.T) {
+	trace := writeTrace(t,
+		callStartEvent("2026-07-12T01:00:00Z", "implement", "codeact-api", map[string]any{"verb": "codeact", "runtime_kind": "direct_api"}),
+		completeEventWithCallID("2026-07-12T01:00:01Z", "implement", "codeact-api", map[string]any{}),
+	)
+	report, err := ScoreTrace(trace, Case{ID: "codeact-direct-api"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.Passed || report.Metrics.RuntimeAccountingStatus != "direct_api" {
+		t.Fatalf("direct API runtime accounting = %+v failures=%v", report.Metrics, report.Failures)
 	}
 }
 
@@ -337,6 +392,190 @@ cases:
 	if report.Metrics.AgentCallsInFlight != 0 {
 		t.Fatalf("stale in-flight call was not cleaned: %+v", report.Metrics)
 	}
+}
+
+// ── Regression tests for the false-pass class this study hit ──────────────
+//
+// Fixtures below reconstruct (in shape, not verbatim bytes) the exact false
+// pass documented in
+// .context/2026-07-11-gx10-small-model-study-adversarial-review.md: the V3
+// gpt-oss-120b trace at
+// .capsules/workspaces/gx10-codeact/.artifacts/model-task-engineering/gx10-v3/traces/gpt-oss-120b/trace.jsonl
+// shows a decomposer (codeact) call, a reviewer (decide) call that returns
+// "revise" and submits its verdict, a failed codeact refinement, and a
+// terminal machine.state_entered("__exit__needs-human"). The old bench.go
+// printed PASS because (a) require_submit accepted ANY submit including the
+// reviewer's, and (b) final_state was derived from the last event carrying
+// ANY non-empty top-level state_path — which for the terminal
+// machine.transition event is the compound parent "configure", not the leaf
+// "__exit__needs-human" the run actually landed in. These are no-LLM,
+// offline scorer tests: no provider call, just JSONL trace fixtures — the
+// deterministic replacement for a live-LLM regression case.
+
+func TestReviewerSubmitDoesNotSatisfyMakerCompletionGate(t *testing.T) {
+	trace := writeTrace(t,
+		// The decomposer (codeact) call dispatches but never itself submits —
+		// it fails mid-refinement (see the terminal-state test below for the
+		// exit). Only the REVIEWER's decide call submits its revise verdict.
+		event("2026-07-11T06:45:00Z", "agent.call.start", "decompose", map[string]any{"verb": "codeact", "agent": "decomposer"}),
+		callStartEvent("2026-07-11T06:45:10Z", "review", "reviewer-call-1", map[string]any{"verb": "decide", "agent": "reviewer"}),
+		streamEventWithCallID("2026-07-11T06:45:12Z", "review", "reviewer-call-1", map[string]any{
+			"tool": "mcp__validator__submit",
+		}),
+	)
+
+	report, err := ScoreTrace(trace, Case{
+		ID:           "deliver-decompose-gpt-oss-120b",
+		Expectations: Expectations{RequireSubmit: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Passed {
+		t.Fatalf("expected a reviewer-only submit to fail the maker completion gate, got pass: %+v", report.Metrics)
+	}
+	if report.Metrics.Submitted != true {
+		t.Fatalf("expected Submitted=true (the reviewer DID submit something)")
+	}
+	if report.Metrics.MakerSubmitted {
+		t.Fatalf("expected MakerSubmitted=false — only the reviewer (decide verb) submitted")
+	}
+	assertFailureContains(t, report.Failures, "not observed on a maker/decomposer call")
+}
+
+func TestTerminalNeedsHumanCannotScoreAsPassed(t *testing.T) {
+	trace := writeTrace(t,
+		event("2026-07-11T06:45:00Z", "agent.call.start", "decompose", map[string]any{"verb": "codeact", "agent": "decomposer"}),
+		streamEventWithCallID("2026-07-11T06:45:01Z", "decompose", "maker-call-1", map[string]any{
+			"tool": "mcp__validator__submit",
+		}),
+		// The trace's top-level state_path on the transition event is the
+		// compound parent "configure" — exactly like the real trace — but the
+		// authoritative leaf state (from machine.state_entered) is the
+		// reserved escalation exit.
+		map[string]any{"ts": "2026-07-11T06:45:45Z", "kind": "machine.transition", "state_path": "configure", "payload": map[string]any{"from": "decompose_error", "to": "__exit__needs-human"}},
+		map[string]any{"ts": "2026-07-11T06:45:46Z", "kind": "machine.state_entered", "state_path": "__exit__needs-human", "payload": map[string]any{"state": "__exit__needs-human"}},
+	)
+
+	report, err := ScoreTrace(trace, Case{
+		ID:           "deliver-decompose-gpt-oss-120b",
+		Expectations: Expectations{RequireSubmit: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Metrics.FinalState != "__exit__needs-human" {
+		t.Fatalf("final_state = %q, want the authoritative leaf state __exit__needs-human (not the compound parent %q the old last-non-empty-state_path logic would have reported)", report.Metrics.FinalState, "configure")
+	}
+	if report.Passed {
+		t.Fatalf("expected a run terminating in __exit__needs-human to fail even though a maker submit was observed, got pass")
+	}
+	assertFailureContains(t, report.Failures, "reserved escalation exit")
+}
+
+// TestUsageSumsAcrossDistinctCallsNotMax pins the fix for bench.go's own
+// "max instead of sum" usage bug (distinct from the agent_event_sink.go
+// live-box fix): a trace with THREE distinct host.agent.* calls (three
+// call_ids, e.g. a decomposer call plus two reviewer resumes) must report
+// the SUM of their usage, not the single largest call's usage. Before this
+// fix, ScoreTrace's accumulateUsage ran metrics.InputTokens =
+// max(metrics.InputTokens, thisCall'sInputTokens) across the WHOLE trace, so
+// a trace with a $0.01 call and a $0.02 call reported $0.02 total, not
+// $0.03 — silently discarding the smaller call's spend entirely. See
+// "Agent-bench takes the maximum observed tokens/cost instead of summing
+// unique provider requests" in
+// .context/2026-07-11-gx10-small-model-study-adversarial-review.md.
+func TestUsageSumsAcrossDistinctCallsNotMax(t *testing.T) {
+	trace := writeTrace(t,
+		callStartEvent("2026-07-11T06:45:00Z", "decompose", "call-1", map[string]any{"verb": "codeact"}),
+		completeEventWithCallID("2026-07-11T06:45:05Z", "decompose", "call-1", map[string]any{
+			"meta": map[string]any{"cost_usd": 0.01, "usage": map[string]any{"input_tokens": 1000, "output_tokens": 100}},
+		}),
+		callStartEvent("2026-07-11T06:45:10Z", "review", "call-2", map[string]any{"verb": "decide"}),
+		completeEventWithCallID("2026-07-11T06:45:15Z", "review", "call-2", map[string]any{
+			"meta": map[string]any{"cost_usd": 0.02, "usage": map[string]any{"input_tokens": 2000, "output_tokens": 200}},
+		}),
+		callStartEvent("2026-07-11T06:45:20Z", "review", "call-3", map[string]any{"verb": "decide"}),
+		completeEventWithCallID("2026-07-11T06:45:25Z", "review", "call-3", map[string]any{
+			"meta": map[string]any{"cost_usd": 0.005, "usage": map[string]any{"input_tokens": 500, "output_tokens": 50}},
+		}),
+	)
+
+	report, err := ScoreTrace(trace, Case{ID: "usage-sum"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Metrics.InputTokens != 3500 {
+		t.Fatalf("input_tokens = %d, want 3500 (1000+2000+500, not max()=2000)", report.Metrics.InputTokens)
+	}
+	if report.Metrics.OutputTokens != 350 {
+		t.Fatalf("output_tokens = %d, want 350 (100+200+50, not max()=200)", report.Metrics.OutputTokens)
+	}
+	if got, want := report.Metrics.CostUSD, 0.035; got < want-0.0001 || got > want+0.0001 {
+		t.Fatalf("cost_usd = %v, want ~0.035 (0.01+0.02+0.005, not max()=0.02)", got)
+	}
+}
+
+// completeEventWithCallID builds an agent.call.complete trace event carrying
+// a call_id, pairing with callStartEvent for multi-call usage-summing tests.
+func completeEventWithCallID(ts, state, callID string, payload map[string]any) map[string]any {
+	ev := event(ts, "agent.call.complete", state, payload)
+	ev["call_id"] = callID
+	return ev
+}
+
+func TestStaleArtifactFromPriorAttemptIsRejected(t *testing.T) {
+	dir := t.TempDir()
+	artifactPath := filepath.Join(dir, "decomposition.yaml")
+	if err := os.WriteFile(artifactPath, []byte("stale: true\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Back-date the artifact so it predates the trace's first event — a
+	// leftover from a prior attempt that a cleaned .artifacts/deliver run
+	// would not have produced.
+	stale := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+	if err := os.Chtimes(artifactPath, stale, stale); err != nil {
+		t.Fatal(err)
+	}
+
+	tracePath := filepath.Join(dir, "trace.jsonl")
+	traceContent := `{"ts":"2026-07-11T06:45:00Z","kind":"agent.stream","state_path":"decompose","payload":{"tool":"mcp__validator__submit"}}
+`
+	if err := os.WriteFile(tracePath, []byte(traceContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := ScoreTrace(tracePath, Case{
+		ID: "deliver-decompose-stale-artifact",
+		Expectations: Expectations{
+			RequireSubmit:   true,
+			RequireArtifact: "decomposition.yaml",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Passed {
+		t.Fatalf("expected a stale pre-existing artifact to be rejected, got pass")
+	}
+	assertFailureContains(t, report.Failures, "predates this run")
+}
+
+// callStartEvent builds an agent.call.start trace event carrying a call_id,
+// for tests that need to attribute a subsequent submit signal to a specific
+// verb via callVerb correlation.
+func callStartEvent(ts, state, callID string, payload map[string]any) map[string]any {
+	ev := event(ts, "agent.call.start", state, payload)
+	ev["call_id"] = callID
+	return ev
+}
+
+// streamEventWithCallID builds an agent.stream event carrying a call_id, for
+// tests that correlate a submit tool call back to its dispatching verb.
+func streamEventWithCallID(ts, state, callID string, payload map[string]any) map[string]any {
+	ev := event(ts, "agent.stream", state, payload)
+	ev["call_id"] = callID
+	return ev
 }
 
 func assertFailureContains(t *testing.T, failures []string, want string) {

@@ -1,11 +1,14 @@
 # Epic: repo history as training material
 
-**Status:** Draft v3. Feasibility-reviewed against the current mining,
+**Status:** Draft v4. Feasibility-reviewed against the current mining,
 bakeoff, agent-eval, and trainable-story substrates. The gears-rust bugfix
-reference path is now implemented as a product smoke; the broader generic
-corpus/task-case/precedent slices remain draft.
+reference path is implemented as a product smoke, and the first generic
+task-case substrate now exists as `history_task.v1` validation plus a
+bugfix-bakeoff adapter. The corpus-label, precedent-selection, autonomous
+runner, and workflow-integration slices remain draft.
 **Kind:**   epic
-**Slices:** 5 generic slices remain draft; 1 shipped bugfix reference path
+**Slices:** 4 generic slices remain draft; 1 task-case substrate started; 1
+shipped bugfix reference path
 
 ## Why
 
@@ -139,6 +142,65 @@ This shipped path is intentionally still a bugfix-lane specialization. It proves
 the process discipline this epic wants to generalize, but it does not replace
 the remaining corpus, generic task-case, precedent-selection, and workflow
 integration slices below.
+
+## External prior art (researched 2026-07-06)
+
+The "convert repo history into graded task cases at scale" idea now has a
+mature external ecosystem. Findings that bear on this epic (the full survey,
+including the substrate-level tools, lives in the hermetic-capsules proposal —
+now `docs/proposals/hermetic-capsules.md`):
+
+- **[SWE-smith](https://swesmith.com/blog.html)** — the scaling reference:
+  50k tasks from 250+ arbitrary repos in ~295 GB of images, using
+  LLM-synthesized bugs when history is thin. Its own conclusion is this
+  epic's constraint: **automated environment setup is the bottleneck**, not
+  case mining. (Python-centric pipeline; the strategy transfers.)
+- **R2E-Gym's SYNGEN pipeline** — back-translates commit history into issue
+  specs and test suites: the external twin of slice 2's "history item
+  graduates into a task manifest."
+  [SWE-rebench](https://arxiv.org/pdf/2602.23866) does the same
+  language-agnostically at scale — worth reading before finalizing the
+  lane-neutral manifest.
+- **[SWE-bench's harness](https://www.swebench.com/SWE-bench/reference/harness/)**
+  — validation discipline to copy: every case must resolve with its
+  ground-truth solution before it counts (99.78% of tasks pass this gate).
+  That is the bakeoff GREEN@fix rule; keep it standing for every lane.
+- **[BugSwarm](https://github.com/BugSwarm/bugswarm)** — the cautionary
+  tale: 3,600+ mined reproducible fail/fix Docker pairs, yet a
+  [critical review](https://arxiv.org/pdf/1905.09375) found ~96% unusable
+  for repair research (duplicates, no failing test, non-source changes).
+  **Curation gates beat mining volume** — this epic's "armed before live
+  drive" decision is the right one; don't relax it to grow case counts.
+- **[GitBug-Actions](https://arxiv.org/pdf/2310.15642)** — reproduces
+  historical bugs using the repo's **own CI workflow** as the environment
+  definition; the cheapest honest env spec for well-CI'd repos when arming
+  mined cases.
+- **[Harbor](https://github.com/harbor-framework/harbor)** (Terminal-Bench's
+  task format + harness) — the emerging lingua franca for agent task
+  environments, with existing drivers for Claude Code/Codex/OpenHands.
+  Keeping the task-case manifest exportable to Harbor's shape (instruction +
+  hidden tests + oracle solution, graded on environment end-state) makes
+  mined corpora externally consumable and comparable. Three follow-up facts
+  matter directly to this epic (verified 2026-07-06, v0.17.1): (a) Harbor
+  ships **20+ import adapters** (SWE-bench Verified, SWE-smith, Aider
+  Polyglot, …) that emit plain task directories — via the capsules
+  proposal's `capsule import --harbor`, these are free corpus faucets that
+  seed this epic's case library without building miners; (b) its **ATIF
+  trajectory export** (`harbor traces export --sharegpt --filter success`,
+  pushes to HuggingFace) is a ready-made training-example interchange format
+  the promotion loop can emit into instead of inventing one; (c) **Harbor
+  never calls an LLM itself** — agents are black-box shims — so a
+  cassette-replay kitsoki agent can drive graded runs at zero LLM cost,
+  consistent with the no-LLM testing policy. The full interop design
+  (export/import/agent-shim/executor lanes) lives in the hermetic-capsules
+  proposal §6; this epic consumes it.
+
+Net: this epic's shape (mine → arm → gate → grade deterministically) is
+independently converged-on externally; the differentiators to protect are
+lane-neutrality (design/onboarding/docs, not just bugfix), precedent
+selection, and promotion-as-weight-update. The pinned-environment substrate
+itself is the hermetic-capsules proposal's job — this epic should consume
+capsules, not rebuild reproduction machinery per lane.
 
 ## Reuse and extension targets
 
@@ -297,7 +359,7 @@ This is the bugfix-bakeoff discipline generalized across lanes.
 |---|---|---|---|---|---|---|
 | 0 | gears-rust bugfix reference path | tooling + story + docs | Product-smoke the repo-history loop on a heavy/private Rust repo using the existing external bakeoff contract | — | Shipped | [`../recipes/repo-history-training-gears-rust.md`](../recipes/repo-history-training-gears-rust.md) |
 | 1 | Corpus and labels | tracing + runtime | Extend the existing mining corpus with repo-history sources, case labels, source refs, and precedent indexes | — | Draft | `repo-history-corpus.md` |
-| 2 | Generic task/oracle manifests | runtime + tooling | Extract the bugfix-bakeoff case/oracle/cell/result contract into a lane-neutral manifest and scorer interface | 1 | Draft; informed by shipped gears-rust reference | `repo-history-task-cases.md` |
+| 2 | Generic task/oracle manifests | runtime + tooling | Extract the bugfix-bakeoff case/oracle/cell/result contract into a lane-neutral manifest and scorer interface | 1 | Started: `internal/taskcase`, `kitsoki history task-cases`, bugfix adapter, and agent-eval pilot | `repo-history-task-cases.md` |
 | 3 | Precedent selection | story + tracing | Let stories request, inject, and trace selected examples/anti-patterns from the corpus | 1 | Draft | `repo-history-precedent-selection.md` |
 | 4 | Gated autonomous runner | runtime + story | Run armed task cases through cheap-to-expensive ladders, resumably, with no-cost verification/reporting and operator-approved live cells | 2, 3 | Draft | `repo-history-runner.md` |
 | 5 | Workflow integrations | story + docs | Wire onboarding, bugfix, spec/design, implementation, docs review, and SDLC stories to the shared precedent/task-case loop | 3, 4 | Draft | `repo-history-workflows.md` |
@@ -388,13 +450,16 @@ the stories, not in the runner.
 - [ ] Add a corpus-label design that extends `internal/mining` and the
       session-mining backend-generalization proposal instead of creating a new
       corpus.
-- [ ] Define the generic task-case manifest and adapter plan from the current
-      bugfix-bakeoff manifest/result contracts.
-- [ ] Prove the generic manifest can represent the existing `query-string`,
+- [x] Define the generic task-case manifest and adapter plan from the current
+      bugfix-bakeoff manifest/result contracts. Shipped as `internal/taskcase`
+      plus `kitsoki history task-cases`.
+- [x] Prove the generic manifest can represent the existing `query-string`,
       `gears-rust`, and `kitsoki` bugfix-bakeoff projects without changing their
-      outcome semantics.
-- [ ] Add one non-bugfix pilot lane, preferably a story-local `agent_eval` or
-      flow-fixture case, to prove the schema is not bugfix-shaped.
+      outcome semantics. Covered by `internal/taskcase` tests and
+      `make history-smoke` adapter validation.
+- [x] Add one non-bugfix pilot lane, preferably a story-local `agent_eval` or
+      flow-fixture case, to prove the schema is not bugfix-shaped. Pilot:
+      `tools/history-training/examples/git-ops-commit-message-agent-eval.yaml`.
 - [ ] Add precedent-selection trace/artifact events to one target story under a
       no-LLM fixture.
 - [ ] Add offline aggregation/report output under `.artifacts/history-training/`

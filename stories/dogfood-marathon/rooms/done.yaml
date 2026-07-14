@@ -4,15 +4,31 @@ states:
 
   done:
     description: "The marathon finished — the slidey report is rendered."
-    relevant_world: [report_handle, deck_spec, rollup, results, findings]
+    relevant_world: [report_handle, deck_spec, rollup, results, last_result, findings, exceptions, journal_path]
     view:
-      - heading: "Dogfood marathon · done"
+      - heading: "Marathon · done"
       - kv:
           pairs:
             Cases:    '{{ world.results.items|length }}'
             Solved:   '{{ world.rollup.counts.solved|default:"—" }}'
             Findings: '{{ world.findings.items|length }}'
+            Exceptions: '{{ world.exceptions.items|length }}'
             Headline: '{{ world.rollup.headline|default:"—" }}'
+            Journal:  '{{ world.journal_path|default:"(pending)" }}'
+            Per-bug decks: '{{ world.deck_spec.case_decks|length|default:"0" }}'
+      - heading: "Last recorded"
+        when: "world.last_result.case_id"
+      - kv:
+          pairs:
+            Case:   '{{ world.last_result.case_id|default:"—" }}'
+            Title:  '{{ world.last_result.title|default:"—" }}'
+            Source: '{{ world.last_result.source_url|default:world.last_result.source_path|default:world.last_result.source_repo|default:"—" }}'
+            Exit:   '{{ world.last_result.exit|default:"—" }}'
+            Verify: '{{ world.last_result.verify_status|default:"—" }}'
+            Tokens: '{{ world.last_result.tokens_display|default:"0" }}'
+            Time:   '{{ world.last_result.wall_s_display|default:"0" }}s'
+            Trace:  '{{ world.last_result.trace|default:"—" }}'
+        when: "world.last_result.case_id"
       - heading: "Marathon report"
       - media:
           handle:  "{{ world.report_handle }}"
@@ -20,11 +36,17 @@ states:
           caption: "{{ world.deck_spec.summary }}"
         when: "world.report_handle != ''"
       - prose: "The report decks the run: outcomes, effectiveness, cost (tokens primary), time, what was fixed, what worked, what didn't. Findings feed the no-overfit hardening — improve the pipeline for the general class, never for one case."
-      - heading: "Actions"
-      - list:
+      - code: |
+          {% for deck in world.deck_spec.case_decks %}- {{ deck.case_id }}: {{ deck.path }}
+          {% endfor %}
+        when: "world.deck_spec.case_decks"
+      - choice:
+          mode: single
+          prompt: "Actions"
           items:
             - label: "look"
               hint:  "re-render the gallery"
+              intent: look
     on:
       look:
         - target: .

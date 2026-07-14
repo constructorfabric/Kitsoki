@@ -1,0 +1,36 @@
+test_kind: flow
+app: ../app.yaml
+use_orchestrator: true
+initial_state: details
+initial_world:
+  operator_user: Brad.Smith
+  protected_root: /Users/Brad.Smith/code/kitsoki
+  setup_summary: "ready to apply"
+
+host_handlers:
+  host.run:
+    data:
+      ok: false
+      exit_code: 77
+      stdout: |
+        AUTHORIZATION_REQUIRED: sudo is not authenticated for non-interactive apply.
+        Run 'sudo -v' in the terminal that launched Kitsoki, then retry apply.
+
+turns:
+  - intent:
+      name: apply
+      slots: {}
+    expect_state: needs_authorization
+    expect_world:
+      apply_ok: false
+      apply_exit_code: 77
+      status: "authorization required"
+      last_error: |
+        AUTHORIZATION_REQUIRED: sudo is not authenticated for non-interactive apply.
+        Run 'sudo -v' in the terminal that launched Kitsoki, then retry apply.
+    expect_host_calls:
+      - handler: host.run
+        args: { call: apply_run_as_user_setup }
+    expect_view_matches: "sudo -v"
+
+expect_no_errors: true

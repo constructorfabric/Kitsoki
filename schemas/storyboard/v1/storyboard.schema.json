@@ -1,0 +1,115 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://kitsoki.dev/schemas/storyboard/v1/storyboard.schema.json",
+  "title": "Kitsoki demo storyboard",
+  "description": "The planning contract for a tour-driven demo video. Documentation mirror of the authoritative Go validator (internal/storyboard, `kitsoki storyboard validate`) — keep the two in lockstep. The Go validator additionally enforces semantic lint (reading budgets, total screen time, binding/scenario existence) this schema cannot express.",
+  "type": "object",
+  "required": ["version", "id", "title", "goal", "surface", "format", "scenes"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "const": 1 },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+      "description": "Stable kebab-case demo identifier (artifact dirs, filenames)."
+    },
+    "title": { "type": "string", "minLength": 1 },
+    "goal": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The one-sentence promise the finished video must deliver on."
+    },
+    "audience": { "type": "string" },
+    "surface": { "enum": ["web", "tui", "vscode", "site"] },
+    "format": { "enum": ["rrweb", "mp4", "tour"] },
+    "minTotalMs": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Overrides the default 25s total screen-time floor for a deliberate short clip (e.g. a deck act)."
+    },
+    "binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The deterministic no-LLM capture posture. Paths are repo-root-relative.",
+      "properties": {
+        "story": { "type": "string" },
+        "flow": { "type": "string" },
+        "hostCassette": { "type": "string" },
+        "feature": {
+          "type": "string",
+          "description": "A feature-catalog id (features/<id>.yaml) that already owns the demo binding."
+        }
+      }
+    },
+    "scenario": {
+      "type": "object",
+      "required": ["id"],
+      "additionalProperties": false,
+      "description": "Product-journey catalog linkage (tools/product-journey/scenarios.json) when the demo claims scenario coverage.",
+      "properties": {
+        "id": { "type": "string" },
+        "transport": { "type": "string" }
+      }
+    },
+    "scenes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "purpose", "narration", "dwellMs", "expect"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+          "title": { "type": "string", "minLength": 1 },
+          "purpose": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The narrative reason the scene exists."
+          },
+          "narration": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Popover body / voiceover text shown during the scene."
+          },
+          "screen": { "type": "string", "description": "What is on screen when the scene settles." },
+          "route": { "enum": ["home", "interactive", "any"] },
+          "anchor": { "type": "string", "description": "data-testid the scene spotlights." },
+          "placement": { "enum": ["top", "bottom", "left", "right", "center"] },
+          "kind": { "enum": ["explain", "action"] },
+          "advance": { "enum": ["next", "route-match"] },
+          "drive": {
+            "type": "array",
+            "description": "Tour DriveAction vocabulary, verbatim (internal/tour).",
+            "items": {
+              "type": "object",
+              "required": ["type"],
+              "additionalProperties": false,
+              "properties": {
+                "type": { "enum": ["type-and-send", "click-intent", "wait-state", "reveal-turn", "dwell-ms"] },
+                "text": { "type": "string" },
+                "intent": { "type": "string" },
+                "state": { "type": "string" },
+                "ms": { "type": "integer", "minimum": 1 }
+              }
+            }
+          },
+          "dwellMs": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "How long the settled scene holds on screen. Lint: must cover the narration reading budget (~280ms/word, 1200ms floor)."
+          },
+          "expect": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string", "minLength": 1 },
+            "description": "Observable claims a reviewer must verify from the captured frames; become the kitsoki-ui-qa scenario steps."
+          },
+          "required": {
+            "type": "boolean",
+            "description": "Whether the QA gate must pass this scene (default true)."
+          }
+        }
+      }
+    }
+  }
+}

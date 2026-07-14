@@ -1,0 +1,39 @@
+# landing_gitops_route — repo/git questions route to the git-ops tool hub.
+#
+# The workbench should not answer repository status questions by letting the
+# general landing agent run ad hoc shell. It has a named git-ops import whose
+# intercept hub refreshes branch/ahead/behind/dirty state with host.run and
+# offers deterministic git commands. This fixture proves the route from landing
+# enters that hub with no LLM.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world: {}
+
+host_handlers:
+  host.run:
+    by_call:
+      refresh_intercept:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            branch:             main
+            main_worktree_path: "."
+            commits_ahead:      3
+            commits_behind:     0
+            has_uncommitted:    false
+            on_integration:     true
+            no_common_ancestor: false
+
+turns:
+  - intent: { name: go_gitops, slots: {} }
+    expect_state: gitops.intercept
+    expect_world:
+      gitops__current_branch: main
+      gitops__commits_ahead: 3
+      gitops__commits_behind: 0
+      gitops__has_uncommitted: false
+
+expect_no_errors: true

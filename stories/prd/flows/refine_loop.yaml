@@ -8,20 +8,15 @@ initial_world:
   idea:          "A CLI for X"
   workdir:       "."
   judge_mode:    "human"
+  publish_durable_path: "/tmp/kitsoki-prd-fixtures"
   # Seed the per-PRD workspace minted at the search gate (this flow enters at
   # drafting directly, bypassing search).
   prd_slug:      "example-cli"
   prd_workspace: ".artifacts/prd/example-cli"
 
+starlark_inspect_cassette: ../cassettes/publish_example_cli_workspace.inspect.yaml
+
 host_handlers:
-  # accept publishes the draft out of the workspace into the durable home.
-  host.run:
-    by_call:
-      publish:
-        data:
-          ok: true
-          exit_code: 0
-          stdout_json: { prd_file: "docs/prd/example-cli.md" }
   host.agent.task:
     data:
       ok: true
@@ -57,9 +52,9 @@ turns:
     expect_state: __exit__done
     expect_world:
       status:   "done"
-      prd_file: "docs/prd/example-cli.md"
+      prd_file: "/tmp/kitsoki-prd-fixtures/example-cli.md"
     expect_host_calls:
-      - handler: host.run
+      - handler: host.starlark.run
         args: { call: "publish" }
 
 expect_terminal: true

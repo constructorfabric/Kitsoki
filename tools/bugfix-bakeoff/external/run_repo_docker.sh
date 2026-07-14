@@ -48,7 +48,7 @@ docker run --rm \
   -v "${CACHE}:/workspace/.artifacts" \
   -e EXTERNAL_BAKEOFF_CACHE="/workspace/.artifacts/external-bakeoff" \
   -e KITSOKI_REPO="/workspace/repo" \
-  -e GEARS_RUST_REPO="/workspace/repo" \
+  -e BUGFIX_BAKEOFF_REPO="/workspace/repo" \
   -e MCP_DRIVE_MAX_ATTEMPTS="${MCP_DRIVE_MAX_ATTEMPTS:-12}" \
   -e MCP_DRIVE_BACKOFF_BASE="${MCP_DRIVE_BACKOFF_BASE:-10}" \
   -e MCP_DRIVE_BACKOFF_MAX="${MCP_DRIVE_BACKOFF_MAX:-600}" \

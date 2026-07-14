@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -15,6 +16,9 @@ import (
 	"kitsoki/internal/app"
 	"kitsoki/internal/chats"
 	"kitsoki/internal/jobs"
+	"kitsoki/internal/journal"
+	"kitsoki/internal/machine"
+	"kitsoki/internal/orchestrator"
 	"kitsoki/internal/store"
 	tuipkg "kitsoki/internal/tui"
 )
@@ -250,6 +254,225 @@ func TestWorkSlashListsActiveAsyncWork(t *testing.T) {
 	require.Contains(t, tx, "scope")
 	require.Contains(t, tx, "please review the proposal")
 	require.Contains(t, tx, "queued review context is ready")
+}
+
+func TestWorkSlashListsCurrentOperation(t *testing.T) {
+	def := &app.AppDef{
+		App:  app.AppMeta{ID: "operation-work-test"},
+		Root: "idle",
+		Operations: map[string]*app.OperationPolicy{
+			"bugfix_full": {
+				Title:           "Fix bug",
+				Mode:            "autonomous",
+				ExecutionMode:   "one-shot",
+				RunInBackground: true,
+				StopOn:          []string{"needs-human"},
+			},
+		},
+		Intents: map[string]app.Intent{
+			"go": {Description: "Run the operation."},
+		},
+		States: map[string]*app.State{
+			"idle": {
+				On: map[string][]app.Transition{
+					"go": {{
+						Target:    "needs-human",
+						Operation: "bugfix_full",
+						Effects: []app.Effect{{
+							Set: map[string]any{
+								"status":             "needs-human",
+								"needs_human_reason": "Regression gate was never RED.",
+							},
+						}},
+					}},
+				},
+			},
+			"needs-human": {Terminal: true},
+		},
+	}
+	mach, err := machine.New(def)
+	require.NoError(t, err)
+	s, err := store.OpenMemory()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+	orch := orchestrator.New(def, mach, s, nil)
+	sid, err := orch.NewSession(context.Background())
+	require.NoError(t, err)
+	out, err := orch.SubmitDirect(context.Background(), sid, "go", nil)
+	require.NoError(t, err)
+
+	initialView, err := orch.RenderState(out.NewState, orch.CurrentWorld(sid))
+	require.NoError(t, err)
+	model := tea.Model(tuipkg.NewRootModel(orch, sid, "", initialView,
+		tuipkg.WithResumedJourney(out.NewState, orch.CurrentWorld(sid), out.TurnNumber),
+	))
+
+	model = runTurnBlocking(t, model, "/work")
+	tx := extractTranscript(t, model)
+	work := transcriptAfter(t, tx, "active work: 1 item(s)")
+	analyzer := tuipkg.NewRenderingAnalyzer(t, work)
+	analyzer.AssertStructure("operation", "waiting", "Fix bug")
+	analyzer.AssertContains("reason needs-human")
+	analyzer.AssertContains("Regression gate was never RED.")
+	analyzer.AssertContains("/work summary")
+	requireContainsNear(t, work, "Fix bug", "reason needs-human")
+	requireContainsNear(t, work, "Fix bug", "/work summary")
+}
+
+func TestWorkDriveSlashDrivesCurrentOperation(t *testing.T) {
+	cwd := t.TempDir()
+	t.Chdir(cwd)
+	artifactPath := filepath.Join(cwd, "artifacts", "done.md")
+	require.NoError(t, os.MkdirAll(filepath.Dir(artifactPath), 0o755))
+	require.NoError(t, os.WriteFile(artifactPath, []byte("# done\n"), 0o644))
+
+	const yamlSrc = `
+app:
+  id: operation-work-drive-test
+  version: 0.1.0
+world:
+  refined: { type: bool, default: false }
+intents:
+  start: {}
+  accept: {}
+  refine: {}
+  quit: {}
+root: idle
+operations:
+  demo_run:
+    title: Demo run
+    mode: supervised
+    execution_mode: one-shot
+    run_in_background: true
+    terminal_artifact: done_artifact
+states:
+  idle:
+    view: Idle
+    on:
+      start:
+        - target: reproducing
+          operation: demo_run
+  reproducing:
+    view: Reproducing
+    on:
+      accept:
+        - target: proposing
+      refine:
+        - target: reproducing
+      quit:
+        - target: needs-human
+  proposing:
+    view: Proposing
+    on:
+      accept:
+        - target: done
+          effects:
+            - set:
+                done_artifact: { summary_title: Done }
+      quit:
+        - target: needs-human
+  needs-human:
+    terminal: true
+    view: Needs human
+  done:
+    terminal: true
+    view: Done
+`
+	def, err := app.LoadBytes([]byte(yamlSrc))
+	require.NoError(t, err)
+	mach, err := machine.New(def)
+	require.NoError(t, err)
+	s, err := store.OpenMemory()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	orch := orchestrator.New(def, mach, s, nil)
+	sid, err := orch.NewSession(context.Background())
+	require.NoError(t, err)
+	journalStore := journal.NewMemStore()
+	journalWriter := journal.NewMemWriter(journalStore)
+	journalReader := journal.NewMemReader(journalStore)
+	artifactBody, err := json.Marshal(journal.ArtifactEvent{
+		ID:        "done_artifact",
+		Path:      artifactPath,
+		Producer:  "host.artifacts_dir",
+		CreatedAt: time.Now(),
+	})
+	require.NoError(t, err)
+	require.NoError(t, journalWriter.Append(journal.Entry{
+		Session: sid,
+		Turn:    0,
+		Seq:     0,
+		Kind:    journal.KindArtifactEmitted,
+		Body:    artifactBody,
+	}))
+	started, err := orch.SubmitDirect(context.Background(), sid, "start", nil)
+	require.NoError(t, err)
+	require.Equal(t, app.StatePath("reproducing"), started.NewState)
+
+	initialView, err := orch.RenderState(started.NewState, orch.CurrentWorld(sid))
+	require.NoError(t, err)
+	rm := tuipkg.NewRootModel(orch, sid, "", initialView,
+		tuipkg.WithResumedJourney(started.NewState, orch.CurrentWorld(sid), started.TurnNumber),
+		tuipkg.WithJournalReader(journalReader),
+	)
+	var opened []string
+	tuipkg.SetOpenArtifactForTest(&rm, func(path string) error {
+		opened = append(opened, path)
+		return nil
+	})
+	model := tea.Model(rm)
+
+	model = runTurnBlocking(t, model, "/work")
+	tx := extractTranscript(t, model)
+	work := transcriptAfter(t, tx, "active work: 1 item(s)")
+	analyzer := tuipkg.NewRenderingAnalyzer(t, work)
+	analyzer.AssertStructure("operation", "running", "Demo run")
+	analyzer.AssertContains("/work drive")
+	analyzer.AssertContains("/work summary")
+	requireContainsNear(t, work, "Demo run", "/work drive")
+	requireContainsNear(t, work, "Demo run", "/work summary")
+
+	model = runTurnBlocking(t, model, "/work drive")
+	tx = extractTranscript(t, model)
+	require.Contains(t, tx, "Done")
+	require.Contains(t, tx, "(work drive: drove 2 turns via accept; stopped because the operation is completed)")
+
+	journey, err := orch.LoadJourney(sid)
+	require.NoError(t, err)
+	require.Equal(t, app.StatePath("done"), journey.State)
+	handle, ok := journey.World.Vars[app.OperationRunWorldKey].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "completed", handle["status"])
+	require.Equal(t, "done", handle["terminal_state"])
+	require.Equal(t, false, journey.World.Vars["refined"], "driver must not choose refine")
+
+	model = runTurnBlocking(t, model, "/work")
+	tx = extractTranscript(t, model)
+	work = transcriptAfter(t, tx, "active work: 1 item(s)")
+	analyzer = tuipkg.NewRenderingAnalyzer(t, work)
+	analyzer.AssertStructure("operation", "completed", "Demo run")
+	analyzer.AssertContains("artifact done_artifact")
+	analyzer.AssertContains("/work artifact")
+	analyzer.AssertContains("/work summary")
+	requireContainsNear(t, work, "Demo run", "artifact done_artifact")
+	requireContainsNear(t, work, "Demo run", "/work artifact")
+
+	model = runTurnBlocking(t, model, "/work summary")
+	tx = extractTranscript(t, model)
+	summary := transcriptAfter(t, tx, "operation summary")
+	require.Contains(t, summary, "title: Demo run")
+	require.Contains(t, summary, "status: completed")
+	require.Contains(t, summary, "mode: supervised")
+	require.Contains(t, summary, "execution: one-shot")
+	require.Contains(t, summary, "terminal: done")
+	require.Contains(t, summary, "artifact: done_artifact")
+	require.Contains(t, summary, "actions: /work artifact")
+
+	model = runTurnBlocking(t, model, "/work artifact")
+	tx = extractTranscript(t, model)
+	require.Equal(t, []string{artifactPath}, opened)
+	require.Contains(t, tx, "open: opened "+artifactPath)
 }
 
 func transcriptAfter(t *testing.T, text, marker string) string {

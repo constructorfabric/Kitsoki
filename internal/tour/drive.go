@@ -3,6 +3,7 @@ package tour
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/chromedp/cdproto/runtime"
@@ -20,8 +21,8 @@ func awaitPromise(p *runtime.EvaluateParams) *runtime.EvaluateParams {
 // executor runs a step's DriveAction list against the live page over CDP. It is
 // the Go port of the Playwright spec helpers (e.g. agent-actions-video.spec.ts:
 // typeAndSend, clickIntent, waitForState, revealTurn, ease, dwell). Every gesture is a
-// Runtime.evaluate (chromedp.Evaluate) so it fires through the tour overlay's
-// hit-test backdrop regardless of paint order — the same reason the spec
+// Runtime.evaluate (chromedp.Evaluate) so it avoids browser hit-test flake from
+// the tour popover or transient layout shifts — the same reason the spec
 // DOM-dispatches `el.click()` rather than a hit-test click.
 //
 // pace scales every dwell/reveal duration: 0 = instant (fast deterministic
@@ -54,8 +55,12 @@ func (e *executor) one(a DriveAction) error {
 		return e.typeAndSend(a.Text)
 	case DriveClickIntent:
 		return e.clickIntent(a.Intent)
+	case DriveClickSelector:
+		return e.clickSelector(a.Selector)
 	case DriveWaitState:
 		return e.waitForState(a.State, 20*time.Second)
+	case DriveWaitText:
+		return e.waitForText(a.Text, 30*time.Second)
 	case DriveRevealTurn:
 		return e.revealTurn()
 	case DriveDwellMs:
@@ -63,6 +68,40 @@ func (e *executor) one(a DriveAction) error {
 	default:
 		return fmt.Errorf("unknown drive type %q", a.Type)
 	}
+}
+
+func (e *executor) waitForText(want string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		var body string
+		const transcriptText = `(() => { const el = document.querySelector('[data-testid="chat-transcript"]'); return el ? el.innerText : ''; })()`
+		if err := chromedp.Run(e.ctx, chromedp.Evaluate(transcriptText, &body)); err != nil {
+			return err
+		}
+		if strings.Contains(body, want) {
+			// Keep the proof target in view. A bound workbench response can be a
+			// tall card (prerequisites and quick actions flank its actual result),
+			// so scrolling the whole agent row is not enough to prove the required
+			// captured text in the poster frame.
+			focus := fmt.Sprintf(`(() => {
+  const root = document.querySelector('[data-testid="chat-transcript"]');
+  if (!root) return;
+  window.__tourResponseText = %q;
+  const matches = [...root.querySelectorAll('*')].filter((el) =>
+    (el.innerText || '').includes(%q) && ![...el.children].some((child) => (child.innerText || '').includes(%q)));
+  const target = matches[0];
+  if (target) { window.__tourResponseTarget = target; target.scrollIntoView({block:'center'}); }
+})()`, want, want, want)
+			if err := chromedp.Run(e.ctx, chromedp.Evaluate(focus, nil)); err != nil {
+				return err
+			}
+			return nil
+		}
+		if err := e.sleepRaw(200 * time.Millisecond); err != nil {
+			return err
+		}
+	}
+	return fmt.Errorf("text %q did not appear", want)
 }
 
 // dwell holds on the current frame for ms, pace-scaled. The single pacing
@@ -148,6 +187,28 @@ func (e *executor) clickIntent(intent string) error {
 	return nil
 }
 
+// clickSelector clicks a deterministic data-testid selector for a transition
+// that is not a story intent, such as HomeView's New session control. Storyboard
+// validation keeps this explicit rather than teaching the renderer UI-specific
+// special cases.
+func (e *executor) clickSelector(selector string) error {
+	js := fmt.Sprintf(`(() => {
+  const el = document.querySelector(%q);
+  if (!el) return false;
+  el.scrollIntoView({ block: 'center' });
+  el.click();
+  return true;
+})()`, selector)
+	var ok bool
+	if err := chromedp.Run(e.ctx, chromedp.Evaluate(js, &ok)); err != nil {
+		return fmt.Errorf("click selector %q: %w", selector, err)
+	}
+	if !ok {
+		return fmt.Errorf("selector %q not found", selector)
+	}
+	return nil
+}
+
 // waitForState polls the interactive view's current-state testid until it
 // equals state, mirroring the spec's waitForState (a DOM read, not an RPC). The
 // state is the deterministic, no-LLM settle point a flow turn reaches.
@@ -213,6 +274,34 @@ func (e *executor) revealTurn() error {
 		downMs = 3000
 	}
 	if err := e.ease(max, e.paced(downMs)); err != nil {
+		return err
+	}
+	// The transcript can grow after the scroll-span calculation (notably when a
+	// cassette-backed agent result lands). Keep the required response text in
+	// view when wait-text established one; otherwise fall back to the last agent
+	// row for manifests that only use reveal-turn.
+	const lastAgentIntoView = `(async () => {
+  const root = document.querySelector('[data-testid="chat-transcript"]');
+  const want = window.__tourResponseText;
+  if (root && want && window.__ease) {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let node;
+    while ((node = walker.nextNode())) {
+      const at = (node.textContent || '').indexOf(want);
+      if (at < 0) continue;
+      const range = document.createRange();
+      range.setStart(node, at); range.setEnd(node, at + want.length);
+      const rect = range.getBoundingClientRect(), base = root.getBoundingClientRect();
+      await window.__ease(root.scrollTop + rect.top - base.top - root.clientHeight / 2, 0);
+      return;
+    }
+  }
+  const target = window.__tourResponseTarget;
+  if (target) { target.scrollIntoView({block:'center'}); return; }
+  const rows = document.querySelectorAll('[data-testid="chat-row-agent"]');
+  const last = rows[rows.length - 1]; if (last) last.scrollIntoView({block:'start'});
+})()`
+	if err := chromedp.Run(e.ctx, chromedp.Evaluate(lastAgentIntoView, nil, awaitPromise)); err != nil {
 		return err
 	}
 	return e.dwell(1500)

@@ -53,14 +53,16 @@ search.
 
 Search the repo's **documentation, rules, and conventions** for the
 material this proposal must build on or stay consistent with. Use
-`Read` / `Grep` / `Glob`. High-signal sources (when authoring against the
-kitsoki repo itself — for an external target, find the equivalents in that
-repo's docs and skip any path below that does not exist):
+`Read` / `Grep` / `Glob`. High-signal sources (for any target repo, find
+the local equivalents and skip paths below that do not exist):
 
 - `docs/proposals/templates/` and `docs/proposals/README.md` — the
-  proposal spine and lifecycle the draft must follow;
-- `.agents/skills/proposal-authoring/SKILL.md` — the authoring discipline;
-- `docs/proposals/process-design.md` — the process-design methodology;
+  Kitsoki fallback proposal spine and lifecycle;
+- local proposal/design/ADR/PRD templates, if the repo has them — these win
+  over the fallback style;
+- local contributor, agent, and architecture rules (`AGENTS.md`, `CLAUDE.md`,
+  `docs/`, `README.md`, `.agents/skills/`) — the authoring discipline;
+- `docs/proposals/process-design.md` — the fallback process-design methodology;
 - the **gold-standard stories** (`stories/prd/`, `stories/bugfix/`) and
   `docs/stories/` when the change is story-shaped;
 - `docs/architecture/`, `docs/tui/`, `docs/tracing/` for runtime / tui /

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"kitsoki/internal/app"
+	"kitsoki/internal/storyauthoring"
 )
 
 // Markdown compiles an AppDef into a publishable Markdown document — the
@@ -78,8 +79,8 @@ func (r *renderer) overview() {
 		r.ln(fmt.Sprintf("- Entry room: [`%s`](#room-%s)", rootName, anchorSlug(rootName)))
 	}
 	r.ln(fmt.Sprintf("- Rooms: %d", countStates(r.def.States)))
-	r.ln(fmt.Sprintf("- Intents: %d", len(r.def.Intents)))
-	r.ln(fmt.Sprintf("- World variables: %d", len(r.def.World)))
+	r.ln(fmt.Sprintf("- Intents: %d", len(renderableIntentNames(r.def.Intents))))
+	r.ln(fmt.Sprintf("- World variables: %d", len(renderableWorldKeys(r.def.World))))
 	if len(r.def.Hosts) > 0 {
 		r.ln(fmt.Sprintf("- Host allow-list: %s", backtickList(r.def.Hosts)))
 	}
@@ -98,6 +99,9 @@ func (r *renderer) stateDiagram() {
 	// Collect all state paths (flat + nested).
 	var paths []string
 	walkStates(r.def.States, "", func(path string, _ *app.State) {
+		if storyauthoring.IsFrameworkRoom(path) {
+			return
+		}
 		paths = append(paths, path)
 	})
 	sort.Strings(paths)
@@ -109,7 +113,13 @@ func (r *renderer) stateDiagram() {
 	// is deterministic across runs (the rendered doc is committed as a work
 	// product).
 	walkStates(r.def.States, "", func(path string, st *app.State) {
+		if storyauthoring.IsFrameworkRoom(path) {
+			return
+		}
 		for _, intent := range stableKeys(st.On) {
+			if storyauthoring.IsFrameworkTransition(path, intent) {
+				continue
+			}
 			for _, tr := range st.On[intent] {
 				target := resolveMermaidTarget(path, tr.Target)
 				if target == "" {
@@ -137,7 +147,7 @@ func (r *renderer) worldVars() {
 	r.ln("")
 	r.ln("| Name | Type | Default | Values |")
 	r.ln("|---|---|---|---|")
-	for _, k := range stableKeys(r.def.World) {
+	for _, k := range renderableWorldKeys(r.def.World) {
 		v := r.def.World[k]
 		r.ln(fmt.Sprintf("| `%s` | `%s` | %s | %s |",
 			k, v.Type, formatDefault(v.Default), formatValues(v.Values)))
@@ -151,7 +161,7 @@ func (r *renderer) intents() {
 	}
 	r.ln("## Intents")
 	r.ln("")
-	for _, name := range stableKeys(r.def.Intents) {
+	for _, name := range renderableIntentNames(r.def.Intents) {
 		in := r.def.Intents[name]
 		title := in.Title
 		if title == "" {
@@ -209,6 +219,9 @@ func (r *renderer) rooms() {
 	r.ln("")
 	rootName, _ := r.def.Root.(string)
 	walkStates(r.def.States, "", func(path string, st *app.State) {
+		if storyauthoring.IsFrameworkRoom(path) {
+			return
+		}
 		r.room(path, st, path == rootName)
 	})
 }
@@ -257,6 +270,18 @@ func (r *renderer) room(path string, st *app.State, isRoot bool) {
 		r.ln("**Menu**: " + backtickList(st.Menu))
 		r.ln("")
 	}
+	if len(st.Prerequisites) > 0 {
+		r.ln("**Prerequisites**:")
+		r.ln("")
+		for _, pr := range st.Prerequisites {
+			suffix := ""
+			if pr.SatisfiedWhen != "" {
+				suffix = " — `" + pr.SatisfiedWhen + "`"
+			}
+			r.ln(fmt.Sprintf("- `%s`: %s%s", pr.ID, mdEscape(pr.Title), suffix))
+		}
+		r.ln("")
+	}
 	if src := st.View.SourceString(); src != "" {
 		r.ln("**View**:")
 		r.ln("")
@@ -273,13 +298,16 @@ func (r *renderer) room(path string, st *app.State, isRoot bool) {
 		}
 		r.ln("")
 	}
-	if len(st.On) > 0 {
+	if visibleTransitionCount(path, st) > 0 {
 		r.ln("**Transitions**:")
 		r.ln("")
 		r.ln("| # | Intent | Guard | → | Effects |")
 		r.ln("|---|---|---|---|---|")
 		idx := 0
 		for _, intent := range stableKeys(st.On) {
+			if storyauthoring.IsFrameworkTransition(path, intent) {
+				continue
+			}
 			for _, tr := range st.On[intent] {
 				idx++
 				r.ln(transitionRow(idx, intent, tr))
@@ -362,6 +390,20 @@ func transitionRow(idx int, intent string, tr app.Transition) string {
 	effects := strings.Join(effectBits, " · ")
 
 	return fmt.Sprintf("| %d | %s | %s | %s | %s |", idx, intentCell, guard, targetCell, effects)
+}
+
+func visibleTransitionCount(path string, st *app.State) int {
+	if st == nil {
+		return 0
+	}
+	count := 0
+	for intent, transitions := range st.On {
+		if storyauthoring.IsFrameworkTransition(path, intent) {
+			continue
+		}
+		count += len(transitions)
+	}
+	return count
 }
 
 func formatEffect(eff app.Effect) string {
@@ -530,8 +572,37 @@ func walkStates(states map[string]*app.State, prefix string, fn func(path string
 
 func countStates(states map[string]*app.State) int {
 	n := 0
-	walkStates(states, "", func(_ string, _ *app.State) { n++ })
+	walkStates(states, "", func(path string, _ *app.State) {
+		if storyauthoring.IsFrameworkRoom(path) {
+			return
+		}
+		n++
+	})
 	return n
+}
+
+func renderableIntentNames(intents map[string]app.Intent) []string {
+	names := stableKeys(intents)
+	out := names[:0]
+	for _, name := range names {
+		if storyauthoring.IsFrameworkIntent(name) {
+			continue
+		}
+		out = append(out, name)
+	}
+	return out
+}
+
+func renderableWorldKeys(vars map[string]app.VarDef) []string {
+	keys := stableKeys(vars)
+	out := keys[:0]
+	for _, key := range keys {
+		if storyauthoring.IsFrameworkWorldKey(key) {
+			continue
+		}
+		out = append(out, key)
+	}
+	return out
 }
 
 func stableKeys[V any](m map[string]V) []string {

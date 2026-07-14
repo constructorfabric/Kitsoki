@@ -4,7 +4,7 @@
 #
 # This is an in-tree smoke test for the cassette wiring. For an
 # example that demonstrates per-phase envelope sequencing (the
-# motivating use case), see the cyber-repo bugfix scenario set.
+# motivating use case), see the focused-engineering bugfix scenario set.
 
 kind: host_cassette
 app_id: frontier-event

@@ -1,0 +1,2 @@
+{"seq":1,"kind":"park","change_id":"C1","actor":"system","state":"parked","park_reason":"gate_not_red","summary":"gate already green"}
+{"seq":2,"kind":"integration","change_id":"C1","actor":"integrator","state":"integrated","sha":"abc1234","gate":{"status":"green"},"summary":"integrated after triage"}

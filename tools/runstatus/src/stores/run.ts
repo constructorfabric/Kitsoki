@@ -9,6 +9,8 @@ import type {
   View,
   HarnessProfileInfo,
   ContextRouteInfo,
+  ParkedWorkspaceInfo,
+  OperationDriveSummary,
 } from "../types.js";
 import type { DataSource, ConnectionState } from "../data/source.js";
 import type { LiveSource } from "../data/live-source.js";
@@ -34,6 +36,35 @@ export interface RoutingInfo {
   confidence?: number;
   /** The intent the turn resolved to (turn's first transition). */
   intent?: string;
+  /**
+   * The state path the turn routed FROM (the turn.start event's own
+   * state_path). Carried so the WS-C C4 thumbs-up/down feedback control can
+   * journal a verdict without a second server round-trip — see
+   * runstatus.session.routing_feedback / Orchestrator.RecordRoutingFeedback.
+   */
+  statePath?: string;
+}
+
+export interface OperationRunSummary {
+  status: string;
+  policyId: string;
+  operationId: string;
+  title: string;
+  phase?: string;
+  mode?: string;
+  executionMode?: string;
+  runInBackground?: boolean;
+  from?: string;
+  to?: string;
+  entryIntent?: string;
+  terminalState?: string;
+  terminalArtifact?: string;
+  terminalArtifactHandle?: string;
+  stopReason?: string;
+  stopDetail?: string;
+  phaseSummaryFrom: string[];
+  stopOn: string[];
+  pauseOn: string[];
 }
 
 /** One entry of the conversational transcript shown beside the trace. */
@@ -70,6 +101,13 @@ export interface TranscriptEntry {
   /** Routing provenance, resolved reactively from events (see chatEntries). */
   routing?: RoutingInfo;
   /**
+   * Set once the operator has given a routing-feedback verdict on this turn
+   * (WS-C C4's thumbs-up/down control) — the chip disables further clicks and
+   * shows which way it went. Persists only for the session's lifetime (not
+   * replayed from the trace); a page reload re-enables the control.
+   */
+  feedbackGiven?: "up" | "down";
+  /**
    * Set on a USER bubble dispatched from the media-annotation composer: the
    * artifact the operator pointed at + the picked anchor, so the bubble renders
    * the annotation (a thumbnail of the deck frame with the region/marker) above
@@ -85,17 +123,142 @@ export interface TranscriptEntry {
    * the agent bubble; absent for deterministic/semantic/LLM turns.
    */
   contextRoute?: ContextRouteInfo;
+  /** Fallback capsule created while parking dirty work before reroute. */
+  parkedWorkspace?: ParkedWorkspaceInfo;
 }
 
 // StreamItem (the ordered feed shape) moved to lib/activity.ts so the meta
 // store shares it; re-exported here for existing importers.
 export type { StreamItem } from "../lib/activity.js";
 
+const OPERATION_LIFECYCLE_STATUS: Record<string, string> = {
+  "operation.run_started": "running",
+  "operation.waiting": "waiting",
+  "operation.completed": "completed",
+  "operation.failed": "failed",
+};
+
+export function deriveOperationRun(
+  traceEvents: TraceEvent[]
+): OperationRunSummary | null {
+  let current: OperationRunSummary | null = null;
+  for (const event of traceEvents) {
+    const handle =
+      operationRunFromWorldUpdate(event) ?? operationRunFromLifecycleEvent(event);
+    if (!handle) continue;
+    const next = normalizeOperationRun(handle, current);
+    if (next) current = next;
+  }
+  return current;
+}
+
+function operationRunFromWorldUpdate(
+  event: TraceEvent
+): Record<string, unknown> | null {
+  if (event.msg !== "world.update") return null;
+  const set = asRecord(event.attrs.set);
+  return asRecord(set?.operation_run);
+}
+
+function operationRunFromLifecycleEvent(
+  event: TraceEvent
+): Record<string, unknown> | null {
+  const status = OPERATION_LIFECYCLE_STATUS[event.msg];
+  if (!status) return null;
+  const attrs = asRecord(event.attrs);
+  if (!attrs) return null;
+  return {
+    ...attrs,
+    status: readString(attrs, "status") || status,
+  };
+}
+
+function normalizeOperationRun(
+  raw: Record<string, unknown>,
+  previous: OperationRunSummary | null
+): OperationRunSummary | null {
+  const operationId =
+    readString(raw, "operation_id") || previous?.operationId || "";
+  const policyId =
+    readString(raw, "policy_id") || previous?.policyId || operationId;
+  const status = readString(raw, "status") || previous?.status || "";
+  if (!operationId && !policyId && !status) return null;
+
+  return {
+    status,
+    policyId,
+    operationId: operationId || policyId,
+    title:
+      readString(raw, "title") ||
+      previous?.title ||
+      policyId ||
+      operationId ||
+      "Operation",
+    phase: readString(raw, "phase") || previous?.phase,
+    mode: readString(raw, "mode") || previous?.mode,
+    executionMode:
+      readString(raw, "execution_mode") || previous?.executionMode,
+    runInBackground:
+      readBool(raw, "run_in_background") ?? previous?.runInBackground,
+    from: readString(raw, "from") || previous?.from,
+    to: readString(raw, "to") || previous?.to,
+    entryIntent: readString(raw, "entry_intent") || previous?.entryIntent,
+    terminalState:
+      readString(raw, "terminal_state") || previous?.terminalState,
+    terminalArtifact:
+      readString(raw, "terminal_artifact") || previous?.terminalArtifact,
+    terminalArtifactHandle:
+      readString(raw, "terminal_artifact_handle") ||
+      previous?.terminalArtifactHandle,
+    stopReason:
+      readString(raw, "stop_reason") ||
+      readString(raw, "reason") ||
+      previous?.stopReason,
+    stopDetail:
+      readString(raw, "stop_detail") ||
+      readString(raw, "detail") ||
+      readString(raw, "message") ||
+      previous?.stopDetail,
+    phaseSummaryFrom:
+      readStringArray(raw, "phase_summary_from") ??
+      previous?.phaseSummaryFrom ??
+      [],
+    stopOn: readStringArray(raw, "stop_on") ?? previous?.stopOn ?? [],
+    pauseOn: readStringArray(raw, "pause_on") ?? previous?.pauseOn ?? [],
+  };
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value != null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function readString(source: Record<string, unknown>, key: string): string {
+  const value = source[key];
+  return typeof value === "string" ? value : "";
+}
+
+function readBool(source: Record<string, unknown>, key: string): boolean | undefined {
+  const value = source[key];
+  return typeof value === "boolean" ? value : undefined;
+}
+
+function readStringArray(
+  source: Record<string, unknown>,
+  key: string
+): string[] | undefined {
+  const value = source[key];
+  if (!Array.isArray(value)) return undefined;
+  return value.filter((item): item is string => typeof item === "string");
+}
+
 export const useRunStore = defineStore("run", () => {
   // ---- state ----
   const appDef = ref<AppDef | null>(null);
   const mermaid = ref<MermaidSnapshot | null>(null);
   const events = ref<TraceEvent[]>([]);
+  const eventKeys = new Set<string>();
   const currentStatePath = ref<string>("");
   const selectedEventIndex = ref<number | null>(null);
   const terminal = ref<boolean>(false);
@@ -177,6 +340,9 @@ export const useRunStore = defineStore("run", () => {
     }
     return { promptTokens, responseTokens, costUsd, calls, present };
   });
+  const operationRun = computed<OperationRunSummary | null>(() =>
+    deriveOperationRun(events.value)
+  );
 
   // readTurnRouting recovers the routing provenance for a turn from the event
   // log: routed_by / match_type / confidence off the turn.start event, and the
@@ -193,6 +359,7 @@ export const useRunStore = defineStore("run", () => {
           routedBy: e.attrs.routed_by,
           matchType: typeof e.attrs.match_type === "string" ? e.attrs.match_type : undefined,
           confidence: typeof e.attrs.confidence === "number" ? e.attrs.confidence : undefined,
+          statePath: e.state_path || undefined,
         };
       }
       if (!intent && e.msg === "machine.transition" && typeof e.attrs.intent === "string") {
@@ -312,7 +479,7 @@ export const useRunStore = defineStore("run", () => {
       mermaid.value = mer;
       currentStatePath.value = session.current_state;
       terminal.value = session.terminal;
-      events.value = traceResult.events.slice();
+      replaceTraceEvents(traceResult.events);
       await loadHarness(source, sessionId);
     } finally {
       loading.value = false;
@@ -322,8 +489,9 @@ export const useRunStore = defineStore("run", () => {
     _unsubscribe = source.subscribe(
       sessionId,
       (e: TraceEvent) => {
-        events.value.push(e);
+        if (!appendTraceEvent(e)) return;
         applyStatePath(e);
+        applyOperationTerminal(e);
         maybeRefreshViewOnBackgroundCompletion(source, sessionId, e);
       },
       (state) => {
@@ -351,6 +519,16 @@ export const useRunStore = defineStore("run", () => {
     if (!_seenStateEntered && e.state_path) {
       currentStatePath.value = e.state_path;
     }
+  }
+
+  function applyOperationTerminal(e: TraceEvent): void {
+    const run = operationRunFromWorldUpdate(e) ?? operationRunFromLifecycleEvent(e);
+    if (!run) return;
+    const status = readString(run, "status");
+    if (!["waiting", "completed", "failed"].includes(status)) return;
+    const terminalState = readString(run, "terminal_state");
+    if (terminalState) currentStatePath.value = terminalState;
+    terminal.value = true;
   }
 
   /**
@@ -411,7 +589,60 @@ export const useRunStore = defineStore("run", () => {
   }
 
   function traceEventKey(e: TraceEvent): string {
-    return JSON.stringify([e.turn, e.msg, e.state_path ?? "", e.attrs ?? {}]);
+    return JSON.stringify([
+      e.time,
+      e.level,
+      e.msg,
+      e.session_id,
+      e.turn,
+      e.state_path ?? "",
+      e.parent_turn ?? 0,
+      e.attrs ?? {},
+    ]);
+  }
+
+  function replaceTraceEvents(next: TraceEvent[]): void {
+    events.value = next.slice();
+    eventKeys.clear();
+    for (const e of events.value) eventKeys.add(traceEventKey(e));
+  }
+
+  function appendTraceEvent(e: TraceEvent): boolean {
+    const key = traceEventKey(e);
+    if (eventKeys.has(key)) return false;
+    eventKeys.add(key);
+    events.value.push(e);
+    return true;
+  }
+
+  function maxKnownTurn(): number {
+    let max = currentView.value?.turn_number ?? 0;
+    for (const e of events.value) {
+      if (typeof e.turn === "number") max = Math.max(max, e.turn);
+    }
+    return max;
+  }
+
+  async function backfillTraceSince(
+    source: DataSource,
+    sessionId: string,
+    sinceTurn: number
+  ): Promise<void> {
+    try {
+      const { events: fresh } = await source.getTrace(sessionId, {
+        since_turn: sinceTurn,
+      });
+      if (!fresh.length) return;
+
+      for (const e of fresh) {
+        if (!appendTraceEvent(e)) continue;
+        applyStatePath(e);
+        applyOperationTerminal(e);
+      }
+    } catch {
+      // The transcript and final view are still usable if trace reconciliation
+      // fails; the live subscription/reconnect path can fill in later.
+    }
   }
 
   async function backfillTurnTrace(
@@ -419,24 +650,7 @@ export const useRunStore = defineStore("run", () => {
     sessionId: string,
     turn: number
   ): Promise<void> {
-    try {
-      const { events: fresh } = await source.getTrace(sessionId, {
-        since_turn: turn,
-      });
-      if (!fresh.length) return;
-
-      const seen = new Set(events.value.map(traceEventKey));
-      for (const e of fresh) {
-        const key = traceEventKey(e);
-        if (seen.has(key)) continue;
-        seen.add(key);
-        events.value.push(e);
-        applyStatePath(e);
-      }
-    } catch {
-      // The transcript and final view are still usable if trace reconciliation
-      // fails; the live subscription/reconnect path can fill in later.
-    }
+    await backfillTraceSince(source, sessionId, turn);
   }
 
   /** Stop the live subscription. */
@@ -459,6 +673,7 @@ export const useRunStore = defineStore("run", () => {
     transcript.value = [];
     currentView.value = null;
     events.value = [];
+    eventKeys.clear();
     currentStatePath.value = "";
     terminal.value = false;
     connectionState.value = "connected";
@@ -536,6 +751,9 @@ export const useRunStore = defineStore("run", () => {
         // Carry the CRR receipt so the bubble shows a "routed to … · contextual"
         // chip when the contextual-routing tier resolved this turn.
         ...(result.context_route ? { contextRoute: result.context_route } : {}),
+        // Parking is a reroute side effect; surface it alongside the route so
+        // the operator can verify where the dirty work landed.
+        ...(result.parked_workspace ? { parkedWorkspace: result.parked_workspace } : {}),
       });
     }
   }
@@ -581,6 +799,17 @@ export const useRunStore = defineStore("run", () => {
     onRouting?: (routing: RoutingInfo, turn?: number) => void
   ): Promise<{ result: TurnResult; streamedText: string; stream: StreamItem[] }> {
     pendingStream.value = [];
+    let pendingNarration = "";
+    const flushNarration = (): void => {
+      if (!pendingNarration.trim()) {
+        pendingNarration = "";
+        return;
+      }
+      const next = pendingStream.value.slice();
+      appendThought(next, pendingNarration.trimEnd());
+      pendingStream.value = next;
+      pendingNarration = "";
+    };
     let traceRefreshInFlight = false;
     const refreshTrace = () => {
       if (traceRefreshInFlight) return;
@@ -594,17 +823,25 @@ export const useRunStore = defineStore("run", () => {
     try {
       const result = await live.turnStream(sessionId, method, params, (ev) => {
         refreshTrace();
-        // In the MAIN chat the reply is the room view carried by the final
-        // result, so extended-thinking ("think") and narration ("delta")
-        // frames are the same thing to this feed: intermediate reasoning.
-        // (The meta overlay treats them differently — its reply IS the
-        // narration — see stores/meta.ts.) appendThought merges consecutive
-        // thoughts; reassigning the array keeps the ref reactive.
-        if ((ev.type === "delta" || ev.type === "think") && ev.text) {
+        // Extended thinking is never the reply, so it renders immediately.
+        // Plain narration is ambiguous: it may be an intermediate thought, or
+        // it may be the final answer that the done frame/result will present.
+        // Hold each narration delta until later activity proves it
+        // intermediate, mirroring the TUI and meta overlay deferral.
+        if (ev.type === "think" && ev.text) {
+          flushNarration();
           const next = pendingStream.value.slice();
           appendThought(next, ev.text);
           pendingStream.value = next;
+        } else if (ev.type === "delta" && ev.text) {
+          if (pendingNarration && !/\s$/.test(pendingNarration)) {
+            flushNarration();
+            pendingNarration = ev.text;
+          } else {
+            pendingNarration += ev.text;
+          }
         } else if (ev.type === "tool" && ev.tool) {
+          flushNarration();
           const next = pendingStream.value.slice();
           appendTool(next, ev.tool, ev.preview ?? "");
           pendingStream.value = next;
@@ -626,10 +863,12 @@ export const useRunStore = defineStore("run", () => {
       const streamedText = stream
         .flatMap((it) => (it.kind === "thinking" ? [it.text] : []))
         .join("\n\n");
+      const fallbackText = pendingNarration.trim() || streamedText;
       await backfillTurnTrace(live, sessionId, result.turn_number ?? 0);
-      return { result, streamedText, stream };
+      return { result, streamedText: fallbackText, stream };
     } finally {
       globalThis.clearInterval(traceRefreshTimer);
+      pendingNarration = "";
       pendingStream.value = [];
     }
   }
@@ -656,6 +895,7 @@ export const useRunStore = defineStore("run", () => {
       ...(opts?.annotation ? { annotation: opts.annotation } : {}),
     });
     busy.value = true;
+    const sinceTurn = maxKnownTurn() + 1;
     try {
       let result: TurnResult;
       let capturedStream = "";
@@ -670,12 +910,17 @@ export const useRunStore = defineStore("run", () => {
         capturedStream = out.streamedText;
         capturedItems = out.stream;
       } else {
-        result = await source.submit(sessionId, intent, slots, opts?.anchor);
+        result = opts?.anchor
+          ? await source.submit(sessionId, intent, slots, opts.anchor)
+          : await source.submit(sessionId, intent, slots);
       }
-      if (typeof result.turn_number === "number") {
+      if (result.operation_drive) {
+        await backfillTraceSince(source, sessionId, sinceTurn);
+      } else if (typeof result.turn_number === "number") {
         await backfillTurnTrace(source, sessionId, result.turn_number);
       }
       applyTurnResult(result, capturedStream, capturedItems);
+      appendOperationDriveSummary(result.operation_drive);
       return result;
     } finally {
       busy.value = false;
@@ -694,6 +939,7 @@ export const useRunStore = defineStore("run", () => {
   ): Promise<TurnResult> {
     const userEntry: TranscriptEntry = { role: "user", text };
     transcript.value.push(userEntry);
+    const sinceTurn = maxKnownTurn() + 1;
     let result: TurnResult;
     let capturedStream = "";
     let capturedItems: StreamItem[] | undefined;
@@ -722,11 +968,40 @@ export const useRunStore = defineStore("run", () => {
     // provenance from the event log (chatEntries) once the turn.start +
     // transition events land — reactively, surviving the SSE settle lag.
     if (typeof result.turn_number === "number") {
-      userEntry.turn = result.turn_number;
-      await backfillTurnTrace(source, sessionId, result.turn_number);
+      userEntry.turn = result.operation_drive ? sinceTurn : result.turn_number;
+      if (result.operation_drive) {
+        await backfillTraceSince(source, sessionId, sinceTurn);
+      } else {
+        await backfillTurnTrace(source, sessionId, result.turn_number);
+      }
     }
     applyTurnResult(result, capturedStream, capturedItems);
+    appendOperationDriveSummary(result.operation_drive);
     return result;
+  }
+
+  /**
+   * Drive a running autonomous/supervised operation until the orchestrator reaches its
+   * next safe checkpoint. Unlike a normal operator turn, one drive can cascade
+   * through several internal turns, so backfill from the highest turn we knew
+   * before the RPC rather than only the returned terminal turn.
+   */
+  async function driveOperation(
+    source: DataSource,
+    sessionId: string
+  ): Promise<TurnResult> {
+    transcript.value.push({ role: "user", text: "Drive operation" });
+    busy.value = true;
+    const sinceTurn = maxKnownTurn() + 1;
+    try {
+      const result = await source.driveOperation(sessionId);
+      await backfillTraceSince(source, sessionId, sinceTurn);
+      applyTurnResult(result);
+      appendOperationDriveSummary(result.operation_drive);
+      return result;
+    } finally {
+      busy.value = false;
+    }
   }
 
   /**
@@ -735,24 +1010,56 @@ export const useRunStore = defineStore("run", () => {
    * class). Pushes a small "rewound …" user marker, then applies the
    * re-dispatched turn so the transcript reflects the new route. Requires a
    * source that exposes rewindRoute (the live session); a source without it is a
-   * no-op (the chip hides the control there). Rejects (propagated to the caller)
-   * when the engine can't rewind that route — e.g. an intent-class decision.
+   * no-op. Rejects (propagated to the caller) when the engine can't rewind that
+   * route or the selected reroute class is unsupported.
    */
   async function rewindRoute(
     source: DataSource,
     sessionId: string,
     decisionId: string,
     newClass?: string,
-    reason?: string
+    reason?: string,
+    workspacePath?: string
   ): Promise<TurnResult | undefined> {
     if (!source.rewindRoute) return undefined;
     transcript.value.push({
       role: "user",
       text: `↺ rewound route ${decisionId}${newClass ? ` → ${newClass}` : ""}`,
     });
-    const result = await source.rewindRoute(sessionId, decisionId, newClass, reason);
+    const result = await source.rewindRoute(sessionId, decisionId, newClass, reason, workspacePath);
     applyTurnResult(result);
     return result;
+  }
+
+  /**
+   * Record an operator up/down verdict on a routed turn — the web chat's
+   * thumbs-up/down control (WS-C C4), the browser twin of the TUI's `/route
+   * up|down` command. entry carries the turn number + the routing provenance
+   * (state/intent/tier) readTurnRouting already recovered from the trace, and
+   * entry.text is the original phrase — nothing is looked up server-side.
+   * Journals through the SAME event the TUI writes
+   * (Orchestrator.RecordRoutingFeedback); does not advance the turn, so there
+   * is no TurnResult to apply. A source without routingFeedback (artifact/
+   * snapshot sources) makes this a no-op — the control hides there.
+   */
+  async function sendRoutingFeedback(
+    source: DataSource,
+    sessionId: string,
+    entry: TranscriptEntry,
+    verdict: "up" | "down"
+  ): Promise<void> {
+    if (!source.routingFeedback || entry.turn == null) return;
+    await source.routingFeedback(sessionId, {
+      state: entry.routing?.statePath ?? "",
+      intent: entry.routing?.intent ?? "",
+      phrase: entry.text,
+      tier: entry.routing?.routedBy ?? "",
+      verdict,
+    });
+    // Mutate the master transcript entry (not the derived chatEntries copy) so
+    // the disabled/given state survives the next reactive recompute.
+    const master = transcript.value.find((e) => e.turn === entry.turn && e.role === "user");
+    if (master) master.feedbackGiven = verdict;
   }
 
   /** Set the selected event by index (drives inline row highlight). */
@@ -790,6 +1097,57 @@ export const useRunStore = defineStore("run", () => {
       return prompts.length > 0 ? prompts.join("\n") : "(more input needed)";
     }
     return "";
+  }
+
+  function appendOperationDriveSummary(summary?: OperationDriveSummary): void {
+    const text = operationDriveSummaryText(summary);
+    if (!text) return;
+    transcript.value.push({ role: "narration", text });
+  }
+
+  function operationDriveSummaryText(summary?: OperationDriveSummary): string {
+    if (!summary) return "";
+    const turns =
+      typeof summary.turns === "number" && Number.isFinite(summary.turns)
+        ? summary.turns
+        : 0;
+    const base = turns === 1 ? "Drove 1 turn" : `Drove ${turns} turns`;
+    const intent = summary.last_intent?.trim()
+      ? ` via ${humanizeIntent(summary.last_intent)}`
+      : "";
+    const stop = operationDriveStopLabel(summary.stop_reason);
+    return stop ? `${base}${intent}; stopped ${stop}.` : `${base}${intent}.`;
+  }
+
+  function operationDriveStopLabel(reason?: string): string {
+    const normalized = (reason || "").trim();
+    switch (normalized) {
+      case "":
+        return "";
+      case "no-driver-intent":
+        return "at a checkpoint";
+      case "clarify":
+        return "for missing input";
+      case "rejected":
+        return "after a rejected turn";
+      case "offpath":
+        return "after an off-path answer";
+      case "cancelled":
+        return "after cancellation";
+      case "max-turns":
+        return "at the safety turn limit";
+      case "terminal":
+        return "at a terminal state";
+      case "no-operation":
+        return "because there is no active operation";
+      case "operation-not-autonomous":
+        return "because this operation needs manual input";
+      default:
+        if (normalized.startsWith("operation-")) {
+          return `because the operation is ${normalized.slice("operation-".length).replace(/_/g, " ")}`;
+        }
+        return `because ${normalized.replace(/_/g, " ")}`;
+    }
   }
 
   /** Build the user transcript text for a submitted intent. */
@@ -875,6 +1233,7 @@ export const useRunStore = defineStore("run", () => {
     highlightedStatePaths,
     highlightTick,
     usageTotals,
+    operationRun,
     transcript,
     chatEntries,
     currentView,
@@ -900,7 +1259,9 @@ export const useRunStore = defineStore("run", () => {
     loadInitialView,
     submitIntent,
     sendText,
+    driveOperation,
     rewindRoute,
+    sendRoutingFeedback,
     applyTurnResult,
   };
 });

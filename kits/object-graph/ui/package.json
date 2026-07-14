@@ -1,0 +1,25 @@
+{
+  "name": "@kitsoki/object-graph-ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Build-only package for @kitsoki/object-graph's kit UI module (S5, .context/kits-implementation-plan.md D3). `pnpm build` writes graph.mjs next to this file — that IS the served asset (internal/runstatus/server/kit_ui.go serves <kit-root>/ui/<entry>.mjs) — so the built output is checked in rather than generated at server-serve time. No dev server: this is a library build, not an app.",
+  "scripts": {
+    "build": "vite build",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "cytoscape": "^3.34.0",
+    "cytoscape-cola": "^2.5.1",
+    "cytoscape-fcose": "^2.2.0",
+    "cytoscape-klay": "^3.1.4",
+    "vue": "^3.5.13"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.2.3",
+    "happy-dom": "^17.4.4",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5",
+    "vitest": "^3.1.4"
+  }
+}

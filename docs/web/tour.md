@@ -6,7 +6,7 @@ pnpm, or Playwright. It is the binary-native counterpart to the Playwright
 recording specs (see [Demo, video & testing](README.md#demo-video--testing)): a
 foreign repo that owns a kitsoki instance (importing `@kitsoki/<name>`) can
 produce its own demo video with only the `kitsoki` binary present (the
-[kitsoki-as-dependency](../proposals/kitsoki-as-dependency.md) epic, slice 2).
+[kitsoki-as-dependency](../proposals/README.md) epic, slice 2).
 
 It reuses `kitsoki web`'s no-LLM plumbing verbatim: a **flow fixture** (plus an
 optional host cassette) stubs every `host.*` call, the same posture
@@ -18,7 +18,7 @@ uses. The render is therefore fully reproducible and never touches a real LLM.
 Load the tour **either** from the feature catalog — the common case:
 
 ```bash
-kitsoki tour --feature dev-story-prd-design
+kitsoki tour --feature agent-actions
 ```
 
 `features/<id>.yaml` carries both the tour steps and the **demo binding** (its
@@ -57,11 +57,11 @@ the pixels required:
 
 ```json
 {
-  "capture": 5, "step_index": 4, "png": "05-ds-prd-clarify.png",
-  "spec_ref": { "kind": "tour", "spec_path": "features/dev-story-prd-design.yaml",
-                "pointer": "/tour/steps/4", "step_id": "ds-prd-clarify" },
-  "title": "Clarify, in rounds", "route": "interactive",
-  "states_asserted": ["prd.search", "prd.clarifying", "prd.clarifying", "prd.brief", "prd.clarifying"],
+  "capture": 5, "step_index": 4, "png": "05-aa-welcome.png",
+  "spec_ref": { "kind": "tour", "spec_path": "features/agent-actions.yaml",
+                "pointer": "/tour/steps/4", "step_id": "aa-welcome" },
+  "title": "Agent action transcripts", "route": "any",
+  "states_asserted": ["bf.reproducing"],
   "title_asserted": true
 }
 ```

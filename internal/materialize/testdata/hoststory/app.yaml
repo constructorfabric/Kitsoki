@@ -1,0 +1,33 @@
+# Producer-story fixture: declares hosts: [host.run] and writes a file via
+# the shell in its first room. Exists to prove the private drive rig wires
+# the builtin host registry — without it this invoke is a silent no-op and
+# the file never appears (the bug that made `kitsoki graph materialize` run
+# producer rooms without producing anything).
+app:
+  id: materialize-host-fixture
+  version: 0.1.0
+  title: "materialize package host-verb fixture story"
+  author: "kitsoki"
+  license: "CC0"
+
+hosts:
+  - host.run
+
+world:
+  node_id: { type: string, default: "" }
+  produce_ok: { type: bool, default: false }
+  status: { type: string, default: "" }
+
+intents:
+  next:
+    description: "Advance."
+    examples: ["next"]
+    priority: 80
+  look:
+    description: "Re-render."
+    examples: ["look"]
+    priority: 10
+
+root: produce
+include:
+  - rooms/*.yaml

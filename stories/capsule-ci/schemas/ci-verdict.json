@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["schema", "pipeline", "outcome", "checks", "promotion_eligible"],
+  "properties": {
+    "schema": {"const": "capsule-ci-verdict/v1"},
+    "pipeline": {"type": "string"},
+    "outcome": {"enum": ["passed", "failed", "needs_input", "cancelled", "infra_failed"]},
+    "checks": {"type": "array"},
+    "promotion_eligible": {"type": "boolean"}
+  },
+  "additionalProperties": true
+}

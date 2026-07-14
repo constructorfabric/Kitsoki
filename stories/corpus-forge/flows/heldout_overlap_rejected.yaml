@@ -1,0 +1,32 @@
+# A configured receipt registry rejects heldout candidate reuse before the
+# receipt can be frozen. The deterministic handler models that durable store's
+# domain response; package tests exercise the real FileStore across registries.
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  corpus_role: heldout
+  selection_id: heldout-overlap
+  task_limit: 1
+  source_manifest_ref: fixtures/heldout.yaml
+  source_candidates:
+    - { kind: corpus-case.v1, id: calibration-case, repo: example/repo, source: arena, baseline_ref: base, fix_ref: fix, ticket: heldout, archetype: bugfix, oracle: { command: [test] }, provenance: { adapter: fixture, locator: heldout, source_digest: sha256:heldout } }
+host_handlers:
+  host.corpus.prove:
+    data:
+      proof:
+        oracle_sha256: proof
+        environment_fingerprint: fixture-v1
+  host.corpus.freeze_receipt:
+    error: 'host.corpus.freeze_receipt: candidate "calibration-case" already belongs to calibration receipt "calibration-a"'
+turns:
+  - intent: { name: start, slots: {} }
+    expect_state: load
+  - intent: { name: accept, slots: {} }
+    expect_state: select
+  - intent: { name: accept, slots: {} }
+    expect_state: validate
+  - intent: { name: accept, slots: {} }
+    expect_state: failed
+    expect_view_matches: "already belongs to calibration"
+expect_terminal: false

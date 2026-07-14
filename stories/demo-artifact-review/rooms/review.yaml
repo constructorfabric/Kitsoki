@@ -1,0 +1,69 @@
+states:
+  review:
+    description: "Review the independent mockup, rrweb, and deck revision records for one demo artifact."
+    relevant_world: [project_id, session_id, artifact_id, binding_id, revision_policy, assignment_policy, mockup_revision, rrweb_revision, deck_revision, review_status]
+    prerequisites:
+      - id: mockup-revision
+        title: "Mockup revision"
+        satisfied_when: "(world.mockup_revision.ref ?? '') != ''"
+        summary: "No mockup revision has been recorded."
+        action: { label: "revise_mockup", intent: revise_mockup }
+      - id: rrweb-revision
+        title: "rrweb revision"
+        satisfied_when: "(world.rrweb_revision.ref ?? '') != ''"
+        summary: "No rrweb revision has been recorded."
+        action: { label: "revise_rrweb", intent: revise_rrweb }
+      - id: deck-revision
+        title: "Deck revision"
+        satisfied_when: "(world.deck_revision.ref ?? '') != ''"
+        summary: "No Slidey deck revision has been recorded."
+        action: { label: "revise_deck", intent: revise_deck }
+    view:
+      - heading: "Demo artifact review"
+      - kv:
+          pairs:
+            Binding: "{{ world.binding_id }}"
+            Artifact: "{{ world.artifact_id|default:'(not yet chosen)' }}"
+            Revision policy: "{{ world.revision_policy }}"
+            Assignment policy: "{{ world.assignment_policy }}"
+            Mockup: "{{ world.mockup_revision.ref|default:'(pending)' }}"
+            rrweb: "{{ world.rrweb_revision.ref|default:'(pending)' }}"
+            Deck: "{{ world.deck_revision.ref|default:'(pending)' }}"
+      - prose: "Revision records stay separate; approval consumes the declared records without granting tools or changing room authority."
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - { label: "revise_mockup", intent: revise_mockup }
+            - { label: "revise_rrweb", intent: revise_rrweb }
+            - { label: "revise_deck", intent: revise_deck }
+            - { label: "approve", intent: approve }
+            - { label: "quit", intent: quit }
+            - { label: "look", intent: look }
+    on:
+      revise_mockup:
+        - target: .
+          effects:
+            - set: { mockup_revision: { kind: "mockup", ref: "{{ slots.revision }}", schema_version: 1 } }
+      revise_rrweb:
+        - target: .
+          effects:
+            - set: { rrweb_revision: { kind: "rrweb", ref: "{{ slots.revision }}", schema_version: 1 } }
+      revise_deck:
+        - target: .
+          effects:
+            - set: { deck_revision: { kind: "slidey", ref: "{{ slots.revision }}", schema_version: 1 } }
+      approve:
+        - when: "(world.mockup_revision.ref ?? '') != '' && (world.rrweb_revision.ref ?? '') != '' && (world.deck_revision.ref ?? '') != ''"
+          target: "@exit:reviewed"
+          effects:
+            - set: { review_status: "approved" }
+        - default: true
+          target: .
+          guard_hint: "Record mockup, rrweb, and deck revisions before approval."
+      quit:
+        - target: "@exit:abandoned"
+          effects:
+            - set: { abandon_reason: "operator abandoned demo artifact review" }
+      look:
+        - target: .

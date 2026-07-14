@@ -29,9 +29,10 @@ type harnessAgent struct {
 	h harness.Harness
 }
 
-// FromHarness returns an Agent backed by h. Each Ask call converts AskRequest
-// to harness.TurnInput, calls h.RunTurn, and converts the mcp.CallToolParams
-// result back to AskResponse.
+// FromHarness returns an Agent backed by h. Schema-bound calls use the optional
+// harness.StructuredHarness capability so the caller's contract survives;
+// schema-less compatibility calls still convert AskRequest to TurnInput and
+// map the transition arguments back to AskResponse.
 //
 // The MCP-shape coupling is contained inside this adapter; outside callers see
 // only AskRequest / AskResponse.
@@ -45,6 +46,27 @@ func FromHarness(h harness.Harness) Agent {
 //   - harness.ClarifyResponse (LLM did not call the expected tool) → AskError{Kind: "schema_invalid"}
 //   - any other error → AskError{Kind: "plugin_crash"}
 func (o harnessAgent) Ask(ctx context.Context, req AskRequest) (AskResponse, error) {
+	if len(req.SchemaJSON) > 0 {
+		structured, ok := o.h.(harness.StructuredHarness)
+		if !ok {
+			return AskResponse{}, &AskError{
+				Kind:   "plugin_unsupported",
+				Detail: "harness adapter: underlying harness does not support arbitrary structured output",
+			}
+		}
+		submission, err := structured.RunStructured(ctx, harness.StructuredInput{
+			SessionID:  req.SessionID,
+			TurnNumber: req.TurnNumber,
+			StatePath:  req.StatePath,
+			Prompt:     req.PromptText,
+			SchemaJSON: req.SchemaJSON,
+		})
+		if err != nil {
+			return AskResponse{}, mapHarnessError(err)
+		}
+		return AskResponse{Submission: submission}, nil
+	}
+
 	in := harness.TurnInput{
 		SessionID:  req.SessionID,
 		TurnNumber: req.TurnNumber,

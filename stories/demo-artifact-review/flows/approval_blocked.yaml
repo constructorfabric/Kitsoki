@@ -1,0 +1,9 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: review
+initial_world: { project_id: project-a, session_id: session-a, artifact_id: artifact-a }
+turns:
+  - intent: { name: approve, slots: {} }
+    expect_state: review
+    expect_world: { review_status: pending }
+expect_no_errors: true

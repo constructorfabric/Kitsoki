@@ -1,0 +1,39 @@
+# Example arena job: compare bugfix variants on the query-string OSS project.
+#
+# P0 walking skeleton. `arena run` defaults to the no-LLM arming path
+# (bench.py verify: RED@baseline → GREEN@fix) so this whole spec is provable with
+# zero spend. `--live` swaps in the paid drive_cell.sh per variant.
+#
+#   python3 tools/arena/arena.py plan --spec tools/arena/specs/bugfix-query-string.yaml
+#   python3 tools/arena/arena.py run  --spec tools/arena/specs/bugfix-query-string.yaml \
+#       --out .artifacts/arena/qs-skeleton
+
+job_type: bugfix
+
+targets:
+  - id: query-string
+    label: "sindresorhus/query-string"
+    repo: https://github.com/sindresorhus/query-string.git
+    stack: javascript
+
+# The competitors. In the no-LLM arming run these collapse (arming is
+# variant-independent); under --live each drives its own candidate fix.
+variants:
+  - id: kitsoki-gpt-5.5
+    backend: codex
+    model: gpt-5.5
+    effort: medium
+  - id: single-gpt-5.5
+    backend: codex
+    model: gpt-5.5
+    effort: medium
+    treatment: single
+
+# The per-job axis: which bugs to run.
+axes:
+  bug: [qs1, qs2, qs3]
+
+placement:
+  hosts: [local]
+  concurrency: 2
+  retry: 1

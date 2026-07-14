@@ -1,0 +1,143 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.product_journey.run:
+    by_call:
+      autonomous_product_journey_marathon_advance_due:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: autonomous_marathon_valid
+            autonomous_marathon_status: autonomous_marathon_valid
+            autonomous_marathon_summary: "credible_issues=1, fix=autonomous_fix_valid, review=ready, validation=valid, stats=pass"
+            autonomous_marathon_report_path: .artifacts/product-journey/run-advanced/autonomous-marathon-report.md
+            autonomous_due_status: autonomous_marathon_due_checked
+            autonomous_due_summary: "1 due, 1 upcoming, 0 blocked, 0 ignored; next run-due overdue 60m"
+            autonomous_due_root: .artifacts/product-journey
+            autonomous_due_count: 1
+            autonomous_due_upcoming_count: 1
+            autonomous_due_blocked_count: 0
+            autonomous_due_ignored_count: 0
+            autonomous_due_total_count: 2
+            autonomous_due_next_run_id: run-due
+            autonomous_due_next_run_dir: .artifacts/product-journey/run-due
+            autonomous_due_next_command: "host.product_journey.run --autonomous-marathon --json-output --report-invalid-autonomous-marathon --project vscode --persona core-maintainer --seed due-seed-cycle-20260702T010000Z --scenarios bugfix --live-budget-minutes 6 --autonomous-driver-mode replay --autonomous-cadence-hours 24 --autonomous-heartbeat-minutes 15 --autonomous-watchdog-minutes 45 --ticket-repo owner/repo --gh-agent-public-base-url https://agent.example"
+            autonomous_due_next_story_intent: "autonomous_marathon project=vscode persona=core-maintainer seed=due-seed-cycle-20260702T010000Z scenarios=bugfix live_budget_minutes=6 autonomous_driver_mode=replay ticket_repo=owner/repo gh_agent_public_base_url=https://agent.example"
+            autonomous_due_next_minutes_overdue: 60
+            autonomous_due_advance_status: autonomous_marathon_advanced
+            autonomous_due_advance_summary: "Advanced due marathon run-due into run-advanced: autonomous_marathon_valid"
+            source_run_id: run-due
+            source_run_dir: .artifacts/product-journey/run-due
+            run_id: run-advanced
+            run_dir: .artifacts/product-journey/run-advanced
+            deck_path: .artifacts/product-journey/run-advanced/deck.slidey.json
+            autonomous_driver_mode: replay
+            autonomous_driver_status: captured
+            autonomous_driver_summary: "Replay proof captured."
+            autonomous_driver_evidence_count: 5
+            autonomous_driver_issue_count: 1
+            autonomous_control_path: .artifacts/product-journey/run-advanced/autonomous-marathon-control.json
+            autonomous_control_markdown_path: .artifacts/product-journey/run-advanced/autonomous-marathon-control.md
+            autonomous_control_status: armed
+            autonomous_control_summary: "cadence=24h, next_due=2026-07-03T01:00:00+00:00, budget=6m/scenario, heartbeat=15m, watchdog=45m"
+            autonomous_watchdog_status: autonomous_watchdog_ok
+            autonomous_watchdog_summary: "heartbeat age 0m within watchdog=45m"
+            autonomous_watchdog_path: .artifacts/product-journey/run-advanced/autonomous-marathon-watchdog.json
+            autonomous_watchdog_markdown_path: .artifacts/product-journey/run-advanced/autonomous-marathon-watchdog.md
+            autonomous_watchdog_age_minutes: 0
+            autonomous_fix_status: autonomous_fix_valid
+            autonomous_fix_report_path: .artifacts/product-journey/run-advanced/autonomous-fix-report.md
+            autonomous_gate_summary: "filing=pass, gh_agent=pass, independent_verify=pass, review=pass, validation=pass"
+            independent_verify_status: pass
+            independent_verify_summary: "verified=1/1"
+            issue_closeout_status: closed
+            issue_closeout_count: 1
+            issue_closeout_summary: "closed 1"
+            filing_status: filed
+            filing_summary: "Filed 1 issue."
+            findings_filed_count: 1
+            gh_agent_drain_status: drained
+            gh_agent_done_count: 1
+            gh_agent_failed_count: 0
+            review_status: ready
+            review_summary: "ready"
+            review_failed_count: 0
+            validation_status: valid
+            validation_errors: 0
+            validation_issue_summary: ""
+            stats_status: stats_derived
+            stats_root: .artifacts/product-journey
+            stats_output: .artifacts/product-journey/run-advanced/autonomous-marathon-stats.json
+            stats_summary: "Derived product-journey stats: 1 found, 1 filed, 1 fixed."
+            stats_gate_status: pass
+            stats_gate_summary: "pass"
+            stats_current_run_scanned: "yes"
+            stats_runs_scanned: 2
+            stats_found_count: 1
+            stats_filed_count: 1
+            stats_fixed_count: 1
+
+turns:
+  - intent:
+      name: autonomous_marathon_advance_due
+      slots:
+        stats_root: .artifacts/product-journey
+        due_now: "2026-07-02T01:00:00+00:00"
+        due_limit: 3
+        gh_agent_db: .artifacts/product-journey/gh-agent.sqlite
+    expect_state: idle
+    expect_world:
+      status: autonomous_marathon_valid
+      run_id: run-advanced
+      run_dir: .artifacts/product-journey/run-advanced
+      autonomous_marathon_status: autonomous_marathon_valid
+      autonomous_due_status: autonomous_marathon_due_checked
+      autonomous_due_count: 1
+      autonomous_due_next_run_id: run-due
+      autonomous_due_advance_status: autonomous_marathon_advanced
+      autonomous_due_advance_summary: "Advanced due marathon run-due into run-advanced: autonomous_marathon_valid"
+      autonomous_due_source_run_id: run-due
+      autonomous_due_source_run_dir: .artifacts/product-journey/run-due
+      autonomous_fix_status: autonomous_fix_valid
+      independent_verify_status: pass
+      issue_closeout_status: closed
+      stats_gate_status: pass
+      stats_current_run_scanned: "yes"
+      validation_status: valid
+      validation_errors: 0
+    expect_view_matches: "PRODUCT JOURNEY QA[\\s\\S]*Autonomous marathon[\\s\\S]*autonomous_marathon_valid[\\s\\S]*Due advance[\\s\\S]*autonomous_marathon_advanced: Advanced due marathon[\\s\\S]*run-due into run-advanced: autonomous_marathon_valid[\\s\\S]*Due source[\\s\\S]*\\.artifacts/product-journey/run-due[\\s\\S]*Autonomous gates[\\s\\S]*filing=pass[\\s\\S]*gh_agent=pass[\\s\\S]*independent_verify=pass[\\s\\S]*review=pass[\\s\\S]*validation=pass[\\s\\S]*Stats gate[\\s\\S]*pass: pass; current run scanned yes"
+    expect_host_calls:
+      - handler: host.product_journey.run
+        args:
+          call: autonomous_product_journey_marathon_advance_due
+          args:
+            - --autonomous-marathon-advance-due
+            - --json-output
+            - --report-invalid-autonomous-marathon
+            - --stats-root
+            - .artifacts/product-journey
+            - --stats-output
+            - ""
+            - --issue-state-file
+            - ""
+            - --due-now
+            - "2026-07-02T01:00:00+00:00"
+            - --due-limit
+            - 3
+            - --gh-agent-db
+            - .artifacts/product-journey/gh-agent.sqlite
+            - --gh-agent-story
+            - stories/bugfix
+            - --gh-agent-project-root
+            - ""
+            - --gh-agent-incident-repo
+            - ""
+            - --gh-agent-asset-dir
+            - ""
+            - --gh-agent-comment-mode
+            - none
+
+expect_no_errors: true

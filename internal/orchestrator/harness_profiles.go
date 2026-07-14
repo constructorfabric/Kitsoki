@@ -7,11 +7,24 @@ import (
 	"kitsoki/internal/host"
 )
 
+// WithHarnessLadderConfig installs cfg as the session's harness ladder: the
+// automatic multi-provider fallback + effort/model escalation applied to
+// every host.agent.decide / host.agent.task dispatch. A disabled cfg
+// (cfg.Enabled() == false — the zero value) is the default and leaves every
+// dispatch on today's single-attempt behavior, so passing a zero value is
+// always safe. See internal/webconfig.HarnessLadder for the `.kitsoki.yaml`
+// surface that produces cfg, and internal/host/ladder.go for the design.
+func WithHarnessLadderConfig(cfg host.LadderConfig) Option {
+	return func(o *Orchestrator) {
+		o.harnessLadder = cfg
+	}
+}
+
 // HarnessProfile is the orchestrator-side runtime form of an operator-declared
 // harness profile (webconfig.HarnessProfile, ${VAR} already expanded). It is a
 // named bundle of the agent-selection axes a live session can switch between:
 // which backend CLI is forked, which model it defaults to, and the env retarget
-// (e.g. synthetic.new). See docs/architecture/harness-profiles.md.
+// (e.g. synthetic.new). See docs/guide/agents/harness-profiles.md.
 type HarnessProfile struct {
 	// Name is the profile key from .kitsoki.yaml (the headline operators pick by).
 	Name string
@@ -82,6 +95,34 @@ func WithHarnessProfiles(profiles map[string]HarnessProfile, defaultProfile stri
 			o.selection = ProfileSelection{Profile: defaultProfile}
 		}
 	}
+}
+
+// providersForDispatch merges story-declared providers with harness profiles
+// so a harness-ladder rung can name the same profile key the operator sees in
+// /provider. Story providers win on name collisions because explicit story
+// config is the older, narrower contract for `with: { provider: ... }`.
+func (o *Orchestrator) providersForDispatch() map[string]host.Provider {
+	out := providersForContext(o.def)
+	if len(o.harnessProfiles) == 0 {
+		return out
+	}
+	if out == nil {
+		out = make(map[string]host.Provider, len(o.harnessProfiles))
+	}
+	for name, p := range o.harnessProfiles {
+		if _, exists := out[name]; exists {
+			continue
+		}
+		prov := host.Provider{Model: p.Model, Effort: p.Effort}
+		if len(p.Env) > 0 {
+			prov.Env = make(map[string]string, len(p.Env))
+			for k, v := range p.Env {
+				prov.Env[k] = v
+			}
+		}
+		out[name] = prov
+	}
+	return out
 }
 
 // Profiles returns the declared profiles as a stable, name-sorted, secret-free
@@ -172,6 +213,9 @@ func (o *Orchestrator) SetSelection(profile, model, effort string) error {
 		return fmt.Errorf("effort %q is not in profile %q's effort catalog", effort, profile)
 	}
 	o.selection = ProfileSelection{Profile: profile, Model: model, Effort: effort}
+	if o.ladderSession != nil {
+		o.ladderSession.Reset()
+	}
 	return nil
 }
 

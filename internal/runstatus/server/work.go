@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	"kitsoki/internal/assignment"
 	kitsokimcp "kitsoki/internal/mcp"
 )
 
@@ -19,10 +20,11 @@ type WorkListResult struct {
 
 // WorkSessionResult is one live session's async headline.
 type WorkSessionResult struct {
-	SessionID    string      `json:"session_id"`
-	AppID        string      `json:"app_id,omitempty"`
-	CurrentState string      `json:"current_state,omitempty"`
-	Work         WorkSummary `json:"work"`
+	SessionID    string              `json:"session_id"`
+	AppID        string              `json:"app_id,omitempty"`
+	CurrentState string              `json:"current_state,omitempty"`
+	Work         WorkSummary         `json:"work"`
+	Assignments  []assignment.Record `json:"assignments,omitempty"`
 }
 
 func (s *Server) listWork(ctx context.Context) (WorkListResult, error) {
@@ -34,11 +36,16 @@ func (s *Server) listWork(ctx context.Context) (WorkListResult, error) {
 	for _, hdr := range headers {
 		sessionIndex[hdr.SessionID] = len(out.Sessions)
 		entry, ok := s.provider.Get(hdr.SessionID)
+		var assignments []assignment.Record
+		if s.assignments != nil {
+			assignments, _ = s.assignments.List(hdr.SessionID)
+		}
 		if !ok || entry.Driver == nil {
 			out.Sessions = append(out.Sessions, WorkSessionResult{
 				SessionID:    hdr.SessionID,
 				AppID:        hdr.AppID,
 				CurrentState: hdr.CurrentState,
+				Assignments:  assignments,
 			})
 			continue
 		}
@@ -48,6 +55,7 @@ func (s *Server) listWork(ctx context.Context) (WorkListResult, error) {
 				SessionID:    hdr.SessionID,
 				AppID:        hdr.AppID,
 				CurrentState: hdr.CurrentState,
+				Assignments:  assignments,
 			})
 			continue
 		}
@@ -65,6 +73,7 @@ func (s *Server) listWork(ctx context.Context) (WorkListResult, error) {
 			SessionID:    hdr.SessionID,
 			AppID:        hdr.AppID,
 			CurrentState: hdr.CurrentState,
+			Assignments:  assignments,
 			Work:         work.Summary,
 		})
 		addWorkSummary(&out.Summary, work.Summary)

@@ -1,0 +1,124 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://kitsoki.dev/schemas/tour-v2.schema.json",
+  "title": "Tour v2",
+  "description": "App-agnostic click-through tour format. Mirrored field-for-field by internal/tour (Go, manifest_v2.go) and tools/runstatus/src/tour/types-v2.ts. Keep all three in lockstep.",
+  "type": "object",
+  "required": ["version", "id", "steps"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "const": 2 },
+    "id": { "type": "string", "minLength": 1 },
+    "origin": {
+      "type": "string",
+      "description": "Exact-match origin the tour is bound to (e.g. https://app.example.com). Omitted for origin-agnostic fixtures."
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/definitions/step" }
+    }
+  },
+  "definitions": {
+    "step": {
+      "type": "object",
+      "required": ["id", "kind"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "route": { "type": "string" },
+        "target": { "$ref": "#/definitions/targetBundle" },
+        "popover": { "$ref": "#/definitions/popover" },
+        "kind": {
+          "type": "string",
+          "enum": ["highlight", "gate", "act", "navigate"],
+          "description": "gate is the default kind for click-through tours: the user performs the real action and the tour reacts. act is the consent-gated agentic tier."
+        },
+        "advanceOn": { "$ref": "#/definitions/advanceOn" },
+        "act": { "$ref": "#/definitions/actSpec" },
+        "policy": {
+          "type": "string",
+          "enum": ["watch", "confirm", "auto"],
+          "default": "confirm",
+          "description": "Consent tier for act steps. act defaults to confirm when omitted."
+        },
+        "interaction": {
+          "type": "string",
+          "enum": ["block", "allow"],
+          "description": "Whether the live page beneath the overlay may be clicked during this step."
+        },
+        "viewport": {
+          "type": "string",
+          "description": "Scroll-container id/testid this step scrolls within, when not the window."
+        },
+        "data": {
+          "type": "object",
+          "description": "Opaque per-step payload. Used by converters (e.g. the v1 legacy compat path) to carry fields with no first-class v2 slot without inventing new format surface."
+        }
+      }
+    },
+    "targetBundle": {
+      "type": "object",
+      "description": "Ranked multi-anchor bundle. Resolution order: role+name -> testid -> label/text -> fuzzy css -> ancestor-scoped fallback. A heal event is emitted whenever the primary anchor misses and a secondary anchor uniquely resolves.",
+      "additionalProperties": false,
+      "properties": {
+        "role": { "type": "string" },
+        "name": { "type": "string" },
+        "testid": { "type": "string" },
+        "text": { "type": "string" },
+        "css": { "type": "string" },
+        "ancestor": { "type": "string" },
+        "frame": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Ordered iframe selector path from the document root to the frame containing this target; empty for the top-level document."
+        },
+        "waitFor": { "$ref": "#/definitions/waitFor" }
+      }
+    },
+    "waitFor": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "timeoutMs": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "popover": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "title": { "type": "string" },
+        "body": { "type": "string" },
+        "side": { "type": "string", "enum": ["top", "bottom", "left", "right", "center"] },
+        "align": { "type": "string", "enum": ["start", "center", "end"] }
+      }
+    },
+    "advanceOn": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "event": { "type": "string", "enum": ["click", "input", "route", "submit"] }
+      }
+    },
+    "actSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "type": "string", "enum": ["click", "fill", "scroll", "press"] },
+        "value": { "type": "string" }
+      }
+    },
+    "healEvent": {
+      "type": "object",
+      "description": "Emitted by anchor resolution (player or tour_replay) whenever a step's primary anchor misses and a secondary anchor in the bundle uniquely resolves. Never emitted silently.",
+      "required": ["stepId", "failedAnchor", "matchedAnchor", "confidence"],
+      "additionalProperties": false,
+      "properties": {
+        "stepId": { "type": "string" },
+        "failedAnchor": { "type": "string" },
+        "matchedAnchor": { "type": "string" },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    }
+  }
+}

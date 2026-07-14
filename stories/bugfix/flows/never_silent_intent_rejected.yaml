@@ -1,0 +1,49 @@
+# never_silent_intent_rejected — failure class: intent rejection ("stuck in a
+# room despite typing accept" from .agents/skills/kitsoki-debugging/SKILL.md).
+#
+# The rejection contract is the OTHER half of never-silent: when the machine
+# refuses a turn, the refusal must be an explicit, coded outcome
+# (INTENT_NOT_ALLOWED_IN_STATE / MISSING_SLOTS), never a silent no-op — and it
+# must not move the state or mutate world.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: proposing
+initial_world:
+  ticket_id:  "TKT-903"
+  thread:     "TKT-903"
+  judge_mode: "human"
+  propose_fix_artifact:
+    summary_title:    "Stub proposal"
+    summary_markdown: "stub"
+    affected_files:   ["x.go"]
+    confidence:       0.9
+
+host_handlers:
+  host.append_to_file:
+    data: { ok: true, message_id: "msg-1" }
+
+turns:
+  # `triage` exists on the app but is not wired in proposing → coded
+  # rejection, state and world untouched.
+  - intent: { name: triage, slots: {} }
+    expect_error:
+      code: INTENT_NOT_ALLOWED_IN_STATE
+    expect_state: proposing
+    expect_world_unchanged: true
+
+  # `refine` IS allowed here but requires the `feedback` slot. The current
+  # surfaced behaviour is NOT a bare MISSING_SLOTS error: the orchestrator
+  # answers with a clarification turn (mode=clarify) that asks for the
+  # missing slot while holding the room. That is a visible outcome, not a
+  # silent drop — pinned here as state-holds + the clarification prompt
+  # naming the slot in the rendered view.
+  - intent: { name: refine, slots: {} }
+    expect_state: proposing
+    expect_view_matches: "(?i)feedback"
+
+  # The room is still live after both rejections.
+  - intent: { name: look, slots: {} }
+    expect_state: proposing
+
+expect_no_errors: false

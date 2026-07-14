@@ -1,0 +1,32 @@
+name: dirty-index
+source:
+  synthetic: true
+  default_branch: main
+  steps:
+    - action: write
+      path: a.txt
+      content: |
+        clean
+    - action: commit
+      message: init
+    - action: write
+      path: staged.txt
+      content: |
+        staged
+    - action: git
+      args: [add, staged.txt]
+    - action: write
+      path: unstaged.txt
+      content: |
+        unstaged
+network: none
+verify:
+  probes:
+    - name: staged-change
+      run: git diff --cached --quiet
+      expect: nonzero
+    - name: unstaged-change
+      run: test -n "$(git status --porcelain unstaged.txt)"
+      expect: zero
+scenario:
+  kind: git-flow

@@ -1,0 +1,178 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.product_journey.run:
+    by_call:
+      load_product_journey_run:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: run_loaded
+            run_id: run-999
+            run_dir: .artifacts/product-journey/run-999
+            project: vscode
+            persona: core-maintainer
+            seed: autonomous-invalid
+            deck_path: .artifacts/product-journey/run-999/deck.slidey.json
+            execution_plan_path: .artifacts/product-journey/run-999/execution-plan.md
+            driver_plan_path: .artifacts/product-journey/run-999/driver-plan.md
+            driver_journal_path: .artifacts/product-journey/run-999/driver-journal.md
+            agent_brief_path: .artifacts/product-journey/run-999/agent-brief.md
+            driver_handoff_path: .artifacts/product-journey/run-999/driver-handoff.md
+            media_manifest_path: .artifacts/product-journey/run-999/media-manifest.json
+            scenario_outcomes_path: .artifacts/product-journey/run-999/scenario-outcomes.md
+            finding_total_count: 1
+            issue_count: 1
+            proof_evidence_count: 3
+            review_status: needs_evidence
+      autonomous_product_journey_marathon_watchdog:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            schema: kitsoki/product-journey-autonomous-marathon-watchdog/v1
+            status: autonomous_watchdog_ok
+            autonomous_watchdog_status: autonomous_watchdog_ok
+            autonomous_watchdog_summary: "heartbeat age 10m within watchdog=45m"
+            autonomous_watchdog_path: .artifacts/product-journey/run-999/autonomous-marathon-watchdog.json
+            autonomous_watchdog_markdown_path: .artifacts/product-journey/run-999/autonomous-marathon-watchdog.md
+            autonomous_watchdog_age_minutes: 10
+            driver_journal_path: .artifacts/product-journey/run-999/driver-journal.md
+      autonomous_product_journey_fix:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: autonomous_fix_invalid
+            autonomous_fix_status: autonomous_fix_invalid
+            filing_status: findings_filed
+            run_dir: .artifacts/product-journey/run-999
+            ticket_repo: bsacrobatix/Kitsoki
+            dry_run: "no"
+            findings_filed_count: 1
+            findings_skipped_count: 0
+            findings_failed_count: 0
+            findings_unfiled_count: 0
+            filed_issue_summary: "https://github.com/bsacrobatix/Kitsoki/issues/301"
+            filing_summary: "Filed findings to bsacrobatix/Kitsoki: 1 filed, 0 already filed, 0 failed; 0 credible finding(s) remain unfiled."
+            gh_agent_enqueue_status: queued
+            gh_agent_enqueued_count: 1
+            gh_agent_skipped_count: 0
+            gh_agent_job_summary: "github:bsacrobatix/Kitsoki/issue/301"
+            gh_agent_drain_status: drained
+            gh_agent_drained_count: 1
+            gh_agent_done_count: 1
+            gh_agent_failed_count: 0
+            gh_agent_active_count: 0
+            gh_agent_run_summary: "github:bsacrobatix/Kitsoki/issue/301=done https://agent.example/run/job-301"
+            gh_agent_fix_evidence_count: 0
+            gh_agent_missing_evidence_count: 1
+            gh_agent_independent_verify_count: 0
+            gh_agent_missing_verify_count: 1
+            gh_agent_fix_evidence_summary: ""
+            gh_agent_missing_evidence_summary: "github:bsacrobatix/Kitsoki/issue/301"
+            gh_agent_independent_verify_summary: ""
+            gh_agent_missing_verify_summary: "github:bsacrobatix/Kitsoki/issue/301"
+            autonomous_gate_summary: "filing=pass, gh_agent=fail, independent_verify=fail, review=fail, validation=fail"
+            independent_verify_status: fail
+            independent_verify_summary: "missing=1, verified=0/1"
+            review_status: needs_evidence
+            review_summary: "needs_evidence: 23/24 checks passed, 0 warnings, 1 failures"
+            review_passed_count: 23
+            review_failed_count: 1
+            review_warning_count: 0
+            review_total_count: 24
+            review_backlog_summary: "gh-agent-fix-evidence"
+            validation_status: invalid
+            validation_errors: 1
+            validation_warnings: 0
+            validation_issue_summary: "gh-agent-fix-evidence"
+            deck_path: .artifacts/product-journey/run-999/deck.slidey.json
+            execution_plan_path: .artifacts/product-journey/run-999/execution-plan.md
+            driver_plan_path: .artifacts/product-journey/run-999/driver-plan.md
+            driver_journal_path: .artifacts/product-journey/run-999/driver-journal.md
+            agent_brief_path: .artifacts/product-journey/run-999/agent-brief.md
+            driver_handoff_path: .artifacts/product-journey/run-999/driver-handoff.md
+            media_manifest_path: .artifacts/product-journey/run-999/media-manifest.json
+            scenario_outcomes_path: .artifacts/product-journey/run-999/scenario-outcomes.md
+            proof_evidence_count: 3
+            demo_evidence_count: 0
+            finding_total_count: 1
+            strength_count: 0
+            weakness_count: 0
+            issue_count: 1
+            fix_count: 0
+            blocked_count: 0
+            missing_evidence_count: 0
+            missing_proof_evidence_count: 0
+            proof_minimum_evidence_count: 3
+            minimum_evidence_count: 3
+            missing_proof_summary: ""
+            driver_contract_summary: "Driver contract: 1 scenarios (bugfix); 0 missing-proof rows; 4 final gates."
+            next_driver_capture: ""
+            next_driver_attach_command: ""
+            next_driver_blocker_command: ""
+
+turns:
+  - intent:
+      name: load
+      slots:
+        run_dir: .artifacts/product-journey/run-999
+    expect_state: run_created
+    expect_world:
+      status: run_loaded
+      run_id: run-999
+      run_dir: .artifacts/product-journey/run-999
+    expect_host_calls:
+      - handler: host.product_journey.run
+        args: { call: load_product_journey_run }
+
+  - intent:
+      name: autonomous_watchdog
+    expect_state: run_created
+    expect_world:
+      status: autonomous_watchdog_checked
+      autonomous_watchdog_status: autonomous_watchdog_ok
+      autonomous_watchdog_age_minutes: 10
+    expect_host_calls:
+      - handler: host.product_journey.run
+        args: { call: autonomous_product_journey_marathon_watchdog }
+
+  - intent:
+      name: autonomous_fix
+      slots:
+        ticket_repo: bsacrobatix/Kitsoki
+        gh_agent_story: stories/bugfix
+        gh_agent_public_base_url: https://agent.example
+    expect_state: run_created
+    expect_world:
+      status: autonomous_fix_complete
+      autonomous_fix_status: autonomous_fix_invalid
+      filing_status: findings_filed
+      findings_filed_count: 1
+      findings_unfiled_count: 0
+      gh_agent_enqueue_status: queued
+      gh_agent_drain_status: drained
+      gh_agent_done_count: 1
+      gh_agent_failed_count: 0
+      gh_agent_fix_evidence_count: 0
+      gh_agent_missing_evidence_count: 1
+      gh_agent_independent_verify_count: 0
+      gh_agent_missing_verify_count: 1
+      autonomous_gate_summary: "filing=pass, gh_agent=fail, independent_verify=fail, review=fail, validation=fail"
+      independent_verify_status: fail
+      independent_verify_summary: "missing=1, verified=0/1"
+      review_status: needs_evidence
+      review_failed_count: 1
+      validation_status: invalid
+      validation_errors: 1
+      validation_issue_summary: gh-agent-fix-evidence
+    expect_view_matches: "RUN CREATED[\\s\\S]*Autonomous fix[\\s\\S]*autonomous_fix_invalid[\\s\\S]*Autonomous gates[\\s\\S]*filing=pass, gh_agent=fail, independent_verify=fail,[\\s\\S]*review=fail, validation=fail[\\s\\S]*Independent verify[\\s\\S]*fail: missing=1, verified=0/1[\\s\\S]*GH-agent evidence[\\s\\S]*0 attached; 1 missing[\\s\\S]*Validation[\\s\\S]*invalid"
+    expect_host_calls:
+      - handler: host.product_journey.run
+        args: { call: autonomous_product_journey_fix }
+
+expect_no_errors: true

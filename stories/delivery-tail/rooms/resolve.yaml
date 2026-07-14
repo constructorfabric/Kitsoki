@@ -37,7 +37,7 @@ states:
             Outcome:    '{{ world.resolve_outcome|default:"(rebasing…)" }}'
       - heading: "Re-rebase errored — needs a human"
         when: "world.resolve_outcome == 'error'"
-      - prose: "{{ world.resolve_output }}"
+      - prose: "{{ world.resolve_output ?? '(pending)' }}"
         when: "world.resolve_outcome == 'error'"
       - choice:
           mode: single

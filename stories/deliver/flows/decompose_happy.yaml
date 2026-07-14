@@ -1,12 +1,13 @@
-# decompose_happy — 3-brief manifest → lint passes → routes into fleet.load.
+# decompose_happy — 3-brief manifest → lint passes → adversarial review
+# accepts → routes into fleet.load.
 #
-# The decomposer agent and lint script are both mocked (no LLM, no shell).
-# fleet_load is also mocked so fleet.load ends up with fleet_briefs populated.
-# We assert the story reaches fleet.load (the fleet import entry) and stop —
-# fleet's own flows test the fan-out; this test covers the deliver pipeline only.
+# The decomposer and reviewer agents are mocked (no LLM), while deliver lint
+# and fleet load run REAL Starlark against the inspect cassette below. We
+# assert the story reaches fleet.load (the fleet import entry) and stop —
+# fleet's own flows test fan-out.
 #
-# Full path: configure → start → decompose (agent mocked) → lint (script mocked)
-#            → fleet.load (fleet_load mocked)
+# Full path: configure → start → decompose (agent mocked) → lint (Starlark)
+#            → review (agent mocked, accept) → fleet.load (Starlark)
 
 test_kind: flow
 app: ../app.yaml
@@ -14,6 +15,8 @@ initial_state: configure
 initial_world:
   base_branch: main
   main_worktree_path: "."
+
+starlark_inspect_cassette: ../cassettes/decompose_happy.inspect.yaml
 
 host_handlers:
   host.agent.task:
@@ -34,26 +37,14 @@ host_handlers:
                 brief: "Register the health handler in the router and smoke-test /health. Gate: go test ./internal/router/..."
                 gate_command: "go test ./internal/router/..."
                 deps: [health-handler]
-  host.run:
+  host.agent.decide:
     by_call:
-      lint:
+      review:
         data:
-          ok: true
-          exit_code: 0
-          stdout_json:
-            route: "ok"
-            error: ""
-      fleet_load:
-        data:
-          ok: true
-          exit_code: 0
-          stdout_json:
-            fleet_briefs:
-              - { id: health-model,   brief: "Add HealthStatus struct...", gate_command: "go test ./internal/health/...",  status: pending, last_error: "" }
-              - { id: health-handler, brief: "Add GET /health handler...", gate_command: "go test ./internal/handler/...", status: pending, last_error: "" }
-              - { id: health-route,   brief: "Register the health handler...", gate_command: "go test ./internal/router/...", status: pending, last_error: "" }
-            fleet_state_path: "/tmp/fleet-deliver-test.json"
-            error: ""
+          submitted:
+            verdict: accept
+            reason: "Every brief is self-contained, deps are ordered, and coverage_note holds up."
+            questions: []
 
 turns:
   - intent:

@@ -1,0 +1,53 @@
+# report_deck - WM.3 deterministic PM report/deck hierarchy.
+#
+# Seed one verified integration via the existing ship-it -> record seam, fold it
+# through evaluate, then ask for a report. The report room writes an exec-summary
+# markdown/deck pair plus one markdown/deck pair per integrated change.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: shipit.configure
+initial_world:
+  goal_slug: goal-seeker-test
+  goal_dir:  stories/goal-seeker/testdata/goal
+  work_dir:  .artifacts/goal/flow-report
+  next_change_id: "C1"
+  shipit__worktree_path: ".worktrees/gu-C1"
+  shipit__gate_command: "true"
+  shipit__base_branch: "main"
+  shipit__main_worktree_path: "."
+
+host_handlers:
+  host.run:
+    by_call:
+      integrate_exec: { data: { ok: true, exit_code: 0, stdout_json: { outcome: integrated, integrated_sha: "abc1234", last_op_ok: true, last_error: "" } } }
+      verify-rerun: { data: { ok: true, exit_code: 0, stdout: "ok" } }
+      cleanup_exec: { data: { ok: true, exit_code: 0, stdout_json: { outcome: cleaned, last_op_ok: true, last_error: "" } } }
+  host.agent.decide: { by_call: {} }
+
+turns:
+  - intent: { name: shipit__integrate_existing, slots: {} }
+    expect_state: record
+    expect_world: { shipped_sha: "abc1234" }
+  - intent: { name: advance, slots: {} }
+    expect_state: evaluate
+    expect_world: { remaining: 0 }
+  - intent: { name: report, slots: {} }
+    expect_state: report
+    expect_world:
+      report_status: written
+      report_change_count: 1
+  - intent: { name: look, slots: {} }
+    expect_view_matches: "exec-summary.slidey.json"
+
+expect_files:
+  - path: ../../../.artifacts/goal/flow-report/reports/exec-summary.md
+    content_matches: 'C1: `.artifacts/goal/flow-report/reports/changes/C1.slidey.json`'
+  - path: ../../../.artifacts/goal/flow-report/reports/exec-summary.slidey.json
+    content_matches: '"rrweb":"stories/goal-seeker/testdata/goal/clips/C1.rrweb.json"'
+  - path: ../../../.artifacts/goal/flow-report/reports/changes/C1.md
+    content_matches: "Summary: integrated C1 at abc1234"
+  - path: ../../../.artifacts/goal/flow-report/reports/changes/C1.slidey.json
+    content_matches: '"rrweb":"stories/goal-seeker/testdata/goal/clips/C1.rrweb.json".*"title":"Goal loop demo".*"type":"video"'
+
+expect_no_errors: true

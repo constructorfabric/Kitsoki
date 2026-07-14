@@ -1,0 +1,6 @@
+inputs:
+  idea: { type: string, required: true }
+  durable_path: { type: string, required: true }
+outputs:
+  slug: { type: string }
+  workspace: { type: string }

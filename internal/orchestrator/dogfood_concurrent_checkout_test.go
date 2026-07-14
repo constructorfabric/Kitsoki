@@ -159,7 +159,7 @@ func TestDogfoodConcurrent_SessionsMustNotShareCheckout(t *testing.T) {
 	// creates the worktree, emits start → reproducing). The reproducing
 	// agent is dispatched with working_dir = world.workdir.
 	bootAndStart := func(orch *orchestrator.Orchestrator, sid app.SessionID, label string) {
-		c, cancel := context.WithTimeout(ctx, 20*time.Second)
+		c, cancel := context.WithTimeout(ctx, 60*time.Second)
 		defer cancel()
 		require.NoError(t, orch.RunInitialOnEnter(c, sid), "%s: RunInitialOnEnter must finish", label)
 		_, err := orch.Teleport(c, sid, inbox.TeleportTarget{

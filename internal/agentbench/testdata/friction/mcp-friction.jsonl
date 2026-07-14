@@ -1,0 +1,5 @@
+{"ts":"2026-07-13T00:00:00Z","kind":"agent.call.start","call_id":"friction","payload":{}}
+{"ts":"2026-07-13T00:00:01Z","kind":"agent.tool.error","call_id":"friction","payload":{}}
+{"ts":"2026-07-13T00:00:02Z","kind":"agent.schema.invalid","call_id":"friction","payload":{}}
+{"ts":"2026-07-13T00:00:03Z","kind":"agent.retry","call_id":"friction","payload":{"retry":true}}
+{"ts":"2026-07-13T00:00:04Z","kind":"agent.call.complete","call_id":"friction","payload":{"state_changed":false,"usage":{"input_tokens":500,"output_tokens":500},"tool":"workspace.search"}}

@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "title": "Fixture Control Room",
+  "tagline": "create-mockup test fixture",
+  "zones": {
+    "rail": {
+      "heading": "Scenarios",
+      "typeHeading": "Types",
+      "scenarios": [["Alpha track", "first track"], ["Beta track", "second track"]],
+      "types": ["thing", "other"]
+    },
+    "intake": {
+      "heading": "Intake",
+      "fields": ["Decision", "Claim", "Constraint"]
+    },
+    "graph": {
+      "projection": "projection.json"
+    },
+    "inspector": {
+      "heading": "Inspector",
+      "evidenceHeading": "Evidence"
+    },
+    "timeline": {
+      "heading": "Timeline"
+    }
+  },
+  "states": {
+    "start": {
+      "group": "alpha",
+      "rail": { "active": 0, "decision": "Can we start?", "detail": "starting detail" },
+      "intake": ["Decision A", "Claim A", "Constraint A"],
+      "graph": { "title": "Graph A", "sub": "sub A", "state": "g1" },
+      "inspector": {
+        "headline": "Headline A",
+        "meaning": "Meaning A",
+        "metrics": [["m1", "v1"]],
+        "evidence": [["green", "evidence A", "meta A"]],
+        "action": "Do the thing"
+      },
+      "timeline": { "steps": ["Step1", "Step2"], "done": 0 }
+    },
+    "middle": {
+      "group": "alpha",
+      "rail": { "active": 0, "decision": "Mid decision", "detail": "mid detail" },
+      "intake": ["Decision B", "Claim B", "Constraint B"],
+      "graph": { "title": "Graph B", "sub": "sub B", "state": "g1" },
+      "inspector": {
+        "headline": "Headline B",
+        "meaning": "Meaning B",
+        "metrics": [["m1", "v2"]],
+        "evidence": [["", "evidence B", "meta B"]],
+        "action": "Keep going"
+      },
+      "timeline": { "steps": ["Step1", "Step2"], "done": 1 }
+    },
+    "done": {
+      "group": "beta",
+      "rail": { "active": 1, "decision": "Done decision", "detail": "done detail" },
+      "intake": ["Decision C", "Claim C", "Constraint C"],
+      "graph": { "title": "Graph C", "sub": "sub C", "state": "g2" },
+      "inspector": {
+        "headline": "Headline C",
+        "meaning": "Meaning C",
+        "metrics": [["m1", "v3"]],
+        "evidence": [["green", "evidence C", "meta C"]],
+        "action": "Ship it"
+      },
+      "timeline": { "steps": ["StepA", "StepB", "StepC"], "done": 3 }
+    }
+  }
+}

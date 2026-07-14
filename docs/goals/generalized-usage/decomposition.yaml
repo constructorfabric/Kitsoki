@@ -1,0 +1,1122 @@
+goal_slug: generalized-usage
+
+# runtime — the goal's EXECUTION CONTEXT, declared once so opening the goal-seeker
+# needs zero operator seed. The story's bootstrap reads this (scripts/gs_resolve.star)
+# and derives world.workdir + world.main_worktree_path from worktree_path and
+# world.base_branch from base_branch, so lint/dispatch/integrate root at the goal's
+# own worktree instead of the MCP process cwd (the main checkout). worktree_path is
+# repo-root-relative (resolved against the checkout the MCP runs from). An explicit
+# initial_world workdir seed still wins — this is the default, not an override.
+runtime:
+  base_branch:   stabilize/generalized-usage-rebase  # 2026-07-04 ~23:10: corrected to match the branch
+                                                       # this worktree/live run is actually on — see the
+                                                       # Operator note in GOAL.md (two-branch reconcile TODO)
+  worktree_path: .worktrees/generalized-usage-rebase  # where docs/goals/<slug>/ + the code live
+
+# First slice: the meta/dogfood-enablement wall (WM) + the Install wall (W1).
+# Walls W2-W5 + hygiene follow once this slice is proven. Every change carries a
+# deterministic gate (RED now, GREEN when it lands); scope globs are the write
+# boundary and are sharpened at implementation time. See ../generalized-usage/plan.md
+# and .context/generalized-usage-decomposition-overview.md for the full wall map.
+coverage_note: >
+  This slice covers WM (the goal-seeker STORY + the kitsoki gaps it needs + the
+  dev-story/MCP fixes that let the plan be driven THROUGH kitsoki on a foreign repo)
+  and W1 (everything a stranger needs to install and first-run). WM.0 is the
+  goal-seeker itself, built as a kitsoki story (reusing punch-list + ship-it/fleet),
+  not an out-of-engine script — the critical dogfooded mechanism that works the rest.
+  WM.1/WM.2 are limitations the story surfaces, captured per the "limitations → plan"
+  rule; build-discovered gaps append as WM.x. No two changes own the same file at
+  ready-time (the disjoint-scope lint is the gate on that claim). This slice also
+  folds in wall WS (Sandbox / capability enforcement, clears G3 — the deferred
+  design in docs/proposals/agent-capability-model.md and its three slices +
+  conformance, now decomposed) and wall WP (Complete Package — every shipped
+  change ships its docs/demo/site update, not just code). WM.7 makes evolving
+  THIS file itself (as just done for WS/WP) a change-managed transaction going
+  forward, not a hand edit.
+
+definition_of_done: >
+  A change counts as DONE — eligible for the goal-seeker's record/integrate step
+  to mark it integrated — only when, as applicable: (a) its code + its RED→GREEN
+  deterministic gate are green; (b) narrative docs are updated in docs/ proper,
+  and if the change was driven from a docs/proposals/*.md file, that proposal is
+  trimmed-or-deleted per docs/proposals/README.md's lifecycle + the repo CLAUDE.md
+  rule ("move content to proper narrative docs and delete the proposal") — WP.1
+  gates this; (c) a demo is produced if the change carries a `demo_video:` field
+  (the no-LLM rrweb tour, embedded in its WM.3 per-change deck via WM.4's
+  pipeline) — WP.3 gates this; (d) the feature-site + pitch (features/*.yaml,
+  docs/decks/kitsoki-pitch.slidey.json) are updated truthfully if the change is
+  user-facing — WP.2 gates this. The record/integrate step checks this whole
+  package, not just the code gate. This extends to the PLAN itself: changing
+  decomposition.yaml's scope/graph is itself gated (delta-lint + provenance +
+  no-lost-work for the graph), never a silent hand edit — see WM.7.
+
+changes:
+  # 0.2 pulled to the FRONT: install-critical G1 (a stranger's fresh clone gets 2 broken
+  # MCP servers from hardcoded /Users/brad paths), no deps, single-file, simple end-state
+  # gate — the right first change to LAND (install-before-engine prioritization + the
+  # end-to-end landing proof for the goal-seeker loop).
+  - id: "0.2"
+    wall: W1
+    goal_ref: [G1]
+    title: Repo .mcp.json has no hardcoded /Users/brad paths
+    kind: docs
+    pipeline: implementation
+    scope: [".mcp.json"]
+    depends_on: []
+    acceptance:
+      - "a fresh clone gets zero broken MCP servers (slidey/stagehand entries portable or optional)"
+    gate:
+      class: G-LINT
+      red_now: ".mcp.json hardcodes /Users/brad/... for slidey+stagehand; every cloner gets 2 broken servers"
+      green_when: "a path-scan lint over .mcp.json exits 0"
+      cmd: "! grep -q '/Users/brad' .mcp.json"
+    agent_brief: >
+      Make the repo .mcp.json portable: remove hardcoded /Users/brad slidey+stagehand
+      entries (make them optional or path-relative). Add the grep to the lint gate.
+
+  # ---- WM — Meta / dogfood-enablement (do first; each is also a G2/G6 item) ----
+  - id: "WM.0"
+    wall: WM
+    goal_ref: [G6]
+    title: goal-seeker as a kitsoki STORY (reuses punch-list + ship-it/fleet); /goal is a thin session driver
+    demo_video: "FLAGSHIP — tour the goal-seeker loop running (evaluate → dispatch → integrate → evaluate) with the PM decks updating live; embed in WM.0 deck + exec summary"
+    kind: story
+    pipeline: implementation
+    critical: true
+    scope: ["stories/goal-seeker/**", ".agents/skills/goal/**"]
+    depends_on: []
+    acceptance:
+      - "a stories/goal-seeker/ story imports punch-list (load→drive→verify→report loop) + ship-it (lost-work-safe integrate → verify → cleanup) and adds an `evaluate` host.agent.decide gate emitting {verdict, summary, next_instruction} over a BOUNDED preamble (relevant_world + a host.starlark.run projection with detail-pointers)"
+      - "deterministic steps (ledger fold, preamble build, decomposition lint, scope-disjoint ready-set) are host.starlark.run glue — NOT a standalone Python CLI; goal.py is retained only as the golden reference oracle the .star is tested against, then deleted"
+      - "the whole loop is flow-tested with NO LLM (host.agent.* stubbed); a forced-conflict flow parks-with-ref and asserts both SHAs still reachable — no committed work lost"
+      - "/goal (Claude Code) is a thin driver that advances the goal-seeker SESSION one turn via kitsoki turn / MCP session.drive"
+      - "ADVERSARIAL DETERMINISM FLOWS (no LLM) — the port must NOT silently regress the goal.py guarantees: a false-`done` verdict is rejected by a deterministic post-decide re-check (evaluator says done, ledger disagrees → loop); a worker self-reported `green` is IGNORED (only reviewer/integrator flips green); a not-RED change refuses to start. Each asserted against goal.py's golden outputs before goal.py is deleted, and the golden-oracle corpus includes the false-done / worker-self-green / cycle / scope-overlap / not-RED cases"
+    gate:
+      class: G-FLOW
+      red_now: "no goal-seeker story exists; the loop lives as an out-of-engine Python script (goal.py) — undogfooded"
+      green_when: "kitsoki test flows stories/goal-seeker/ drives evaluate→dispatch→verify→integrate→evaluate to a done verdict with no LLM"
+      cmd: "kitsoki test flows stories/goal-seeker/app.yaml"
+    agent_brief: >
+      Build stories/goal-seeker/ as a kitsoki story, the maximally-dogfooded form of
+      the /goal loop. Compose, don't reinvent: import punch-list for load→drive→
+      verify→report and ship-it for the lost-work-safe integrate→verify→cleanup→ship
+      (integrate_existing seam). Add an `evaluate` room: a host.agent.decide gate that
+      reads a BOUNDED preamble (declare relevant_world; build the projection +
+      detail-pointers in host.starlark.run over world+trace) and emits {verdict,
+      summary, next_instruction}; loop until verdict=done. Port goal.py's fold /
+      preamble / lint / scope-disjoint-ready logic to host.starlark.run (.star), and
+      keep goal.py ONLY as the golden oracle the .star is tested against (delete it
+      when the story's flows are green). Make /goal a thin driver over the session.
+      Known gaps this surfaces are WM.1–WM.4 below; append any further gaps as WM.x
+      rather than working around them in Python. See .context/goal-command-design.md
+      (which this supersedes on the Python-vs-story point).
+
+  - id: "2.3"
+    wall: WM
+    goal_ref: [G2, G4]
+    title: Synthetic/profile propagation to nested Agent tools (issue #28)
+    kind: runtime
+    pipeline: bugfix
+    scope: ["internal/agent/**"]
+    depends_on: []
+    acceptance:
+      - "a synthetic.new profile propagates to nested Agent-tool dispatches, so cheap/free synthetic workers can be used throughout"
+    gate:
+      class: G-GOTEST
+      red_now: "issue #28 — synthetic profile doesn't propagate to nested agents; free synthetic workers can't be used broadly"
+      green_when: "a test asserts the synthetic profile reaches a nested agent dispatch"
+      cmd: "go test ./internal/agent/..."
+    agent_brief: >
+      Fix issue #28 so a synthetic.new profile propagates to nested Agent tools. This
+      is the enabler for "use synthetic.new as much as possible" in the worker pool (WM.5).
+
+  - id: "WM.4"
+    wall: WM
+    goal_ref: [G5, G6]
+    title: Tour-driven demo-video production — embedded in the PM decks (no-LLM rrweb)
+    kind: story
+    pipeline: implementation
+    critical: true
+    depends_on: ["WM.0", "WM.3"]
+    scope: ["stories/goal-seeker/tours/**", "docs/goals/generalized-usage/video-catalog.md"]
+    acceptance:
+      - "the EXEC SUMMARY embeds a short COMPENDIUM tour video at the top — a highlight reel of the highest-impact work (the FLAGSHIP demo_video clips: install 0.1, goal-seeker loop WM.0, cost proof WB.5, + the current best), assembled deterministically from those clips; kept SHORT (overview, not detail), refreshed as flagships land"
+      - "the video-demonstrable changes (those carrying a `demo_video:` field) each produce a tour-driven demo video via the no-LLM rrweb pipeline (kitsoki-ui-demo / slidey rrweb-embed), EMBEDDED in that change's per-change deck (WM.3) and surfaced in the exec summary"
+      - "a committed video catalog (docs/goals/generalized-usage/video-catalog.md) lists exactly which changes get a video and what each shows (marking which feed the compendium) — kept in sync with the `demo_video:` fields"
+      - "videos are produced deterministically (rrweb capture → server-free render; no live LLM in the demo pipeline) and gated so a broken/empty embed (per-change OR compendium) fails CI"
+    gate:
+      class: G-FLOW
+      red_now: "decks carry no embedded demo videos; the demo_video-annotated changes have no produced tour"
+      green_when: "a flow asserts a video-demonstrable change's deck embeds a playable rrweb tour (no LLM) and the exec summary links it"
+      cmd: "kitsoki test flows stories/goal-seeker/app.yaml --flows stories/goal-seeker/flows/deck_video_embed.yaml"
+    agent_brief: >
+      Own tour-driven demo-video production for the goal-seeker. Using the established
+      no-LLM rrweb pipeline (kitsoki-ui-demo skill + slidey rrweb embeds; see memory
+      rrweb-replay-video-production, slidey-hybrid-deck-pipeline), produce a demo video
+      for EACH change carrying a `demo_video:` field, embed it in that change's deck
+      (WM.3) and roll it into the exec summary. Maintain docs/goals/generalized-usage/
+      video-catalog.md as the authoritative list (in sync with the demo_video: fields).
+      Deterministic: rrweb capture → server-free render, no live LLM; gate on a
+      non-empty playable embed. Also assemble a SHORT compendium/highlight-reel from
+      the flagship clips and embed it at the top of the exec summary as the "what's
+      been done, at a glance" overview — refreshed as flagships land, kept brief.
+
+  - id: "WM.5"
+    wall: WM
+    goal_ref: [G4]
+    title: Harness ladder — systematic {backend,provider,model,effort} rung with effort-first capability escalation + infra fallback (ENGINE landed; story-level pool consumes it)
+    kind: runtime
+    pipeline: implementation
+    critical: true
+    depends_on: ["WM.0", "2.2", "2.3"]
+    scope: ["internal/host/ladder.go", "internal/webconfig/webconfig.go", "stories/goal-seeker/scripts/model_policy.star", "stories/goal-seeker/rooms/dispatch_pool.yaml", "docs/goals/generalized-usage/model-selection.md"]
+    acceptance:
+      - "ENGINE (LANDED 79c310e9 — internal/host/ladder.go): host.agent.decide/task dispatch walks a SYSTEMATIC 4-axis rung {backend,provider,model,effort}; a CAPABILITY failure escalates EFFORT-FIRST (low→max on the same model) THEN the next stronger model (model-outer/effort-inner); an INFRA failure (down/429/quota/5xx/timeout/model_not_found) rotates PROVIDER + backs the dead one off (reuses quota_control.go), SEPARATELY from the capability ladder; opt-in via webconfig harness_ladder: (nil = today's behavior byte-identical). Default rung GLM-5.2→gpt-5.5→spark→sonnet→opus, effort [low..max]. 18 no-LLM stub tests green."
+      - "INSTRUMENTED: every attempt tags backend/provider/model/effort/failure_kind + escalated_by (effort|model) into the trace Meta so effort-vs-model efficacy is study-able (feeds the model-selection eval)"
+      - "STORY POOL (remaining): the goal-seeker configures the engine ladder for its maker dispatch (cheap-first: GLM/synthetic default → escalate) so live workers distribute across multiple provider quotas with graceful exhaustion (park-with-ref, no lost work); an ongoing model-selection eval records (change × model × outcome × cost) and steers toward the cheapest model that solves each archetype"
+    gate:
+      class: "G-GOTEST"
+      red_now: "the ladder ENGINE is landed+green; the story-level pool (goal-seeker maker dispatch configured with the ladder + model-selection eval) is not yet wired"
+      green_when: "the ladder engine tests pass AND the goal-seeker live maker dispatch is configured with harness_ladder (cheap-first + escalation), proven by a flow/replay that exercises a fallback rung without lost work"
+      cmd: "go test ./internal/host/ -run Ladder ./internal/webconfig/"
+      replay_cmd: "kitsoki test flows stories/goal-seeker/app.yaml --flows stories/goal-seeker/flows/worker_pool_quota.yaml"
+    agent_brief: >
+      The ENGINE half is DONE (internal/host/ladder.go, 79c310e9): a generalized,
+      reusable harness ladder wrapping host.agent.decide/task — systematic
+      {backend,provider,model,effort} rung, effort-first capability escalation
+      (low→max same model, then next model), infra fallback (rotate provider +
+      backoff) kept SEPARATE, and per-attempt escalated_by instrumentation. Remaining:
+      wire the goal-seeker's live maker dispatch to a cheap-first harness_ladder
+      (GLM/synthetic default → claude/codex low effort → frontier on proven need),
+      spread across provider quotas with graceful exhaustion (park-with-ref, never
+      lose work), and add the ongoing model-selection eval that records
+      (change × model × outcome × cost) and steers toward the cheapest model per
+      archetype (ties into WB H2 + the model-task-engineering skill).
+
+  # --- kitsoki gaps the goal-seeker STORY surfaces (added per "limitations → plan") ---
+  - id: "WM.1"
+    wall: WM
+    goal_ref: [G6]
+    title: Bounded preamble projection from world+trace inside host.starlark.run
+    kind: runtime
+    pipeline: bugfix
+    scope: ["internal/host/starlark/**"]
+    depends_on: []
+    acceptance:
+      - "a host.starlark.run script can read enough of the session trace/world to build the bounded preamble + detail-pointers"
+      - "if the trace isn't reachable from starlark today, a minimal host helper exposes a bounded projection (NOT the whole trace)"
+    gate:
+      class: G-GOTEST
+      red_now: "unknown whether host.starlark.run can project the trace into a bounded preamble; likely needs a host helper"
+      green_when: "a starlark script builds the preamble in a flow; go test covers the host helper if one is added"
+      cmd: "go test ./internal/host/starlark/..."
+    agent_brief: >
+      Discovered-gap for WM.0: the evaluator's bounded preamble must be built
+      deterministically from world+trace via host.starlark.run. Confirm the trace is
+      reachable; if not, add a minimal bounded-projection host helper (never expose the
+      whole growing trace — that would reintroduce the cache-growth problem).
+
+  - id: "WM.2"
+    wall: WM
+    goal_ref: [G2]
+    title: Cross-provider model override on a host.agent.decide gate (opus + gpt-5.5 high)
+    kind: runtime
+    pipeline: bugfix
+    scope: ["internal/host/agents.go", "internal/host/agent_decide.go", "internal/app/types.go", "internal/orchestrator/orchestrator.go", "stories/goal-seeker/flows/evaluate_multiprovider.yaml"]
+    depends_on: ["WS.2", "WM.0"]
+    # depends_on WM.0: WM.2 authors flows/evaluate_multiprovider.yaml under the
+    # goal-seeker story WM.0 owns (scope overlap → must chain).
+    # depends_on WS.2: the real fix site (internal/host/agents.go applyProvider,
+    # internal/app/types.go ProviderDecl, internal/host/agent_decide.go) is the same
+    # surface WS.1->WS.2 reshape; sequencing WM.2 after WS.2 avoids a real merge hazard,
+    # not just the disjoint-scope lint. Live decide-gate stays degraded-but-functional
+    # (cf299206) until then; the interim unblock is pinning the evaluator to model: opus
+    # (bare claude backend serves it) — see stories/goal-seeker/app.yaml.
+    acceptance:
+      - "a named `providers:` entry can declare a `backend:` (claude|codex|copilot) alongside model/effort/env"
+      - "a single host.agent.decide invoke's `with: { provider: <name> }` routes THAT call to the named provider's backend, independent of the session's active harness profile — the evaluate decide-gate can run on opus (claude) or gpt-5.5 high (codex) per-gate"
+      - "a replay flow (stories/goal-seeker/flows/evaluate_multiprovider.yaml) drives two decide invokes under two different provider overrides and asserts the journaled model/backend differ accordingly, with no live LLM call"
+    gate:
+      class: "G-LIVE+REPLAY"
+      red_now: "host.Provider / app.ProviderDecl carry only {Model, Effort, Env} — no Backend field (internal/host/agents.go:114, internal/app/types.go:184); the CLI backend is resolved once per session dispatch (internal/orchestrator/host_dispatch.go:126-132), not per-call, so no host.agent.decide invoke can pin a different backend than the session's; flows/evaluate_multiprovider.yaml does not exist"
+      green_when: "the replay flow exercises two decide invokes under two provider overrides (one backend: claude, one backend: codex) and the journaled per-call model differs accordingly with no live LLM call"
+      replay_cmd: "kitsoki test flows stories/goal-seeker/app.yaml --flows stories/goal-seeker/flows/evaluate_multiprovider.yaml"
+    agent_brief: >
+      Add a Backend field to host.Provider / app.ProviderDecl (yaml `backend:`) and
+      wire it through applyProvider (internal/host/agents.go) so a per-invoke
+      `with: { provider: <name> }` on host.agent.decide can install a different CLI
+      backend (WithAgentBackendNamed) than the session's active harness profile,
+      independent of the operator's session-wide selection. Also wire the field through
+      providersForContext (internal/orchestrator/orchestrator.go). Author
+      flows/evaluate_multiprovider.yaml as a no-LLM replay flow proving two decide calls
+      resolve to two different backends/models (stub the CLI exec at the backend-runner
+      boundary; assert via the agent.decide.complete journal that already stamps model).
+      Do NOT wire a "second opinion on done" re-ask loop in this change — that's a
+      follow-up once the override plumbing lands; keep this slice to the override
+      mechanism + the flow.
+
+  - id: "2.7"
+    wall: WM
+    goal_ref: [G2, G6]
+    title: MCP session.new can drive host.starlark.run stories (issue #37)
+    kind: runtime
+    pipeline: bugfix
+    scope: ["internal/mcp/studio/session_tools.go", "internal/mcp/studio/app_dir.go"]
+    depends_on: []
+    acceptance:
+      - "an MCP-driven session can run a story whose rooms call host.starlark.run"
+      - "KITSOKI_APP_DIR is published to the session so relative .star paths resolve"
+    gate:
+      class: G-GOTEST
+      red_now: "MCP session.new leaves KITSOKI_APP_DIR unpublished; starlark stories error under the driver"
+      green_when: "a studio-MCP test drives a starlark-backed story room to completion"
+      cmd: "go test ./internal/mcp/studio/..."
+    agent_brief: >
+      Fix issue #37: the studio MCP session runner does not publish KITSOKI_APP_DIR,
+      so host.starlark.run can't resolve relative script paths under an MCP-driven
+      session. Publish the app dir on session.new; add a studio-MCP test that drives
+      a starlark room. This unblocks the kitsoki-mcp-driver working most stories.
+
+  - id: "2.1"
+    wall: WM
+    goal_ref: [G2]
+    title: Imported base-story prompt_path resolves correctly live (issue #32)
+    kind: runtime
+    pipeline: bugfix
+    scope: ["internal/app/imports.go"]
+    depends_on: []
+    acceptance:
+      - "a dev-story imported room's prompt_path resolves against the base-story dir live, not the instance dir"
+      - "a live-replay flow reproduces the old failure RED and the fix GREEN"
+    gate:
+      class: "G-LIVE+REPLAY"
+      red_now: "imported prompt_path resolves to the wrong root live; dev-story can't run live on a foreign checkout"
+      green_when: "recorded replay flow of a dev-story imported room passes; live acceptance capture archived"
+      replay_cmd: "kitsoki test flows stories/dev-story/app.yaml --flows stories/dev-story/flows/imported_prompt_path.yaml"
+    agent_brief: >
+      Fix issue #32: imported base-story prompt_path resolution uses the wrong root
+      under live dispatch, breaking dev-story on foreign repos. Fix the resolver in
+      imports.go; record a replay cassette of an imported room so CI gates without LLM.
+
+  - id: "2.2"
+    wall: WM
+    goal_ref: [G2]
+    title: Headless drive can use harness profiles (issue #30)
+    kind: runtime
+    pipeline: bugfix
+    scope: ["internal/harness/**"]
+    depends_on: []
+    acceptance:
+      - "a headless `kitsoki` drive selects a harness profile (synthetic/live) as an interactive run does"
+      - "a flow asserts profile selection under headless dispatch"
+    gate:
+      class: G-GOTEST
+      red_now: "headless drive ignores the harness profile; the autonomous loop can't pick a provider"
+      green_when: "go test asserts the profile is honored headless"
+      cmd: "go test ./internal/harness/..."
+    agent_brief: >
+      Fix issue #30 so headless / non-interactive drives honor the harness profile.
+      This is required for `/goal` workers to run providers non-interactively.
+
+  - id: "2.8"
+    wall: WM
+    goal_ref: [G2]
+    title: Onboard / target a repo other than the current checkout
+    demo_video: "(G2) — point kitsoki at a foreign repo path and watch it profile + onboard it"
+    prior_work: "SUBSTANTIALLY DONE on branch fix-onboarding-defaults (d776e78d target slot on go_init; 9d8a5607 reject invalid targets; init_missing_target flow). On merge, verify --expect green → mark integrated, don't redispatch."
+    kind: runtime
+    pipeline: bugfix
+    scope: ["internal/project/**", "stories/dev-story/rooms/init.yaml"]
+    depends_on: []
+    acceptance:
+      - "kitsoki can onboard and target a repo path other than cwd (close the external-project-targeting tail)"
+      - "a smoke run targets a scratch repo and profiles it"
+    gate:
+      class: G-SMOKE
+      red_now: "targeting a foreign repo is only partially wired (repo_root passthrough is forward-compat)"
+      green_when: "a smoke test onboards a scratch repo at an explicit path"
+      cmd: "scripts/smoke-target-foreign-repo.sh"
+    agent_brief: >
+      Close the external-project-targeting tail: let a stranger point kitsoki at a
+      repo other than the checkout. See docs/proposals/external-project-targeting.md.
+
+  - id: "WM.3"
+    wall: WM
+    goal_ref: [G6]
+    title: Deterministic PM deck hierarchy — exec summary → per-unit decks → artifacts
+    kind: story
+    pipeline: implementation
+    depends_on: ["WM.0"]
+    scope: ["stories/goal-seeker/rooms/report.yaml", "stories/goal-seeker/scripts/report_deck.star", "stories/goal-seeker/flows/report_deck.yaml"]
+    acceptance:
+      - "EVERY unit of work (each integrated change) emits a focused summary doc (.artifacts/goal/<slug>/changes/<id>.md) + a per-change slidey deck, built DETERMINISTICALLY from that change's ledger row + trace (host.starlark.run builds the spec; no LLM)"
+      - "an OVERALL EXECUTIVE SUMMARY deck is the project-management top view: goal criteria G1–G6 status, per-wall progress, per-change state·gate·latest-verdict — refreshed every cycle, redeployed to ONE stable bundle/URL (running status, not a new file per turn)"
+      - "the exec summary is NAVIGABLE: each per-change row LINKS to that change's own deck, which in turn LINKS to the real artifacts (trace, git show <sha>, gate cmd, worktree, log line) — the user clicks down the hierarchy, nothing is inlined"
+      - "the whole hierarchy is deterministically managed: rebuildable from ledger+log at any time, no LLM in the PM structure"
+    gate:
+      class: G-FLOW
+      red_now: "the goal-seeker has no report surface; status lives only in log.jsonl/ledger.json — not navigable, not PM-legible"
+      green_when: "a flow drives two cycles + one integration and asserts (a) a per-change deck+doc exists for the integrated change, (b) the exec summary links to it, (c) it links to the artifacts — all with no LLM call"
+      cmd: "kitsoki test flows stories/goal-seeker/app.yaml --flows stories/goal-seeker/flows/report_deck.yaml"
+    agent_brief: >
+      Build the goal-seeker's reporting as a DETERMINISTIC PM DECK HIERARCHY (Brad's
+      project-management view). Three levels, all built via host.starlark.run from
+      ledger+log+trace (like the bug-report deck), rendered/bundled via the slidey MCP,
+      NO LLM: (1) per-change — every integrated change emits a focused summary doc +
+      its own slidey deck; (2) exec summary — one stable bundle refreshed each cycle
+      showing G1–G6 status, per-wall progress, and a per-change table; (3) navigation —
+      the exec summary links DOWN to each change deck, which links DOWN to the real
+      artifacts. Summary+pointer discipline throughout: click to navigate, never inline.
+      This is the same discipline as the evaluator preamble, applied to reporting.
+
+  - id: "Z.0"
+    wall: WZ
+    goal_ref: [G5, G6]
+    title: End-of-goal retrospective case-study review (closeout, trackable)
+    demo_video: "closeout tour — walk the case-study: per-wall what-changed, the cost result, the trained-process story"
+    kind: docs
+    pipeline: implementation
+    depends_on: ["WM.0", "WM.3", "WS.4", "WB.5", "WP.3"]
+    scope: ["docs/case-studies/generalized-usage.md", "stories/goal-seeker/rooms/retrospective.yaml", "stories/goal-seeker/scripts/retrospective.star"]
+    acceptance:
+      - "when the goal reaches verdict=done, the goal-seeker runs a `retrospective` closeout room that produces a CASE-STUDY style review (docs/case-studies/generalized-usage.md) + a retrospective slidey deck linked from the exec summary"
+      - "the case-study is evidence-backed: what changed per wall, outcomes, cost (per-story cost tracking), what the pipeline got right/wrong, friction findings, and the story/prompt hardening shipped — every claim links to its trace/change deck"
+      - "this item is TRACKED here so it is not skipped at the end; the closeout gate is not satisfied until the case-study + deck exist"
+    gate:
+      class: G-FLOW
+      red_now: "no closeout retrospective exists; a finished goal would leave no case-study, only scattered traces"
+      green_when: "a flow warps the goal-seeker to an all-integrated state, drives the done→retrospective arc, and asserts the case-study doc + deck are produced and linked from the exec summary (no LLM in the deterministic assembly; any narrative synthesis is a single gated decide, cassette-backed)"
+      cmd: "kitsoki test flows stories/goal-seeker/app.yaml --flows stories/goal-seeker/flows/retrospective.yaml"
+    agent_brief: >
+      Add the closeout retrospective to the goal-seeker. On verdict=done, route to a
+      `retrospective` room that assembles a CASE-STUDY review (docs/case-studies/, the
+      same genre as bug-fix.md): per-wall what-changed, DORA-style outcomes + cost,
+      pipeline strengths/weaknesses, friction findings, and the story hardening shipped
+      — each claim linking to its change deck / trace. Deterministic assembly via
+      host.starlark.run from the ledger/log; if a narrative synthesis pass is wanted it
+      is ONE gated host.oracle.decide (cassette-backed in tests, never auto-LLM). Link
+      the retrospective deck from the exec summary as the closeout artifact. Keep this
+      change tracked so the retro is guaranteed, not an afterthought.
+
+  - id: "WM.6"
+    wall: WM
+    goal_ref: [G5, G6]
+    title: Decomposition graph as a shared, schema-pinned first-class artifact (names the shape; defers the runtime)
+    kind: docs
+    pipeline: implementation
+    depends_on: ["WM.0"]
+    scope: ["docs/schemas/decomposition-graph.schema.json", "docs/architecture/decomposition-graph.md", "tools/validate-decomposition-graph.py", "stories/deliver/testdata/two_briefs*.yaml"]
+    acceptance:
+      - "the decomposition node schema (id/wall/goal_ref/gate{class,red_now,green_when,cmd|replay_cmd}/scope/depends_on/acceptance/agent_brief) is a versioned, JSON-Schema-pinned artifact that BOTH goal.py's lint AND stories/deliver|decompose's decomposition lint validate against — one schema, two consumers (unification proven by a shared CONTRACT, not a shared runtime)"
+      - "docs/architecture/decomposition-graph.md names the two-graph model ONCE (acyclic depends_on DAG + cyclic process graph + goal_ref traceability edges) and reserves but EXPLICITLY DEFERS impact-analysis/dirty-edges (supersedes/dirtied_by), artifact-versioning, and the decompose/story-forge/dynamic-workflow runtime unification to named follow-on proposals — no build"
+      - "a lint asserts this goal's decomposition.yaml AND stories/deliver's manifest both validate against the shared schema"
+    gate:
+      class: G-LINT
+      red_now: "the decomposition shape is duplicated across goal.py, work-decomposition.json, and deliver with no shared schema; the two-graph model is described only in .context/ transients"
+      green_when: "the shared schema validates both manifests, rejects a deliberate cyclic manifest, and the architecture doc exists with the deferrals stated"
+      cmd: "python3 tools/validate-decomposition-graph.py docs/goals/generalized-usage/decomposition.yaml stories/deliver/testdata/two_briefs.yaml && ! python3 tools/validate-decomposition-graph.py stories/deliver/testdata/two_briefs_cycle.yaml && test -f docs/architecture/decomposition-graph.md"
+    agent_brief: >
+      Make the decomposition-graph SHAPE first-class WITHOUT building a new runtime.
+      (1) Pin a versioned JSON-Schema for the change-node (the fields goal.py lints +
+      work-decomposition's decomposition.json already share); make both goal.py's lint
+      and stories/deliver|decompose validate against it — one schema, two consumers.
+      (2) Write docs/architecture/decomposition-graph.md naming the two-graph model once
+      (acyclic depends_on DAG vs cyclic process graph vs goal_ref traceability), and
+      EXPLICITLY DEFER impact-analysis (§4 CIA / dirty-edges), artifact-versioning, and
+      the decompose/story-forge/dynamic-workflow unification to named follow-on proposals.
+      This banks the cheap unification down-payment (a shared contract + an exemplar) so
+      the later first-class extraction has proven ground — it does NOT build the runtime,
+      CIA, or versioned provenance now. See the Opus plan-as-graph review in .context.
+
+  - id: "WM.7"
+    wall: WM
+    goal_ref: [G5, G6]
+    title: In-flight decomposition update as a change-managed transaction
+    kind: story
+    pipeline: implementation
+    prior_work: "Builds on WM.6 (pinned decomposition-graph schema) + docs/proposals/work-decomposition.md (the discovery -> agent.decide brief-manifest -> deterministic lint -> adversarial-judge shape, reused here as the WRITE seam for plan DELTAS, not just initial decomposition). See .context/plan-as-graph-decision.md (deferred: full unified runtime + impact-analysis) and .context/managed-inflight-plan-update.md (this change's spec) — the WS+WP fold-in done by hand in this same session is the golden delta corpus."
+    scope: ["tools/decomposition-update/**", "stories/decompose-update/**"]
+    depends_on: ["WM.6"]
+    acceptance:
+      - "every decomposition update names a trigger + provenance (reviewed proposal / surfaced WM.x limitation / re-scope / defer / pull-forward) linking to its source (proposal doc, trace id, or log line) — no anonymous edits"
+      - "the transaction validates a proposed delta against the WM.6-pinned decomposition-graph schema PLUS the full structural lint (acyclic depends_on DAG, globally disjoint-or-chained scope, goal_ref in GOAL.md's criteria, known gate.class, a runnable RED-first gate present) and REJECTS a bad delta (cycle / scope overlap / missing RED gate / dangling dep) before it is applied — RED-first for plan edits, mirroring RED-first for code"
+      - "an adversarial feasibility/completeness `agent.decide` reviews the delta, the same shape as work-decomposition.md's judge"
+      - "no-lost-work for the graph itself: the prior decomposition version is retained (versioned, never overwritten in place); a re-scope never orphans an in-flight change (a change already assigned/in_flight/verified keeps its ref + branch); deferrals park-with-ref, never delete"
+      - "a plan-evolution event (what changed, why, provenance link) is observable in the WM.3 PM decks + exec summary — never a silent YAML diff"
+      - "the golden delta corpus IS this session's own WS+WP fold-in: a flow replays 'add the WS wall' as an ACCEPTED delta, and a corrupted variant (injected cycle / scope overlap / missing RED gate) as a REJECTED delta"
+    gate:
+      class: G-FLOW
+      red_now: "the plan is updated today by dispatching an agent to hand-edit decomposition.yaml directly (this session's own WS/WP/WM.7 fold-in) — no trigger/provenance recording, no delta-lint gate, no adversarial review, no graph versioning, no observable plan-evolution event"
+      green_when: "a flow applies the 'add the WS wall' delta through the transaction and asserts lint-stays-green + provenance-recorded + prior-version-retained + no-in-flight-change-orphaned; a corrupted delta (injected cycle/scope-overlap/missing-gate) is rejected with no partial apply"
+      cmd: "kitsoki test flows stories/decompose-update/app.yaml --flows stories/decompose-update/flows/managed_delta.yaml"
+    agent_brief: >
+      Build the managed-update transaction for decomposition.yaml itself — the
+      write seam that replaces "dispatch an agent to hand-edit the YAML" (what
+      literally happened for WS/WP/WM.7 in this session) with a deterministic,
+      gated, traceable step. Compose, don't reinvent: reuse WM.6's pinned
+      schema + validator as the structural gate, and work-decomposition.md's
+      discovery -> agent.decide brief-manifest -> lint -> adversarial-judge
+      shape (stories/deliver's shipped pattern) as the review shape, applied to
+      a DELTA against an existing graph rather than a from-scratch manifest.
+      Required transaction steps, in order: (1) require trigger+provenance on
+      every delta; (2) validate the delta against the WM.6 schema + goal.py's
+      full lint (acyclic DAG / disjoint-or-chained scope / goal_ref valid /
+      known gate class / runnable RED-first gate) — reject on any failure, no
+      partial apply; (3) an adversarial agent.decide feasibility/completeness
+      review; (4) version the prior graph (never overwrite in place), and
+      refuse to orphan an in-flight change's ref/branch on re-scope — a
+      deferral parks-with-ref; (5) emit a plan-evolution event surfaced in
+      WM.3's exec summary. Flow-test the whole transaction with NO LLM
+      (agent.decide stubbed): replay this session's actual "add the WS wall"
+      delta as the accepted case, and a hand-corrupted variant (cycle /
+      overlapping scope / missing gate) as the rejected case — these are the
+      golden fixtures, not synthetic ones. Explicitly do NOT build the full
+      unified decompose/story-forge/dynamic-workflow runtime or
+      impact-analysis/dirty-edges traversal (WM.6's deferrals stand); this
+      change is only the managed-update transaction.
+
+  - id: "WM.8"
+    wall: WM
+    goal_ref: [G2, G6]
+    title: host.starlark.run's default fs-inspector root ignores KITSOKI_APP_DIR (MCP-driven flow suites fail off the worktree)
+    kind: runtime
+    pipeline: bugfix
+    prior_work: "Surfaced live (Cycle 2/3, .context/goal-seeker-fallback-log.md): the goal-seeker flow suite scores 1/9 via the studio MCP story.test {dir:.worktrees/...} but 9/9 via `kitsoki test flows` from the worktree root. Same KITSOKI_APP_DIR root as 2.7 (issue #37), but one layer lower and more general — the shared host.starlark.run adapter, so it fixes every cwd-detached story driver, not just MCP."
+    scope: ["internal/host/starlark_run.go"]
+    depends_on: []
+    acceptance:
+      - "when no world.workdir and no starlark_inspect_cassette are set, the production fs-inspector installed by host.starlark.run roots at KITSOKI_APP_DIR (when published) before falling back to the process cwd"
+      - "a story's flow suite driven via the MCP studio's story.test/story.turn from a worktree other than the server's own cwd resolves relative ctx.fs paths (e.g. goal_dir) against the target worktree, not the MCP server's checkout"
+    gate:
+      class: G-GOTEST
+      red_now: "internal/host/starlark_run.go's default-inspector fallback (the block right after \"Root at world.workdir when present, else the process cwd\") never references AppDirEnv/KITSOKI_APP_DIR — `grep -q AppDirEnv internal/host/starlark_run.go` fails today even though the sibling script-path resolution (~line 52) already consults it"
+      green_when: "the fallback consults KITSOKI_APP_DIR between world.workdir and os.Getwd(), proven by a new go test (TestStarlarkRunDefaultInspector_PrefersAppDir) AND by the grep; go test ./internal/host/... stays green"
+      cmd: "grep -q AppDirEnv internal/host/starlark_run.go && go test ./internal/host/..."
+    agent_brief: >
+      internal/host/starlark_run.go's default-inspector-injection block (~line 121)
+      falls back to os.Getwd() when world.workdir is unset, but never checks
+      KITSOKI_APP_DIR (AppDirEnv, agent_ask.go) first — even though the adjacent
+      script-path resolution in the same file already does. This makes any cwd-detached
+      driver of a story (MCP studio's story.test/story.turn chief among them) resolve
+      ctx.fs.* against the driving PROCESS's cwd instead of the target app's directory,
+      producing spurious "file not found" failures (reproduced against stories/goal-seeker
+      driven from a worktree: gs_ledger.star can't find decomposition.yaml). Add a
+      KITSOKI_APP_DIR fallback between world.workdir and os.Getwd(); add a go test locking
+      the resolution order (AppDirEnv->dirA, process cwd->dirB, assert ctx.fs.exists
+      resolves against A). Ship the reproducer test + fix together (the grep half of the
+      gate keeps RED-first honest before the test exists — a bare go test would silently
+      stay green today and wrongly park this change, exactly what happened to 2.3).
+
+  - id: "WM.9"
+    wall: WM
+    goal_ref: [G6]
+    title: reset_log clears the whole derived work_dir, not just log.jsonl
+    kind: story
+    # implementation (not bugfix): this is an ENHANCEMENT (add clearing), not a
+    # reproducible runtime DEFECT — bugfix's reproduce-first phase can't anchor on it
+    # (live run Cycle 6: the reproducer flailed and latched onto an unrelated open_pr bug).
+    pipeline: implementation
+    prior_work: "Surfaced live (Cycle 3). Correction to the reported framing: ledger.json/preamble.md self-heal every evaluate pass (regenerated, never read as carried-forward state), so they don't 'poison the fold'; the real hazard is that reset_log wipes ALL log history including every `integrated` fact, so it must stay a TEST-FIXTURE-ONLY affordance. ctx.fs has no delete (by design), so 'clear' means neutralize-known-files."
+    scope: ["stories/goal-seeker/scripts/gs_init.star", "stories/goal-seeker/scripts/gs_init.star.yaml", "stories/goal-seeker/flows/reset_log_clears_derived_state.yaml"]
+    depends_on: ["WM.0"]
+    acceptance:
+      - "bootstrap's reset_log:true branch also resets ledger.json to the empty-ledger shape, blanks preamble.md, and clears every manifests/*.json left from a prior run — using only ctx.fs.write/ctx.fs.glob (no new Inspector capability)"
+      - "a flow seeds a prior run's derived files (a stale ledger.json, preamble.md, and a manifests/<id>.json), drives bootstrap with reset_log:true, and asserts all three are cleared before the next evaluate pass"
+      - "the doc comment on gs_init.star's reset branch states plainly that reset_log is TEST-FIXTURE-ONLY (log history — and therefore all `integrated` facts — is discarded), and that un-parking a specific stuck change in a real run must go through a targeted goal.py append/log entry, never reset_log"
+    gate:
+      class: G-FLOW
+      red_now: "gs_init.star's reset branch only truncates log.jsonl; ledger.json/preamble.md/manifests/*.json surviving from a prior run are left on disk untouched by reset"
+      green_when: "the flow seeds stale ledger.json/preamble.md/a manifests/*.json entry, drives bootstrap with reset_log:true, and asserts all are cleared"
+      cmd: "kitsoki test flows stories/goal-seeker/app.yaml --flows stories/goal-seeker/flows/reset_log_clears_derived_state.yaml"
+    agent_brief: >
+      Extend gs_init.star's reset branch (currently only ctx.fs.write(log_path, "")) to
+      also: ctx.fs.write the ledger.json path to the empty-ledger JSON shape, ctx.fs.write
+      preamble.md to "", and ctx.fs.glob("<work_dir>/manifests/*.json") then ctx.fs.write
+      each matched path to "{}" — ctx.fs has no delete, so this is "neutralize", not
+      "remove". Add flows/reset_log_clears_derived_state.yaml seeding the three stale
+      files first. IMPORTANT: also correct the surrounding comments — reset_log wipes ALL
+      log history (including every `integrated` fact), so it must stay a test-fixture-only
+      affordance; do not present it as safe to run against a real work_dir to clear a
+      stuck park. A surgical "unpark" log-append primitive is the right tool for that and
+      is out of scope here (flag as a possible WM.x follow-up if the live driver needs it).
+
+  # ---- WS — Sandbox / capability enforcement (clears G3) ----
+  # Lands docs/proposals/agent-capability-model.md (epic) + its 3 slices +
+  # conformance. Strict chain WS.1 -> WS.2 -> WS.3 -> WS.4 (each enforces what
+  # the prior slice named); all gates are no-LLM Go tests per the proposals'
+  # own "Verification: No LLM" sections.
+  - id: "WS.1"
+    wall: WS
+    goal_ref: [G3]
+    title: Effect taxonomy — pure|read|write|external + deterministic, for host calls and agents
+    kind: runtime
+    pipeline: implementation
+    prior_work: "Implements docs/proposals/effect-taxonomy.md (agent-capability-model.md slice 1)."
+    scope: ["internal/app/types.go", "internal/app/loader.go", "internal/host/agents.go", "internal/host/agent_task_replay.go", "internal/host/handlers.go", "internal/orchestrator/host_dispatch.go", "internal/store/event.go"]
+    depends_on: []
+    acceptance:
+      - "an `effect` (pure|read|write|external) + `deterministic` (bool) pair classifies any HostInterfaceOp/builtin verb and any agent; an agent's class is the join over its tool surface"
+      - "load-time hard-fail: `effect: read`/`pure` declared on an agent/op whose tool surface includes a mutator/network tool is an error (the teeth the old boolean never had)"
+      - "a builtin classification table covers every registered verb (host.git/gh/local classify per-op); a coverage test fails if a new verb ships unclassified"
+      - "`external_side_effect: bool` becomes a deprecated alias (warn-line) mapped by tool surface; the nine in-repo agent declarations migrate behavior-preserving (all run via task, where write and the old false both yield Mode A)"
+      - "the resolved `effect`/`deterministic` are recorded on Host* events (HostInvoked/HostDispatched/HostReturned) so a trace is self-describing without re-deriving from the story"
+    gate:
+      class: G-GOTEST
+      red_now: "side-effect nature is an overloaded `external_side_effect: bool` read two incompatible ways; host calls carry no classification"
+      green_when: "go test ./internal/app/... ./internal/host/... is green: effect-join over a tool surface, load-time hard-fail when effect:read/pure holds a mutator/network tool, builtin-verb classification coverage, and the nine agent declarations migrate behavior-preservingly"
+      cmd: "go test ./internal/app/... ./internal/host/..."
+    agent_brief: >
+      Implement effect-taxonomy.md (slice 1 of agent-capability-model.md). Add
+      `effect`/`deterministic` fields to HostInterfaceOp + the agent decl
+      (types.go); rewrite inferExternalSideEffect (loader.go:589) to compute the
+      class from the tool surface (Write/Edit-aware, not just WebFetch); add the
+      load-time hard-fail (read/pure + mutator/network tool = error) and the
+      warn-on-disagreement check (loader.go:1559 pattern); add the builtin
+      classification table in handlers.go with a completeness test; record
+      effect/deterministic on Host* events at host_dispatch.go:187 and
+      event.go:50. Keep `external_side_effect:` as a one-release deprecated
+      alias. Table-driven Go unit tests only (internal/app, internal/host) —
+      no LLM. On ship: migrate the nine agents to `effect:`, update
+      docs/architecture/hosts.md (per-verb effect table), docs/stories/state-machine.md,
+      docs/tracing/trace-format.md, then trim/delete effect-taxonomy.md per WP.1.
+
+  - id: "WS.2"
+    wall: WS
+    goal_ref: [G3]
+    title: Toolboxes + one enforcement policy for ask/decide/converse/task
+    kind: runtime
+    pipeline: implementation
+    prior_work: "Implements agent-capability-model.md slice 2; shipped docs live in docs/architecture/hosts.md and docs/stories/state-machine.md."
+    scope: ["internal/app/types.go", "internal/app/loader.go", "internal/host/agents.go", "internal/host/agent_ask.go", "internal/host/agent_decide.go", "internal/host/agent_task.go"]
+    depends_on: ["WS.1"]
+    acceptance:
+      - "a top-level `toolboxes:` map names a reusable tool set (+ optional asserted `effect:`); an agent references it via `toolbox:` with optional `tools_add:`/`tools_remove:` specialization; `toolbox:`+`tools:` on one agent is a load error"
+      - "one `enforceToolbox(agent) -> {cliMode, allowed[], denied[]}` function, derived purely from the WS.1 effect class, is called by ALL FOUR agent handlers (ask, decide, converse, task) — the private `mutationTools` deny set, `converseToolPolicy`'s read-only branch, and task's hardcoded `bypassPermissions` are deleted in favor of it"
+      - "behavior-preserving: ask/decide's deny set is unchanged (their class is `read`, no mutator in surface); task's tool-layer allowlist stays permissive pre-sandbox (its class is `write`, confinement is WS.3, opt-in)"
+      - "the resolved toolbox name + allowed/denied sets are recorded on the agent-invoke event — the exact data WS.4's conformance check reads"
+    gate:
+      class: G-GOTEST
+      red_now: "ask/decide/converse/task enforce tool policy via three disconnected ad-hoc mechanisms (a hardcoded mutationTools deny set, converseToolPolicy's read-only branch gated on the overloaded boolean, and task's unrestricted bypassPermissions) with no shared model"
+      green_when: "an enforceToolbox table test ({pure,read,write,external} x {ask,decide,converse,task}) is green and a behavior-preserving snapshot proves the unified policy reproduces each verb's current effective allowlist"
+      cmd: "go test ./internal/app/... ./internal/host/..."
+    agent_brief: >
+      Implement agent-capability-model.md slice 2. Add `Toolboxes` top-level
+      map + `Toolbox`/`ToolsAdd`/`ToolsRemove` agent fields (types.go); resolve
+      toolbox in effectiveTools (agents.go:144, precedence: named box ->
+      tools_add/remove -> per-call tools: override, unchanged); generalize
+      converseToolPolicy (agents.go:215) into enforceToolbox keyed on the WS.1
+      effect class; route agent_ask.go:42, agent_decide.go:42, agent_task.go:191
+      through it, deleting their private paths. Load invariants: undeclared-box
+      ref, toolbox+tools clash, box effect-assertion vs join mismatch (hard
+      error), write/external toolbox on a task with no sandbox: (warn, points
+      at WS.3). Prove behavior-preservation by snapshotting each verb's current
+      allowlist before/after. No LLM — pure table-driven Go tests. On ship:
+      optionally dedupe the four read-only judge/extract agents onto a shared
+      `read_only` box; update docs/stories/state-machine.md + hosts.md; trim/delete
+      the shipped slice proposal per WP.1.
+
+  - id: "WS.3"
+    wall: WS
+    goal_ref: [G3, G6]
+    title: "Secure agent runtime — supervised backend + sandbox: vocabulary + dogfooded on the goal-seeker's own worker dispatch"
+    demo_video: "FLAGSHIP (G3) — an agent confined by sandbox: attempts a repo write outside its allowlist and is refused/degrades-loudly; the trace proves the box held"
+    kind: runtime
+    pipeline: implementation
+    critical: true
+    prior_work: "Implements docs/proposals/task-fs-sandbox.md (agent-capability-model.md slice 3)."
+    scope: ["internal/host/agentruntime/**", "internal/host/agent_runner.go", "internal/host/agent_converse.go"]
+    depends_on: ["WS.2"]
+    acceptance:
+      - "internal/host/agentruntime defines the Runtime interface, Probe(ctx) Capabilities, Launch(ctx, LaunchSpec) (*Running, AppliedPolicy, error), a backend registry selected by `sandbox.min_strength`, and a fake backend for tests"
+      - "the `supervised` backend (the shippable floor, all platforms) is implemented and tested: process-group launch + whole-tree kill on timeout/cancel, env allowlist instead of ambient shell state, temporary HOME/XDG/cache, setrlimit where available, final diff capture"
+      - "`sandbox:` (min_strength/repo/rw/hidden/network/resources/degrade) parses with loader invariants (known min_strength, non-empty templated rw/hidden paths, degrade is fail|warn)"
+      - "`agent.runtime.start`/`agent.runtime.end` events record backend/strength/policy/degraded[] and exit/resource/kill info; a degraded start (min_strength unmet) never looks like a confined run in the trace"
+      - "DOGFOOD (critical): the goal-seeker's own worker dispatch call site (WM.5's dispatch_pool) adopts `sandbox:` + `effect: write` for its live worker launches — a real risky write-agent call site, not a toy — and a trace from that call site proves the box held (declared rw paths succeed, repo-outside writes are denied/degrade loudly)"
+    gate:
+      class: G-GOTEST
+      red_now: "write/external agents run unconfined; `write_mode: read_only` is story-policy, not a runtime boundary"
+      green_when: "the supervised-backend test suite (env allowlist, temp HOME/XDG, timeout+process-tree kill, rlimits) is green; sandbox: parsing + agent.runtime.start/end events are asserted; a degraded-start case fires when no backend satisfies min_strength; a fake-agent test on the goal-seeker's adopted call site proves declared-writes-succeed / repo-writes-denied"
+      cmd: "go test ./internal/host/agentruntime/... ./internal/host/..."
+    agent_brief: >
+      Implement task-fs-sandbox.md (slice 3), scoped to Phase 1 (runtime
+      substrate) + the `supervised` backend — Landlock/macOS backends are
+      explicitly follow-ons per the proposal's own phasing (Phase 2/4); do not
+      block this change on them. Build internal/host/agentruntime (interface +
+      registry + fake backend), wrap host.agent.task launches after backend
+      translation (agent_runner.go) and write-capable agent_converse.go
+      launches, and add `sandbox:` schema/types/load validation. All tests are
+      fake-agent-binary tests (attempts writes to repo/HOME/tmp/declared
+      workspace; a child-process sleep killed on cancel) per the proposal's own
+      "Verification: No LLM" section — never a live LLM. Then DOGFOOD: adopt
+      `sandbox: {min_strength: supervised, repo: read_only, rw: [...], effect:
+      write}` on the goal-seeker's own dispatch_pool worker-launch call site
+      (WM.5) — this is the proposal's Phase 5 "adopt in a high-risk write-agent
+      path," done on kitsoki's own build-the-plan mechanism. Produce the
+      flagship demo per WM.4: a fake/synthetic worker attempts a repo write
+      outside its allowlist and is refused, captured as a no-LLM rrweb/trace
+      tour. On ship: update docs/architecture/hosts.md, agent-backends.md,
+      stories/state-machine.md, authoring.md, the kitsoki-story-authoring skill;
+      trim task-fs-sandbox.md to the deferred Landlock/VM backends per WP.1.
+
+  - id: "WS.4"
+    wall: WS
+    goal_ref: [G3, G6]
+    title: Capability conformance lint — prove the box held (agent-contract-eval Layer 1b)
+    kind: tracing
+    pipeline: implementation
+    prior_work: "Implements the Conformance section of docs/proposals/agent-contract-eval.md (folded Layer-1 sibling of agent-capability-model.md)."
+    scope: ["internal/agenteval/**"]
+    depends_on: ["WS.1", "WS.2", "WS.3"]
+    acceptance:
+      - "an offline lint resolves a recorded trace's agent-invoke events to their WS.2 toolbox/WS.1 effect class and checks that the call's actual recorded tool uses never exceeded the declared toolbox/effect"
+      - "a RED fixture trace — one whose recorded tool use exceeds its declared toolbox/effect — makes the lint FAIL; a compliant trace passes. This is the RED-first proof the enforcement in WS.1-WS.3 actually works, not just that it compiles"
+      - "the lint runs with zero LLM calls (it is a pure trace-vs-contract comparison) and is wired to run in CI alongside the existing schema-conformance checks"
+    gate:
+      class: G-GOTEST
+      red_now: "no offline check exists that a recorded agent call's tool use stayed inside its declared toolbox/effect; an over-broad tool use in a trace goes undetected today"
+      green_when: "go test ./internal/agenteval/... is green: an in-box trace fixture passes the conformance check and an out-of-box RED fixture fails it"
+      cmd: "go test ./internal/agenteval/..."
+    agent_brief: >
+      Implement the Conformance section of agent-contract-eval.md as a new
+      Layer-1 sibling to its existing schema-conformance check, reading the
+      toolbox name + effect class WS.2 recorded on the agent-invoke event.
+      Build it as internal/agenteval/conformance: given a trace, for each
+      agent-invoke event resolve its declared toolbox/effect and check every
+      subsequent tool-use event attributed to that call stayed within it.
+      Author BOTH a compliant fixture trace and a deliberately-broken one (a
+      recorded tool use outside the declared toolbox) as golden test data —
+      the RED fixture is the proof this whole epic's enforcement has teeth, not
+      just that it type-checks. No LLM — this is pure trace analysis. On ship:
+      cross-reference from docs/tracing/cassettes.md and agent-contract-eval.md
+      (trim per WP.1, this proposal stays open for its other remaining work).
+
+  # ---- WB — Cost-Efficiency Benchmark (CRITICAL; the proof of G4/G5) ----
+  # Source protocol: .context/cost-efficiency-benchmark-plan.md (M0-M5, H1-H4).
+  # Research-grade: pre-registered hypotheses, frozen corpus + hidden oracles,
+  # strong baseline, held-out confirmation. Its case-study + deck roll into the
+  # exec summary (WM.3) and feed the retrospective (Z.0) and the profit deck.
+  - id: "WB.0"
+    wall: WB
+    goal_ref: [G4, G5]
+    title: "M0 — commit the benchmark protocol; freeze hypotheses H1–H4 + success criteria"
+    kind: docs
+    pipeline: implementation
+    critical: true
+    depends_on: []
+    scope: ["docs/research/cost-efficiency-benchmark.md"]
+    acceptance:
+      - "the protocol (from .context/cost-efficiency-benchmark-plan.md) is committed to a durable home with hypotheses, metrics, and pre-registered success criteria FROZEN before any live spend"
+      - "cost-per-solve is the headline metric; held-out-only headline + full round disclosure are the anti-Goodhart defenses"
+    gate:
+      class: G-LINT
+      red_now: "the protocol lives only in .context (transient), unfrozen; live spend before freeze would be unfalsifiable"
+      green_when: "docs/research/cost-efficiency-benchmark.md exists with the frozen H1–H4 criteria + threats-to-validity"
+      cmd: "test -f docs/research/cost-efficiency-benchmark.md && grep -q 'held-out' docs/research/cost-efficiency-benchmark.md"
+    agent_brief: >
+      Promote .context/cost-efficiency-benchmark-plan.md to docs/research/ as the
+      committed, frozen protocol (M0). Freeze hypotheses H1–H4, the metric
+      definitions, and the success criteria. Nothing runs live before this is signed
+      off. This is the pre-registration that makes the whole study falsifiable.
+
+  - id: "WB.1"
+    wall: WB
+    goal_ref: [G4, G5]
+    title: "M1 — mine archetypes; freeze cost-bench corpus (RED/GREEN-verified, split)"
+    kind: tooling
+    pipeline: implementation
+    depends_on: ["WB.0"]
+    scope: ["tools/arena/corpus/**"]
+    acceptance:
+      - "archetypes.yaml (evidence-based, selection rule committed BEFORE task choice) + frozen cost-bench.manifest.yaml (~24–26 tasks over the 10-OSS corpus, each RED@baseline/GREEN@fix verified)"
+      - "stratified training/held-out split committed in the manifest; held-out oracles never read by patch authors"
+    gate:
+      class: "G-LIVE+REPLAY"
+      red_now: "no frozen corpus; task selection would be curated-to-flatter-kitsoki (selection-bias threat)"
+      green_when: "bench.py verify is green on every task (RED@baseline, GREEN@fix); the one schema-validated mining LLM pass is recorded; split frozen"
+      cmd: "python3 tools/arena/tests/validate_corpus.py tools/arena/corpus/cost-bench.manifest.yaml"
+      replay_cmd: "python3 tools/bugfix-bakeoff/external/bench.py verify tools/arena/corpus/cost-bench.manifest.yaml"
+    agent_brief: >
+      M1: mine real task archetypes from this repo's transcripts (tools/session-mining
+      steps A–F; ONE schema-constrained LLM pass), rank by worth-benchmarking score,
+      select 4–6; instantiate ~24–26 tasks against the 10-OSS corpus with hidden
+      deterministic oracles; verify RED/GREEN; freeze + stratified-split the manifest.
+
+  - id: "WB.2"
+    wall: WB
+    goal_ref: [G4, G6]
+    title: "M2 — land arena on main; paired-task plugin; no-LLM arm+score+rollup green"
+    kind: tooling
+    pipeline: implementation
+    depends_on: ["WB.0"]
+    scope: ["tools/arena/plugins/**", "tools/arena/specs/**", "tools/arena/tests/**", "tools/arena/lib/**"]
+    acceptance:
+      - "tools/arena is cherry-picked onto current main (not whole-branch merged); the `paired-task` plugin runs one task as N treatments (kitsoki / single-briefed / single-naive), pairs measured costs, applies the shared hidden oracle to every arm"
+      - "the whole enumerate→arm→score→aggregate→report pipeline runs GREEN on cassettes/fixtures in make test with ZERO live spend"
+    gate:
+      class: G-GOTEST
+      red_now: "arena is worktree-only (.worktrees/arena, PRs #57/#61 not in main HEAD); no paired-task plugin; no no-LLM harness gate"
+      green_when: "the paired-task pipeline (enumerate→arm→score→aggregate→report) runs green on fixtures with no LLM"
+      cmd: "python3 tools/arena/tests/run_no_llm.py"
+    agent_brief: >
+      M2: land tools/arena on main via cherry-pick (main moves fast — re-cut, don't
+      whole-branch merge). Build the paired-task plugin (image/drive_command/score),
+      the agentic-only `single-briefed`/`single-naive` executors, and encode the
+      container gotchas (IS_SANDBOX=1, codex env forwarding, --strict-mcp-config, score
+      exits 0 on any grade). Prove the whole pipeline no-LLM in make test before any spend.
+
+  - id: "WB.3"
+    wall: WB
+    goal_ref: [G4]
+    title: "M3 — pilot shakeout (12 cells): paired cost + oracle verdicts end-to-end"
+    kind: tooling
+    pipeline: implementation
+    depends_on: ["WB.1", "WB.2"]
+    scope: ["tools/arena/specs/cost-efficiency-pilot.yaml", "tools/arena/results/pilot/**"]
+    acceptance:
+      - "12-cell pilot (3 armed tasks × 2 treatments × 2 candidates × n=1) runs end-to-end on real containers via `arena run --live`, producing paired costs + oracle verdicts"
+    gate:
+      class: "G-LIVE+REPLAY"
+      red_now: "the paired plugin has never driven real containers end-to-end; unproven before the corpus-scale rounds"
+      green_when: "the pilot produces results/SCHEMA.md cell JSONs with paired costs + deterministic oracle verdicts; rollup regenerates offline"
+      replay_cmd: "python3 tools/arena/tests/run_no_llm.py --fixture tools/arena/results/pilot"
+    agent_brief: >
+      M3: run the 12-cell pilot shakeout (explicit --live, per-round sign-off) to prove
+      the paired-task plugin end-to-end on real containers before committing to
+      corpus-scale rounds. Costs dominated by the frontier agentic arm — that asymmetry
+      is itself a result.
+
+  - id: "WB.4"
+    wall: WB
+    goal_ref: [G4]
+    title: "M4 — training rounds 1..N (run → training packet → generic patches → version bump)"
+    kind: tooling
+    pipeline: implementation
+    depends_on: ["WB.3"]
+    scope: ["tools/arena/results/round-*/**", "stories/bench-bugfix/**", "stories/task-bakeoff/**"]
+    acceptance:
+      - "each round: no-LLM arm → live training-split matrix → deterministic score/aggregate → analysis gate; failed cells become a versioned training packet + GENERIC process patches (no overfit to run tasks), each with a no-LLM regression flow"
+      - "anti-overfit invariants held: tasks/oracles/split/metrics never change; held-out never run during training; baseline gets equal tuning budget (fairness control)"
+      - "the round-over-round curve (all rounds, incl. failures) is preserved — it IS the H3 trainability evidence"
+    gate:
+      class: "G-LIVE+REPLAY"
+      red_now: "no training loop has run; process trainability (H3) unproven"
+      green_when: "≥1 round produces a training packet + generic patches that improve the training split, gated by the §7.2 stop rule; ratchet suite (no-LLM flows) stays green"
+      replay_cmd: "kitsoki test flows stories/bench-bugfix/app.yaml"
+    agent_brief: >
+      M4: execute the round protocol (the training loop — the thesis). Per round: mine
+      failures into a taxonomy + training packet, patch ONLY story/prompt/routing/gate/
+      rung (never tasks/oracles/split), phrase patches generically (dogfood-marathon
+      discipline), land a no-LLM regression flow per patch, ratchet, bump process_version.
+      Stop per §7.2 (criteria met | R_max=5 | plateau). Disclose every round.
+
+  - id: "WB.5"
+    wall: WB
+    goal_ref: [G4, G5]
+    title: "M5 — held-out confirmation run + case study + deck; update profit scorecard"
+    demo_video: "FLAGSHIP (G4/G5) — the cost proof: a paired kitsoki-vs-agentic run tour + the confirmation scorecard; feeds the profit deck"
+    kind: docs
+    pipeline: implementation
+    critical: true
+    depends_on: ["WB.4"]
+    scope: ["docs/case-studies/cost-efficiency.md", "docs/decks/cost-efficiency.slidey.json"]
+    acceptance:
+      - "the frozen process runs the held-out split ONCE (all treatments, full candidate grid, n=3) — H1/H2 verdicts come from this run alone; H3 = training-curve improvement that persists held-out; H4 = the 5-op session experiment"
+      - "docs/case-studies/cost-efficiency.md (method, all rounds, confirmation, threats-to-validity, raw-data pointers) + a deck regenerated OFFLINE from cell JSONs; every figure traceable deck→rollup→cell→trace"
+      - "the profit deck scorecard is updated with the measured numbers (replacing qualitative cells); the deck links into the goal-seeker exec summary (WM.3)"
+    gate:
+      class: "G-LIVE+REPLAY"
+      red_now: "no held-out confirmation; the cost claim rests on the observational git-ops number, not a controlled same-task comparison"
+      green_when: "the held-out confirmation yields H1–H4 verdicts (reported whether met or not); case study + deck regenerate offline with zero re-spend; all figures traceable"
+      replay_cmd: "test -f docs/case-studies/cost-efficiency.md && test -f docs/decks/cost-efficiency.slidey.json"
+    agent_brief: >
+      M5: freeze the final process_version, run the held-out confirmation ONCE (the only
+      time held-out tasks execute), and produce the headline H1–H4 verdicts. Write the
+      case study (successor to git-ops-cost.md) + regenerate the deck offline; feed the
+      measured numbers into the profit scorecard. Report honestly whether each criterion
+      was met. Link the deck into the goal-seeker exec summary.
+
+  # ---- Tier-0 + install enablers (grouped for reading; the `wall:` field is
+  #      authoritative — most are W1 Install, but 0.5→W5 and 0.6→WH) ----
+  #  NOTE on IDs: change ids are the source-audit's tier numbers (0.1, 2.3, 4.3…),
+  #  kept STABLE so existing .context/ + GitHub-issue pointers stay valid; the `wall:`
+  #  field is the grouping, and 2.x ids carry their #issue in the title. Sort/read by
+  #  wall, not by id.
+  - id: "0.1"
+    wall: W1
+    goal_ref: [G1]
+    title: release.yml embeds stories/skills + smokes the built binary in a bare repo
+    demo_video: "FLAGSHIP (G1) — the stranger install: download the release binary → `kitsoki` in a foreign repo → onboarding profiles it, installs the toolkit, registers the MCP"
+    kind: runtime
+    pipeline: bugfix
+    critical: true
+    scope: [".github/workflows/release.yml", "scripts/smoke-release.sh"]
+    depends_on: []
+    acceptance:
+      - "release.yml runs `make embed-stories embed-skills` before cross-compile"
+      - "release smoke builds the binary, runs it in a scratch git repo, and asserts project-tools install + bare `kitsoki` onboarding succeed (no ErrNotStaged)"
+    gate:
+      class: G-SMOKE
+      red_now: "release smoke only checks version/--help; a released binary hits ErrNotStaged on the stranger path"
+      green_when: "the new smoke job goes green against a freshly built binary in a temp repo"
+      cmd: "scripts/smoke-release.sh"
+    agent_brief: >
+      The single highest-ROI change. Teach .github/workflows/release.yml to embed
+      stories+skills before cross-compile, and add a smoke script that runs the BUILT
+      binary in a scratch repo through `project-tools install` and bare onboarding.
+
+  - id: "0.3"
+    wall: W1
+    goal_ref: [G1]
+    title: get_started advertises only actions that exist
+    demo_video: "before/after — the first screen no longer advertises dead onboard/look actions"
+    kind: story
+    pipeline: bugfix
+    # scope fix (live run): the dev-story first screen is rooms/landing.yaml — there is no
+    # get_started.yaml room. "get_started" is the conceptual name; the actual quick-action
+    # advertising lives in landing.yaml.
+    scope: ["stories/dev-story/rooms/landing.yaml", "stories/dev-story/flows/get_started_actions.yaml"]
+    depends_on: []
+    acceptance:
+      - "the first screen no longer advertises the dead `onboard`/`look` actions"
+      - "a flow fixture asserts every advertised action resolves to a real intent"
+    gate:
+      class: G-FLOW
+      red_now: "get_started advertises `onboard` (missing) and `look` (rejected) — the literal first screen lies"
+      green_when: "a flow asserts advertised-action == existing-intent; goes green"
+      cmd: "kitsoki test flows stories/dev-story/app.yaml --flows stories/dev-story/flows/get_started_actions.yaml"
+    agent_brief: >
+      Fix the first-screen dead actions (product-journey-runlog): either implement or
+      stop advertising `onboard`/`look`. Add a flow that asserts advertised actions exist.
+
+  - id: "0.4"
+    wall: W1
+    goal_ref: [G1]
+    title: Actionable first-run message when no provider/key is present
+    demo_video: "before/after — no-provider first run shows an actionable message instead of a silent replay fallback"
+    kind: runtime
+    pipeline: bugfix
+    scope: ["cmd/kitsoki/main.go"]
+    depends_on: []
+    acceptance:
+      - "with neither claude CLI nor a key present, first run prints what's missing and what to do"
+      - "no silent replay fallback"
+    gate:
+      class: G-GOTEST
+      red_now: "main.go:870-879 falls back to replay silently when no provider is configured"
+      green_when: "a test asserts the actionable message on a no-provider first run"
+      cmd: "go test ./cmd/kitsoki/..."
+    agent_brief: >
+      Replace the silent replay fallback with an actionable no-provider message
+      (usability-audit). Say what's missing (claude CLI / API key) and how to fix it.
+
+  - id: "0.5"
+    wall: W5
+    goal_ref: [G5]
+    title: README maturity honesty (retire "PoC.")
+    kind: docs
+    pipeline: implementation
+    scope: ["README.md"]
+    depends_on: []
+    acceptance:
+      - "README Status reflects the download-and-onboard promise, not 'PoC.'"
+    gate:
+      class: G-LINT
+      red_now: "README Status says 'PoC.' while everything else promises a shipping product"
+      green_when: "a lint asserts README no longer states 'PoC.' as the status"
+      cmd: "! grep -qi 'status.*poc' README.md"
+    agent_brief: >
+      Replace the 'PoC.' status with an accurate maturity statement aligned to the goal.
+
+  - id: "0.6"
+    wall: WH
+    goal_ref: [G5]
+    title: prd-story demo runs stop polluting real docs/prd/; dedupe + delete dupes
+    kind: story
+    pipeline: bugfix
+    scope: ["stories/prd/app.yaml", "stories/prd/rooms/**"]
+    depends_on: []
+    acceptance:
+      - "prd demo runs target .artifacts/, not docs/prd/"
+      - "the publisher dedupes byte-identical output; the 12 duplicate docs/prd files are deleted"
+    gate:
+      class: G-FLOW
+      red_now: "stories/prd/app.yaml:160 publishes demo PRDs into real docs/prd/ (12 byte-identical dupes exist)"
+      green_when: "a flow asserts demo publish target is .artifacts/ and no dupe is emitted"
+      cmd: "kitsoki test flows stories/prd/app.yaml --flows stories/prd/flows/publish_target.yaml"
+    agent_brief: >
+      Redirect prd demo publish to .artifacts/, dedupe-on-identical in the publisher,
+      delete the 12 duplicate docs/prd/*.md. Add a flow asserting the target.
+
+  - id: "4.1"
+    wall: W1
+    goal_ref: [G1]
+    title: project-init |default expression load bug + loop hardening
+    prior_work: "PARTIAL on branch fix-onboarding-defaults — the project-init loop is hardened (project-init.md proposal deleted; init_apply.py +1239; many init_* flow fixtures). BUT that branch touches internal/app + the story, NOT internal/story/expr — the |default EXPR-engine load bug (this change's scope) may still be open. Re-verify the expr bug specifically after merge."
+    kind: runtime
+    pipeline: bugfix
+    scope: ["internal/expr/**"]
+    depends_on: []
+    acceptance:
+      - "the |default: expression loads correctly (no load-time error)"
+      - "the fragile project-init loop is hardened"
+    gate:
+      class: G-GOTEST
+      red_now: "the |default: expression fails to load (bf-default-expression-load-bug-reproduction)"
+      green_when: "go test reproduces the load bug RED then GREEN"
+      cmd: "go test ./internal/expr/..."
+    agent_brief: >
+      Fix the |default: expression load bug (see .context/bf-default-expression-load-bug-reproduction.md)
+      and harden the project-init loop (docs/proposals/project-init.md).
+
+  - id: "4.3"
+    wall: W1
+    goal_ref: [G1]
+    title: kitsoki doctor preflight + top-level init alias + tier the 46-command help
+    demo_video: "(G1) — run `kitsoki doctor` and see the provider/toolkit/MCP readiness report"
+    prior_work: "PARTIAL on branch fix-onboarding-defaults — a readiness verifier/review exists (b0cf28b2 generate readiness verifier; 84785895 readiness review action). Overlaps the doctor preflight; the standalone `kitsoki doctor` command + init alias + help tiering may still be open. Reconcile after merge."
+    kind: runtime
+    pipeline: implementation
+    scope: ["cmd/kitsoki/doctor.go", "cmd/kitsoki/help.go"]
+    depends_on: []
+    acceptance:
+      - "`kitsoki doctor` reports provider/toolkit/MCP readiness"
+      - "a top-level `init` alias exists; help groups the 46 commands into tiers"
+    gate:
+      class: G-SMOKE
+      red_now: "no doctor/preflight; 46 flat commands; no init alias for --help scanners"
+      green_when: "smoke runs `kitsoki doctor` and asserts a readiness report + tiered help"
+      cmd: "scripts/smoke-doctor.sh"
+    agent_brief: >
+      Add `kitsoki doctor` (provider/toolkit/MCP preflight), a top-level `init` alias,
+      and tier the CLI help. New files only — keep off main.go to stay scope-disjoint.
+
+  - id: "4.5"
+    wall: W1
+    goal_ref: [G1]
+    title: Onboarding runtime deps documented; Windows story decided
+    prior_work: "PARTIAL on branch fix-onboarding-defaults — stack detection done (Python/Go/Node package managers: c3738000, 5387c02b, 76b6103e) + getting-started/project-onboarding docs updated. BUT init logic is still Python (init_apply.py), so the Windows story (decision D4) is likely still open. Re-check the Windows note after merge."
+    kind: docs
+    pipeline: implementation
+    scope: ["docs/getting-started.md", "stories/dev-story/README.md"]
+    depends_on: []
+    acceptance:
+      - "the bash+python3 onboarding requirement is documented"
+      - "Windows onboarding is honestly marked (unsupported now, or ported) — no silent break"
+    gate:
+      class: G-LINT
+      red_now: "onboarding silently needs bash+python3 at runtime (kills the Windows binary), undocumented"
+      green_when: "a doc lint asserts the runtime-deps + Windows note are present"
+      cmd: "grep -q 'python3' docs/getting-started.md"
+    agent_brief: >
+      Document the bash+python3 onboarding runtime dependency and state the Windows
+      position honestly (decision D4 in the overview).
+
+  - id: "4.6"
+    wall: W1
+    goal_ref: [G1]
+    title: Lean build target for headless users (no pnpm/node when web unused)
+    kind: runtime
+    pipeline: implementation
+    scope: ["Makefile"]
+    depends_on: []
+    acceptance:
+      - "a headless build target skips pnpm/node when the web UI is not built"
+    gate:
+      class: G-SMOKE
+      red_now: "check-deps forces pnpm/node even for headless users"
+      green_when: "a smoke builds headless without node present"
+      cmd: "scripts/smoke-lean-build.sh"
+    agent_brief: >
+      Add a lean/headless build target that doesn't require pnpm/node (Makefile check-deps).
+
+  # ---- WP — Complete Package (every shipped change ships docs+demo+site, not
+  #      just code). goal_ref drawn from G5 (docs/site) and G6 (demo/replay) —
+  #      no new G-criteria invented. See definition_of_done above. ----
+  - id: "WP.1"
+    wall: WP
+    goal_ref: [G5]
+    title: Narrative-docs migration discipline lint (no shipped change leaves a stale proposal)
+    kind: docs
+    pipeline: implementation
+    scope: ["tools/lint-docs-migrated.py", "docs/goals/generalized-usage/docs-migration-index.md"]
+    depends_on: []
+    acceptance:
+      - "a lint script, given the shipped-change list (from the goal-seeker ledger or an explicit id list), checks for each proposal-driven change that its source docs/proposals/<x>.md is gone-or-trimmed (per docs/proposals/README.md's lifecycle) AND that an authoritative docs/** narrative page exists for the shipped capability"
+      - "a committed docs-migration-index.md maps each proposal-driven WS/WM/WB change to (a) its source proposal file and (b) its authoritative narrative-doc destination, so the lint has a ground truth to check against without guessing"
+      - "the lint has a RED fixture (a change marked shipped whose proposal is still present unedited and whose narrative doc is missing) that fails, and a GREEN fixture (proposal trimmed/deleted + doc present) that passes"
+    gate:
+      class: G-LINT
+      red_now: "no lint enforces that a shipped generalized-usage change trims/deletes its source proposal and lands a narrative doc; CLAUDE.md's rule ('move content to narrative docs and delete the proposal') is unchecked and easy to silently skip"
+      green_when: "python3 tools/lint-docs-migrated.py --goal-dir docs/goals/generalized-usage passes on the current (nothing-shipped-yet) state and its own RED/GREEN fixture pair proves it has teeth"
+      cmd: "python3 tools/lint-docs-migrated.py --goal-dir docs/goals/generalized-usage"
+    agent_brief: >
+      Write tools/lint-docs-migrated.py: given the goal-seeker's ledger (or a
+      passed-in shipped-id list, since WM.0 may not be live yet), for every
+      change carrying a `prior_work:` proposal citation, check (1) the cited
+      docs/proposals/*.md is deleted or its Status line shows the shipped
+      slice trimmed out, and (2) docs-migration-index.md's declared narrative-
+      doc destination exists and is non-stub. Author docs-migration-index.md
+      as the small ground-truth table (change id -> proposal path -> doc
+      destination) for the WS wall's four proposals to start. Prove the lint
+      has teeth with two fixtures: a RED one (stale proposal, missing doc) and
+      a GREEN one (trimmed proposal, doc present). No LLM — pure file-presence
+      + grep-shape checks.
+
+  - id: "WP.2"
+    wall: WP
+    goal_ref: [G5]
+    title: Feature-site + pitch truthful, positive-coverage update
+    kind: docs
+    pipeline: implementation
+    scope: ["features/**", "docs/decks/kitsoki-pitch.slidey.json", "tools/lint-site-coverage.py"]
+    depends_on: []
+    acceptance:
+      - "the kitsoki feature catalog (features/*.yaml, which drives tools/site + the pitch deck per docs/site/README.md's pipeline) and docs/decks/kitsoki-pitch.slidey.json reflect the shipped generalized-usage package — install/run/trust/afford/evaluate — truthfully: no untrue maturity claims (extends 0.5/W5's site-truthfulness honesty check)"
+      - "POSITIVE coverage, not just honesty: each shipped, user-facing generalized-usage capability that carries a `demo_video:` field (e.g. the stranger install 0.1, the goal-seeker WM.0, the sandboxed-agent WS.3) has a corresponding features/*.yaml entry and is referenced from the pitch deck — a stranger reading the site can see the capability exists"
+      - "a lint asserts both directions: no untrue-maturity-claim strings, and no demo_video-flagged shipped change missing from the feature catalog"
+      - "scope stays disjoint from change 0.5 (README.md) and any future W5 site-truthfulness item — this change owns the feature catalog + pitch deck only"
+    gate:
+      class: G-LINT
+      red_now: "the feature catalog + pitch deck predate the WM/WS/WB work; a stranger browsing the site sees no evidence the goal-seeker, the sandbox, or the cost-efficiency proof exist, and no lint checks for untrue maturity claims on the site (only README.md is checked, by 0.5)"
+      green_when: "python3 tools/lint-site-coverage.py passes: no untrue-maturity-claim strings in the site/pitch content, and every demo_video-flagged shipped change has a features/*.yaml entry + pitch-deck reference"
+      cmd: "python3 tools/lint-site-coverage.py"
+    agent_brief: >
+      Extend the W5 site-truthfulness idea (docs/site/README.md's pipeline:
+      features/<id>.yaml -> tools/site + docs/decks/kitsoki-pitch.slidey.json)
+      from honesty-only to POSITIVE coverage. Write tools/lint-site-coverage.py
+      checking (a) no untrue maturity-claim strings survive in the site/pitch
+      content (the honesty half, mirroring 0.5's README check) and (b) every
+      shipped, demo_video-flagged change has a features/*.yaml entry referenced
+      by the pitch deck (the coverage half). As shipped changes land (0.1,
+      WM.0, WS.3, WB.5, ...), author the corresponding features/*.yaml entries
+      and wire them into the pitch deck. Keep this change's scope to the
+      feature catalog + pitch deck only — do not touch README.md (0.5) or spill
+      into a future standalone W5 site-truthfulness item.
+
+  - id: "WP.3"
+    wall: WP
+    goal_ref: [G6]
+    title: Demo catalog completeness — every demo_video-flagged change has a produced clip
+    kind: docs
+    pipeline: implementation
+    scope: ["docs/goals/generalized-usage/video-catalog.md", "tools/lint-video-catalog.py"]
+    depends_on: ["WM.4"]
+    acceptance:
+      - "video-catalog.md (WM.4's authoritative list) enumerates EVERY change in decomposition.yaml carrying a `demo_video:` field, including the new WS.3 sandbox-confinement demo, with what each clip shows and which feed the WM.4 compendium"
+      - "a gate cross-checks decomposition.yaml's demo_video: fields against video-catalog.md's rows AND against an actually-produced clip artifact path for each row — a flagged change with no catalog row, or a catalog row with no produced clip, fails"
+      - "scope stays chained to WM.4 via depends_on (both changes touch video-catalog.md; sequenced, not concurrently owned) rather than duplicating the file's ownership claim"
+    gate:
+      class: G-LINT
+      red_now: "video-catalog.md either doesn't exist yet or isn't cross-checked against decomposition.yaml's demo_video: fields; nothing asserts a produced clip exists for each flagged change"
+      green_when: "python3 tools/lint-video-catalog.py --goal-dir docs/goals/generalized-usage passes: every demo_video-flagged change has a catalog row and a produced-clip path that exists"
+      cmd: "python3 tools/lint-video-catalog.py --goal-dir docs/goals/generalized-usage"
+    agent_brief: >
+      Write tools/lint-video-catalog.py: parse decomposition.yaml for every
+      change with a `demo_video:` field, parse WM.4's video-catalog.md for its
+      enumerated rows, and fail if any flagged change is missing a row or if a
+      row's produced-clip path doesn't exist on disk. This rides on top of
+      WM.4 (which owns producing video-catalog.md and the clips themselves) —
+      this change is the completeness GATE on that catalog, kept on the
+      depends_on chain with WM.4 since both touch the same file. Include the
+      new WS.3 sandbox-confinement demo explicitly in the fixture used to test
+      the lint. No LLM — pure YAML/Markdown parsing + file-existence checks.

@@ -1,0 +1,46 @@
+kind: inspect_cassette
+interactions:
+  - op: read
+    target: .artifacts/punch-list/report-fixture.state.json
+    out: |
+      {
+        "manifest_path": "stories/punch-list/testdata/two_items.yaml",
+        "items": [
+          {
+            "id": "validate-punch-list",
+            "status": "passed",
+            "story": "stories/punch-list/app.yaml",
+            "trace_path": ".artifacts/punch-list/traces/validate-punch-list.jsonl"
+          },
+          {
+            "id": "policy-demo",
+            "status": "failed",
+            "story": "stories/punch-list/app.yaml",
+            "trace_path": ".artifacts/punch-list/traces/policy-demo.jsonl",
+            "last_error": "policy | failed"
+          }
+        ],
+        "results": {
+          "items": [
+            {
+              "id": "validate-punch-list",
+              "status": "passed",
+              "story": "stories/punch-list/app.yaml",
+              "trace_path": ".artifacts/punch-list/traces/validate-punch-list.jsonl",
+              "summary": "1/1 deterministic checks passed"
+            }
+          ]
+        }
+      }
+  - op: write
+    target: .artifacts/punch-list/report.md
+    out: |
+      # Punch-list Report
+
+      Manifest: `stories/punch-list/testdata/two_items.yaml`
+      Summary: 1 passed, 0 partial, 1 failed, 0 skipped, 0 pending
+
+      | Item | Status | Story | Trace | Summary |
+      |---|---:|---|---|---|
+      | validate-punch-list | passed | `stories/punch-list/app.yaml` | `.artifacts/punch-list/traces/validate-punch-list.jsonl` | 1/1 deterministic checks passed |
+      | policy-demo | failed | `stories/punch-list/app.yaml` | `.artifacts/punch-list/traces/policy-demo.jsonl` | policy \| failed |

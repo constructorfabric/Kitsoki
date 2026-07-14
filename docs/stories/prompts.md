@@ -241,6 +241,34 @@ to change:
 A prompt with no `spec_` blocks is still valid — it simply exposes no
 specialization surface and behaves exactly as before.
 
+## Long-running agent handoffs: report first, return a pointer
+
+An agent that edits code, runs a repair loop, authors a multi-file artifact, or
+otherwise spends a long time in a mutable workspace must not be asked to put
+its full narrative into a required field in its final structured response. That
+last response is the least reliable point to require a large blob: it is easy
+to truncate, loses useful evidence if the agent dies, and makes the handoff
+hard to inspect while work is still in progress.
+
+Use this contract instead:
+
+1. Tell the agent its report location before it begins, under the run's
+   `.artifacts/<story-or-run>/` directory.
+2. Tell it to create the report after the first useful diagnosis and update it
+   as it edits, tests, or encounters a blocker — not just at final submission.
+3. Have the final schema carry a `report_path` (required for new write-capable
+   flows) plus small typed facts such as status, changed files, commands, and
+   blockers. Keep any `summary_markdown` to a one- or two-sentence checkpoint
+   note; it must never be the only durable report.
+4. Pass the path to downstream agents and show it in the checkpoint view. A
+   reviewer can then read the report or diff even if the final agent response
+   is short or fails after the work is complete.
+
+For a short, read-only classification or a lightweight yes/no judge, an inline
+summary is still appropriate. The rule applies when the agent's work itself is
+long or mutable. Add a no-LLM flow fixture that returns the path and proves the
+checkpoint exposes it.
+
 ## Load-time validation
 
 `kitsoki run` resolves and parses every story prompt's `{% extends %}` /

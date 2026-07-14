@@ -32,7 +32,7 @@ By default the harness reads `../gears-rust` and `../slidey` relative to this
 checkout. Override those with:
 
 ```sh
-KITSOKI_GEARS_RUST_REPO=/path/to/gears-rust \
+KITSOKI_ONBOARD_RUST_REPO=/path/to/rust-project \
 KITSOKI_SLIDEY_REPO=/path/to/slidey \
 make onboard-sisters
 ```

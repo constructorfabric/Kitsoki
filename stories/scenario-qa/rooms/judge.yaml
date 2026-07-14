@@ -1,0 +1,64 @@
+# judge — INDEPENDENTLY judge the current leg's captured evidence, following
+# the kitsoki-ui-qa skill's posture: read-only, grounded in cited frames, a
+# claim with no citable evidence is "unsupported" not a bare pass. This is the
+# grade for the leg — the driver's own report (world.drive_result) is context,
+# never the verdict.
+#
+# A failed judge dispatch still routes forward to recording (on_error:
+# recording) so the leg's outcome is journaled honestly (driver_status intact,
+# verdict "unjudged") rather than stranding the loop.
+
+states:
+
+  judge:
+    description: "Judging the current transport check's captured evidence against the scenario's success criteria."
+    relevant_world: [run_id, leg_index, leg_count, current_leg, drive_result, judge_result, status]
+    view:
+      - heading: "Scenario QA · judge"
+      - kv:
+          pairs:
+            Transport check: "{{ world.leg_index + 1 }} of {{ world.leg_count }}"
+            Transport: "{{ world.current_leg.transport }}"
+            Driver status: '{{ world.drive_result.status|default:"(no report)" }}'
+            Verdict: '{{ world.judge_result.verdict|default:"(judging…)" }}'
+      - prose: "Judging with the kitsoki-ui-qa posture against this transport's evidence contract and the scenario's success criteria — every pass must cite a concrete frame or trace path."
+    on_enter:
+      - invoke: host.starlark.run
+        id: prepare_judge
+        with:
+          script: scripts/prepare_judge.star
+          inputs:
+            drive_result: "{{ world.drive_result }}"
+        bind:
+          drive_result_json: drive_result_json
+        on_error: recording
+      # Prompt variables MUST live under context.args and be referenced as
+      # {{ args.<key> }} — keys placed directly under context: silently render
+      # as empty (see execute.yaml's identical comment).
+      - invoke: host.agent.task
+        id: judge_leg
+        with:
+          agent: judge
+          acceptance:
+            schema: schemas/judge_leg_result.json
+          context:
+            prompt: prompts/judge_leg.md
+            args:
+              leg_json: "{{ world.current_leg_json }}"
+              drive_result_json: "{{ world.drive_result_json }}"
+              run_dir: "{{ world.run_dir }}"
+        bind:
+          judge_result: submitted
+        on_error: recording
+      # See execute.yaml's identical comment: guarded on an object-field read
+      # (judge_result defaults to `{}`) so this defers until judge_leg's bind
+      # lands instead of firing immediately against a stale empty result.
+      - when: "world.judge_result.verdict != ''"
+        emit_intent: leg_judged
+    on:
+      leg_judged:
+        - target: recording
+      status:
+        - target: .
+      look:
+        - target: .

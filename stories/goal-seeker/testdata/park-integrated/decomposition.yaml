@@ -1,0 +1,10 @@
+goal_slug: park-integrated-test
+changes:
+  - id: "C1"
+    wall: WT
+    title: "Parked then integrated"
+    pipeline: implementation
+    scope: ["c1/**"]
+    depends_on: []
+    acceptance: ["x"]
+    gate: { class: G-FLOW, cmd: "true" }

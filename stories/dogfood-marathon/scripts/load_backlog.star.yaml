@@ -2,6 +2,24 @@ inputs:
   source:          { type: string, required: true }
   limit:           { type: int,    required: false }
   baseline_policy: { type: string, required: false }
+  run_id:          { type: string, required: false }
+  run_dir:         { type: string, required: false }
+  journal_path:    { type: string, required: false }
+  resume:          { type: bool,   required: false }
 
 outputs:
-  backlog: { type: object }
+  backlog:               { type: object }
+  run_id:                { type: string }
+  run_dir:               { type: string }
+  journal_path:          { type: string }
+  journal_markdown_path: { type: string }
+  results:               { type: object }
+  last_result:           { type: object }
+  findings:              { type: object }
+  exceptions:            { type: object }
+  case_index:            { type: int }
+  cases_processed:       { type: int }
+  loaded_journal:        { type: bool }
+  journal_status:        { type: string }
+  journal_summary:       { type: string }
+  last_checkpoint:       { type: string }

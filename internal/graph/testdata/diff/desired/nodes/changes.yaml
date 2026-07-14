@@ -1,0 +1,39 @@
+- schema: graph/change/v1
+  id: change-loader
+  title: internal/graph loader
+  status: shipped
+  visibility: internal
+  goal: Load a catalog into typed nodes.
+  scope: ["internal/graph/loader.go"]
+  acceptance: ["go test ./internal/graph/... green"]
+  depends_on: []
+
+- schema: graph/change/v1
+  id: change-apply
+  title: internal/graph apply
+  status: in_progress
+  visibility: internal
+  goal: Apply a changeset's operations to a catalog.
+  scope: ["internal/graph/apply.go"]
+  acceptance: ["go test ./internal/graph/... green"]
+  depends_on: ["change-loader"]
+
+- schema: graph/change/v1
+  id: change-modify-target
+  title: internal/graph modify target
+  status: shipped
+  visibility: internal
+  goal: Sharpen modify to reject stale field-change paths, not just stale values.
+  scope: ["internal/graph/modify.go"]
+  acceptance: ["go test ./internal/graph/... green"]
+  depends_on: ["change-loader"]
+
+- schema: graph/change/v1
+  id: change-diff
+  title: internal/graph diff
+  status: proposed
+  visibility: internal
+  goal: Compute the roadmap delta between current and desired catalogs.
+  scope: ["internal/graph/diff.go"]
+  acceptance: ["go test ./internal/graph/... green"]
+  depends_on: ["change-modify-target", "change-loader"]

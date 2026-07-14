@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "capsule-ci-review-verdict/v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["outcome", "summary"],
+  "properties": {
+    "outcome": {
+      "type": "string",
+      "enum": ["passed", "refine", "needs_input", "failed"]
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "evidence": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": []
+    },
+    "requested_refinement": {
+      "type": "string",
+      "default": ""
+    }
+  }
+}

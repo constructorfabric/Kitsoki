@@ -17,8 +17,8 @@
 # WriteModeGranted event) is exercised end-to-end without an LLM by the unit
 # table in internal/host/write_mode_gate_test.go — a flow fixture stubs the
 # whole host.agent.task subprocess, so the in-subprocess gate cannot fire here
-# (per AGENTS.md the live agent doing real mutating work is a dogfood-only,
-# gated step, never CI).
+# (per AGENTS.md the live agent doing real mutating work is a live-only gated
+# step, never CI).
 
 test_kind: flow
 app: ../app.yaml
@@ -35,20 +35,33 @@ host_handlers:
       submitted:
         summary:    "Sketched the fix to the off-ramp guard and noted the two call sites."
         details:    "Would edit internal/orchestrator/offpath.go and add a test; held read-only pending a write-mode grant."
-        next_steps: ["grant write mode to apply the edit", "drive the change through the bugfix pipeline"]
+        next_steps:
+          - label: "Check worktree status"
+            command: "printf 'clean workspace\n'"
+            description: "confirm the workspace is ready before applying edits"
+          - label: "Run focused test"
+            command: "printf 'ok focused test\n'"
+            description: "exercise the affected guard"
 
 turns:
   # The operator describes a mutating piece of work. `work` captures the
   # request, clears the prior note to re-arm the on_enter agent task, and
-  # self-targets so the landing_agent dispatches on the fresh request.
-  - intent: { name: work, slots: { request: "edit the off-ramp guard so an empty utterance never off-ramps, and add a test" } }
+  # loops back so the landing_agent dispatches on the fresh request.
+  - intent: { name: landing_capture, slots: { request: "edit the off-ramp guard so an empty utterance never off-ramps, and add a test" } }
     expect_state: landing
+    expect_view_matches: 'Check worktree status'
     expect_world:
       landing_request: "edit the off-ramp guard so an empty utterance never off-ramps, and add a test"
       landing_note:
         summary:    "Sketched the fix to the off-ramp guard and noted the two call sites."
         details:    "Would edit internal/orchestrator/offpath.go and add a test; held read-only pending a write-mode grant."
-        next_steps: ["grant write mode to apply the edit", "drive the change through the bugfix pipeline"]
+        next_steps:
+          - label: "Check worktree status"
+            command: "printf 'clean workspace\n'"
+            description: "confirm the workspace is ready before applying edits"
+          - label: "Run focused test"
+            command: "printf 'ok focused test\n'"
+            description: "exercise the affected guard"
 
   # The workbench stays put — the read-only floor between requests. `look`
   # re-renders the stored note without re-dispatching the agent (on_enter

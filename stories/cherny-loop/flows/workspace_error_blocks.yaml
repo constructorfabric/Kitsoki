@@ -9,7 +9,7 @@ app: ../app.yaml
 initial_state: configuring
 
 host_handlers:
-  host.git_worktree:
+  host.capsule_workspace:
     error: "workspace.create: branch \"cherny-loop/run\" exists but reattach failed: already checked out"
   # Stubbed but must NOT fire — the loop blocks before any gate/maker spend.
   host.run: { data: { ok: false, exit_code: 1, stdout: "(should not run)" } }

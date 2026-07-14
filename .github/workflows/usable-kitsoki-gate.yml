@@ -1,0 +1,169 @@
+# usable-kitsoki-gate CI (docs/proposals/usable-kitsoki-release-gate.md
+# Task 5): the schema/plugin/join/golden/calibration suite for the
+# usable-kitsoki release gate, kept as two SEPARATE jobs with very different
+# cost/trigger profiles.
+#
+#   no-llm-gate               PR/push — cassette + flow-replay only, zero
+#                              LLM spend, cheap (~20-30s). Path-filtered so
+#                              it only fires when S1/S2/S4/S5 code (the gate's
+#                              producer/corpus/plugin/join layers) actually
+#                              changed, not on every unrelated PR.
+#
+#   release-candidate-live-gate   an explicit release-candidate tag
+#                              (`rc-*`) or a manual `workflow_dispatch` with
+#                              `confirm_live: yes` — real LLM spend via
+#                              `arena run --live`. NEVER fires on
+#                              `pull_request` or a plain `push: main`; this
+#                              mirrors tools/arena/README.md's existing
+#                              "Live... gated behind --live, cost-bearing,
+#                              never run in CI [by default]" convention and
+#                              tools/swarm/tiers/liveExplorerCli.ts's
+#                              manual-only tier-3 pattern. Proposal's open
+#                              question 3 leans release-candidate cadence,
+#                              not per-merge — this workflow encodes that
+#                              lean structurally (tag/dispatch trigger only),
+#                              it does not re-litigate it in a comment.
+#
+# AGENTS.md: "Automated testing should never use a real LLM or incur costs...
+# Tests which require real LLM must be gated and only done when specifically
+# requested and required — never automatically or without checking first."
+# The `release-candidate-live-gate` job satisfies "specifically requested"
+# via its trigger shape (a deliberate tag push, or workflow_dispatch with an
+# explicit typed confirmation input) rather than any automatic condition.
+
+name: usable-kitsoki-gate
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      # S1 — room-workbench producer contract (turn.end usable_kitsoki_gate
+      # signal) + the workbench: room primitive it rides on.
+      - "internal/orchestrator/**"
+      - "internal/app/workbench*.go"
+      - "internal/app/testdata/workbench/**"
+      - "stories/dev-story/**"
+      # S2 — near-miss / never-silent semantic routing verdicts the gate's
+      # silent_bounce / misroute_adjacent fields ultimately depend on.
+      - "internal/orchestrator/semantic*.go"
+      # S4 — scenario-foundry mined-session corpus + compiler.
+      - "tools/session-mining/**"
+      # S5 — honest-issues real dispatch (gh-agent), shares the arena
+      # plugin harness/executor substrate this gate's cells run through.
+      - "tools/arena/arena/plugins/**"
+      - "tools/arena/arena/*.py"
+      # The gate's own harness/join/schema/plugin layer (Task 2/3/4/5).
+      - "tools/usable-kitsoki-gate/**"
+      - "tools/arena/tests/test_usable_kitsoki_gate*.py"
+      # WS-G G1 — check-type discriminator schema + its arena contract test.
+      - "schemas/completion-state.schema.json"
+      - "tools/arena/tests/test_check_types.py"
+      - "tools/arena/tests/fixtures/usable-kitsoki-gate/**"
+      - "tools/arena/specs/usable-kitsoki-gate*.yaml"
+      - "docs/tracing/usable-kitsoki-gate.md"
+      - ".github/workflows/usable-kitsoki-gate.yml"
+      - "Makefile"
+  push:
+    tags:
+      - "rc-*"
+  workflow_dispatch:
+    inputs:
+      confirm_live:
+        description: >-
+          Type "yes" to run the LIVE, cost-bearing release-candidate gate
+          (real LLM spend). Any other value (including leaving this at its
+          default) runs NOTHING live — use the pull_request trigger for the
+          free no-LLM check.
+        required: false
+        default: "no"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------
+  # No-LLM path: cassette/flow-replay only, safe to run on every matching PR.
+  # ---------------------------------------------------------------------
+  no-llm-gate:
+    name: No-LLM gate (calibration + goldens)
+    # Runs on every matching PR (path-filtered above), and also on a manual
+    # workflow_dispatch that did NOT opt into the live gate (the default) --
+    # so an operator can re-run the free check on demand. Never runs on the
+    # `rc-*` tag push (that trigger is release-candidate-live-gate's alone).
+    if: >-
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.confirm_live != 'yes')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # jsonschema is advisory only (usable_kitsoki_gate.py degrades to a
+      # skip if it's missing, per test_usable_kitsoki_gate_schema.py) but
+      # installing it here means the real schema validation actually runs
+      # in CI instead of silently no-op'ing.
+      - name: Install python deps
+        run: pip install --quiet jsonschema
+
+      # Runs the schema/plugin/corpus/golden-fixture suite plus the
+      # 18-scenario calibration sweep (regenerated and diffed against the
+      # checked-in tools/arena/tests/fixtures/usable-kitsoki-gate/
+      # calibration-report.json). Every scenario is driven through a real
+      # `go run ./cmd/kitsoki test flows` replay against a committed
+      # host_cassette — zero network, zero LLM, zero docker.
+      - name: usable-kitsoki-gate no-LLM suite
+        env:
+          KITSOKI_CASSETTE_STRICT: "1"
+        run: make usable-kitsoki-gate-check
+
+  # ---------------------------------------------------------------------
+  # Live path: a real agent drives a real workbench session
+  # (tools/usable-kitsoki-gate/run_live_gate.py --live-gate via
+  # `arena run --live`). Cost-bearing. Only reachable via a `rc-*` tag push
+  # or an explicit workflow_dispatch confirmation — never pull_request,
+  # never a plain push to main.
+  # ---------------------------------------------------------------------
+  release-candidate-live-gate:
+    name: Release-candidate live gate
+    if: >-
+      (github.event_name == 'push' && github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/rc-')) ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.confirm_live == 'yes')
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    # The TRIGGER gating above is the real, load-bearing deliverable here
+    # (an `rc-*` tag push or an explicit typed workflow_dispatch
+    # confirmation — never automatic). Actually arming this job (real
+    # provider credentials as a secret, the arena container images built
+    # per tools/arena/README.md's "Browser-capable image" section, and the
+    # `arena run --live --spec tools/arena/specs/
+    # usable-kitsoki-gate-calibration.yaml` invocation itself) is separate,
+    # larger, explicitly-gated follow-up work with no existing precedent to
+    # copy (see the S6 scouting report) — not fabricated here. This step
+    # fails loudly rather than silently succeeding, so a real dispatch of
+    # this job is unambiguous about needing that wiring first.
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Live gate not yet armed (trigger gating only)
+        run: |
+          echo "release-candidate-live-gate: trigger routing fired correctly (rc-* tag or"
+          echo "an explicit workflow_dispatch confirm_live=yes), but this job is not yet"
+          echo "armed with real provider credentials or the arena browser-capable images."
+          echo "Wiring the real 'arena run --live --spec"
+          echo "tools/arena/specs/usable-kitsoki-gate-calibration.yaml' invocation against a"
+          echo "real secret + pre-built images is separate, deliberate operator follow-up --"
+          echo "see tools/usable-kitsoki-gate/run_live_gate.py and tools/arena/README.md."
+          exit 1
