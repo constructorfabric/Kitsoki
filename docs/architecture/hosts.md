@@ -1637,7 +1637,7 @@ point and its tests.
 ## host.slidey.render
 
 Validate and render a JSON scene spec to a finished visual file using the
-[slidey](https://github.com/cyberfabric/slidey) declarative-video pipeline.
+[slidey](https://github.com/constructorfabric/studio-slidey) declarative-video pipeline.
 Deterministic, no LLM in the render loop. The rendered output is a file on disk;
 pass its path to `host.artifacts_dir` (media-emit path) to record it as an
 `artifact.emitted` datapoint and obtain a stable handle.
