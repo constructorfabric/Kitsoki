@@ -1,0 +1,257 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.run:
+    by_call:
+      capture_product_journey_preflight:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: passed
+            preflight_id: preflight-marathon
+            preflight_dir: .artifacts/product-journey/preflights/preflight-marathon
+            preflight_path: .artifacts/product-journey/preflights/preflight-marathon/preflight.json
+            markdown_path: .artifacts/product-journey/preflights/preflight-marathon/preflight.md
+            webshot_output: .artifacts/product-journey/preflights/preflight-marathon/webshot-smoke.png
+            passed: 6
+            failed: 0
+      autonomous_product_journey_marathon_create:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: autonomous_marathon_ready_for_driver
+            autonomous_marathon_status: autonomous_marathon_ready_for_driver
+            autonomous_marathon_summary: "Created 1 scenario(s); driver evidence capture is pending."
+            autonomous_marathon_report_path: .artifacts/product-journey/run-999/autonomous-marathon-report.md
+            autonomous_control_path: .artifacts/product-journey/run-999/autonomous-marathon-control.json
+            autonomous_control_markdown_path: .artifacts/product-journey/run-999/autonomous-marathon-control.md
+            autonomous_control_status: ready_for_driver
+            autonomous_control_summary: "cadence=24h, next_due=2026-07-06T00:00:00+00:00, budget=6m/scenario, heartbeat=15m, watchdog=45m"
+            autonomous_fix_status: not_run
+            autonomous_gate_summary: "filing=not_run, gh_agent=not_run, independent_verify=not_run, review=not_run, validation=not_run"
+            independent_verify_status: not_run
+            independent_verify_summary: "independent verification not run"
+            gh_agent_health_status: pass
+            gh_agent_health_summary: "https://agent.example/healthz: ok"
+            gh_agent_readiness_status: pass
+            gh_agent_readiness_summary: "https://agent.example/api/ready: ready for bsacrobatix/Kitsoki as test-worker"
+            run_id: run-999
+            run_dir: .artifacts/product-journey/run-999
+            project: vscode
+            persona: core-maintainer
+            seed: marathon-demo
+            deck_path: .artifacts/product-journey/run-999/deck.slidey.json
+            execution_plan_path: .artifacts/product-journey/run-999/execution-plan.md
+            driver_plan_path: .artifacts/product-journey/run-999/driver-plan.md
+            driver_journal_path: .artifacts/product-journey/run-999/driver-journal.md
+            agent_brief_path: .artifacts/product-journey/run-999/agent-brief.md
+            driver_handoff_path: .artifacts/product-journey/run-999/driver-handoff.md
+            media_manifest_path: .artifacts/product-journey/run-999/media-manifest.json
+            scenario_outcomes_path: .artifacts/product-journey/run-999/scenario-outcomes.md
+            live_budget_minutes: 6
+            scenario_count: 1
+            proof_evidence_count: 0
+            demo_evidence_count: 0
+            finding_total_count: 0
+            strength_count: 0
+            weakness_count: 0
+            weakness_route_count: 0
+            weakness_route_summary: ""
+            issue_count: 0
+            fix_count: 0
+            blocked_count: 0
+            missing_evidence_count: 3
+            missing_proof_evidence_count: 3
+            proof_minimum_evidence_count: 3
+            minimum_evidence_count: 3
+            driver_contract_summary: "Driver contract: 1 scenarios (bugfix); 1 missing-proof rows; 4 final gates."
+            next_driver_capture: "bugfix: capture trace_reference"
+            next_driver_attach_command: "python3 tools/product-journey/run.py --attach-evidence --run-dir .artifacts/product-journey/run-999 --scenario bugfix --evidence-kind trace_reference --evidence-path <path>"
+            next_driver_blocker_command: "python3 tools/product-journey/run.py --record-blocker --run-dir .artifacts/product-journey/run-999 --scenario bugfix --title <title> --summary <summary>"
+      autonomous_product_journey_marathon_finalize:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+                status: autonomous_marathon_valid
+                autonomous_marathon_status: autonomous_marathon_valid
+                autonomous_marathon_summary: "credible_issues=1, fix=autonomous_fix_valid, review=ready, validation=valid, stats=pass"
+                autonomous_marathon_report_path: .artifacts/product-journey/run-999/autonomous-marathon-report.md
+                autonomous_control_path: .artifacts/product-journey/run-999/autonomous-marathon-control.json
+                autonomous_control_markdown_path: .artifacts/product-journey/run-999/autonomous-marathon-control.md
+                autonomous_control_status: ready_for_driver
+                autonomous_control_summary: "cadence=24h, next_due=2026-07-06T00:00:00+00:00, budget=6m/scenario, heartbeat=15m, watchdog=45m"
+                autonomous_fix_status: autonomous_fix_valid
+                autonomous_fix_report_path: .artifacts/product-journey/run-999/autonomous-fix-report.md
+                autonomous_gate_summary: "filing=pass, gh_agent=pass, independent_verify=pass, review=pass, validation=pass"
+                independent_verify_status: pass
+                independent_verify_summary: "verified=1/1"
+                issue_closeout_status: closed
+                issue_closeout_count: 1
+                issue_closeout_summary: "Closed 1 fixed GitHub issue(s)."
+                filing_status: findings_filed
+                dry_run: "no"
+                findings_filed_count: 1
+                findings_skipped_count: 0
+                findings_failed_count: 0
+                findings_unfiled_count: 0
+                filed_issue_summary: "https://github.com/bsacrobatix/Kitsoki/issues/301"
+                filing_summary: "Filed findings to bsacrobatix/Kitsoki: 1 filed, 0 already filed, 0 failed; 0 credible finding(s) remain unfiled."
+                gh_agent_enqueue_status: queued
+                gh_agent_enqueued_count: 1
+                gh_agent_skipped_count: 0
+                gh_agent_job_summary: "github:bsacrobatix/Kitsoki/issue/301"
+                gh_agent_claim_status: claimed
+                gh_agent_claim_count: 1
+                gh_agent_claim_summary: "https://github.com/bsacrobatix/Kitsoki/issues/301#issuecomment-claim"
+                gh_agent_drain_status: drained
+                gh_agent_drained_count: 1
+                gh_agent_done_count: 1
+                gh_agent_failed_count: 0
+                gh_agent_active_count: 0
+                gh_agent_run_summary: "github:bsacrobatix/Kitsoki/issue/301=done https://agent.example/run/job-301"
+                gh_agent_fix_evidence_count: 2
+                gh_agent_missing_evidence_count: 0
+                gh_agent_triage_evidence_count: 1
+                gh_agent_missing_triage_count: 0
+                gh_agent_independent_verify_count: 1
+                gh_agent_missing_verify_count: 0
+                gh_agent_missing_run_url_count: 0
+                gh_agent_fix_evidence_summary: "https://agent.example/api/run/job-301/assets/fix-report.md; https://agent.example/api/run/job-301/assets/independent-verify.md"
+                gh_agent_missing_evidence_summary: ""
+                gh_agent_triage_evidence_summary: "https://agent.example/api/run/job-301/assets/triage-verdict.md"
+                gh_agent_missing_triage_summary: ""
+                gh_agent_independent_verify_summary: "https://agent.example/api/run/job-301/assets/independent-verify.md"
+                gh_agent_missing_verify_summary: ""
+                stats_status: stats_derived
+                stats_root: .artifacts/product-journey
+                stats_output: .artifacts/product-journey/run-999/autonomous-marathon-stats.json
+                stats_summary: "Derived product-journey stats: 1 found, 1 filed, 1 fixed, 0 reopened, 0 similar pair(s)."
+                stats_runs_scanned: 1
+                stats_found_count: 1
+                stats_filed_count: 1
+                stats_fixed_count: 1
+                stats_reopened_count: 0
+                stats_unknown_state_count: 0
+                stats_similar_pair_count: 0
+                stats_gate_status: pass
+                stats_gate_summary: pass
+                stats_current_run_scanned: "yes"
+                review_status: ready
+                review_summary: "ready: 28/28 checks passed, 0 warnings, 0 failures"
+                review_passed_count: 28
+                review_failed_count: 0
+                review_warning_count: 0
+                review_total_count: 29
+                review_backlog_summary: ""
+                validation_status: valid
+                validation_errors: 0
+                validation_warnings: 0
+                validation_issue_summary: ""
+                deck_path: .artifacts/product-journey/run-999/deck.slidey.json
+                execution_plan_path: .artifacts/product-journey/run-999/execution-plan.md
+                driver_plan_path: .artifacts/product-journey/run-999/driver-plan.md
+                driver_journal_path: .artifacts/product-journey/run-999/driver-journal.md
+                agent_brief_path: .artifacts/product-journey/run-999/agent-brief.md
+                driver_handoff_path: .artifacts/product-journey/run-999/driver-handoff.md
+                media_manifest_path: .artifacts/product-journey/run-999/media-manifest.json
+                scenario_outcomes_path: .artifacts/product-journey/run-999/scenario-outcomes.md
+                proof_evidence_count: 3
+                demo_evidence_count: 0
+                finding_total_count: 2
+                strength_count: 0
+                weakness_count: 1
+                weakness_route_count: 1
+                weakness_route_summary: "finding-1->stories/prd"
+                prd_design_intake_path: .artifacts/product-journey/run-999/prd-design-intake.md
+                prd_design_intake_count: 1
+                prd_design_intake_summary: "finding-1->stories/prd start"
+                issue_count: 1
+                fix_count: 0
+                blocked_count: 0
+                missing_evidence_count: 0
+                missing_proof_evidence_count: 0
+                proof_minimum_evidence_count: 3
+                minimum_evidence_count: 3
+                driver_contract_summary: "Driver contract: 1 scenarios (bugfix); 0 missing-proof rows; 4 final gates."
+                next_driver_capture: ""
+                next_driver_attach_command: ""
+                next_driver_blocker_command: ""
+
+turns:
+  - intent:
+      name: capture_preflight
+      slots:
+        seed: marathon-demo
+    expect_state: idle
+    expect_world:
+      status: capture_preflight_checked
+      capture_preflight_status: passed
+      capture_preflight_failed: 0
+    expect_host_calls:
+      - handler: host.run
+        args: { call: capture_product_journey_preflight }
+
+  - intent:
+      name: autonomous_marathon
+      slots:
+        project: vscode
+        persona: core-maintainer
+        seed: marathon-demo
+        scenarios: bugfix
+        live_budget_minutes: 6
+        ticket_repo: bsacrobatix/Kitsoki
+        gh_agent_public_base_url: https://agent.example
+    expect_state: run_created
+    expect_world:
+      status: autonomous_marathon_ready_for_driver
+      run_id: run-999
+      run_dir: .artifacts/product-journey/run-999
+      autonomous_marathon_status: autonomous_marathon_ready_for_driver
+      autonomous_marathon_report_path: .artifacts/product-journey/run-999/autonomous-marathon-report.md
+      autonomous_control_status: ready_for_driver
+      autonomous_control_path: .artifacts/product-journey/run-999/autonomous-marathon-control.json
+      gh_agent_health_status: pass
+      gh_agent_readiness_status: pass
+      missing_proof_evidence_count: 3
+    expect_view_matches: "RUN CREATED[\\s\\S]*Autonomous marathon[\\s\\S]*autonomous_marathon_ready_for_driver[\\s\\S]*Marathon report[\\s\\S]*autonomous-marathon[\\s\\S]*report.md[\\s\\S]*Marathon control[\\s\\S]*ready_for_driver[\\s\\S]*Control artifact[\\s\\S]*autonomous-marathon-[\\s\\S]*control.json[\\s\\S]*GH-agent health[\\s\\S]*pass: https://agent.example/healthz[\\s\\S]*GH-agent readiness[\\s\\S]*pass: https://agent.example/api/ready"
+    expect_host_calls:
+      - handler: host.run
+        args: { call: autonomous_product_journey_marathon_create }
+
+  - intent:
+      name: autonomous_marathon
+      slots:
+        ticket_repo: bsacrobatix/Kitsoki
+        gh_agent_public_base_url: https://agent.example
+        issue_state_file: .artifacts/product-journey/issues.json
+    expect_state: run_created
+    expect_world:
+      status: autonomous_marathon_complete
+      autonomous_marathon_status: autonomous_marathon_valid
+      autonomous_fix_status: autonomous_fix_valid
+      autonomous_gate_summary: "filing=pass, gh_agent=pass, independent_verify=pass, review=pass, validation=pass"
+      independent_verify_status: pass
+      independent_verify_summary: "verified=1/1"
+      issue_closeout_status: closed
+      issue_closeout_count: 1
+      autonomous_control_status: ready_for_driver
+      gh_agent_claim_status: claimed
+      gh_agent_claim_count: 1
+      gh_agent_triage_evidence_count: 1
+      gh_agent_missing_triage_count: 0
+      stats_status: stats_derived
+      stats_fixed_count: 1
+      weakness_route_count: 1
+      prd_design_intake_count: 1
+      validation_status: valid
+    expect_view_matches: "RUN CREATED[\\s\\S]*PRD intake[\\s\\S]*1 routed[\\s\\S]*finding-1->stories/prd start[\\s\\S]*Autonomous gates[\\s\\S]*filing=pass, gh_agent=pass, independent_verify=pass,[\\s\\S]*review=pass, validation=pass[\\s\\S]*Independent verify[\\s\\S]*pass: verified=1/1[\\s\\S]*Issue close-out[\\s\\S]*closed: closed 1[\\s\\S]*Autonomous marathon[\\s\\S]*autonomous_marathon_valid[\\s\\S]*Marathon control[\\s\\S]*ready_for_driver[\\s\\S]*GH-agent claims[\\s\\S]*claimed: claimed 1[\\s\\S]*GH-agent evidence[\\s\\S]*triage 1 attached / 0 missing[\\s\\S]*triage-[\\s\\S]*verdict.md[\\s\\S]*Derived stats[\\s\\S]*stats_derived: found 1, filed 1, fixed 1[\\s\\S]*Stats gate[\\s\\S]*pass: pass; current run scanned yes"
+    expect_host_calls:
+      - handler: host.run
+        args: { call: autonomous_product_journey_marathon_finalize }
+
+expect_no_errors: true

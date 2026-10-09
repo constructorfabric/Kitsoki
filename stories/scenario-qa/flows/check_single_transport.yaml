@@ -1,0 +1,200 @@
+# check_single_transport — idle → plan → execute → judge → recording →
+# report, all within ONE turn: a single-transport check (transport=tui)
+# resolves to exactly ONE leg, so the internal emit chain (legs_ready →
+# leg_driven → leg_judged → legs_drained) auto-drains straight to report
+# without needing an operator-paced "next transport" — see check_all_transports.yaml
+# for the multi-leg pacing gate.
+#
+# Every host call is stubbed by invoke id (no real run.py / LLM / ctx.fs call
+# runs here); this exercises the room-to-room control flow only.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.run:
+    by_call:
+      emit_scenario_qa_run:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            run_id: scenario-qa-run-1
+            run_dir: /repo/.artifacts/product-journey/scenario-qa-run-1
+            driver_plan_path: /repo/.artifacts/product-journey/scenario-qa-run-1/driver-plan.md
+            execution_plan_path: /repo/.artifacts/product-journey/scenario-qa-run-1/execution-plan.md
+            agent_brief_path: /repo/.artifacts/product-journey/scenario-qa-run-1/agent-brief.md
+      build_scenario_qa_deck:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: scenario_qa_deck_built
+            run_dir: /repo/.artifacts/product-journey/scenario-qa-run-1
+            deck_path: /repo/.artifacts/product-journey/scenario-qa-run-1/deck.slidey.json
+            leg_count: 1
+            pass_count: 1
+            fail_count: 0
+            degraded_count: 0
+            summary: "1 / 1 transport checks passed."
+
+  host.starlark.run:
+    by_call:
+      plan_legs:
+        data:
+          legs:
+            items:
+              - leg_id: "bugfix::tui"
+                scenario: "bugfix"
+                transport: "tui"
+                visual_surface: "tui"
+                evidence_dir: "evidence/gears-rust--core-maintainer/bugfix"
+                primary_story: "stories/bugfix/app.yaml"
+                success_criteria: ["Hidden oracle passes."]
+                natural_utterances:
+                  - text: "resolve the red gate test that's already written but not committed"
+                    source: "session-transcript"
+                    source_ref: "mined-scn-1b4ace86-f192-43b0-ab86-16142fec0079-0001"
+                  - text: "file the bug, then land the fixes"
+                    source: "session-transcript"
+                    source_ref: "mined-scn-c4d281a2-30e4-4002-9152-59d28d824abc-0001"
+                transport_evidence_contract:
+                  primary_tool: "render.tui_png"
+                  evidence_kind: "rendered_tui_frame"
+                  level: "frame-level"
+          leg_count: 1
+          driver_agent: ".agents/agents/product-journey-qa-driver.md"
+          run_dir_rel: ".artifacts/product-journey/scenario-qa-run-1"
+          plan_status: { resolved: true }
+      pick_leg:
+        data:
+          current_leg:
+            leg_id: "bugfix::tui"
+            scenario: "bugfix"
+            transport: "tui"
+            visual_surface: "tui"
+            evidence_dir: "evidence/gears-rust--core-maintainer/bugfix"
+            natural_utterances:
+              - text: "resolve the red gate test that's already written but not committed"
+                source: "session-transcript"
+                source_ref: "mined-scn-1b4ace86-f192-43b0-ab86-16142fec0079-0001"
+              - text: "file the bug, then land the fixes"
+                source: "session-transcript"
+                source_ref: "mined-scn-c4d281a2-30e4-4002-9152-59d28d824abc-0001"
+          current_leg_id: "bugfix::tui"
+      record_leg_result:
+        data:
+          leg_results:
+            items:
+              - leg_id: "bugfix::tui"
+                scenario: "bugfix"
+                transport: "tui"
+                visual_surface: "tui"
+                evidence_level: "frame-level"
+                driver_status: "captured"
+                natural_utterance_count: 2
+                natural_utterance_example: "resolve the red gate test that's already written but not committed"
+                natural_utterance_sources:
+                  - "mined-scn-1b4ace86-f192-43b0-ab86-16142fec0079-0001"
+                  - "mined-scn-c4d281a2-30e4-4002-9152-59d28d824abc-0001"
+                evidence_refs: ["render_tui_png:frame-1"]
+                verdict: "pass"
+                verdict_summary: "TUI frame confirms the fix state."
+                frames_dir: "evidence/gears-rust--core-maintainer/bugfix"
+          pass_count: 1
+          fail_count: 0
+          degraded_count: 0
+      build_report:
+        data:
+          report_path: ".artifacts/product-journey/scenario-qa-run-1/report.md"
+          report_summary: "1 / 1 transport checks passed."
+
+  host.agent.task:
+    by_call:
+      drive_leg:
+        data:
+          ok: true
+          submitted:
+            status: "captured"
+            evidence_refs: ["render_tui_png:frame-1"]
+            frames_dir: "evidence/gears-rust--core-maintainer/bugfix"
+            blockers: []
+            summary: "Captured a render.tui_png frame showing the fixed state."
+      judge_leg:
+        data:
+          ok: true
+          submitted:
+            verdict: "pass"
+            summary: "TUI frame confirms the fix state."
+            cited_frames: ["frame-1.png"]
+            frames_dir: "evidence/gears-rust--core-maintainer/bugfix"
+
+turns:
+  - intent:
+      name: check
+      slots:
+        scenario: bugfix
+        transport: tui
+        persona: core-maintainer
+        target: gears-rust
+        seed: story-flow
+    expect_state: report
+    expect_world:
+      mode: catalog
+      run_id: scenario-qa-run-1
+      leg_count: 1
+      leg_index: 0
+      pass_count: 1
+      fail_count: 0
+      degraded_count: 0
+      report_path: ".artifacts/product-journey/scenario-qa-run-1/report.md"
+      report_summary: "1 / 1 transport checks passed."
+      deck_path: "/repo/.artifacts/product-journey/scenario-qa-run-1/deck.slidey.json"
+      leg_results:
+        items:
+          - leg_id: "bugfix::tui"
+            scenario: "bugfix"
+            transport: "tui"
+            visual_surface: "tui"
+            evidence_level: "frame-level"
+            driver_status: "captured"
+            natural_utterance_count: 2
+            natural_utterance_example: "resolve the red gate test that's already written but not committed"
+            natural_utterance_sources:
+              - "mined-scn-1b4ace86-f192-43b0-ab86-16142fec0079-0001"
+              - "mined-scn-c4d281a2-30e4-4002-9152-59d28d824abc-0001"
+            evidence_refs: ["render_tui_png:frame-1"]
+            verdict: "pass"
+            verdict_summary: "TUI frame confirms the fix state."
+            frames_dir: "evidence/gears-rust--core-maintainer/bugfix"
+    expect_host_calls:
+      - handler: host.run
+        args: { call: emit_scenario_qa_run }
+      - handler: host.starlark.run
+        args: { call: plan_legs }
+      - handler: host.starlark.run
+        args: { call: pick_leg }
+      - handler: host.agent.task
+        args: { call: drive_leg }
+      - handler: host.agent.task
+        args: { call: judge_leg }
+      - handler: host.starlark.run
+        args: { call: record_leg_result }
+      - handler: host.starlark.run
+        args: { call: build_report }
+      - handler: host.run
+        args: { call: build_scenario_qa_deck }
+    expect_view_matches: "SCENARIO QA REPORT[\\s\\S]*1 / 1 transport checks passed[\\s\\S]*Summary report:[\\s\\S]*report.md[\\s\\S]*tui \\[frame-level; natural_prompts=2\\] verdict=pass driver=captured"
+
+  - intent: { name: status, slots: {} }
+    expect_state: report
+    expect_world:
+      pass_count: 1
+
+  - intent: { name: report, slots: {} }
+    expect_state: report
+    expect_world:
+      report_path: ".artifacts/product-journey/scenario-qa-run-1/report.md"
+
+expect_no_errors: true

@@ -1,0 +1,39 @@
+# preflight_triage_opt_out — auto_triage: false skips the pre-flight entirely:
+# a fresh autostart lands straight in reproducing, exactly the pre-auto_triage
+# contract. host.agent.codeact is deliberately NOT stubbed — if the pre-flight
+# fired anyway, the missing handler would error-bounce the walk back to idle
+# and fail this fixture. This is the seed bench cells / callers with a
+# known-live pinned baseline use to avoid the redundant triage spend.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  judge_mode: "human"
+  auto_triage: false
+
+host_handlers:
+  host.append_to_file: { data: { ok: true, message_id: "msg-1" } }
+  host.inbox.add:       { data: { ok: true, id: "ib-1" } }
+  host.git_worktree:    { data: { ok: true, log: "created" } }
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Reproduced"
+        summary_markdown: "Repro artifact body."
+        bug_verified:     true
+        involved_components: []
+
+turns:
+  - intent:
+      name: work_ticket
+      slots:
+        ticket_id:    "TKT-PREFLIGHT-3"
+        ticket_title: "Known-live bug on a pinned baseline"
+    expect_state: reproducing
+    expect_world:
+      bugfix_mode: "full"
+
+expect_terminal: false
+expect_no_errors: true

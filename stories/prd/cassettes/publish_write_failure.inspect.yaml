@@ -1,0 +1,21 @@
+kind: inspect_cassette
+interactions:
+  - op: exists
+    target: .artifacts/prd/example-cli/004-prd.md
+    out: "true"
+  - op: read
+    target: .artifacts/prd/example-cli/004-prd.md
+    out: |
+      ## PRD: Example CLI
+
+      A sufficiently long summary body to satisfy the schema minimum length for the prd_artifact summary_markdown field, covering problem, users, goals, and metrics.
+  - op: exists
+    target: /tmp/kitsoki-prd-fixtures/example-cli.md
+    out: "false"
+  # Deliberately NO `write` interaction recorded: the real inspector's write
+  # fails on a real permission-denied/mkdir error; here the replay inspector's
+  # ReplayInspector.Write call finds no matching interaction and returns its
+  # loud "no interaction matched" error, exercising the exact same
+  # Result.Error path a genuine disk write failure takes through
+  # host.starlark.run (see internal/host/starlark_run.go's DomainError
+  # mapping) — the deterministic no-LLM stand-in for a write failure.

@@ -34,7 +34,9 @@ import { useRunStore } from "./run.js";
  * Modes the UI exposes (resolved against the server's available set):
  *   - story.edit  — edit this story's YAML (writes + commits + reloads content)
  *   - story.ask   — read-only Q&A about the current story
+ *   - story.improve — read-only introspection report for the latest run
  *   - kitsoki.ask — read-only help about kitsoki itself (cross-app)
+ *   - kitsoki.improve — read-only engine improvement report (cross-app)
  */
 
 /** Composite key so the same mode in different sessions keeps separate chats. */

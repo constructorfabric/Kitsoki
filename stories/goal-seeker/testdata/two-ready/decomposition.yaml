@@ -1,0 +1,29 @@
+goal_slug: goal-seeker-two-ready
+# Two disjoint-scope, dependency-free changes, both ready at intake. Used only by
+# flows/gate_not_red_parks_and_advances.yaml to prove that parking C1 (gate_not_red)
+# advances the ledger's ready_id to C2 instead of re-picking C1 forever.
+changes:
+  - id: "C1"
+    wall: WT
+    goal_ref: [G1]
+    title: "First disjoint change"
+    pipeline: implementation
+    scope: ["c1/**"]
+    depends_on: []
+    acceptance:
+      - "C1 is proven"
+    gate:
+      class: G-FLOW
+      cmd: "true"
+  - id: "C2"
+    wall: WT
+    goal_ref: [G2]
+    title: "Second disjoint change"
+    pipeline: implementation
+    scope: ["c2/**"]
+    depends_on: []
+    acceptance:
+      - "C2 is proven"
+    gate:
+      class: G-FLOW
+      cmd: "true"

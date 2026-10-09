@@ -1,0 +1,25 @@
+# The manifest lints clean both times (this flow proves BUDGET exhaustion
+# from repeated review revisions, not a lint failure) — same content read
+# twice: once per lint invocation across the two decompose entries. No
+# fleet.load read: the run exits to needs-human before ever reaching fleet.
+kind: inspect_cassette
+interactions:
+  - op: exists
+    target: .artifacts/deliver/decomposition.yaml
+    out: "false"
+  - op: read
+    target: .artifacts/deliver/decomposition.yaml
+    out: |
+      briefs:
+        - id: slice-1
+          brief: Implement slice 1 so that go test ./... passes.
+          gate_command: go test ./...
+          deps: []
+  - op: read
+    target: .artifacts/deliver/decomposition.yaml
+    out: |
+      briefs:
+        - id: slice-1
+          brief: Implement slice 1 so that go test ./... passes.
+          gate_command: go test ./...
+          deps: []

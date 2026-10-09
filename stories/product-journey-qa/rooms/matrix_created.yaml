@@ -154,6 +154,8 @@ states:
                 finding_total_count: "stdout_json.finding_total_count"
                 strength_count: "stdout_json.strength_count"
                 weakness_count: "stdout_json.weakness_count"
+                weakness_route_count: "stdout_json.weakness_route_count"
+                weakness_route_summary: "stdout_json.weakness_route_summary"
                 issue_count: "stdout_json.issue_count"
                 fix_count: "stdout_json.fix_count"
                 blocked_count: "stdout_json.blocked_count"

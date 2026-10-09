@@ -1,0 +1,9 @@
+inputs:
+  goal_dir:  { type: string, required: true }   # docs/goals/<slug>/ — holds decomposition.yaml
+  change_id: { type: string, required: true }   # the change to project a brief for (e.g. WM.1)
+  repo:      { type: string }                   # optional subdir prefix under ctx.fs's rooted tree (default ".")
+  worktree:  { type: string }                   # optional — when set, brief opens with a "work ONLY in worktree" directive
+  branch:    { type: string }                   # optional — paired with worktree in that directive
+  max_inline_lines: { type: int }               # optional — files at/under this line count are inlined in full (default 180)
+outputs:
+  brief: { type: string }   # the slim, complete worker-brief markdown for change_id

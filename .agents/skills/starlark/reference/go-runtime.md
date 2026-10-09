@@ -177,7 +177,7 @@ err = resolve.File(f, isPredeclared, isUniversal) // resolve.ErrorList of name/s
 `isPredeclared` / `isUniversal` are `func(name string) bool` predicates. By
 **narrowing `isPredeclared` to a capability's allowed names**, resolution fails
 if the module references a builtin that surface doesn't grant. kitsoki's
-`host.starlark.run` uses exactly this: `predeclared = {json, math}` and strict
+`host.starlark.run` uses exactly this: `predeclared = {json, math, yaml}` and strict
 `FileOptions` (see `internal/host/starlark/run.go`). The `starcheck` tool in
 [`tools/starcheck`](../tools/starcheck) wraps this check in a CLI; its
 `-kitsoki` profile reproduces that surface. See [validation.md](validation.md)

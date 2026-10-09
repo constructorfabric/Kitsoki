@@ -1,0 +1,102 @@
+{
+  "run_id": "persona-qa-slidey-architect-review",
+  "project": {
+    "id": "slidey",
+    "label": "Slidey"
+  },
+  "persona": {
+    "id": "software-architect-presenter",
+    "label": "Software architect presenting frequently",
+    "description": "Owns architecture reviews, design proposals, and recurring technical briefings.",
+    "surface_preference": "deck-as-code authoring with quick local preview",
+    "risk_focus": [
+      "reproducible visuals",
+      "diagram fidelity",
+      "asset lifecycle",
+      "presentation maintenance"
+    ],
+    "persona_lens": {
+      "starting_surface": "Open the generated deck and inspect the JSON source before rendering video.",
+      "first_question": "Can I turn an architecture decision into a polished, rerunnable presentation without hand-editing pixels?",
+      "evidence_emphasis": "Validated Slidey JSON, playback clips, layout checks, and a bundle suitable for sharing.",
+      "escalation_trigger": "Any visual that cannot be reproduced, diffed, bundled, or reviewed before a meeting.",
+      "finding_bias": "Prefer findings that improve repeatable technical communication over one-off polish."
+    }
+  },
+  "scenarios": [
+    {
+      "id": "compose-architecture-deck",
+      "label": "Compose an architecture deck",
+      "stage": "authoring",
+      "task": "Turn a design decision into a deterministic architecture deck with diagrams, evidence, and speaker-ready narrative.",
+      "primary_story": "stories/slidey-edit",
+      "required_mcp": [
+        "visual.open",
+        "visual.observe"
+      ],
+      "evidence": [
+        "key_interaction_video",
+        "design_artifact",
+        "review_notes"
+      ],
+      "success_criteria": [
+        "The deck source is understandable as code.",
+        "The resulting artifact can be bundled and shared.",
+        "The recorded authoring flow is replayable."
+      ],
+      "status": "needs_evidence",
+      "evidence_status": "missing_playback"
+    },
+    {
+      "id": "reuse-recorded-demo",
+      "label": "Reuse a recorded demo",
+      "stage": "evidence_packaging",
+      "task": "Embed a recorded walkthrough so an audience can inspect the UI state without rerunning the system.",
+      "primary_story": "stories/slidey-edit",
+      "required_mcp": [
+        "visual.observe"
+      ],
+      "evidence": [
+        "key_interaction_video",
+        "trace_reference"
+      ],
+      "success_criteria": [
+        "The deck contains a standalone playback scene.",
+        "The media path is deck-local and bundle-friendly."
+      ],
+      "status": "needs_evidence",
+      "evidence_status": "validated"
+    },
+    {
+      "id": "maintain-deck-as-code",
+      "label": "Maintain deck as code",
+      "stage": "maintenance",
+      "task": "Review whether the JSON deck is diffable, deterministic, and maintainable for recurring technical presentations.",
+      "primary_story": "stories/slidey-edit",
+      "required_mcp": [
+        "session.trace"
+      ],
+      "evidence": [
+        "review_notes",
+        "key_interaction_video"
+      ],
+      "success_criteria": [
+        "A reviewer can tell which run produced the deck.",
+        "The media contract is explicit enough to keep assets in sync."
+      ],
+      "status": "validated",
+      "evidence_status": "validated"
+    }
+  ],
+  "stages": [
+    {
+      "id": "architecture_presentation",
+      "status": "validated",
+      "scenarios": [
+        "compose-architecture-deck",
+        "reuse-recorded-demo",
+        "maintain-deck-as-code"
+      ]
+    }
+  ]
+}

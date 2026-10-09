@@ -1,0 +1,32 @@
+{
+  "run_id": "persona-qa-kitsoki-product-review",
+  "status": "needs_evidence",
+  "summary": "Kitsoki can produce a presentation-ready journey deck only after real playback captures are attached; the current example keeps missing media visible instead of presenting placeholders as evidence.",
+  "summary_counts": {
+    "passed": 3,
+    "failed": 1,
+    "total": 4
+  },
+  "checks": [
+    {
+      "id": "scenario-source",
+      "status": "pass",
+      "summary": "The deck source is a committed run bundle fixture."
+    },
+    {
+      "id": "playback-evidence",
+      "status": "fail",
+      "summary": "The previous rrweb placeholders were removed; both scenarios still need proof-grade playback capture."
+    },
+    {
+      "id": "architect-readiness",
+      "status": "pass",
+      "summary": "The generated deck explains the workflow in reviewable chunks."
+    },
+    {
+      "id": "regeneration",
+      "status": "pass",
+      "summary": "Repeated persona-qa deck generation is byte-stable."
+    }
+  ]
+}

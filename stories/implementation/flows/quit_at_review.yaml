@@ -14,6 +14,8 @@ host_handlers:
     data: { ok: true, message_id: "msg-1" }
   host.inbox.add:
     data: { ok: true, id: "ib-1" }
+  host.artifacts_dir:
+    data: { ok: true, path: ".artifacts/implementation-flow-artifact.md", message_id: "artifact-1" }
   host.git_worktree:
     data: { ok: true, log: "" }
   host.git:
@@ -47,20 +49,12 @@ host_handlers:
 
 turns:
   - intent: { name: start, slots: {} }
-    expect_state: review_task_executing
-  - intent: { name: proceed, slots: {} }
     expect_state: review_task_awaiting_reply
   - intent: { name: accept, slots: {} }
-    expect_state: write_code_executing
-  - intent: { name: proceed, slots: {} }
     expect_state: write_code_awaiting_reply
   - intent: { name: accept, slots: {} }
-    expect_state: test_executing
-  - intent: { name: proceed, slots: {} }
     expect_state: test_awaiting_reply
   - intent: { name: accept, slots: {} }
-    expect_state: review_executing
-  - intent: { name: proceed, slots: {} }
     expect_state: review_awaiting_reply
   - intent: { name: quit, slots: {} }
     expect_state: __exit__abandoned

@@ -20,9 +20,14 @@ vi.mock("vue-router", () => ({
   useRoute: () => ({ params: { sessionId: "pub-1" } }),
 }));
 
+const liveSourceMock = vi.hoisted(() => ({
+  bugStatus: vi.fn(),
+}));
+
 vi.mock("../../src/data/live-source.js", () => ({
   LiveSource: vi.fn().mockImplementation(() => ({
     metaModes: vi.fn().mockResolvedValue([]),
+    bugStatus: liveSourceMock.bugStatus,
   })),
 }));
 
@@ -33,6 +38,11 @@ function open(wrapper: ReturnType<typeof mount>) {
 describe("MetaButton — Report bug", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
+    liveSourceMock.bugStatus.mockReset();
+    liveSourceMock.bugStatus.mockResolvedValue({
+      mode: "local",
+      can_file: true,
+    });
     delete (globalThis as Record<string, unknown>).__KITSOKI_SNAPSHOT__;
   });
   afterEach(() => {
@@ -191,6 +201,7 @@ describe("MetaButton — Report bug", () => {
   it("shows the filed toast with the path after a successful submit", async () => {
     const store = useBugReportStore();
     vi.spyOn(store, "trigger").mockResolvedValue();
+    store.title = "Foyer button does nothing";
     // Simulate the post-submit filed state the modal would produce.
     store.filed = {
       id: "2026-06-12T130405Z-foyer-button-does-nothing",
@@ -206,7 +217,40 @@ describe("MetaButton — Report bug", () => {
     );
     const open = wrapper.get('[data-testid="bug-toast-open"]');
     expect(open.exists()).toBe(true);
-    expect(open.attributes("title")).toBe("Open the issue path");
+    expect(open.attributes("title")).toBe("Open the filed bug");
+    const fix = wrapper.get('[data-testid="bug-toast-bugfix"]');
+    expect(fix.attributes("target")).toBe("_blank");
+    const href = fix.attributes("href") ?? "";
+    expect(href).toContain("#/start/bugfix?");
+    const params = new URLSearchParams(href.split("?")[1] ?? "");
+    expect(params.get("id")).toBe("2026-06-12T130405Z-foyer-button-does-nothing");
+    expect(params.get("path")).toBe(
+      "issues/bugs/2026-06-12T130405Z-foyer-button-does-nothing.md"
+    );
+    expect(params.get("title")).toBe("Foyer button does nothing");
+  });
+
+  it("shows privacy feedback in the filed toast", async () => {
+    const store = useBugReportStore();
+    vi.spyOn(store, "trigger").mockResolvedValue();
+    store.filed = {
+      id: "2026-06-12T130405Z-foyer-button-does-nothing",
+      path: "issues/bugs/2026-06-12T130405Z-foyer-button-does-nothing.md",
+      privacy: {
+        status: "passed_with_substitutions",
+        message: "deterministic substitutions applied",
+        follow_up_path:
+          "issues/bugs/2026-06-12T130405Z-privacy-strip-sensitive-bug-report-data-high-entropy.md",
+      },
+    };
+    store.status = "filed";
+
+    const wrapper = mount(MetaButton);
+    await flushPromises();
+
+    const privacy = wrapper.get('[data-testid="bug-toast-privacy"]').text();
+    expect(privacy).toContain("deterministic substitutions applied");
+    expect(privacy).toContain("privacy-strip-sensitive-bug-report-data");
   });
 
   it("opens the filed bug path when the filed toast open action is clicked", async () => {
@@ -246,6 +290,35 @@ describe("MetaButton — Report bug", () => {
     expect(wrapper.get('[data-testid="bug-toast-error"]').text()).toContain(
       "write failed"
     );
+  });
+
+  it("warns and disables Report bug when GitHub auth is missing", async () => {
+    liveSourceMock.bugStatus.mockResolvedValue({
+      mode: "github",
+      repo: "o/r",
+      can_file: false,
+      github_auth_configured: false,
+      warning:
+        "Report bug cannot file to GitHub repo o/r because GitHub auth is missing. Filing bugs is critical; run `kitsoki gh-agent login` or set GH_TOKEN/GITHUB_TOKEN.",
+      setup_hint: "GitHub auth is not configured",
+    });
+    const store = useBugReportStore();
+    const trigger = vi.spyOn(store, "trigger").mockResolvedValue();
+
+    const wrapper = mount(MetaButton);
+    await flushPromises();
+    expect(
+      wrapper.get('[data-testid="meta-status-bug-unavailable"]').attributes("title")
+    ).toContain("GitHub auth is missing");
+    await open(wrapper);
+
+    expect(wrapper.get('[data-testid="bug-report-warning"]').text()).toContain(
+      "Filing bugs is critical"
+    );
+    const item = wrapper.get('[data-testid="meta-report-bug"]');
+    expect(item.attributes("disabled")).toBeDefined();
+    expect(item.text()).toContain("Fix GitHub auth");
+    expect(trigger).not.toHaveBeenCalled();
   });
 
   it("hides the Report bug item (whole launcher) in snapshot mode", () => {

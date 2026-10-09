@@ -610,6 +610,12 @@ func SetInputQueueForTest(m *RootModel, items ...string) {
 // m.liveLine.
 func LiveLineForTest(m RootModel) string { return m.transcript.LiveLine() }
 
+// AppendLiveForTest exposes the production live-line path for tests that need
+// to simulate routing/awaiting chrome without driving a full turn.
+func AppendLiveForTest(m *RootModel, body string) {
+	m.transcript.AppendLive(body)
+}
+
 // AppendMetaThinkingForTest exposes the narration-line append.
 func AppendMetaThinkingForTest(m *RootModel, text string) {
 	m.transcript.AppendMetaThinking(text)

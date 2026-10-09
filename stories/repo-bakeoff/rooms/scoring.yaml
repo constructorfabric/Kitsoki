@@ -1,7 +1,8 @@
 # scoring — DETERMINISTIC (no LLM). First run `bench.py completion` so the
 # operator sees whether the matrix is ready-to-drive, complete-with-pending, or
 # live-scored. The completion command now returns a machine flag (`completed`).
-# If `completed` is true, scoring then rolls the per-cell verdicts into a summary.
+# If `completed` is true, scoring routes to `summarize`, which rolls the
+# per-cell verdicts into a summary after the completion bind has landed.
 #
 # If `completed` is false, the story loops deterministically:
 #   - repairable issue set -> repair state (free preflight/verify/handoff prep retries),
@@ -9,6 +10,7 @@
 states:
   scoring:
     description: "Checking completion evidence and rolling cell verdicts into a summary."
+    decider: llm
     relevant_world: [completion, completion_done, completion_repairable, completion_requires_drive, completion_diagnostics, completion_status, completion_markdown, completion_repair_log, completion_state_thread, completion_state_path, summary, summary_path, harness_dir, results_dir, report_dir, deck]
     view:
       - heading: "Bake-off · scoring"
@@ -95,8 +97,44 @@ states:
         bind:
           completion_state_path: path
         on_error: .
-      - when: "world.completion.completed == true"
-        invoke: host.run
+      - when: "world.completion_done == true"
+        set:
+          completion_repair_log: "completion complete; routing to final rollup"
+      - when: "world.completion_done == true"
+        emit_intent: summarize
+      - when: "world.completion_status != '' && world.completion_done == false && world.completion_repairable == true && world.completion_requires_drive == false"
+        emit_intent: repair
+      - when: "world.completion_status != '' && world.completion_done == false && (world.completion_requires_drive == true || world.completion_repairable == false)"
+        emit_intent: run_more
+    on:
+      repair:
+        - target: repair
+      run_more:
+        - target: running
+      summarize:
+        - target: summarize
+      accept:
+        - target: reporting
+      quit:
+        - target: "@exit:abandoned"
+      look:
+        - target: .
+
+  summarize:
+    description: "Rolling completed cell verdicts into the final report summary."
+    decider: llm
+    relevant_world: [completion_status, completion_markdown, summary, summary_path, harness_dir, results_dir, report_dir, deck, report_markdown]
+    view:
+      - heading: "Bake-off · summarize"
+      - kv:
+          pairs:
+            Completion: '{{ world.completion_status }}'
+            Summary: '{{ world.summary_path|default:"(summarizing…)" }}'
+            Results: '{{ world.results_dir }}'
+            Report:  '{{ world.report_dir }}'
+      - prose: "The completion verdict is ready. Rolling cell verdicts into the comparison report and deck spec."
+    on_enter:
+      - invoke: host.run
         id: summarize
         with:
           cmd: python3
@@ -118,20 +156,12 @@ states:
           deck:         stdout_json.deck
           report_markdown: stdout_json.markdown
         on_error: running
-      - when: "world.completion.completed == true"
+      - when: "world.summary_path != ''"
         set:
           completion_repair_log: "completion complete; final rollup generated"
-      - when: "world.completion.completed == true"
+      - when: "world.summary_path != ''"
         emit_intent: accept
-      - when: "world.completion.completed == false && world.completion_repairable == true && world.completion_requires_drive == false"
-        emit_intent: repair
-      - when: "world.completion.completed == false && (world.completion_requires_drive == true || world.completion_repairable == false)"
-        emit_intent: run_more
     on:
-      repair:
-        - target: repair
-      run_more:
-        - target: running
       accept:
         - target: reporting
       quit:

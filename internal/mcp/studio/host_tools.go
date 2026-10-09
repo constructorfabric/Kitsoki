@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/google/jsonschema-go/jsonschema"
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -161,6 +162,7 @@ func (srv *Server) handleHostRun(
 
 	exitCode, _ := res.Data["exit_code"].(int)
 	stdout, _ := res.Data["stdout"].(string)
+	stdout = collapseTerminalProgress(stdout)
 
 	limit := args.TruncateOutput
 	if limit == 0 {
@@ -188,13 +190,47 @@ func (srv *Server) handleHostRun(
 	return nil, out, nil
 }
 
+func collapseTerminalProgress(stdout string) string {
+	if !strings.Contains(stdout, "\r") {
+		return stdout
+	}
+	stdout = strings.ReplaceAll(stdout, "\r\n", "\n")
+	var out strings.Builder
+	var line strings.Builder
+	for _, r := range stdout {
+		switch r {
+		case '\r':
+			line.Reset()
+		case '\n':
+			out.WriteString(line.String())
+			out.WriteByte('\n')
+			line.Reset()
+		default:
+			line.WriteRune(r)
+		}
+	}
+	if line.Len() > 0 {
+		out.WriteString(line.String())
+	}
+	return out.String()
+}
+
 // writeHostRunOutput spills a command's full combined output to a sidecar file
 // under hostRunArtifactsDir so truncating the returned stdout never loses it.
 func writeHostRunOutput(stdout string) (string, error) {
-	if err := os.MkdirAll(hostRunArtifactsDir, 0o755); err != nil {
+	path, err := writeHostRunOutputInDir(hostRunArtifactsDir, stdout)
+	if err == nil {
+		return path, nil
+	}
+	fallbackDir := filepath.Join(os.TempDir(), "kitsoki-mcp-host-run")
+	return writeHostRunOutputInDir(fallbackDir, stdout)
+}
+
+func writeHostRunOutputInDir(dir, stdout string) (string, error) {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}
-	f, err := os.CreateTemp(hostRunArtifactsDir, "host-run-*.log")
+	f, err := os.CreateTemp(dir, "host-run-*.log")
 	if err != nil {
 		return "", err
 	}

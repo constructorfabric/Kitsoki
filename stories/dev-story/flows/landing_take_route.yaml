@@ -18,6 +18,12 @@ test_kind: flow
 app: ../app.yaml
 initial_state: landing
 initial_world:
+  # Opt out of bf's auto_triage pre-flight (default on): this fixture tests
+  # the downstream bugfix walk, not triage. Parent-level key — the import
+  # wrapper re-seeds bf__auto_triage on entry; only the world_in projection
+  # sticks. The pre-flight contract lives in
+  # stories/bugfix/flows/preflight_triage_*.yaml.
+  auto_triage: false
   workdir:        ".worktrees/tkt-200"
   workspace_id:   "ws-200"
   base_branch:    "main"

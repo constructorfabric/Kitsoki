@@ -15,6 +15,7 @@ app:
 
 hosts:
   - host.run
+  - host.starlark.run
   - host.agent.task
 
 agents:

@@ -1,0 +1,23 @@
+{
+  "axis": {
+    "task": "kitsoki-bug9-bugfix-test-repair"
+  },
+  "cell_id": "cost-bench-round1--single-briefed-codex-native--task:kitsoki-bug9-bugfix-test-repair",
+  "evidence_refs": [
+    "/workspace/kitsoki/tools/arena/corpus/cost-bench.manifest.yaml#kitsoki-bug9-bugfix-test-repair",
+    "/Users/brad/code/Kitsoki/.worktrees/generalized-usage-rebase/.artifacts/arena/paired-task-work/kitsoki-bug9-bugfix-test-repair--single-briefed--codex--gpt-5.5-score.json"
+  ],
+  "health": "model:result",
+  "job_type": "paired-task",
+  "metrics": {
+    "cost_usd": 0.845994,
+    "host": "local",
+    "tokens": 150399,
+    "wall_s": 394.584
+  },
+  "notes": "codex exit=0: Implemented and committed the fix.; cost_usd=0.845994 (blended estimate, not exact); [bench] kitsoki/bug9 oracle=fail suite=None -> failed",
+  "target_id": "cost-bench-round1",
+  "trace_ref": "/Users/brad/code/Kitsoki/.worktrees/generalized-usage-rebase/.artifacts/arena/paired-task-work/kitsoki-bug9-bugfix-test-repair--single-briefed--codex--gpt-5.5.jsonl",
+  "variant_id": "single-briefed-codex-native",
+  "verdict": "failed"
+}

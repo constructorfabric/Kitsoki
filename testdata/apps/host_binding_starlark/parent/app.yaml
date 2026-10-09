@@ -1,0 +1,39 @@
+# parent — imports ../child under alias `core` and rebinds its `greeter`
+# host_interface onto a starlark script (S3a / D2.1: starlark-bindable
+# host_bindings). No per-kit Go: the loader synthesizes a Handler that closes
+# over scripts/greet.star and delegates to host.starlark.run, injecting the
+# dispatched op into ctx.inputs.op.
+app:
+  id: host-binding-starlark-parent
+  version: 0.1.0
+
+hosts:
+  - host.starlark.run
+
+world: {}
+
+intents:
+  begin:
+    description: "Enter the child."
+    examples: ["begin"]
+
+root: main
+
+imports:
+  core:
+    source: ../child
+    entry: idle
+    host_bindings:
+      # Bare .star-suffixed string form (see HostBindingSpec) — the sibling
+      # {script: ...} mapping form is covered by a Go-level fold test
+      # (internal/app/imports_starlark_binding_test.go), not a second flow
+      # fixture, since it only changes YAML shape, not runtime behavior.
+      greeter: scripts/greet.star
+
+states:
+  main:
+    description: "Main."
+    view: "Hub."
+    on:
+      begin:
+        - target: core

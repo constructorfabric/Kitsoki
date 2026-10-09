@@ -1,0 +1,23 @@
+name: stale-worktree
+source:
+  synthetic: true
+  default_branch: main
+  steps:
+    - action: write
+      path: a.txt
+      content: |
+        a
+    - action: commit
+      message: init
+    - action: git
+      args: [worktree, add, -b, stale-branch, .worktrees/stale, main]
+    - action: remove
+      path: .worktrees/stale
+network: none
+verify:
+  probes:
+    - name: stale-worktree-entry
+      run: git worktree list --porcelain | grep -q stale
+      expect: zero
+scenario:
+  kind: git-flow

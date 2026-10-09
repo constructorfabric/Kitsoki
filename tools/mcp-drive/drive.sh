@@ -37,8 +37,18 @@
 # Env:
 #   MCP_DRIVE_MODEL             orchestrator model (default: sonnet)
 #   MCP_DRIVE_BACKEND           claude | codex (default: auto-detect from model)
-#   MCP_DRIVE_TIMEOUT           not enforced here; wrap with your own timeout if needed
-#   MCP_DRIVE_TOOLS             override the allowlist (default: all kitsoki studio tools)
+#   MCP_DRIVE_TIMEOUT           hard wall-clock ceiling in seconds for ONE attempt
+#                               (default: 2400 = 40m). A single legitimate
+#                               full_pipeline drive polls session_status ~60s
+#                               apart for many minutes — this is a backstop
+#                               against a genuine hang (e.g. a silently-denied
+#                               MCP tool call deadlocking the orchestrator), not
+#                               a normal-case budget. On expiry the attempt is
+#                               killed (SIGTERM, then SIGKILL after 30s) and
+#                               reported distinctly from a real command failure
+#                               so callers don't confuse "stalled" with "tried
+#                               and failed".
+#   MCP_DRIVE_TOOLS             override the allowlist (default: kitsoki studio MCP tools only)
 #   MCP_DRIVE_MAX_ATTEMPTS      max attempts for retryable transient failures (default: 12)
 #   MCP_DRIVE_BACKOFF_BASE      initial backoff seconds (default: 10)
 #   MCP_DRIVE_BACKOFF_MAX       max backoff cap seconds (default: 600 = 10m)
@@ -46,9 +56,11 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$HERE/../.." && pwd)"
 MCP_CONFIG="$HERE/kitsoki-mcp.json"
 
 MODEL="${MCP_DRIVE_MODEL:-sonnet}"
+TIMEOUT_S="${MCP_DRIVE_TIMEOUT:-2400}"
 MAX_ATTEMPTS="${MCP_DRIVE_MAX_ATTEMPTS:-12}"
 BACKOFF_BASE="${MCP_DRIVE_BACKOFF_BASE:-10}"
 BACKOFF_MAX="${MCP_DRIVE_BACKOFF_MAX:-600}"
@@ -91,20 +103,65 @@ case "$BACKEND" in
     echo "drive.sh: unknown MCP_DRIVE_BACKEND '$BACKEND' (want claude|codex)" >&2; exit 2 ;;
 esac
 
-# The full kitsoki studio surface. The orchestrator needs session.* driving
-# tools + story.*/render.* introspection; Bash/Read let it stage tickets + verify
-# the worktree between turns.
-TOOLS="${MCP_DRIVE_TOOLS:-mcp__kitsoki__studio_ping,mcp__kitsoki__story_read,mcp__kitsoki__story_graph,mcp__kitsoki__story_validate,mcp__kitsoki__session_new,mcp__kitsoki__session_attach,mcp__kitsoki__session_drive,mcp__kitsoki__session_submit,mcp__kitsoki__session_continue,mcp__kitsoki__session_answer,mcp__kitsoki__session_inspect,mcp__kitsoki__session_trace,mcp__kitsoki__session_close,mcp__kitsoki__render_tui,Bash,Read,Glob,Grep}"
+# The kitsoki studio surface. The orchestrator drives, reads, gates, and
+# integrates through MCP tools only; direct host Bash/Read/Grep/Glob are
+# deliberately absent.
+TOOLS="${MCP_DRIVE_TOOLS:-mcp__kitsoki__studio_ping,mcp__kitsoki__studio_handles,mcp__kitsoki__studio_work,mcp__kitsoki__story_read,mcp__kitsoki__story_write,mcp__kitsoki__story_validate,mcp__kitsoki__story_graph,mcp__kitsoki__story_test,mcp__kitsoki__story_list,mcp__kitsoki__story_search,mcp__kitsoki__story_turn,mcp__kitsoki__session_new,mcp__kitsoki__session_attach,mcp__kitsoki__session_drive,mcp__kitsoki__session_submit,mcp__kitsoki__session_continue,mcp__kitsoki__session_answer,mcp__kitsoki__session_status,mcp__kitsoki__session_world,mcp__kitsoki__session_inspect,mcp__kitsoki__session_trace,mcp__kitsoki__session_close,mcp__kitsoki__render_tui,mcp__kitsoki__render_tui_png,mcp__kitsoki__render_web,mcp__kitsoki__visual_open,mcp__kitsoki__visual_observe,mcp__kitsoki__visual_snapshot,mcp__kitsoki__visual_act,mcp__kitsoki__visual_diff,mcp__kitsoki__visual_git_diff,mcp__kitsoki__visual_record,mcp__kitsoki__host_run,mcp__kitsoki__trace_read,mcp__kitsoki__trace_to_flow,mcp__kitsoki__vcs_status,mcp__kitsoki__vcs_diff,mcp__kitsoki__vcs_log,mcp__kitsoki__vcs_commit,mcp__kitsoki__vcs_integrate,mcp__kitsoki__worktree_list,mcp__kitsoki__worktree_create,mcp__kitsoki__worktree_remove,mcp__kitsoki__gh_issues,mcp__kitsoki__gh_pr_view,mcp__kitsoki__gh_comment,mcp__kitsoki__issue_create}"
+
+# Pure-bash wall-clock ceiling — no dependency on GNU coreutils `timeout`/
+# `gtimeout` (absent by default on macOS, where this also runs). Backgrounds
+# the command and polls `kill -0` once a second from the foreground (a single
+# background job, no sibling watchdog subshell to race against — bash 3.2's
+# `wait` on a killed subshell PID was observed to hang indefinitely on this
+# box, so this deliberately avoids that shape). On expiry: SIGTERM, a short
+# grace period, then SIGKILL, and exit 124 (the GNU `timeout` convention) so
+# callers can tell "the process hung" apart from "the process ran and failed".
+#
+# Deliberately does NOT touch `set -e`/`set +e`: a function that flips
+# errexit back on right before `return <nonzero>` aborts an unprotected
+# caller (`f; rc=$?`) the instant it returns — verified directly, this is
+# not a corner case. Callers must already run this with errexit off for the
+# same reason `run_once` wraps its whole backend dispatch in `set +e` today.
+run_with_soft_timeout() {
+  local timeout_s="$1" out_file="$2" err_file="$3"; shift 3
+  "$@" >"$out_file" 2>"$err_file" &
+  local cmd_pid=$!
+  local waited=0
+  local kill_grace=30
+  while kill -0 "$cmd_pid" 2>/dev/null; do
+    if [[ $waited -ge $timeout_s ]]; then
+      kill -TERM "$cmd_pid" 2>/dev/null
+      local graced=0
+      while [[ $graced -lt $kill_grace ]] && kill -0 "$cmd_pid" 2>/dev/null; do
+        sleep 1
+        graced=$((graced + 1))
+      done
+      kill -KILL "$cmd_pid" 2>/dev/null
+      wait "$cmd_pid" 2>/dev/null
+      return 124
+    fi
+    sleep 1
+    waited=$((waited + 1))
+  done
+  wait "$cmd_pid"
+  return $?
+}
 
 is_retryable_error() {
   local payload="$1"
   local lower
   lower="$(printf '%s' "$payload" | tr '[:upper:]' '[:lower:]')"
 
-  # Obvious client/config errors should fail fast.
+  # Obvious client/config errors should fail fast. A watchdog kill also fails
+  # fast: a genuine hang/deadlock (e.g. a silently-denied MCP tool call) is
+  # deterministic and will very likely time out again on retry, so blindly
+  # retrying just multiplies MCP_DRIVE_TIMEOUT by MAX_ATTEMPTS into a much
+  # longer silent-looking wait — exactly the failure mode this timeout exists
+  # to prevent.
   case "$lower" in
     *"usage:"*|*"unknown option"*|*"unknown arg"*|*"invalid or missing argument"*|\
-    *"mcp-config not found"*|*"usage error"*|*"command not found"*)
+    *"mcp-config not found"*|*"usage error"*|*"command not found"*|\
+    *"watchdog"*)
       return 1
       ;;
   esac
@@ -131,9 +188,10 @@ run_once() {
   if [[ "$BACKEND" == "codex" ]]; then
     # Headless codex on ChatGPT subscription auth. The studio MCP is attached via
     # -c overrides (codex has no --mcp-config flag); --dangerously-bypass… is the
-    # acceptEdits equivalent for unattended runs — the orchestrator only clicks
-    # studio tools, and the kitsoki MCP it spawns forks the worker harness, so the
-    # process needs full access. --skip-git-repo-check: the cwd may be a worktree.
+    # acceptEdits equivalent for unattended MCP calls — the orchestrator only
+    # clicks studio tools, shell_tool is disabled below, and app connectors are
+    # disabled so this scoped MCP launch does not inherit unrelated capabilities.
+    # --skip-git-repo-check: the cwd may be a worktree.
     #
     # Env propagation: codex does NOT forward the parent environment to MCP
     # subprocesses, so a worker that needs env (IS_SANDBOX so claude accepts
@@ -150,29 +208,65 @@ run_once() {
     if [[ "${MCP_DRIVE_CODEX_CONFIG_MCP:-0}" != "1" ]]; then
       codex_mcp_args+=(-c mcp_servers.kitsoki.command=kitsoki)
       codex_mcp_args+=(-c 'mcp_servers.kitsoki.args=["mcp","--stories-dir","stories"]')
-      local _fwd
-      for _fwd in ${MCP_DRIVE_FORWARD_ENV//,/ }; do
+      # A machine's own ~/.codex/config.toml may already declare mcp_servers.kitsoki
+      # (pointing `cwd` at THAT machine's checkout, e.g. a developer's primary
+      # checkout path). If CODEX_HOME happens to carry that file (bind-mounted
+      # into a container, say), the pre-existing `cwd` silently wins over the -c
+      # command/args overrides above, the kitsoki subprocess fails to start in a
+      # directory that doesn't exist there, and codex reports zero MCP tools
+      # with NO error surfaced — it just looks like the server was never
+      # registered. Force `cwd` to THIS repo checkout so the override is total.
+      codex_mcp_args+=(-c "mcp_servers.kitsoki.cwd=$REPO_ROOT")
+      # codex's default per-tool-call timeout is far shorter than a real
+      # session.drive full_pipeline turn (kitsoki dispatches its OWN live
+      # agent calls inside that one MCP tool call — verified live: an
+      # 11-minute drive got cut off mid-pipeline with the session left
+      # "stuck" at bf.idle, no fix produced, no error). Both keys are accepted
+      # by this codex version under --strict-config.
+      codex_mcp_args+=(-c "mcp_servers.kitsoki.startup_timeout_sec=${MCP_DRIVE_MCP_STARTUP_TIMEOUT_SEC:-120}")
+      codex_mcp_args+=(-c "mcp_servers.kitsoki.tool_timeout_sec=${MCP_DRIVE_MCP_TOOL_TIMEOUT_SEC:-1800}")
+      local _fwd _fwd_list="${MCP_DRIVE_FORWARD_ENV:-}"
+      for _fwd in ${_fwd_list//,/ }; do
         codex_mcp_args+=(-c "mcp_servers.kitsoki.env.${_fwd}=${!_fwd-}")
       done
     fi
-    codex exec "$PROMPT" \
+    # codex (>=0.142) DEFERS MCP server tools behind its `tool_search` tool —
+    # studio.ping/session.new/etc. are NOT in the eager tool list, so without
+    # this the orchestrator reports them "not available" and bounces instead of
+    # driving the pipeline (see MEMORY codex-defers-mcp-tools-toolsearch; the
+    # same fix already ships inside kitsoki's own codex agent backend at
+    # internal/host/agent_backend_codex.go's codexMCPToolSearchPreamble — this
+    # is the external orchestrator invocation, so it needs its own copy). Tool
+    # names here MUST be the server's raw dotted names (session.new, not
+    # session_new) — codex's tool_search indexes the MCP server's own name, not
+    # the mcp__kitsoki__session_new alias the CLAUDE backend's client presents.
+    local codex_tool_search_preamble="TOOL ACCESS (codex): Some tools provided to you — including the kitsoki studio tools (studio.ping, session.new, session.drive, session.status, etc. — note the DOTTED names) — are NOT listed in your default tool set. They are reachable only via the \`tool_search\` tool. BEFORE you conclude that a tool the task asks for is unavailable, you MUST call \`tool_search\` to locate it, then call it. Never emulate such a tool by printing its name or arguments as text — a printed call does nothing."
+    run_with_soft_timeout "$TIMEOUT_S" "$out_file" "$err_file" \
+      codex exec "${codex_tool_search_preamble}"$'\n\n---\n\n'"$PROMPT" \
       --model "$MODEL" \
       --dangerously-bypass-approvals-and-sandbox \
+      --disable=shell_tool \
+      --disable=apps \
       --skip-git-repo-check \
       "${codex_mcp_args[@]}" \
-      --json \
-      >"$out_file" 2>"$err_file"
+      --json
     rc=$?
   else
-    claude -p "$PROMPT" \
+    run_with_soft_timeout "$TIMEOUT_S" "$out_file" "$err_file" \
+      claude -p "$PROMPT" \
       --mcp-config "$MCP_CONFIG" \
       --strict-mcp-config \
       --model "$MODEL" \
       --permission-mode acceptEdits \
       --allowedTools "$TOOLS" \
-      --output-format json \
-      >"$out_file" 2>"$err_file"
+      --output-format json
     rc=$?
+  fi
+
+  if [[ $rc -eq 124 ]]; then
+    printf 'drive.sh: WATCHDOG — backend=%s model=%s exceeded MCP_DRIVE_TIMEOUT=%ss with no result; killed. This is a hang/stall, not a model failure.\n' "$BACKEND" "$MODEL" "$TIMEOUT_S" >>"$err_file"
+  elif [[ $rc -ne 0 && ! -s "$out_file" && ! -s "$err_file" ]]; then
+    printf 'drive.sh: backend=%s model=%s cmd failed with empty output (exit=%s)\n' "$BACKEND" "$MODEL" "$rc" >>"$err_file"
   fi
   set -e
   return "$rc"
@@ -185,8 +279,17 @@ while true; do
   out_file="$(mktemp)"
   err_file="$(mktemp)"
 
-  run_once "$out_file" "$err_file"
-  rc=$?
+  # Pre-existing bug, fixed here: `run_once` restores `set -e` right before
+  # its own `return "$rc"`. Calling it as a bare statement under this
+  # script's top-level `set -euo pipefail` meant a nonzero return (ANY real
+  # backend failure) aborted the whole script immediately via errexit —
+  # before the retry/backoff logic below ever ran. Wrapping the call in an
+  # `if` makes it a protected context, so errexit does not fire on it.
+  if run_once "$out_file" "$err_file"; then
+    rc=0
+  else
+    rc=$?
+  fi
 
   if [[ $rc -eq 0 ]]; then
     cat "$out_file"

@@ -28,6 +28,8 @@ const (
 	menuActionHelp
 	// menuActionWorld opens the `/world` viewer for the current session.
 	menuActionWorld
+	// menuActionStories opens the `/stories` selector.
+	menuActionStories
 )
 
 // menuSystemChoiceMsg is emitted when the user selects a row. modeName
@@ -110,6 +112,7 @@ func newMenuSystemModel(metaEntries []metaMenuEntry) menuSystemModel {
 	// row indices stay stable.
 	entries = append(entries,
 		menuSystemEntry{action: menuActionHelp, label: "Help", hint: "list the slash commands (/help)"},
+		menuSystemEntry{action: menuActionStories, label: "Stories", hint: "choose another story (/stories)"},
 		menuSystemEntry{action: menuActionWorld, label: "World", hint: "inspect the world state (/world)"},
 	)
 	return menuSystemModel{entries: entries}

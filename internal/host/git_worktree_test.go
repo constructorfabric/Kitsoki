@@ -2,8 +2,12 @@ package host_test
 
 import (
 	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"kitsoki/internal/host"
 )
@@ -18,6 +22,36 @@ branch refs/heads/feature/x
 
 `
 
+func devWorkspaceScriptForTest(t *testing.T) string {
+	t.Helper()
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return filepath.Clean(filepath.Join(wd, "..", "..", "scripts", "dev-workspace.sh"))
+}
+
+func devWorkspaceCreatePrefix(t *testing.T) string {
+	t.Helper()
+	return devWorkspaceScriptForTest(t) + " create"
+}
+
+func devWorkspaceCreateJSON(t *testing.T, id, path, branch, root string, reused bool) string {
+	t.Helper()
+	b, err := json.Marshal(map[string]any{
+		"ok":     true,
+		"id":     id,
+		"path":   path,
+		"branch": branch,
+		"root":   root,
+		"reused": reused,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
 func TestGitWorktree_RegisteredAsBuiltin(t *testing.T) {
 	r := host.NewRegistry()
 	host.RegisterBuiltins(r)
@@ -29,6 +63,9 @@ func TestGitWorktree_RegisteredAsBuiltin(t *testing.T) {
 		"host.git_worktree.sync",
 		"host.git_worktree.cleanup_scan",
 		"host.git_worktree.cleanup_apply",
+		"host.git_worktree.clone_create",
+		"host.git_worktree.clone_cleanup_scan",
+		"host.git_worktree.clone_cleanup_apply",
 	} {
 		if _, ok := r.Get(n); !ok {
 			t.Fatalf("registry: %s missing", n)
@@ -117,7 +154,8 @@ func TestGitWorktree_Get_NotFound(t *testing.T) {
 
 func TestGitWorktree_Create_Happy(t *testing.T) {
 	fr := newFakeRunner()
-	fr.responses["git worktree add -b feature/x"] = fakeResp{}
+	path := "/repo/.capsules/workspaces/feature-x"
+	fr.responses[devWorkspaceCreatePrefix(t)] = fakeResp{stdout: devWorkspaceCreateJSON(t, "feature-x", path, "feature/x", "/repo/.capsules/workspaces", false)}
 	restore := host.SetExecRunnerForTest(fr.run)
 	defer restore()
 
@@ -133,16 +171,16 @@ func TestGitWorktree_Create_Happy(t *testing.T) {
 	if res.Error != "" {
 		t.Fatalf("domain: %s", res.Error)
 	}
-	path, _ := res.Data["path"].(string)
-	if !strings.Contains(path, "/repo/.worktrees/feature-x") {
-		t.Fatalf("path: %s", path)
+	gotPath, _ := res.Data["path"].(string)
+	if !strings.Contains(gotPath, "/repo/.capsules/workspaces/feature-x") {
+		t.Fatalf("path: %s", gotPath)
 	}
 }
 
 func TestGitWorktree_Create_EmptyRepoAnchorsAtGitTopLevel(t *testing.T) {
 	fr := newFakeRunner()
 	fr.responses["git rev-parse --show-toplevel"] = fakeResp{stdout: "/repo\n"}
-	fr.responses["git worktree add -b feature/x /repo/.worktrees/feature-x main"] = fakeResp{}
+	fr.responses[devWorkspaceCreatePrefix(t)] = fakeResp{stdout: devWorkspaceCreateJSON(t, "feature-x", "/repo/.capsules/workspaces/feature-x", "feature/x", "/repo/.capsules/workspaces", false)}
 	restore := host.SetExecRunnerForTest(fr.run)
 	defer restore()
 
@@ -157,23 +195,23 @@ func TestGitWorktree_Create_EmptyRepoAnchorsAtGitTopLevel(t *testing.T) {
 	if res.Error != "" {
 		t.Fatalf("domain: %s", res.Error)
 	}
-	if res.Data["path"] != "/repo/.worktrees/feature-x" {
+	if res.Data["path"] != "/repo/.capsules/workspaces/feature-x" {
 		t.Fatalf("path: %v", res.Data["path"])
 	}
-	var sawRevParse, sawAdd bool
+	var sawRevParse, sawCreate bool
 	for _, c := range fr.calls {
 		if c == "git rev-parse --show-toplevel" {
 			sawRevParse = true
 		}
-		if c == "git worktree add -b feature/x /repo/.worktrees/feature-x main" {
-			sawAdd = true
+		if strings.HasPrefix(c, devWorkspaceCreatePrefix(t)) {
+			sawCreate = true
 		}
 	}
 	if !sawRevParse {
 		t.Fatalf("expected git toplevel probe, got %v", fr.calls)
 	}
-	if !sawAdd {
-		t.Fatalf("expected worktree add anchored under git toplevel, got %v", fr.calls)
+	if !sawCreate {
+		t.Fatalf("expected scripted workspace create anchored under git toplevel, got %v", fr.calls)
 	}
 }
 
@@ -211,7 +249,7 @@ func TestGitWorktree_Create_EmptyRepoResolveFailure(t *testing.T) {
 // made — the silent-bounce-to-idle that surfaced in dogfood.
 func TestGitWorktree_Create_IDOverridesDir(t *testing.T) {
 	fr := newFakeRunner()
-	fr.responses["git worktree add -b fix/T1"] = fakeResp{}
+	fr.responses[devWorkspaceCreatePrefix(t)] = fakeResp{stdout: devWorkspaceCreateJSON(t, "bf-T1", "/repo/.capsules/workspaces/bf-T1", "fix/T1", "/repo/.capsules/workspaces", false)}
 	restore := host.SetExecRunnerForTest(fr.run)
 	defer restore()
 
@@ -229,22 +267,21 @@ func TestGitWorktree_Create_IDOverridesDir(t *testing.T) {
 		t.Fatalf("domain: %s", res.Error)
 	}
 	path, _ := res.Data["path"].(string)
-	if path != "/repo/.worktrees/bf-T1" {
-		t.Fatalf("path: %s (want /repo/.worktrees/bf-T1)", path)
+	if path != "/repo/.capsules/workspaces/bf-T1" {
+		t.Fatalf("path: %s (want /repo/.capsules/workspaces/bf-T1)", path)
 	}
-	// Confirm the git invocation used the id-derived path, not the
-	// name-derived one.
-	var sawAdd bool
+	// Confirm the script invocation used the id, not the name-derived one.
+	var sawCreate bool
 	for _, c := range fr.calls {
-		if strings.Contains(c, "git worktree add -b fix/T1 /repo/.worktrees/bf-T1 main") {
-			sawAdd = true
+		if strings.HasPrefix(c, devWorkspaceCreatePrefix(t)) && strings.Contains(c, "--id bf-T1") {
+			sawCreate = true
 		}
-		if strings.Contains(c, "/repo/.worktrees/fix-T1") {
+		if strings.Contains(c, "fix-T1") {
 			t.Fatalf("call used name-derived dir, not id: %s", c)
 		}
 	}
-	if !sawAdd {
-		t.Fatalf("expected `git worktree add -b fix/T1 /repo/.worktrees/bf-T1 main`, got %v", fr.calls)
+	if !sawCreate {
+		t.Fatalf("expected scripted create with --id bf-T1, got %v", fr.calls)
 	}
 }
 
@@ -255,11 +292,7 @@ func TestGitWorktree_Create_IDOverridesDir(t *testing.T) {
 // permanently-failing create that `on_error: idle` silently swallows.
 func TestGitWorktree_Create_ReattachStaleBranch(t *testing.T) {
 	fr := newFakeRunner()
-	fr.responses["git worktree add -b fix/T2 /repo/.worktrees/bf-T2 main"] = fakeResp{
-		stderr: "fatal: a branch named 'fix/T2' already exists",
-		code:   128,
-	}
-	fr.responses["git worktree add /repo/.worktrees/bf-T2 fix/T2"] = fakeResp{}
+	fr.responses[devWorkspaceCreatePrefix(t)] = fakeResp{stdout: devWorkspaceCreateJSON(t, "bf-T2", "/repo/.capsules/workspaces/bf-T2", "fix/T2", "/repo/.capsules/workspaces", true)}
 	restore := host.SetExecRunnerForTest(fr.run)
 	defer restore()
 
@@ -279,7 +312,7 @@ func TestGitWorktree_Create_ReattachStaleBranch(t *testing.T) {
 	if res.Data["reused"] != true {
 		t.Fatalf("expected reused=true, got %#v", res.Data)
 	}
-	if res.Data["path"] != "/repo/.worktrees/bf-T2" {
+	if res.Data["path"] != "/repo/.capsules/workspaces/bf-T2" {
 		t.Fatalf("path: %v", res.Data["path"])
 	}
 }
@@ -289,10 +322,8 @@ func TestGitWorktree_Create_ReattachStaleBranch(t *testing.T) {
 // (post-restart, post-restart_from) without re-running create against
 // a workspace that's already on disk.
 func TestGitWorktree_Create_IdempotentExistingWorktree(t *testing.T) {
-	porcelain := "worktree /repo\nHEAD aaaa\nbranch refs/heads/main\n\n" +
-		"worktree /repo/.worktrees/bf-T3\nHEAD bbbb\nbranch refs/heads/fix/T3\n\n"
 	fr := newFakeRunner()
-	fr.responses["git worktree list --porcelain"] = fakeResp{stdout: porcelain}
+	fr.responses[devWorkspaceCreatePrefix(t)] = fakeResp{stdout: devWorkspaceCreateJSON(t, "bf-T3", "/repo/.capsules/workspaces/bf-T3", "fix/T3", "/repo/.capsules/workspaces", true)}
 	restore := host.SetExecRunnerForTest(fr.run)
 	defer restore()
 
@@ -309,11 +340,11 @@ func TestGitWorktree_Create_IdempotentExistingWorktree(t *testing.T) {
 	if res.Error != "" {
 		t.Fatalf("domain: %s", res.Error)
 	}
-	if res.Data["path"] != "/repo/.worktrees/bf-T3" {
+	if res.Data["path"] != "/repo/.capsules/workspaces/bf-T3" {
 		t.Fatalf("path: %v", res.Data["path"])
 	}
-	// No `worktree add` should have been issued — we found the
-	// existing one and short-circuited.
+	// No raw `git worktree add` should have been issued; the script owns
+	// idempotency.
 	for _, c := range fr.calls {
 		if strings.Contains(c, "worktree add") {
 			t.Fatalf("unexpected `worktree add`: %s", c)
@@ -324,10 +355,8 @@ func TestGitWorktree_Create_IdempotentExistingWorktree(t *testing.T) {
 // Same dir, wrong branch: report rather than silently overwrite. The
 // operator likely has a parallel session or a misconfigured workspace.
 func TestGitWorktree_Create_PathHeldByOtherBranch(t *testing.T) {
-	porcelain := "worktree /repo\nHEAD aaaa\nbranch refs/heads/main\n\n" +
-		"worktree /repo/.worktrees/bf-T4\nHEAD bbbb\nbranch refs/heads/other-branch\n\n"
 	fr := newFakeRunner()
-	fr.responses["git worktree list --porcelain"] = fakeResp{stdout: porcelain}
+	fr.responses[devWorkspaceCreatePrefix(t)] = fakeResp{stderr: "error: create: /repo/.capsules/workspaces/bf-T4 already holds branch other-branch (wanted fix/T4)", code: 1}
 	restore := host.SetExecRunnerForTest(fr.run)
 	defer restore()
 
@@ -539,6 +568,102 @@ func TestGitWorktree_CleanupApply_RemovesOnlyRecommendedCandidates(t *testing.T)
 	}
 }
 
+func TestGitWorktree_CleanupScan_RecommendsGeneratedCachesInDirtyWorktree(t *testing.T) {
+	repo := t.TempDir()
+	wtPath := filepath.Join(repo, ".worktrees", "dirty")
+	cachePath := filepath.Join(wtPath, ".artifacts", "go-cache")
+	if err := os.MkdirAll(cachePath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cachePath, "obj"), []byte("cached"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	porcelain := "worktree " + repo + "\nHEAD aaaaaaaa\nbranch refs/heads/main\n\n" +
+		"worktree " + wtPath + "\nHEAD bbbbbbbb\nbranch refs/heads/feature/dirty\n\n"
+	fr := newFakeRunner()
+	fr.responses["git worktree list --porcelain"] = fakeResp{stdout: porcelain}
+	fr.responses["git status --porcelain"] = fakeResp{}
+	fr.responses[wtPath+"|git status --porcelain"] = fakeResp{stdout: " M file.go\n"}
+	fr.responses["git branch --format=%(refname:short)"] = fakeResp{stdout: "main\nfeature/dirty\n"}
+	fr.responses["git merge-base --is-ancestor feature/dirty main"] = fakeResp{}
+	restore := host.SetExecRunnerForTest(fr.run)
+	defer restore()
+
+	res, err := host.GitWorktreeHandler(context.Background(), map[string]any{
+		"op":   "cleanup_scan",
+		"repo": repo,
+		"base": "main",
+	})
+	if err != nil {
+		t.Fatalf("infra: %v", err)
+	}
+	if res.Error != "" {
+		t.Fatalf("domain: %s", res.Error)
+	}
+	candidates, _ := res.Data["candidates"].([]map[string]any)
+	var sawDirtyWorktree, sawCache bool
+	for _, c := range candidates {
+		if c["kind"] == "worktree" && c["branch"] == "feature/dirty" {
+			sawDirtyWorktree = true
+			if c["recommended"] != false {
+				t.Fatalf("dirty worktree itself should not be recommended: %#v", c)
+			}
+		}
+		if c["kind"] == "cache" && c["path"] == cachePath {
+			sawCache = true
+			if c["recommended"] != true || c["preserves_branch"] != true {
+				t.Fatalf("cache should be independently recommended: %#v", c)
+			}
+			if c["size_bytes"].(int64) == 0 {
+				t.Fatalf("cache size should be measured: %#v", c)
+			}
+		}
+	}
+	if !sawDirtyWorktree || !sawCache {
+		t.Fatalf("expected dirty worktree and cache candidates, got %#v", candidates)
+	}
+}
+
+func TestGitWorktree_CleanupApply_RemovesCacheWithoutDeletingBranch(t *testing.T) {
+	repo := t.TempDir()
+	cachePath := filepath.Join(repo, ".worktrees", "dirty", ".cache")
+	if err := os.MkdirAll(cachePath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	locked := filepath.Join(cachePath, "readonly")
+	if err := os.WriteFile(locked, []byte("cached"), 0o400); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(cachePath, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	fr := newFakeRunner()
+	restore := host.SetExecRunnerForTest(fr.run)
+	defer restore()
+
+	res, err := host.GitWorktreeHandler(context.Background(), map[string]any{
+		"op":   "cleanup_apply",
+		"repo": repo,
+		"candidates": []any{
+			map[string]any{"kind": "cache", "branch": "feature/dirty", "path": cachePath, "recommended": true},
+		},
+	})
+	if err != nil {
+		t.Fatalf("infra: %v", err)
+	}
+	if res.Error != "" {
+		t.Fatalf("domain: %s", res.Error)
+	}
+	if _, err := os.Stat(cachePath); !os.IsNotExist(err) {
+		t.Fatalf("cache still exists or stat failed unexpectedly: %v", err)
+	}
+	for _, call := range fr.calls {
+		if strings.Contains(call, "branch -d") {
+			t.Fatalf("cache cleanup must not delete branches: %v", fr.calls)
+		}
+	}
+}
+
 func TestGitWorktree_CleanupApply_AcceptsJSONCandidateList(t *testing.T) {
 	fr := newFakeRunner()
 	fr.responses["git worktree remove /repo/.worktrees/merged-clean"] = fakeResp{}
@@ -560,4 +685,139 @@ func TestGitWorktree_CleanupApply_AcceptsJSONCandidateList(t *testing.T) {
 	if len(fr.calls) != 2 {
 		t.Fatalf("calls: %v", fr.calls)
 	}
+}
+
+func TestGitWorktree_CloneCreate_CreatesIsolatedCloneWithSentinel(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "case-1")
+	fr := newFakeRunner()
+	fr.responses[devWorkspaceCreatePrefix(t)] = fakeResp{stdout: devWorkspaceCreateJSON(t, "case-1", path, "fix/case-1", root, false)}
+	restore := host.SetExecRunnerForTest(fr.run)
+	defer restore()
+
+	res, err := host.GitWorktreeHandler(context.Background(), map[string]any{
+		"op":         "clone_create",
+		"repo":       "/repo",
+		"root":       root,
+		"id":         "case-1",
+		"name":       "fix/case-1",
+		"base":       "main",
+		"session_id": "S1",
+	})
+	if err != nil {
+		t.Fatalf("infra: %v", err)
+	}
+	if res.Error != "" {
+		t.Fatalf("domain: %s", res.Error)
+	}
+	if res.Data["path"] != path {
+		t.Fatalf("path: %v", res.Data["path"])
+	}
+	for _, call := range fr.calls {
+		if strings.HasPrefix(call, devWorkspaceCreatePrefix(t)) {
+			if !strings.Contains(call, "--id case-1") ||
+				!strings.Contains(call, "--branch fix/case-1") ||
+				!strings.Contains(call, "--session-id S1") {
+				t.Fatalf("script call missing expected args: %s", call)
+			}
+			return
+		}
+	}
+	t.Fatalf("missing dev-workspace create call in %v", fr.calls)
+}
+
+func TestGitWorktree_CloneCleanupScan_RecommendsOnlyOwnedOldCleanClones(t *testing.T) {
+	root := t.TempDir()
+	oldClean := writeCloneTestDir(t, root, "old-clean", time.Now().Add(-48*time.Hour))
+	newClean := writeCloneTestDir(t, root, "new-clean", time.Now())
+	dirty := writeCloneTestDir(t, root, "dirty", time.Now().Add(-48*time.Hour))
+	if err := os.Mkdir(filepath.Join(root, "not-owned"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	fr := newFakeRunner()
+	fr.responses[oldClean+"|git branch --show-current"] = fakeResp{stdout: "fix/old-clean\n"}
+	fr.responses[newClean+"|git branch --show-current"] = fakeResp{stdout: "fix/new-clean\n"}
+	fr.responses[dirty+"|git branch --show-current"] = fakeResp{stdout: "fix/dirty\n"}
+	fr.responses["git status --porcelain"] = fakeResp{}
+	fr.responses[dirty+"|git status --porcelain"] = fakeResp{stdout: " M file.go\n"}
+	restore := host.SetExecRunnerForTest(fr.run)
+	defer restore()
+
+	res, err := host.GitWorktreeHandler(context.Background(), map[string]any{
+		"op":            "clone_cleanup_scan",
+		"repo":          "/repo",
+		"root":          root,
+		"min_age_hours": "24",
+	})
+	if err != nil {
+		t.Fatalf("infra: %v", err)
+	}
+	if res.Error != "" {
+		t.Fatalf("domain: %s", res.Error)
+	}
+	if res.Data["recommended_count"] != 1 {
+		t.Fatalf("recommended_count: %v", res.Data["recommended_count"])
+	}
+	candidates, _ := res.Data["candidates"].([]map[string]any)
+	byID := map[string]map[string]any{}
+	for _, c := range candidates {
+		byID[c["id"].(string)] = c
+	}
+	if byID["old-clean"]["recommended"] != true {
+		t.Fatalf("old clean clone should be recommended: %#v", byID["old-clean"])
+	}
+	if byID["new-clean"]["recommended"] != false {
+		t.Fatalf("new clone should not be recommended: %#v", byID["new-clean"])
+	}
+	if byID["dirty"]["recommended"] != false {
+		t.Fatalf("dirty clone should not be recommended: %#v", byID["dirty"])
+	}
+	if _, ok := byID["not-owned"]; ok {
+		t.Fatalf("unowned dir should not be a candidate: %#v", byID["not-owned"])
+	}
+}
+
+func TestGitWorktree_CloneCleanupApply_RemovesOnlyRecommendedOwnedClones(t *testing.T) {
+	root := t.TempDir()
+	removeMe := writeCloneTestDir(t, root, "remove-me", time.Now().Add(-48*time.Hour))
+	keepMe := writeCloneTestDir(t, root, "keep-me", time.Now().Add(-48*time.Hour))
+	fr := newFakeRunner()
+	restore := host.SetExecRunnerForTest(fr.run)
+	defer restore()
+
+	res, err := host.GitWorktreeHandler(context.Background(), map[string]any{
+		"op":   "clone_cleanup_apply",
+		"repo": "/repo",
+		"root": root,
+		"candidates": []any{
+			map[string]any{"id": "remove-me", "path": removeMe, "recommended": true},
+			map[string]any{"id": "keep-me", "path": keepMe, "recommended": false},
+			map[string]any{"id": "outside", "path": filepath.Join(root, "..", "outside"), "recommended": true},
+		},
+	})
+	if err != nil {
+		t.Fatalf("infra: %v", err)
+	}
+	if res.Error == "" {
+		t.Fatalf("expected outside path error")
+	}
+	if _, err := os.Stat(removeMe); !os.IsNotExist(err) {
+		t.Fatalf("recommended clone should be removed, stat err=%v", err)
+	}
+	if _, err := os.Stat(keepMe); err != nil {
+		t.Fatalf("unrecommended clone should remain: %v", err)
+	}
+}
+
+func writeCloneTestDir(t *testing.T, root, id string, createdAt time.Time) string {
+	t.Helper()
+	path := filepath.Join(root, id)
+	if err := os.MkdirAll(path, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := `{"id":"` + id + `","branch":"fix/` + id + `","created_at":"` + createdAt.UTC().Format(time.RFC3339) + `"}`
+	if err := os.WriteFile(filepath.Join(path, ".kitsoki-clone"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }

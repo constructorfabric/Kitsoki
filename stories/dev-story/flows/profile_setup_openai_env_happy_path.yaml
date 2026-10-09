@@ -1,0 +1,88 @@
+# profile_setup_openai_env_happy_path — operator creates an OpenAI-compatible
+# local codex profile by naming an env var. The raw key is never captured.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: profile_setup_review
+initial_world:
+  workdir: "/tmp/kitsoki-profile-fixture"
+  repo_root: "/tmp/kitsoki-profile-fixture"
+  profile_setup_target_path: "/tmp/kitsoki-profile-fixture"
+  profile_setup_status: "review"
+  profile_setup_default_profile: ""
+  profile_setup_discovery:
+    status: "ok"
+    config_path: "/tmp/kitsoki-profile-fixture/.kitsoki.yaml"
+    local_config_path: "/tmp/kitsoki-profile-fixture/.kitsoki.local.yaml"
+    backend_sources:
+      - { backend: "codex", installed: true, logged_in: "yes", path_source: "PATH" }
+    env_sources:
+      - { name: "OPENAI_API_KEY", present: true }
+  profile_setup_effective_profiles: []
+
+host_handlers:
+  host.run:
+    by_call:
+      profile_setup_apply:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: '{"schema":"kitsoki-profile-setup-apply/v1","status":"applied","target_path":"/tmp/kitsoki-profile-fixture","local_config_path":"/tmp/kitsoki-profile-fixture/.kitsoki.local.yaml","writes":["/tmp/kitsoki-profile-fixture/.kitsoki.local.yaml"],"default_profile":"openai-codex","profiles":[{"name":"openai-codex","source":"local","backend":"codex","model":"gpt-5.5","readiness":"env-present","env_refs":["OPENAI_API_KEY"]}],"warnings":[]}'
+          stdout_json:
+            schema: "kitsoki-profile-setup-apply/v1"
+            status: "applied"
+            target_path: "/tmp/kitsoki-profile-fixture"
+            local_config_path: "/tmp/kitsoki-profile-fixture/.kitsoki.local.yaml"
+            writes: ["/tmp/kitsoki-profile-fixture/.kitsoki.local.yaml"]
+            default_profile: "openai-codex"
+            profiles:
+              - { name: "openai-codex", source: "local", backend: "codex", model: "gpt-5.5", readiness: "env-present", env_refs: ["OPENAI_API_KEY"] }
+            warnings: []
+
+turns:
+  - intent:
+      name: configure_openai_profile
+      slots:
+        profile_name: "openai-codex"
+        env_var: "OPENAI_API_KEY"
+        base_url: "https://api.openai.com/v1"
+        model: "gpt-5.5"
+        models_endpoint: "https://api.openai.com/v1/models"
+    expect_state: profile_setup_review
+    expect_world:
+      profile_setup_candidate_action: "upsert_openai"
+      profile_setup_candidate_profile:
+        action: "upsert_openai"
+        name: "openai-codex"
+        backend: "codex"
+        model: "gpt-5.5"
+        models: ["gpt-5.5"]
+        env_var: "OPENAI_API_KEY"
+        base_url: "https://api.openai.com/v1"
+        models_endpoint: "https://api.openai.com/v1/models"
+    expect_view_matches: "OPENAI_API_KEY"
+
+  - intent: { name: confirm_profile_setup, slots: {} }
+    expect_state: profile_setup_apply
+    expect_world:
+      profile_setup_apply_result:
+        schema: "kitsoki-profile-setup-apply/v1"
+        status: "applied"
+        target_path: "/tmp/kitsoki-profile-fixture"
+        local_config_path: "/tmp/kitsoki-profile-fixture/.kitsoki.local.yaml"
+        writes: ["/tmp/kitsoki-profile-fixture/.kitsoki.local.yaml"]
+        default_profile: "openai-codex"
+        profiles:
+          - { name: "openai-codex", source: "local", backend: "codex", model: "gpt-5.5", readiness: "env-present", env_refs: ["OPENAI_API_KEY"] }
+        warnings: []
+      profile_setup_default_profile: "openai-codex"
+    expect_view_matches: "openai-codex"
+
+  - intent: { name: profile_setup_applied, slots: {} }
+    expect_state: profile_setup_done
+    expect_world:
+      profile_setup_status: "configured"
+      profile_setup_default_profile: "openai-codex"
+    expect_view_matches: "env-present"
+
+expect_no_errors: true

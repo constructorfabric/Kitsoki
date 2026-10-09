@@ -1,0 +1,78 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+# Dry-run mode: file_findings mode=dry-run renders what WOULD be filed
+# (per-finding bodies in outcomes) without calling GitHub or mutating the
+# bundle — credible findings remain unfiled.
+
+host_handlers:
+  host.run:
+    by_call:
+      load_product_journey_run:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: run_loaded
+            run_id: run-777
+            run_dir: .artifacts/product-journey/run-777
+            project: vscode
+            persona: ide-first-engineer
+            seed: filing-demo
+            issue_count: 2
+            finding_total_count: 4
+      file_product_journey_findings:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: findings_dry_run
+            run_dir: .artifacts/product-journey/run-777
+            ticket_repo: bsacrobatix/Kitsoki
+            dry_run: "yes"
+            findings_filed_count: 0
+            findings_skipped_count: 0
+            findings_failed_count: 0
+            findings_unfiled_count: 2
+            filed_issue_urls: []
+            filed_issue_summary: ""
+            filing_summary: "Dry-run rendered 2 candidate issue(s) for bsacrobatix/Kitsoki; nothing was filed."
+            outcomes:
+              - finding_id: finding-1
+                title: verify gate loops forever
+                scenario: dependency-bugfix
+                status: dry-run
+                body: "The verify gate re-entered itself.\n\n## Expected\n\n- The bugfix story reaches a verified fix.\n\n## Actual\n\n..."
+              - finding_id: finding-4
+                title: onboarding config generator emits stale commands
+                scenario: project-onboarding
+                status: dry-run
+                body: "Onboarding could not proceed.\n\n## Expected\n\n..."
+
+turns:
+  - intent:
+      name: load
+      slots:
+        run_dir: .artifacts/product-journey/run-777
+    expect_state: run_created
+
+  - intent:
+      name: file_findings
+      slots:
+        ticket_repo: bsacrobatix/Kitsoki
+    expect_state: run_created
+    expect_world:
+      status: findings_filing_complete
+      ticket_repo: bsacrobatix/Kitsoki
+      filing_status: findings_dry_run
+      filing_dry_run: "yes"
+      findings_filed_count: 0
+      findings_unfiled_count: 2
+      filing_summary: "Dry-run rendered 2 candidate issue(s) for bsacrobatix/Kitsoki; nothing was filed."
+    expect_view_matches: "RUN CREATED[\\s\\S]*Issue filing[\\s\\S]*findings_dry_run: filed 0, skipped 0, failed 0, unfiled 2[\\s\\S]*Dry-run rendered 2 candidate issue"
+    expect_host_calls:
+      - handler: host.run
+        args: { call: file_product_journey_findings }
+
+expect_no_errors: true

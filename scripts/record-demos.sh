@@ -1,23 +1,27 @@
 #!/usr/bin/env bash
 #
-# record-demos.sh — record every recordable feature demo at watch-speed,
+# record-demos.sh — capture every recordable feature demo at watch-speed,
 # incrementally.
 #
 # The demo list comes from the feature catalog contract
 # (.artifacts/features/features-index.json — `make features-index`). Each demo
 # carries a content stamp: sha256 over its spec file, its features/<id>.yaml,
 # its flow/cassette/app.yaml inputs, and the bin/kitsoki binary. A fresh stamp
-# (and an existing MP4) skips the recording — so a docs-only change re-records
-# nothing, while touching a feature's YAML, spec, story input, or the binary
-# re-records exactly the affected demos. `--force` re-records everything.
+# (and an existing target artifact) skips the capture — so a docs-only change
+# recaptures nothing, while touching a feature's YAML, spec, story input, or the binary
+# recaptures exactly the affected demos. `--force` recaptures everything.
 #
-# Recording posture: WEB_CHAT_PACE=1 (watch-speed; the camera default), one
+# Capture posture: WEB_CHAT_PACE=1 (watch-speed; the camera default), one
 # retry per spec, previous good artifacts are never deleted on failure.
 # Demos marked `external: true` in the catalog are skipped (their stories live
-# outside this repo). Exit nonzero if any recording ultimately failed.
+# outside this repo). Exit nonzero if any capture ultimately failed.
 #
 # Used by `make demos` / `make demos-force`; CI runs it behind an actions/cache
-# over .artifacts so unchanged demos cost nothing.
+# over .artifacts so unchanged demos cost nothing. CI also runs this step with
+# `continue-on-error: true` — stale cached media may ship on failure — so a
+# failure list is written to $GITHUB_STEP_SUMMARY (when set) in addition to
+# stderr, and a separate hard gate (`make media-check-promo`) fails the build
+# outright if a promo-grid feature ends up with no staged media at all.
 
 set -uo pipefail
 
@@ -61,7 +65,7 @@ recorded=0
 skipped=0
 declare -a FAILED
 
-while IFS=$'\t' read -r id profile renderer specName artifactDir video yaml spec flow cassette story; do
+while IFS=$'\t' read -r id profile format renderer specName artifactDir target yaml spec flow cassette story rrweb viewer; do
 	# Stamp inputs: catalog entry, spec, story inputs, binary. The profile picks
 	# the camera env (KITSOKI_DEMO_PROFILE) + a per-profile stamp file so each
 	# variant re-records independently; desktop keeps the original .stamp name and
@@ -77,30 +81,38 @@ while IFS=$'\t' read -r id profile renderer specName artifactDir video yaml spec
 	[ "$profile" != "desktop" ] && stamp_suffix="--$profile"
 	stamp_file="$artifactDir/.stamp$stamp_suffix"
 	label="$id${stamp_suffix:+ [$profile]}"
+	run_spec="${spec#tools/runstatus/}"
 
-	if [ "$FORCE" -eq 0 ] && [ -f "$video" ] && [ -f "$stamp_file" ] && [ "$(cat "$stamp_file")" = "$s" ]; then
+	if [ "$FORCE" -eq 0 ] && [ -f "$target" ] && { [ "$format" != "rrweb" ] || [ -f "$rrweb" ]; } && [ -f "$stamp_file" ] && [ "$(cat "$stamp_file")" = "$s" ]; then
 		skipped=$((skipped + 1))
 		continue
 	fi
 
-	echo "record-demos: recording $label ($specName)…"
+	echo "record-demos: capturing $label ($specName)…"
 	ok=0
 	for attempt in 1 2; do
-		if [ "$renderer" = "binary" ]; then
+		if [ "$format" = "rrweb" ]; then
+			rrweb_abs="$ROOT/$rrweb"
+			if (cd "$RUNSTATUS_DIR" && KITSOKI_RRWEB_OUT="$rrweb_abs" KITSOKI_DEMO_PROFILE="$profile" WEB_CHAT_PACE=1 pnpm exec playwright test "$run_spec" --project=chromium) &&
+				bash scripts/build-rrweb-viewer.sh "$rrweb" "$viewer"; then
+				ok=1
+				break
+			fi
+		elif [ "$renderer" = "binary" ]; then
 			tour_args=(tour --feature "$id" --out "$artifactDir")
 			[ -n "$TOUR_CHROME_PATH" ] && tour_args+=(--chrome-path "$TOUR_CHROME_PATH")
 			if KITSOKI_DEMO_PROFILE="$profile" WEB_CHAT_PACE=1 "$BIN" "${tour_args[@]}"; then
 				ok=1
 				break
 			fi
-		elif (cd "$RUNSTATUS_DIR" && KITSOKI_DEMO_PROFILE="$profile" WEB_CHAT_PACE=1 pnpm exec playwright test "$spec" --project=chromium); then
+		elif (cd "$RUNSTATUS_DIR" && KITSOKI_DEMO_PROFILE="$profile" WEB_CHAT_PACE=1 pnpm exec playwright test "$run_spec" --project=chromium); then
 			ok=1
 			break
 		fi
 		echo "record-demos: $label attempt $attempt failed$([ "$attempt" = 1 ] && echo ' — retrying')" >&2
 	done
 
-	if [ "$ok" -eq 1 ] && [ -f "$video" ]; then
+	if [ "$ok" -eq 1 ] && [ -f "$target" ] && { [ "$format" != "rrweb" ] || [ -f "$rrweb" ]; }; then
 		mkdir -p "$artifactDir"
 		printf '%s' "$s" >"$stamp_file"
 		recorded=$((recorded + 1))
@@ -109,13 +121,25 @@ while IFS=$'\t' read -r id profile renderer specName artifactDir video yaml spec
 	fi
 done < <(jq -r '
 	.features[]
-	| select(.demo != null and .demo.external == false and (.demo.spec != null or .demo.renderer == "binary"))
 	| . as $f
-	| ($f.demo.profiles // ["desktop"])[] as $p
-	| [ $f.id, $p, ($f.demo.renderer // "playwright"), ($f.demo.specName // $f.id), $f.demo.artifactDir,
-	    $f.demo.variants[$p].video,
-	    "features/\($f.id).yaml", $f.demo.spec,
-	    ($f.demo.flow // ""), ($f.demo.hostCassette // ""), ($f.demo.story // "") ]
+	| select($f.demo != null and $f.demo.external == false)
+	| ($f.demo.format // "rrweb") as $fmt
+	| if $fmt == "rrweb" then
+	    select(($f.demo.rrwebSpec // $f.demo.spec) != null)
+	    | [ $f.id, "desktop", $fmt, ($f.demo.renderer // "playwright"), ($f.demo.rrwebSpecName // $f.demo.specName // $f.id), $f.demo.artifactDir,
+	        $f.demo.rrwebViewer,
+	        "features/\($f.id).yaml", ($f.demo.rrwebSpec // $f.demo.spec),
+	        ($f.demo.flow // ""), ($f.demo.hostCassette // ""), ($f.demo.story // ""),
+	        $f.demo.rrweb, $f.demo.rrwebViewer ]
+	  else
+	    select($f.demo.embed == null and ($f.demo.spec != null or $f.demo.renderer == "binary"))
+	    | ($f.demo.profiles // ["desktop"])[] as $p
+	    | [ $f.id, $p, $fmt, ($f.demo.renderer // "playwright"), ($f.demo.specName // $f.id), $f.demo.artifactDir,
+	        $f.demo.variants[$p].video,
+	        "features/\($f.id).yaml", $f.demo.spec,
+	        ($f.demo.flow // ""), ($f.demo.hostCassette // ""), ($f.demo.story // ""),
+	        "", "" ]
+	  end
 	| @tsv' "$INDEX")
 
 fail_count=0
@@ -123,8 +147,19 @@ for _failed in "${FAILED[@]+"${FAILED[@]}"}"; do
 	fail_count=$((fail_count + 1))
 done
 
-echo "record-demos: $recorded recorded, $skipped fresh (skipped), $fail_count failed"
+echo "record-demos: $recorded captured, $skipped fresh (skipped), $fail_count failed"
 if [ "$fail_count" -gt 0 ]; then
 	printf 'record-demos: FAILED: %s\n' "${FAILED[*]}" >&2
+	if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+		{
+			echo "### record-demos: $fail_count of $((recorded + skipped + fail_count)) demo(s) failed"
+			echo
+			for f in "${FAILED[@]}"; do
+				echo "- \`$f\`"
+			done
+			echo
+			echo "This step is \`continue-on-error\` — stale cached media may have shipped instead. The subsequent promo-media presence gate fails the build outright if a promo-grid feature ends up with no staged media at all."
+		} >>"$GITHUB_STEP_SUMMARY"
+	fi
 	exit 1
 fi

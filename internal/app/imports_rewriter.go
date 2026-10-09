@@ -28,6 +28,9 @@
 //   - Effect.Invoke — host names are global, no rewrite needed. But
 //     `with: { agent: <name> }` references are rewritten when <name>
 //     is one of the child's agents.
+//   - Transition.Operation — session operation policy refs are rewritten to
+//     <alias>__<operation>, and the matching top-level policy is lifted under
+//     the same name during foldChild.
 package app
 
 import (
@@ -45,6 +48,7 @@ type childRewriter struct {
 	childWorldKey         map[string]struct{}
 	childIntent           map[string]struct{}
 	childAgent            map[string]struct{}
+	childOperation        map[string]struct{}
 	childIface            map[string]struct{}
 	parentExportedIntents map[string]struct{}
 }
@@ -54,7 +58,7 @@ type childRewriter struct {
 // against the correctly-prefixed world keys, intent names, and agents.
 //
 // Returns silently on nil input.
-func (rw *childRewriter) rewriteState(s *State) {
+func (rw *childRewriter) rewriteState(name string, s *State) {
 	if rw == nil || s == nil {
 		return
 	}
@@ -75,6 +79,14 @@ func (rw *childRewriter) rewriteState(s *State) {
 			}
 		}
 		s.RelevantWorld = out
+	}
+
+	// Prerequisites: predicates and user-facing strings may reference child
+	// world keys; action intents are intent refs.
+	if len(s.Prerequisites) > 0 {
+		for i := range s.Prerequisites {
+			rw.rewritePrerequisite(&s.Prerequisites[i])
+		}
 	}
 
 	// On: rewrite intent-name keys and the transition list.
@@ -163,6 +175,30 @@ func (rw *childRewriter) rewriteState(s *State) {
 		}
 	}
 
+	// Workbench.Agent / OffRampAgent: workbench: (docs/architecture/room-workbench.md) names an
+	// agent exactly like AgentOffRamp.Agent above. CaptureSlot and ContextArgs
+	// are world references that expandWorkbenches later turns into an on_enter
+	// guard and host.agent.task context. They must be rewritten before that
+	// expansion so an imported workbench reads the alias-prefixed child world.
+	if s.Workbench != nil {
+		if _, isChild := rw.childAgent[s.Workbench.Agent]; isChild {
+			s.Workbench.Agent = rw.alias + "__" + s.Workbench.Agent
+		}
+		if s.Workbench.OffRampAgent != "" {
+			if _, isChild := rw.childAgent[s.Workbench.OffRampAgent]; isChild {
+				s.Workbench.OffRampAgent = rw.alias + "__" + s.Workbench.OffRampAgent
+			}
+		}
+		captureSlot := s.Workbench.CaptureSlot
+		if captureSlot == "" {
+			captureSlot = name + "_request"
+		}
+		s.Workbench.CaptureSlot = rw.alias + "__" + captureSlot
+		for k, v := range s.Workbench.ContextArgs {
+			s.Workbench.ContextArgs[k] = rw.rewriteExpr(v)
+		}
+	}
+
 	// Local intents.
 	if len(s.Intents) > 0 {
 		// State.Intents are addressable by bare name inside this state's
@@ -189,8 +225,28 @@ func (rw *childRewriter) rewriteState(s *State) {
 	// rewriteChildStateTransitions). No rewriting required here.
 
 	// Recurse into nested states (compound/parallel).
-	for _, c := range s.States {
-		rw.rewriteState(c)
+	for childName, c := range s.States {
+		rw.rewriteState(childName, c)
+	}
+}
+
+func (rw *childRewriter) rewritePrerequisite(pr *Prerequisite) {
+	if rw == nil || pr == nil {
+		return
+	}
+	pr.Title = rw.rewriteExpr(pr.Title)
+	pr.When = rw.rewriteExpr(pr.When)
+	pr.SatisfiedWhen = rw.rewriteExpr(pr.SatisfiedWhen)
+	pr.Summary = rw.rewriteExpr(pr.Summary)
+	pr.Help = rw.rewriteExpr(pr.Help)
+	if pr.Action == nil {
+		return
+	}
+	pr.Action.Label = rw.rewriteExpr(pr.Action.Label)
+	pr.Action.Hint = rw.rewriteExpr(pr.Action.Hint)
+	pr.Action.Intent = rw.rewriteIntentRef(pr.Action.Intent)
+	if len(pr.Action.Slots) > 0 {
+		pr.Action.Slots = rw.rewriteAny(pr.Action.Slots).(map[string]any)
 	}
 }
 
@@ -203,9 +259,56 @@ func (rw *childRewriter) rewriteTransition(tr *Transition) {
 	tr.When = rw.rewriteExpr(tr.When)
 	tr.GuardHint = rw.rewriteExpr(tr.GuardHint)
 	tr.View = rw.rewriteView(tr.View)
+	tr.Operation = rw.rewriteOperationRef(tr.Operation)
+	if tr.OperationExitPolicyPrefix != "" {
+		tr.OperationExitPolicyPrefix = rw.alias + "__" + tr.OperationExitPolicyPrefix
+	}
 	for i := range tr.Effects {
 		rw.rewriteEffect(&tr.Effects[i])
 	}
+}
+
+func (rw *childRewriter) rewriteOperationRef(name string) string {
+	if name == "" {
+		return name
+	}
+	if _, ok := rw.childOperation[name]; ok {
+		return rw.alias + "__" + name
+	}
+	return name
+}
+
+func (rw *childRewriter) rewriteOperationPolicy(policy *OperationPolicy) *OperationPolicy {
+	if policy == nil {
+		return nil
+	}
+	clone := *policy
+	if len(policy.StopOn) > 0 {
+		clone.StopOn = append([]string(nil), policy.StopOn...)
+	}
+	if len(policy.PauseOn) > 0 {
+		clone.PauseOn = append([]string(nil), policy.PauseOn...)
+	}
+	if clone.TerminalArtifact != "" {
+		clone.TerminalArtifact = rw.rewriteWorldKeyRef(clone.TerminalArtifact)
+	}
+	if len(policy.PhaseSummary.From) > 0 {
+		clone.PhaseSummary.From = make([]string, len(policy.PhaseSummary.From))
+		for i, key := range policy.PhaseSummary.From {
+			clone.PhaseSummary.From[i] = rw.rewriteWorldKeyRef(key)
+		}
+	}
+	return &clone
+}
+
+func (rw *childRewriter) rewriteWorldKeyRef(key string) string {
+	if key == "" {
+		return key
+	}
+	if _, ok := rw.childWorldKey[key]; ok {
+		return rw.alias + "__" + key
+	}
+	return key
 }
 
 // rewriteEffect rewrites every expression / identifier reference inside
@@ -289,6 +392,26 @@ func (rw *childRewriter) rewriteEffect(eff *Effect) {
 		}
 		eff.Increment = newInc
 	}
+	if eff.CommitOperation != nil && len(eff.CommitOperation.World) > 0 {
+		newCommit := make(map[string]any, len(eff.CommitOperation.World))
+		for k, v := range eff.CommitOperation.World {
+			newKey := k
+			if _, ok := rw.childWorldKey[k]; ok {
+				newKey = rw.alias + "__" + k
+			}
+			newCommit[newKey] = rw.rewriteAny(v)
+		}
+		eff.CommitOperation.World = newCommit
+	}
+	if eff.PersistDraft != nil {
+		eff.PersistDraft.ID = rw.rewriteExpr(eff.PersistDraft.ID)
+		eff.PersistDraft.Title = rw.rewriteExpr(eff.PersistDraft.Title)
+		for i, k := range eff.PersistDraft.World {
+			if _, ok := rw.childWorldKey[k]; ok {
+				eff.PersistDraft.World[i] = rw.alias + "__" + k
+			}
+		}
+	}
 
 	// With: arg values may be expressions; the `agent` arg is rewritten
 	// when it names a child agent.
@@ -334,6 +457,9 @@ func (rw *childRewriter) rewriteEffect(eff *Effect) {
 	// Nested on_complete effects.
 	for i := range eff.OnComplete {
 		rw.rewriteEffect(&eff.OnComplete[i])
+	}
+	for i := range eff.Effects {
+		rw.rewriteEffect(&eff.Effects[i])
 	}
 }
 
@@ -612,6 +738,7 @@ func (rw *childRewriter) rewriteViewElement(el ViewElement) ViewElement {
 		out.MediaPath = rw.rewriteExpr(el.MediaPath)
 		out.AnnotateIntent = rw.rewriteIntentRef(el.AnnotateIntent)
 		out.AnnotateFeedbackSlot = el.AnnotateFeedbackSlot
+		out.AnnotateURL = rw.rewriteExpr(el.AnnotateURL)
 	}
 	return out
 }

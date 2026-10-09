@@ -299,8 +299,9 @@ describe("JsonRpcClient.subscribe", () => {
     await vi.advanceTimersByTimeAsync(300);
     await flushMicrotasks();
 
-    // getTrace should have been called with since_turn = 2 (lastTurn + 1).
-    expect(getTrace).toHaveBeenCalledWith(2);
+    // Reconnect backfills the current turn so events appended later in the
+    // same turn are not lost. Exact event de-dupe filters the already-seen row.
+    expect(getTrace).toHaveBeenCalledWith(1);
 
     // Backfill events should have been delivered.
     expect(received).toHaveLength(3); // original 1 + backfill 2
@@ -348,6 +349,53 @@ describe("JsonRpcClient.subscribe", () => {
     // Turn 1 should only appear once — backfill filtered by > lastTurn.
     const turn1 = received.filter((e) => e.turn === 1);
     expect(turn1).toHaveLength(1);
+
+    vi.useRealTimers();
+  });
+
+  it("delivers unseen same-turn events during reconnect backfill", async () => {
+    vi.useFakeTimers();
+
+    fetchMock.mockResolvedValue(makeResponse({ subscription_id: "sub-5" }));
+
+    const received: TraceEvent[] = [];
+    const first = makeTraceEvent(1);
+    const secondSameTurn: TraceEvent = {
+      ...first,
+      time: "2026-01-01T00:00:02Z",
+      msg: "second event at turn 1",
+      attrs: { sequence: 2 },
+    };
+    const getTrace = vi
+      .fn()
+      .mockResolvedValue({ events: [first, secondSameTurn], last_turn: 1 });
+
+    const client = new JsonRpcClient("/");
+    client.subscribe("s1", (e) => received.push(e), getTrace);
+
+    await flushMicrotasks();
+    await Promise.resolve();
+
+    const firstEs = MockEventSource.instances[0]!;
+    firstEs.emit(
+      "message",
+      JSON.stringify({
+        jsonrpc: "2.0",
+        method: "runstatus.event",
+        params: { subscription_id: "sub-5", event: first },
+      })
+    );
+
+    firstEs.emit("error");
+    await vi.advanceTimersByTimeAsync(300);
+    await flushMicrotasks();
+
+    expect(getTrace).toHaveBeenCalledWith(1);
+    expect(received).toHaveLength(2);
+    expect(received.map((e) => e.msg)).toEqual([
+      first.msg,
+      secondSameTurn.msg,
+    ]);
 
     vi.useRealTimers();
   });

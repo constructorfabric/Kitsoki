@@ -1,0 +1,73 @@
+# never_silent_sync_error_bounce — failure class: host domain error swallowed
+# by an `on_error: idle` redirect (the classic "silent bounce" from
+# .agents/skills/kitsoki-debugging/SKILL.md).
+#
+# proposing.accept → implementing; implementing's on_enter runs
+# iface.workspace.create (ok) then iface.workspace.sync, which fails with a
+# domain-level host error. The room's `on_error: idle` bounces the session
+# back to idle — and the never-silent contract is that the bounce is NOT
+# silent: the engine sets world.last_error from the host error, and the
+# shared redirect seam (internal/orchestrator/host_dispatch.go
+# applyErrorBannerSeam) appends the "⚠ Action failed: <msg>" banner to the
+# rendered idle view.
+#
+# This fixture pins that surfaced-error contract so a regression back to the
+# pre-seam behaviour (bounce with no visible reason) fails the suite.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: proposing
+initial_world:
+  ticket_id:      "TKT-901"
+  thread:         "TKT-901"
+  judge_mode:     "human"
+  workspace_id:   "bf-TKT-901"
+  feature_branch: "fix/TKT-901"
+  workdir:        ".worktrees/bf-TKT-901"
+  # Pinned as it would be in a real session (idle's autostart chain ran once
+  # already); without it the bounce re-enters idle, re-fires the autostart
+  # emit and lands in reproducing instead of parking.
+  bf_autostart_attempted: true
+  propose_fix_artifact:
+    summary_title:    "Stub proposal"
+    summary_markdown: "stub"
+    affected_files:   ["x.go"]
+    confidence:       0.9
+
+host_handlers:
+  host.append_to_file:
+    data: { ok: true, message_id: "msg-1" }
+  host.inbox.add:
+    data: { ok: true, id: "ib-1" }
+  # Workspace provider: create succeeds (idempotent self-heal), sync fails
+  # with a domain-level error — the exact shape the debugging skill calls
+  # out ("would fail at sync below with `on_error: idle` and silently
+  # bounce").
+  host.git_worktree:
+    by_op:
+      create:
+        data: { ok: true, log: "reused existing worktree" }
+      sync:
+        error: "host.git_worktree: sync: worktree dir .worktrees/bf-TKT-901 is missing"
+  host.git:
+    data: { ok: true, sha: "abc", diff: "" }
+  host.local:
+    data: { ok: true, log: "PASS", passed: 1, failed: 0 }
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary_title: "stub"
+
+turns:
+  # accept → implementing; on_enter's sync fails → on_error: idle fires.
+  # The bounce must land at idle WITH the error surfaced: last_error carries
+  # the host error verbatim and the rendered view shows the never-silent
+  # banner.
+  - intent: { name: accept, slots: {} }
+    expect_state: idle
+    expect_world:
+      last_error: "host.git_worktree: sync: worktree dir .worktrees/bf-TKT-901 is missing"
+    expect_view_matches: "Action failed"
+
+expect_terminal: false

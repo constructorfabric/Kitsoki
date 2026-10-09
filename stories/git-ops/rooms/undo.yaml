@@ -17,7 +17,7 @@ states:
         when: "world.last_op_outcome == 'confirm_hard'"
       - prose: "WARNING: --hard reset will discard ALL changes in the working tree and index. This cannot be undone. Type hard_reset_confirm to proceed."
         when: "world.last_op_outcome == 'confirm_hard'"
-      - prose: "Reset failed: {{ world.last_op_output }}"
+      - prose: "Reset failed: {{ world.last_op_output ?? '(pending)' }}"
         when: "world.last_op_ok == false && world.last_op_outcome != 'confirm_hard'"
       - choice:
           mode: single

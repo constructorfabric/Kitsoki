@@ -47,6 +47,7 @@ type stubProvider struct {
 	entries  map[string]server.Entry
 	stories  []server.StoryHeader
 	newFn    func(ctx context.Context, storyPath string) (string, error)
+	seededFn func(ctx context.Context, storyPath string, initialWorld map[string]any) (string, error)
 	reloadFn func(ctx context.Context, sessionID string) (bool, error)
 	rescanFn func() ([]server.StoryHeader, error)
 }
@@ -74,6 +75,13 @@ func (p *stubProvider) List() []runstatus.SessionHeader {
 }
 
 func (p *stubProvider) NewSession(ctx context.Context, storyPath string) (string, error) {
+	return p.newFn(ctx, storyPath)
+}
+
+func (p *stubProvider) NewSessionSeeded(ctx context.Context, storyPath string, initialWorld map[string]any) (string, error) {
+	if p.seededFn != nil {
+		return p.seededFn(ctx, storyPath, initialWorld)
+	}
 	return p.newFn(ctx, storyPath)
 }
 
@@ -133,6 +141,34 @@ func TestMulti_NewSessionRoundTrip(t *testing.T) {
 	var appOut app.AppDef
 	rpcCall(t, ts, "runstatus.session.app", map[string]any{"session_id": created.SessionID}, &appOut)
 	assert.Equal(t, "story-app", appOut.App.ID)
+}
+
+func TestMulti_NewSessionInitialWorld(t *testing.T) {
+	t.Parallel()
+	p := newStubProvider()
+	p.seededFn = func(_ context.Context, storyPath string, initialWorld map[string]any) (string, error) {
+		assert.Equal(t, "/abs/story/app.yaml", storyPath)
+		assert.Equal(t, "B-123", initialWorld["ticket_id"])
+		assert.Equal(t, "no-gate", initialWorld["oversight_mode"])
+		def := &app.AppDef{App: app.AppMeta{ID: "bugfix", Version: "1.0.0"}}
+		p.put("sess-seeded", runstatus.SessionHeader{SessionID: "sess-seeded", AppID: "bugfix", CurrentState: "idle"}, def)
+		return "sess-seeded", nil
+	}
+
+	ts := httptest.NewServer(server.NewMulti(p).Handler())
+	defer ts.Close()
+
+	var created struct {
+		SessionID string `json:"session_id"`
+	}
+	rpcCall(t, ts, "runstatus.session.new", map[string]any{
+		"story_path": "/abs/story/app.yaml",
+		"initial_world": map[string]any{
+			"ticket_id":      "B-123",
+			"oversight_mode": "no-gate",
+		},
+	}, &created)
+	require.Equal(t, "sess-seeded", created.SessionID)
 }
 
 // TestMulti_UnknownSession proves a session-routed RPC with an id the provider

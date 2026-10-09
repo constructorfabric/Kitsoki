@@ -1,0 +1,43 @@
+# runtime_context_resolves — opening the goal-seeker needs NO operator workdir seed:
+# the goal DECLARES its execution context in decomposition.yaml's `runtime:` block and
+# bootstrap's gs_resolve.star reads it. Here workdir is left at its default "." (NOT
+# seeded) and base_branch at its default "main"; advancing start → bootstrap fires
+# gs_resolve, which locates the fixture decomposition (DIRECT branch — it lives under
+# the repo root) and binds base_branch from the runtime block. Then lint passes and the
+# loop starts, all with zero seed. (The WORKTREE-locating branch that resolves workdir
+# to a sibling .worktrees/<name> is proved deterministically by the Go test
+# TestGoalSeekerResolveWorkdir_FromRuntimeBlock in internal/host.)
+#
+# Entered at `start` (not bootstrap) on purpose: the flow harness does not re-run the
+# INITIAL state's on_enter, so bootstrap's gs_resolve/gs_init only fire when bootstrap
+# is ENTERED via the start → bootstrap transition — exactly as a live `kitsoki run`.
+
+test_kind: flow
+use_orchestrator: true
+app: ../app.yaml
+initial_state: start
+initial_world:
+  goal_slug: runtime-fixture
+  goal_dir:  stories/goal-seeker/testdata/runtime
+  work_dir:  .artifacts/goal/flow-runtime
+  reset_log: true
+  # workdir + base_branch deliberately left at their app.yaml defaults ("." / "main").
+
+turns:
+  - intent: { name: look, slots: {} }
+    expect_state: start
+  - intent: { name: advance, slots: {} }        # start → bootstrap (gs_resolve + gs_init run)
+    expect_state: bootstrap
+    expect_world:
+      # gs_resolve read the runtime block: base_branch now the declared value, not
+      # the "main" default. workdir stays "." (DIRECT branch — goal_dir already
+      # resolves under the repo root).
+      base_branch: "stabilize/runtime-fixture"
+      workdir: "."
+  - intent: { name: advance, slots: {} }        # bootstrap → lint_check (gs_lint, REAL)
+    expect_state: lint_check
+  - intent: { name: advance, slots: {} }        # lint ok (runtime block well-formed) → evaluate
+    expect_state: evaluate
+    expect_world: { remaining: 1, ready_id: "R1" }
+
+expect_no_errors: true

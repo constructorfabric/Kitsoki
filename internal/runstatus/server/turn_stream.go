@@ -42,6 +42,7 @@ import (
 	"time"
 
 	"kitsoki/internal/host"
+	"kitsoki/internal/orchestrator"
 	"kitsoki/internal/world"
 )
 
@@ -188,21 +189,27 @@ func (s *Server) handleTurnStream(w http.ResponseWriter, r *http.Request) {
 		case "turn":
 			out, e := entry.Driver.Turn(ctx, body.Input)
 			if e == nil {
-				r := newTurnResult(out, entry.Driver)
+				var drive *orchestrator.OperationDriveOutcome
+				drive, out, e = driveBackgroundOperationAfterTurn(ctx, entry.Driver, out)
+				r := newTurnResultWithOperationDrive(out, entry.Driver, drive)
 				tr = &r
 			}
 			err = e
 		case "submit":
 			out, e := entry.Driver.SubmitDirect(ctx, body.Intent, body.Slots)
 			if e == nil {
-				r := newTurnResult(out, entry.Driver)
+				var drive *orchestrator.OperationDriveOutcome
+				drive, out, e = driveBackgroundOperationAfterTurn(ctx, entry.Driver, out)
+				r := newTurnResultWithOperationDrive(out, entry.Driver, drive)
 				tr = &r
 			}
 			err = e
 		case "continue":
 			out, e := entry.Driver.ContinueTurn(ctx, body.Slots)
 			if e == nil {
-				r := newTurnResult(out, entry.Driver)
+				var drive *orchestrator.OperationDriveOutcome
+				drive, out, e = driveBackgroundOperationAfterTurn(ctx, entry.Driver, out)
+				r := newTurnResultWithOperationDrive(out, entry.Driver, drive)
 				tr = &r
 			}
 			err = e
@@ -261,7 +268,7 @@ loop:
 				})
 				continue
 			}
-			if ev.Type == "assistant" {
+			if isStreamActivity(ev) {
 				// One assistant event can carry both a thought and the tool
 				// calls it explains. Emit the thought first, then one
 				// breadcrumb per tool — emitting one-or-the-other drops the
@@ -270,13 +277,13 @@ loop:
 				// gets its own "think" frame type: it is never the reply,
 				// and clients that defer narration (the meta overlay) need
 				// to tell the two apart on the wire.
-				if ev.Thinking != "" {
-					emit(turnStreamFrame{Type: "think", Text: ev.Thinking})
+				if text := streamThinkingText(ev); text != "" {
+					emit(turnStreamFrame{Type: "think", Text: text})
 				}
-				if ev.Text != "" {
-					emit(turnStreamFrame{Type: "delta", Text: ev.Text})
+				if text := streamDeltaText(ev); text != "" {
+					emit(turnStreamFrame{Type: "delta", Text: text})
 				}
-				for _, tc := range toolBreadcrumbs(ev) {
+				for _, tc := range streamActivityTools(ev) {
 					emit(turnStreamFrame{Type: "tool", Tool: tc.Name, Preview: tc.Preview})
 				}
 			}

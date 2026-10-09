@@ -31,6 +31,9 @@ host_handlers:
   host.inbox.add:
     data: { ok: true, id: "ib-1" }
 
+  host.artifacts_dir:
+    data: { ok: true, path: ".artifacts/implementation-flow-artifact.md", message_id: "artifact-1" }
+
   # handoff room's lost-work clean-tree check (host.run done_clean_tree_check):
   # report a clean worktree so the open/proceed arcs enter the pr import. A
   # dirty tree would route to @exit:abandoned — see flows/handoff_refuses_dirty_tree.yaml.
@@ -108,36 +111,20 @@ host_handlers:
         reason:     "Stub artifact; accept advances."
 
 turns:
-  # idle → review_task_executing.
+  # idle → review_task_executing → review_task_awaiting_reply.
   - intent: { name: start, slots: {} }
-    expect_state: review_task_executing
-
-  # proceed → review_task_awaiting_reply.
-  - intent: { name: proceed, slots: {} }
     expect_state: review_task_awaiting_reply
 
-  # accept → write_code_executing.
+  # accept → write_code_executing → write_code_awaiting_reply.
   - intent: { name: accept, slots: {} }
-    expect_state: write_code_executing
-
-  # proceed → write_code_awaiting_reply.
-  - intent: { name: proceed, slots: {} }
     expect_state: write_code_awaiting_reply
 
-  # accept → test_executing.
+  # accept → test_executing → test_awaiting_reply.
   - intent: { name: accept, slots: {} }
-    expect_state: test_executing
-
-  # proceed → test_awaiting_reply.
-  - intent: { name: proceed, slots: {} }
     expect_state: test_awaiting_reply
 
-  # accept → review_executing.
+  # accept → review_executing → review_awaiting_reply.
   - intent: { name: accept, slots: {} }
-    expect_state: review_executing
-
-  # proceed → review_awaiting_reply.
-  - intent: { name: proceed, slots: {} }
     expect_state: review_awaiting_reply
 
   # accept → handoff. The arc populates pr_title / pr_body for the

@@ -7,6 +7,23 @@ Your job is to produce evidence — a deterministic reproduction (a test, a
 script, a recorded sequence) — that the bug is real, plus the components /
 modules / services implicated.
 
+Ticket source mode: **{{ args.ticket_source_mode }}**
+{% if args.ticket_source_ref %}Ticket source ref: `{{ args.ticket_source_ref }}`{% endif %}
+
+{% if args.ticket_body %}## Bug report
+
+```markdown
+{{ args.ticket_body }}
+```
+
+Use this report as source evidence. In `freeform` mode it may be only an
+operator complaint, not a filed issue. Go as far as code inspection and local
+reproduction allow. If the complaint is too vague, do not fabricate a
+reproducer: set `bug_verified` honestly, explain the missing details in
+`summary_markdown`, and phrase the next needed operator guidance concretely.
+
+{% endif %}
+
 {% block spec_project_context %}{% endblock %}
 
 {% if args.refine_feedback %}## ⚠ Operator refinement directive (cycle {{ args.cycle }})
@@ -69,7 +86,7 @@ Before submitting:
   single deterministic, self-contained shell command (e.g.
   `go test ./internal/host/ -run TestX -count=1`), not a multi-step recipe or a
   command that needs a server/fixture you started by hand. List ONLY the test
-  file(s) in `repro_test_paths` (worktree-relative) — not logs or snapshots.
+  file(s) in `repro_test_paths` (workspace-relative) — not logs or snapshots.
 - Assert *behaviour*, not a specific implementation. The fix may be written a
   different way than you expect; your test should pass for ANY correct fix, so
   avoid pinning internal symbols, exact error strings, or one mechanism.
@@ -87,7 +104,7 @@ Submit a `reproduction_artifact` (see `schemas/reproducing_artifact.json`):
 - `bug_verified` — true only with an actual reproduction artifact.
 - `repro_command` — the single deterministic command that runs your RED test
   (RED now, GREEN after a correct fix). Becomes the regression gate.
-- `repro_test_paths` — worktree-relative path(s) of the test file(s) you wrote,
+- `repro_test_paths` — workspace-relative path(s) of the test file(s) you wrote,
   committed as the pre-fix reproducer. Tests only.
 - `steps` — ordered, executable.
 - `expected_outcome`, `actual_outcome` — concise factual statements.

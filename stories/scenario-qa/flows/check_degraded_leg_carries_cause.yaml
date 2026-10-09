@@ -1,0 +1,137 @@
+# check_degraded_leg_carries_cause — issue group B / bug #105 (silent
+# live-authorization fallback) task 2: every degraded/unsupported/blocked leg
+# must carry a machine-readable + human `cause` in world.leg_results (and
+# report.md's Cause column, rendered by
+# tools/product-journey/run.py's render_scenario_qa_markdown) instead of a
+# bare verdict with no stated why.
+#
+# host.starlark.run is left UNSTUBBED (no by_call entry) so
+# scripts/plan_legs.star and scripts/record_leg_result.star run for REAL --
+# the driver reports a replay-miss blocker on an interpretive (natural-
+# utterance-bearing) leg with no evidence and no `profile=` supplied, and
+# this fixture pins the exact deterministic `cause` string that produces:
+# "no live authorization (profile= not supplied); blocker: <the reported
+# blocker text>". A single-transport (tui-only) check so the loop auto-drains
+# straight to `report` in one turn (see check_single_transport.yaml), which
+# also exercises build_report.star for real (file-system-free, so no
+# additional cassette interactions are needed) while host.run's
+# build_scenario_qa_deck subprocess call stays stubbed like every other flow
+# fixture here.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+starlark_inspect_cassette: ../cassettes/check_degraded_leg_carries_cause.inspect.yaml
+
+host_handlers:
+  host.run:
+    by_call:
+      emit_scenario_qa_run:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            run_id: scenario-qa-cause-run
+            run_dir: /repo/.artifacts/product-journey/scenario-qa-cause-run
+            driver_plan_path: /repo/.artifacts/product-journey/scenario-qa-cause-run/driver-plan.md
+            execution_plan_path: /repo/.artifacts/product-journey/scenario-qa-cause-run/execution-plan.md
+            agent_brief_path: /repo/.artifacts/product-journey/scenario-qa-cause-run/agent-brief.md
+      build_scenario_qa_deck:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: scenario_qa_deck_built
+            run_dir: /repo/.artifacts/product-journey/scenario-qa-cause-run
+            deck_path: /repo/.artifacts/product-journey/scenario-qa-cause-run/deck.slidey.json
+            leg_count: 1
+            pass_count: 0
+            fail_count: 0
+            degraded_count: 1
+            summary: "0 / 1 transport checks passed, 1 degraded-evidence."
+
+  host.agent.task:
+    by_call:
+      drive_leg:
+        data:
+          ok: true
+          submitted:
+            status: "blocked"
+            evidence_refs: []
+            frames_dir: ""
+            harness_used: ""
+            blockers:
+              - "studio: harness:replay cannot dispatch host.agent.converse without a matching host_cassette episode; replay misses fail closed instead of falling through to a live agent"
+            summary: "Opened the nested dev-story session replay-only (no profile= supplied); hit a replay-miss hard error on host.agent.converse and stopped instead of retrying live."
+      judge_leg:
+        data:
+          ok: true
+          submitted:
+            verdict: "unsupported"
+            summary: "No evidence_refs were captured; nothing to cite."
+            cited_frames: []
+            frames_dir: ""
+
+turns:
+  - intent:
+      name: check
+      slots:
+        scenario: bugfix
+        transport: tui
+        persona: core-maintainer
+        target: gears-rust
+        seed: story-flow
+        # profile intentionally omitted.
+    expect_state: report
+    expect_world:
+      mode: catalog
+      run_id: scenario-qa-cause-run
+      leg_count: 1
+      leg_index: 0
+      live_profile: ""
+      pass_count: 0
+      fail_count: 0
+      degraded_count: 1
+      leg_results:
+        items:
+          - leg_id: "bugfix::tui"
+            scenario: "bugfix"
+            transport: "tui"
+            visual_surface: ""
+            evidence_level: "frame-level"
+            natural_utterance_count: 1
+            natural_utterance_example: "resolve the red gate test that's already written but not committed"
+            natural_utterance_sources:
+              - "mined-scn-1b4ace86-f192-43b0-ab86-16142fec0079-0001"
+            driver_status: "blocked"
+            evidence_refs: []
+            post_drive_evidence_ref: ""
+            post_drive_editor_evidence_ref: ""
+            harness_used: ""
+            playback_path: ""
+            playback_caption: ""
+            verdict: "degraded-evidence"
+            verdict_summary: "No evidence_refs were captured; nothing to cite."
+            cause: "no live authorization (profile= not supplied); blocker: studio: harness:replay cannot dispatch host.agent.converse without a matching host_cassette episode; replay misses fail closed instead of falling through to a live agent"
+            frames_dir: ""
+    expect_host_calls:
+      - handler: host.run
+        args: { call: emit_scenario_qa_run }
+      - handler: host.starlark.run
+        args: { call: plan_legs }
+      - handler: host.starlark.run
+        args: { call: pick_leg }
+      - handler: host.agent.task
+        args: { call: drive_leg }
+      - handler: host.agent.task
+        args: { call: judge_leg }
+      - handler: host.starlark.run
+        args: { call: record_leg_result }
+      - handler: host.starlark.run
+        args: { call: build_report }
+      - handler: host.run
+        args: { call: build_scenario_qa_deck }
+    expect_view_matches: "verdict=degraded-evidence driver=blocked cause=no live authorization \\(profile= not supplied\\); blocker:"
+
+expect_no_errors: true

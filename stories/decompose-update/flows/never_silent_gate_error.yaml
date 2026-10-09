@@ -1,0 +1,48 @@
+# never_silent_gate_error — failure class: host domain error caught by an
+# `on_error: failed` redirect (running's managed_delta_gate host.run fails).
+#
+# The review agent approves, accept enters running, and the gate command
+# fails with a domain-level host error. running's `on_error: failed` routes
+# to the failed room — and the never-silent contract is that the failure
+# reason is visible there: world.last_error carries the host error, and the
+# rendered view shows it (the failed room's own view does not render
+# last_error, so the shared redirect seam appends the "⚠ Action failed:"
+# banner — internal/orchestrator/host_dispatch.go applyErrorBannerSeam).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  workdir: "."
+
+host_handlers:
+  host.agent.decide:
+    by_call:
+      review_delta:
+        data:
+          ok: true
+          submitted:
+            approved: true
+            summary: "Delta is provenance-backed, schema-gated, versioned, and report-visible."
+            findings: []
+  host.run:
+    by_call:
+      managed_delta_gate:
+        error: "host.run: command exited 1"
+
+turns:
+  - intent: { name: run, slots: {} }
+    expect_state: review
+    expect_world:
+      review_approved: true
+
+  # accept → running; the gate host.run fails → on_error: failed. The
+  # failure must be surfaced: last_error set, banner in the rendered view.
+  - intent: { name: accept, slots: {} }
+    expect_state: failed
+    expect_world:
+      last_error: "host.run: command exited 1"
+    expect_view_matches: "Action failed"
+
+expect_terminal: false
+expect_no_errors: true

@@ -145,17 +145,13 @@ func TestInboxClockInjection_SyntheticPollSyncsGitHubOnThrottle(t *testing.T) {
 	fakeClk := clock.NewFake(time.Unix(0, 0))
 	m, js := buildModelWithFakeClock(t, fakeClk)
 
-	calls := []string{}
+	apiCalls, restoreAPI := stubTUIGitHubInboxAPI(t, "100", false)
+	defer restoreAPI()
 	restore := host.SetExecRunnerForTest(func(_ context.Context, _ string, name string, args ...string) (string, string, int, error) {
 		key := name + " " + strings.Join(args, " ")
-		calls = append(calls, key)
 		switch key {
-		case "gh --version":
-			return "gh version 2.x\n", "", 0, nil
-		case "gh issue list --state open --assignee @me --limit 100 --json number,title,assignees,url":
-			return `[{"number":7,"title":"Assigned issue","url":"https://github.com/acme/repo/issues/7","assignees":[{"login":"brad"}]}]`, "", 0, nil
-		case "gh pr list --state open --search review-requested:@me --limit 100 --json number,title,author,url":
-			return `[]`, "", 0, nil
+		case "git remote get-url origin":
+			return "git@github.com:acme/repo.git\n", "", 0, nil
 		default:
 			return "", "unexpected command: " + key, 1, nil
 		}
@@ -167,7 +163,7 @@ func TestInboxClockInjection_SyntheticPollSyncsGitHubOnThrottle(t *testing.T) {
 	msg := inboxRefreshedFromCmd(t, cmd)
 	m = updated
 	m, _ = m.Update(msg)
-	require.Len(t, calls, 3)
+	require.Equal(t, 2, *apiCalls)
 
 	rm, ok := tuipkg.ExtractRootModel(m)
 	require.True(t, ok)
@@ -180,14 +176,14 @@ func TestInboxClockInjection_SyntheticPollSyncsGitHubOnThrottle(t *testing.T) {
 	require.NotNil(t, cmd)
 	_ = cmd()
 	m = updated
-	require.Len(t, calls, 3, "second nearby inbox tick should not call gh again")
+	require.Equal(t, 2, *apiCalls, "second nearby inbox tick should not query GitHub again")
 
 	fakeClk.Advance(5 * time.Minute)
 	updated, cmd = m.Update(tuipkg.InboxPollMsg())
 	require.NotNil(t, cmd)
 	_ = cmd()
 	m = updated
-	require.Len(t, calls, 6, "tick after throttle interval should poll gh again")
+	require.Equal(t, 4, *apiCalls, "tick after throttle interval should query GitHub again")
 }
 
 func inboxRefreshedFromCmd(t *testing.T, cmd tea.Cmd) tea.Msg {

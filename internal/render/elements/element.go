@@ -364,6 +364,13 @@ func evalElementSources(el app.ViewElement, env expr.Env, rr ViewRenderer) (app.
 			}
 			el.MediaPath = strings.TrimSpace(p)
 		}
+		if el.AnnotateURL != "" {
+			u, err := renderLeaf(rr, el.AnnotateURL, env)
+			if err != nil {
+				return el, fmt.Errorf("media annotate url: %w", err)
+			}
+			el.AnnotateURL = strings.TrimSpace(u)
+		}
 	}
 	return el, nil
 }
@@ -398,15 +405,49 @@ func renderOne(el app.ViewElement, env expr.Env, width int, glamour GlamourFunc,
 			Template: el.ChoiceTemplate, Fields: el.ChoiceFields,
 		}.Render(width, env, rr)
 	case "media":
+		var err error
+		if el.MediaHandle != "" {
+			el.MediaHandle, err = renderMediaLeaf(rr, env, el.MediaHandle, "media handle")
+			if err != nil {
+				return "", err
+			}
+		}
+		if el.MediaCaption != "" {
+			el.MediaCaption, err = renderMediaLeaf(rr, env, el.MediaCaption, "media caption")
+			if err != nil {
+				return "", err
+			}
+		}
+		if el.MediaPath != "" {
+			el.MediaPath, err = renderMediaLeaf(rr, env, el.MediaPath, "media path")
+			if err != nil {
+				return "", err
+			}
+		}
+		if el.AnnotateURL != "" {
+			el.AnnotateURL, err = renderMediaLeaf(rr, env, el.AnnotateURL, "media annotate url")
+			if err != nil {
+				return "", err
+			}
+		}
 		return Media{
-			Handle:  el.MediaHandle,
-			Caption: el.MediaCaption,
-			Kind:    el.MediaKind,
-			Path:    el.MediaPath,
+			Handle:      el.MediaHandle,
+			Caption:     el.MediaCaption,
+			Kind:        el.MediaKind,
+			Path:        el.MediaPath,
+			AnnotateURL: el.AnnotateURL,
 		}.Render(width, env, rr)
 	default:
 		return "", fmt.Errorf("unknown element kind %q", el.Kind)
 	}
+}
+
+func renderMediaLeaf(rr ViewRenderer, env expr.Env, src, label string) (string, error) {
+	out, err := renderLeaf(rr, src, env)
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", label, err)
+	}
+	return strings.TrimSpace(out), nil
 }
 
 // joinElements joins rendered element strings with the inter-element

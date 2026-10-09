@@ -1,0 +1,32 @@
+kind: history_task.v1
+id: git-ops-commit-message-agent-eval
+lane: agent_eval
+source:
+  corpus_ref: agent_eval:stories/git-ops/evals/commit_message.yaml
+  repo: .
+  baseline_ref: stories/git-ops/evals/commit_message.yaml
+  success_ref: stories/git-ops/evals/commit_message.yaml
+story:
+  app: stories/git-ops/app.yaml
+  entrypoint: author_commit_message
+trainable_surface:
+  weight_kind: eval
+  target_refs:
+    - stories/git-ops/evals/commit_message.yaml
+    - stories/git-ops/prompts/commit_message.md
+input:
+  prompt_or_ticket: |
+    Generate a conventional commit message for a staged diff. This case is
+    armed by the story-local agent_eval dataset and does not need a bugfix
+    baseline or hidden repo oracle.
+oracle:
+  kind: agent_eval
+  command: go run ./cmd/kitsoki eval run stories/git-ops/evals/commit_message.yaml
+  comparator: field_subset
+  acceptance_bar:
+    min_pass_rate: 0.98
+cost_policy:
+  live_policy: no_cost
+  ladder: story-local-agent-eval
+artifacts:
+  root: .artifacts/history-training/git-ops-commit-message-agent-eval/

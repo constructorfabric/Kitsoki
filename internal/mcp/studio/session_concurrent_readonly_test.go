@@ -14,6 +14,7 @@ package studio_test
 import (
 	"context"
 	"encoding/json"
+	"sync"
 	"testing"
 	"time"
 
@@ -29,12 +30,18 @@ const agentProbeApp = "../../../testdata/apps/agent_probe/app.yaml"
 // openSlowProbe opens an agent_probe driving session whose host.agent.ask is
 // replaced with a handler that blocks for blockFor before returning, so a
 // session.submit{intent:ask} turn deterministically holds the turn open with no
-// LLM. Returns the handle key.
-func openSlowProbe(ctx context.Context, t *testing.T, cs *mcpsdk.ClientSession, sess *studio.StudioSession, blockFor time.Duration) string {
+// LLM. The release channel lets tests prove reads finish while the turn is
+// still blocked. Returns the handle key.
+func openSlowProbe(ctx context.Context, t *testing.T, cs *mcpsdk.ClientSession, sess *studio.StudioSession, blockFor time.Duration, entered chan struct{}, release <-chan struct{}) string {
 	t.Helper()
+	var enteredOnce sync.Once
 	sess.SetHostRegistryConfigurer(func(reg *host.Registry) error {
 		reg.Replace("host.agent.ask", func(hctx context.Context, _ map[string]any) (host.Result, error) {
+			if entered != nil {
+				enteredOnce.Do(func() { close(entered) })
+			}
 			select {
+			case <-release:
 			case <-time.After(blockFor):
 			case <-hctx.Done():
 			}
@@ -56,15 +63,28 @@ func openSlowProbe(ctx context.Context, t *testing.T, cs *mcpsdk.ClientSession, 
 	return ok.Handle
 }
 
+func waitForSlowProbe(t *testing.T, entered <-chan struct{}) {
+	t.Helper()
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("blocking host.agent.ask did not start")
+	}
+}
+
 // TestReadOnlyCallsDoNotBlockOnConcurrentTurn is the teeth: while a 2s turn is
 // in flight on handle A, session.status / studio.handles / studio.ping / session.world
-// on the SAME server must each return well within that window (< 500ms), not
+// on the SAME server must each return before the blocked turn is released, not
 // queue behind the turn.
 func TestReadOnlyCallsDoNotBlockOnConcurrentTurn(t *testing.T) {
 	ctx := context.Background()
 	srv, sess := newReplayServer(t)
 	cs := connectInProcess(ctx, t, srv)
-	handle := openSlowProbe(ctx, t, cs, sess, 2*time.Second)
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	defer releaseOnce.Do(func() { close(release) })
+	handle := openSlowProbe(ctx, t, cs, sess, 10*time.Second, entered, release)
 
 	// Fire the blocking turn in the background. It holds the turn open ~2s.
 	driveDone := make(chan struct{})
@@ -77,8 +97,7 @@ func TestReadOnlyCallsDoNotBlockOnConcurrentTurn(t *testing.T) {
 		})
 	}()
 
-	// Give the turn a moment to actually enter the blocking host call.
-	time.Sleep(150 * time.Millisecond)
+	waitForSlowProbe(t, entered)
 
 	readOnly := []struct {
 		name string
@@ -90,18 +109,33 @@ func TestReadOnlyCallsDoNotBlockOnConcurrentTurn(t *testing.T) {
 		{"session.world", map[string]any{"handle": handle}},
 	}
 
-	const bound = 500 * time.Millisecond
 	for _, ro := range readOnly {
 		start := time.Now()
-		res, err := callTool(ctx, cs, ro.name, ro.args)
-		elapsed := time.Since(start)
-		require.NoError(t, err, "%s call", ro.name)
-		require.False(t, res.IsError, "%s errored: %s", ro.name, contentText(res))
-		require.Less(t, elapsed, bound,
-			"%s must return promptly while a turn is in flight; took %s (the concurrent drive blocks for ~2s)",
-			ro.name, elapsed)
+		resC := make(chan struct {
+			res *mcpsdk.CallToolResult
+			err error
+		}, 1)
+		go func() {
+			res, err := callTool(ctx, cs, ro.name, ro.args)
+			resC <- struct {
+				res *mcpsdk.CallToolResult
+				err error
+			}{res: res, err: err}
+		}()
+		select {
+		case got := <-resC:
+			elapsed := time.Since(start)
+			require.NoError(t, got.err, "%s call", ro.name)
+			require.False(t, got.res.IsError, "%s errored: %s", ro.name, contentText(got.res))
+			t.Logf("%s returned while the turn was still blocked (%s)", ro.name, elapsed)
+		case <-driveDone:
+			t.Fatalf("%s queued behind the turn: background drive completed before the read-only call returned", ro.name)
+		case <-time.After(5 * time.Second):
+			t.Fatalf("%s did not return while the turn was blocked", ro.name)
+		}
 	}
 
+	releaseOnce.Do(func() { close(release) })
 	<-driveDone
 }
 
@@ -116,7 +150,11 @@ func TestReadOnlyCallsDoNotBlockAcrossConnections(t *testing.T) {
 	csA := connectInProcess(ctx, t, srv)
 	csB := connectInProcess(ctx, t, srv)
 
-	handle := openSlowProbe(ctx, t, csA, sess, 2*time.Second)
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	defer releaseOnce.Do(func() { close(release) })
+	handle := openSlowProbe(ctx, t, csA, sess, 10*time.Second, entered, release)
 
 	driveDone := make(chan struct{})
 	go func() {
@@ -128,7 +166,7 @@ func TestReadOnlyCallsDoNotBlockAcrossConnections(t *testing.T) {
 		})
 	}()
 
-	time.Sleep(150 * time.Millisecond)
+	waitForSlowProbe(t, entered)
 
 	readOnly := []struct {
 		name string
@@ -140,17 +178,32 @@ func TestReadOnlyCallsDoNotBlockAcrossConnections(t *testing.T) {
 		{"session.world", map[string]any{"handle": handle}},
 	}
 
-	const bound = 500 * time.Millisecond
 	for _, ro := range readOnly {
 		start := time.Now()
-		res, err := callTool(ctx, csB, ro.name, ro.args)
-		elapsed := time.Since(start)
-		require.NoError(t, err, "%s call on connection B", ro.name)
-		require.False(t, res.IsError, "%s errored: %s", ro.name, contentText(res))
-		require.Less(t, elapsed, bound,
-			"%s on connection B must return promptly while connection A's turn is in flight; took %s",
-			ro.name, elapsed)
+		resC := make(chan struct {
+			res *mcpsdk.CallToolResult
+			err error
+		}, 1)
+		go func() {
+			res, err := callTool(ctx, csB, ro.name, ro.args)
+			resC <- struct {
+				res *mcpsdk.CallToolResult
+				err error
+			}{res: res, err: err}
+		}()
+		select {
+		case got := <-resC:
+			elapsed := time.Since(start)
+			require.NoError(t, got.err, "%s call on connection B", ro.name)
+			require.False(t, got.res.IsError, "%s errored: %s", ro.name, contentText(got.res))
+			t.Logf("%s on connection B returned while the turn was still blocked (%s)", ro.name, elapsed)
+		case <-driveDone:
+			t.Fatalf("%s on connection B queued behind the turn: background drive completed before the read-only call returned", ro.name)
+		case <-time.After(5 * time.Second):
+			t.Fatalf("%s on connection B did not return while the turn was blocked", ro.name)
+		}
 	}
 
+	releaseOnce.Do(func() { close(release) })
 	<-driveDone
 }

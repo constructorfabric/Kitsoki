@@ -14,20 +14,24 @@ states:
   test_executing:
     description: "Running tests for the applied code change."
     view:
+      - banner:
+          text:     "🧪 RUNNING TESTS"
+          subtitle: "CI and test-review agent are active"
+          color:    "#F59E0B"
       - prose: '{{ world.ticket_id|default:"(no ticket)" }}  ·  {{ world.workdir|default:"(no workspace)" }}  ·  {{ world.feature_branch|default:"(no branch)" }}  ·  cycle {{ world.cycle }}  ·  judge {{ world.judge_mode }}'
-      - heading: "Running tests"
       - kv:
           pairs:
             Ticket:     "{{ world.ticket_id }} — {{ world.ticket_title }}"
-            Summary:    '{{ world.test_artifact.summary_title|default:"(pending)" }}'
+            Summary:    '{{ world.test_artifact.summary_title|default:"agent working..." }}'
             "CI state": '{{ world.ci_state|default:"(pending)" }}'
-      - heading: "Artifact"
-      - code: '{{ world.test_artifact.summary_markdown|default:"(pending — agent has not returned yet)" }}'
+            Status:     "running"
+      - template: |
+          **Tests are running now.** Results will settle into a short checkpoint with a linked artifact.
       - choice:
           mode: single
           prompt: "Actions"
           items:
-            - { label: "proceed", intent: proceed, hint: "deliver the test artifact to the checkpoint" }
+            - { label: "proceed", intent: proceed, hint: "deliver the test artifact to the checkpoint", when: "world.judge_mode != 'human'" }
             - label:  "restart_from"
               intent: restart_from
               hint:   "bounce back to an earlier stage"
@@ -86,6 +90,39 @@ states:
           message:   "test: {{ world.ticket_id }} — tests + fix repairs from test phase"
           stage_all: true
         on_error: idle
+      - invoke: host.artifacts_dir
+        id: test_artifact_file
+        with:
+          thread: "implementation_{{ world.ticket_id }}_03_tests.md"
+          title:  "Tests: {{ world.ticket_id }}"
+          body:   "{{ world.test_artifact.summary_markdown }}"
+          mode:   replace
+        bind:
+          test_artifact_path: path
+        on_error: idle
+      - invoke: host.artifacts_dir
+        id: implementation_progress_file
+        with:
+          thread: "implementation_{{ world.ticket_id }}_progress.yaml"
+          body: |
+            ticket_id: "{{ world.ticket_id }}"
+            phase: test
+            state: ready_for_operator
+            cycle: {{ world.cycle }}
+            ci_state: "{{ world.ci_state }}"
+            test_status: "{{ world.test_artifact.status }}"
+            artifacts:
+              task_summary: "{{ world.task_summary_artifact_path }}"
+              code: "{{ world.code_artifact_path }}"
+              test: "{{ world.test_artifact_path }}"
+              review: "{{ world.review_artifact_path }}"
+            next_action: accept_or_refine
+          mode: replace
+        bind:
+          implementation_progress_artifact_path: path
+        on_error: idle
+      - when: "world.judge_mode == 'human' && world.test_artifact_path != ''"
+        emit_intent: proceed
     on:
       proceed:
         - target: test_awaiting_reply
@@ -98,6 +135,7 @@ states:
                 # Re-entering review_task_executing for a fresh run — clear
                 # its once: cache so the task summary regenerates.
                 task_summary_artifact: {}
+                task_summary_artifact_path: ""
       quit:
         - target: "@exit:abandoned"
       look:
@@ -107,20 +145,35 @@ states:
   test_awaiting_reply:
     description: "Test results posted; awaiting verdict."
     view:
+      - when: "world.test_artifact.status == 'failed' || world.test_artifact.status == 'blocked'"
+        banner:
+          text:     "⚠ TESTS NEED WORK"
+          subtitle: "Accept will loop back to code; refine can add specific feedback"
+          color:    "#DC2626"
+      - when: "world.test_artifact.status != 'failed' && world.test_artifact.status != 'blocked'"
+        banner:
+          text:     "✅ TEST RESULTS READY"
+          subtitle: "Review the short result; open the artifact for details"
+          color:    "#16A34A"
       - prose: '{{ world.ticket_id|default:"(no ticket)" }}  ·  {{ world.workdir|default:"(no workspace)" }}  ·  {{ world.feature_branch|default:"(no branch)" }}  ·  cycle {{ world.cycle }}  ·  judge {{ world.judge_mode }}'
-      - heading: "Tests — awaiting verdict"
       - kv:
           pairs:
-            Ticket:     "{{ world.ticket_id }} — {{ world.ticket_title }}"
+            Ticket:   "{{ world.ticket_id }} — {{ world.ticket_title }}"
+            Summary:  '{{ world.test_artifact.summary_title|default:"(missing title)" }}'
+            Status:   '{{ world.test_artifact.status|default:"(unknown)" }}'
             "CI state": '{{ world.ci_state|default:"(unknown)" }}'
+            Artifact: '{{ world.test_artifact_path|default:"(not written)" }}'
+            Progress: '{{ world.implementation_progress_artifact_path|default:"(not written)" }}'
       - when: "(world.llm_verdict.verdict ?? '') != ''"
         kv:
           pairs:
             Verdict:    '{{ world.llm_verdict.verdict }}'
             Confidence: '{{ world.llm_verdict.confidence|floatformat:2 }}'
             Reason:     '{{ world.llm_verdict.reason }}'
-      - heading: "Artifact"
-      - code: '{{ world.test_artifact.summary_markdown|default:"(pending — agent has not returned yet)" }}'
+      - template: |
+          **{{ world.test_artifact.summary_title|default:"Test result" }}**
+
+          {% if world.test_artifact.status == 'failed' || world.test_artifact.status == 'blocked' %}⚠ **Action needed:** this result will loop back to code unless you refine with different feedback.{% else %}The detailed run log and review notes are in the linked artifact.{% endif %}
       - choice:
           mode: single
           prompt: "Actions"
@@ -148,7 +201,13 @@ states:
         with:
           thread:    "{{ world.thread }}"
           title:     "Tests: {{ world.ticket_id }}"
-          body:      "{{ world.test_artifact.summary_markdown }}"
+          body: |
+            Test result ready: {{ world.test_artifact.summary_title }}
+            Status: {{ world.test_artifact.status }}
+            CI: {{ world.ci_state }}
+
+            Full artifact: {{ world.test_artifact_path }}
+            Progress: {{ world.implementation_progress_artifact_path }}
           phase_id:  "test_{{ world.ticket_id }}_{{ world.cycle }}"
       - invoke: host.inbox.add
         with:
@@ -156,7 +215,7 @@ states:
           title:   "Tests: {{ world.ticket_id }}"
           thread:  "{{ world.thread }}"
           state:   test_awaiting_reply
-          body:    "{{ world.test_artifact.summary_markdown }}"
+          body:    "Test result ready: {{ world.test_artifact.summary_title }}\nStatus: {{ world.test_artifact.status }}\nCI: {{ world.ci_state }}\n\nFull artifact: {{ world.test_artifact_path }}\nProgress: {{ world.implementation_progress_artifact_path }}"
       - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
         invoke: host.agent.decide
         with:
@@ -197,6 +256,7 @@ states:
                 cycle:           "{{ world.cycle + 1 }}"
                 # Clear the once: cache so the code artifact regenerates.
                 code_artifact:   {}
+                code_artifact_path: ""
         # passed (or unset) — advance to review.
         - target: review_executing
           effects:
@@ -207,6 +267,7 @@ states:
                 # Advancing to review_executing for a fresh run — clear its
                 # once: cache so the review artifact regenerates.
                 review_artifact:   {}
+                review_artifact_path: ""
       # CI failure path: refine bounces back to write_code with the
       # failing-test feedback so the code-write loop closes around CI.
       refine:
@@ -217,6 +278,7 @@ states:
                 cycle:           "{{ world.cycle + 1 }}"
                 # Clear the once: cache so the code artifact regenerates.
                 code_artifact:   {}
+                code_artifact_path: ""
       restart_from:
         - target: review_task_executing
           effects:
@@ -226,6 +288,7 @@ states:
                 # Re-entering review_task_executing for a fresh run — clear
                 # its once: cache so the task summary regenerates.
                 task_summary_artifact: {}
+                task_summary_artifact_path: ""
       quit:
         - target: "@exit:abandoned"
       look:

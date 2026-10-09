@@ -32,20 +32,16 @@ initial_world:
     items:
       - { path: "docs/PRESET-REF.md", sections: "§1", rationale: "preset reference" }
 
+starlark_inspect_cassette: ../cassettes/design_reload_safe.inspect.yaml
+
 host_handlers:
+  host.fs.writable_dir:
+    data: { path: "docs/proposals", used_fallback: false }
   host.agent.decide:
     by_call:
       # If the once: guard failed, this would fire and overwrite the preset.
       existing_scan:
         data: { ok: true, submitted: { overlaps: [], roadmap_fit: "SHOULD-NOT-RUN" } }
-  host.run:
-    by_call:
-      name_slug:
-        data:
-          ok: true
-          exit_code: 0
-          stdout: '{"slug":"wf","workspace":"docs/proposals/.workspace/wf"}'
-          stdout_json: { slug: "wf", workspace: "docs/proposals/.workspace/wf" }
   host.artifacts_dir:
     data: { ok: true, path: "docs/proposals/.workspace/wf/out.md", message_id: "out#1" }
 
@@ -62,13 +58,13 @@ turns:
         overlaps:
           - { path: "docs/proposals/PRESET-SURVIVED.md", kind: "accepted", summary: "preset", recommendation: "amend" }
         roadmap_fit: "preset-survived"
-    # name_slug (host.run) IS called in the intake arc — the search room's
+    # name_slug (host.starlark.run) IS called in the intake arc — the search room's
     # existing_scan is the one we're asserting did NOT run. We verify via the
     # world assertion: if the preset survived (not overwritten by the
     # "SHOULD-NOT-RUN" stub), the once: guard worked. Intake no longer mints the
-    # workspace, so no host.run uniquify fires here.
+    # workspace, so no host.starlark.run uniquify fires here.
     expect_host_calls:
-      - handler: host.run
+      - handler: host.starlark.run
         args: { call: "name_slug" }
 
 expect_no_errors: true

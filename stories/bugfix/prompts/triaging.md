@@ -3,16 +3,50 @@
 You are triaging bug **{{ args.ticket_id }}** — *{{ args.ticket_title }}* against
 the current working tree at `{{ args.workdir }}`.
 
+Ticket source mode: **{{ args.ticket_source_mode }}**
+{% if args.ticket_source_ref %}Ticket source ref: `{{ args.ticket_source_ref }}`{% endif %}
+{% if args.ticket_url %}Ticket URL: {{ args.ticket_url }}{% endif %}
+{% if args.ticket_repo %}Ticket repo: `{{ args.ticket_repo }}`{% endif %}
+{% if args.thread %}Thread: `{{ args.thread }}`{% endif %}
+
 This is **triage only**. Do NOT fix anything, do NOT write files, do NOT create
 a branch. Your single job: determine whether the reported defect **still exists
 in the code right now**, and emit a standardized verdict with concrete code
 evidence.
 
+## Ticket source contract
+
+The caller must choose exactly one source mode. Do not silently switch modes.
+
+- **local** — the bug report is a local markdown ticket. Read the concrete local
+  file named by `ticket_source_ref` when present; otherwise read `thread` when it
+  is a markdown/path value; otherwise read `issues/bugs/{{ args.ticket_id }}.md`.
+- **remote** — the bug report is a remote tracker issue. Use the supplied
+  `ticket_body` below plus `ticket_title`, `ticket_url`, and `ticket_repo`.
+  Do **not** search `issues/bugs/`, `.context`, traces, or unrelated local notes
+  to reconstruct the report. If `ticket_body` is empty, fall back to
+  `ticket_title` and `ticket_url` only; return `UNCLEAR` if those are
+  insufficient and say the remote issue body could not be fetched.
+- **freeform** — the bug report is an inline operator complaint, not a filed
+  issue. Use the supplied `ticket_body` below plus `ticket_title`. Do **not**
+  require `issues/bugs/{{ args.ticket_id }}.md` to exist. If the complaint is
+  too vague to map to specific code, return `UNCLEAR` and say what guidance is
+  missing.
+- Any other mode is invalid. Return `UNCLEAR` and cite the invalid mode.
+
+{% if args.ticket_source_mode == "remote" || args.ticket_source_mode == "freeform" %}
+## Ticket body
+
+```markdown
+{{ args.ticket_body }}
+```
+{% endif %}
+
 ## How to triage
 
-1. Read the bug report (`issues/bugs/{{ args.ticket_id }}.md`) — especially the
-   "Steps to reproduce", "Files involved", and any "Proposed/Suggested fix"
-   section. Note the specific `file:line`, function names, and behaviors it cites.
+1. Read the bug report from the selected source above — especially the "Steps to
+   reproduce", "Files involved", and any "Proposed/Suggested fix" section. Note
+   the specific `file:line`, function names, and behaviors it cites.
 2. Open those exact files/functions in the CURRENT tree. Has the cited buggy
    line/behavior changed? Does the proposed fix already appear to be applied?
 3. Search for a regression test asserting the fixed behavior (`grep` for the

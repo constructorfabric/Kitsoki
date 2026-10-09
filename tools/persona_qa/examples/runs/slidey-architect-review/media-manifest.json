@@ -1,0 +1,55 @@
+{
+  "run_id": "persona-qa-slidey-architect-review",
+  "items": [
+    {
+      "scenario": "compose-architecture-deck",
+      "evidence_kind": "key_interaction_video",
+      "media_kind": "video",
+      "path": "assets/persona-qa-slidey-architect-review/architect-design.rrweb.json",
+      "status": "validated",
+      "source": "local",
+      "capture_provenance": {
+        "kind": "rrweb-capture",
+        "source_asset": "docs/decks/assets/dev-story-hybrid/architect-design.rrweb.json",
+        "source_deck": "docs/decks/dev-story-hybrid.slidey.json"
+      },
+      "notes": "Recorded rrweb clip of the architect-design flow used as the primary authoring example.",
+      "playback": true
+    },
+    {
+      "scenario": "reuse-recorded-demo",
+      "evidence_kind": "key_interaction_video",
+      "media_kind": "video",
+      "path": "assets/persona-qa-slidey-architect-review/slidey-bugfix.rrweb.json",
+      "status": "validated",
+      "source": "local",
+      "capture_provenance": {
+        "kind": "rrweb-capture",
+        "source_asset": "docs/decks/assets/dev-story-hybrid/slidey-bugfix.rrweb.json",
+        "source_deck": "docs/decks/dev-story-hybrid.slidey.json"
+      },
+      "notes": "Recorded rrweb clip showing a Slidey-oriented workflow embedded as playback evidence.",
+      "playback": true
+    },
+    {
+      "scenario": "maintain-deck-as-code",
+      "evidence_kind": "key_interaction_video",
+      "media_kind": "video",
+      "path": "",
+      "status": "blocked",
+      "source": "demo",
+      "proof": false,
+      "notes": "No proof-grade deck-maintenance capture is attached. The earlier tiny placeholder rrweb clip is intentionally not playback evidence.",
+      "playback": false
+    }
+  ],
+  "summary": {
+    "total": 3,
+    "playback_items": 2,
+    "video": 2,
+    "image": 0,
+    "trace": 0,
+    "document": 0,
+    "artifact": 0
+  }
+}

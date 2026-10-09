@@ -1,0 +1,175 @@
+# Packaging the Kitsoki GitHub Agent for reusable self-host.
+#
+# Decomposition of .context/gh-agent-packaging-research.md into a
+# punch-list/v1 worklist. Priorities follow the research doc's own
+# "Suggested sequencing" (section 5); item 8 captures the provider-neutral
+# Ingress/adapter seam recommended in section 3.
+#
+# Each item drives a design/reproduction story (dev-story), implements via
+# the cherny-loop maker, and gates on a DETERMINISTIC, no-LLM verifier so a
+# green result cannot be self-graded by the maker.
+#
+# Live driving uses GPT-5.5 via the codex-native profile (enforced by the
+# manifest linter for live implementation items).
+version: punch-list/v1
+defaults:
+  harness: live
+  profile: codex-native
+  model: gpt-5.5
+  trace_root: .artifacts/packaging-selfhost/traces
+  require_trace_model: true
+items:
+  - id: docker-compose-selfhost
+    title: Dockerfile + compose + .env.example (Tier 2 container)
+    priority: 1
+    story: stories/dev-story/app.yaml
+    mode: drive
+    prompt: >-
+      Design and build the containerized self-host tier for the @kitsoki
+      gh-agent: a single-container Dockerfile, a deploy/compose.yaml exposing
+      the webhook on :8080 with a /healthz healthcheck and a named volume for
+      the SQLite job store, plus a deploy/.env.example splitting LLM/App
+      secrets from committed behavior. Forcing the .env/YAML split first
+      validates the whole config surface.
+    implementation_story: stories/cherny-loop/app.yaml
+    implementation_prompt: >-
+      Add deploy/Dockerfile, deploy/compose.yaml (healthcheck + named SQLite
+      volume + pinned tag), and deploy/.env.example for the gh-agent serve
+      daemon.
+    verify:
+      - kind: command
+        cmd: "test -f deploy/Dockerfile && test -f deploy/compose.yaml && test -f deploy/.env.example"
+
+  - id: doctor-preflight
+    title: kitsoki gh-agent doctor preflight
+    priority: 2
+    story: stories/dev-story/app.yaml
+    mode: drive
+    prompt: >-
+      Design a `kitsoki gh-agent doctor` preflight that prints a
+      [ok]/[warn]/[fail] checklist with a remediation line each: LLM key
+      present AND a live auth ping, outbound network to the provider, webhook
+      port free, data-dir writable, secrets-file perms, systemd present. This
+      is the cure for silent first-run failure on a foreign VM.
+    implementation_story: stories/cherny-loop/app.yaml
+    implementation_prompt: >-
+      Add a `kitsoki gh-agent doctor` subcommand that runs the preflight
+      checklist and exits non-zero on any [fail].
+    verify:
+      - kind: command
+        cmd: "go build ./cmd/kitsoki && go run ./cmd/kitsoki gh-agent doctor --help >/dev/null"
+
+  - id: agent-config-yaml
+    title: .kitsoki-agent.yaml + standalone/CI config validator
+    priority: 3
+    story: stories/dev-story/app.yaml
+    mode: drive
+    prompt: >-
+      Move label->story routing and per-repo behavior out of router.go into a
+      committed .kitsoki-agent.yaml, with a `kitsoki gh-agent validate-config
+      --strict` that runs standalone and in CI (non-zero exit on error). The
+      file mirrors any UI 1:1 and the file wins; secrets stay in .env.
+    implementation_story: stories/cherny-loop/app.yaml
+    implementation_prompt: >-
+      Introduce the .kitsoki-agent.yaml schema + loader (label->story routing,
+      budgets) and the strict validate-config subcommand.
+    verify:
+      - kind: command
+        cmd: "go build ./cmd/kitsoki && go test ./internal/ghagent/..."
+
+  - id: app-manifest-wizard
+    title: GitHub App Manifest setup wizard (marquee UX)
+    priority: 4
+    story: stories/dev-story/app.yaml
+    mode: drive
+    prompt: >-
+      Kill the #1 friction point (manual App creation) with a GitHub App
+      Manifest flow served on the existing HTTP surface: a local page POSTs a
+      pre-built manifest (name, permissions, events, webhook URL) to
+      settings/apps/new; catch the redirect one-time code; exchange it at the
+      manifest-conversion endpoint; write App ID + private key + webhook secret
+      to disk. ~150 LOC Go, stdlib only, no Node/Probot.
+    implementation_story: stories/cherny-loop/app.yaml
+    implementation_prompt: >-
+      Add the App-Manifest wizard HTTP handlers (manifest POST page + code
+      exchange + credential persistence) under internal/ghagent/githubapp.
+    verify:
+      - kind: command
+        cmd: "go build ./... && go test ./internal/ghagent/..."
+
+  - id: install-systemd
+    title: install.sh one-liner + hardened systemd unit (Tier 1 hero)
+    priority: 5
+    story: stories/dev-story/app.yaml
+    mode: drive
+    prompt: >-
+      Ship the hero one-liner that installs a SERVICE not a binary: an
+      install.sh that detects OS/pkg-manager, installs the binary, creates a
+      dedicated kitsoki system user, drops a hardened systemd unit + enables it
+      now, and prints the next command. Apply install-script trust hygiene
+      (HTTPS-only, main() wrapper against truncated download, version-pinned
+      URLs, SHA-256, non-root daemon, an uninstall script).
+    implementation_story: stories/cherny-loop/app.yaml
+    implementation_prompt: >-
+      Add scripts/install.sh (main() wrapper, least-privilege), a checked-in
+      deploy/kitsoki-gh-agent.service unit, and scripts/kitsoki-uninstall.sh.
+    verify:
+      - kind: command
+        cmd: "bash -n scripts/install.sh && bash -n scripts/kitsoki-uninstall.sh && test -f deploy/kitsoki-gh-agent.service"
+
+  - id: action-onboarding-pr
+    title: GitHub Action (Tier 0 cron poll) + onboarding PR
+    priority: 6
+    story: stories/dev-story/app.yaml
+    mode: drive
+    prompt: >-
+      Package the existing poll mode (newGHAgentPollCmd) as a stateless
+      GitHub Action so users start responsive-but-simple with a PAT before the
+      full webhook App. On install, open a "Configure Kitsoki" onboarding PR
+      that adds a starter .kitsoki-agent.yaml and does nothing else until
+      merged, with the PR body previewing what the agent will do.
+    implementation_story: stories/cherny-loop/app.yaml
+    implementation_prompt: >-
+      Add the composite GitHub Action wrapping gh-agent poll, and the
+      onboarding-PR opener that seeds a starter .kitsoki-agent.yaml.
+    verify:
+      - kind: command
+        cmd: "test -f action.yml && go test ./internal/ghagent/..."
+
+  - id: signed-package-repo
+    title: Signed native package repo (enterprise durability, last)
+    priority: 7
+    story: stories/dev-story/app.yaml
+    mode: drive
+    prompt: >-
+      Design the enterprise-durable distribution: a signed native package repo
+      (deb/rpm) with SHA-256 + signature and version-pinned artifacts, plus
+      honest minimum-spec publication so sizing does not surprise operators.
+    implementation_story: stories/cherny-loop/app.yaml
+    implementation_prompt: >-
+      Add the packaging/release scaffolding (nfpm or equivalent config) that
+      produces signed, version-pinned native packages.
+    verify:
+      - kind: command
+        cmd: "test -f .goreleaser.yaml || test -f nfpm.yaml || test -f packaging/nfpm.yaml"
+
+  - id: ingress-adapter-seam
+    title: Provider-neutral Ingress/adapter seam (github + future jira-dc)
+    priority: 8
+    story: stories/dev-story/app.yaml
+    mode: drive
+    prompt: >-
+      Keep a provider-neutral ingress/adapter seam in Go so the agent is not
+      welded to GitHub (kitsoki is heading multi-tracker; Probot/Forge cannot
+      target Jira Data Center). Define a small Ingress interface (verify
+      signature -> normalize event -> route to story -> job store) with the
+      existing GitHub adapter refactored behind it and a documented seam for a
+      future jira-dc adapter (PAT bearer token + DC webhook registration).
+    implementation_story: stories/cherny-loop/app.yaml
+    implementation_prompt: >-
+      Extract the Ingress interface in internal/ghagent and refactor the
+      GitHub webhook/poll path to implement it, leaving the jira-dc adapter as
+      a documented stub.
+    verify:
+      - kind: command
+        cmd: "go build ./... && go test ./internal/ghagent/..."

@@ -1,0 +1,32 @@
+kind: inspect_cassette
+interactions:
+  - op: read
+    target: .artifacts/product-journey/scenario-qa-vscode-editor-run/driver-plan.json
+    out: |
+      {
+        "driver_agent": ".agents/agents/product-journey-qa-driver.md",
+        "scenarios": [
+          {
+            "scenario": "bugfix",
+            "label": "Bugfix carrier scenario",
+            "primary_story": "stories/bugfix/app.yaml",
+            "task_prompt": "Drive the bugfix pipeline end to end.",
+            "evidence_dir": "evidence/gears-rust--core-maintainer/bugfix",
+            "transport": "vscode",
+            "leg_id": "bugfix::vscode",
+            "visual_surface": "vscode",
+            "transport_evidence_contract": {
+              "primary_tool": "visual.open (kind=vscode)",
+              "evidence_kind": "screenshot_or_tui_png",
+              "level": "bridge-level"
+            },
+            "editor_evidence_contract": {
+              "primary_tool": "session.trace (reads the ide.context_captured event a host.ide.* call appends)",
+              "evidence_kind": "ide_context_capture",
+              "level": "editor-level"
+            },
+            "required_mcp": ["session.new", "session.drive", "visual.open", "visual.observe", "session.trace"],
+            "success_criteria": ["The bugfix pipeline completes on the vscode transport with a real editor observed."]
+          }
+        ]
+      }

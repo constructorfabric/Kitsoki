@@ -1,0 +1,88 @@
+# bugfix_oversight_llm_review — user selects LLM-review oversight before
+# launching the imported bugfix pipeline. Proves the launch picks the LLM-review
+# operation policy and keeps the legacy judge_mode projection.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world:
+  auto_triage: false
+  ticket_id:      "TKT-OL-1"
+  ticket_title:   "Oversight LLM-review launch"
+  ticket_type:    "bug"
+  ticket_url:     "issues/bugs/TKT-OL-1.md"
+  thread:         "TKT-OL-1"
+  workdir:        ".worktrees/tkt-ol-1"
+  workspace_id:   "ws-ol-1"
+  base_branch:    "main"
+  feature_branch: "fix/tkt-ol-1"
+  judge_confidence_threshold: 0.8
+
+host_handlers:
+  host.git_worktree:
+    data: { ok: true, log: "synced", path: ".worktrees/tkt-ol-1" }
+  host.inbox.add:
+    data: { ok: true, id: "ib-1" }
+  host.append_to_file:
+    data: { ok: true, message_id: "msg-1" }
+  host.git.commit:
+    data: { ok: true, sha: "abc123" }
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Stub artifact"
+        summary_markdown: "Stub artifact body."
+        bug_verified:     true
+        steps:            ["run fixture"]
+        involved_components: [{ name: "fixture", reason: "stub" }]
+        environment_check: { frontend_running: true, backend_running: true, dataset_ready: true }
+        root_cause:       "stub"
+        fix_description:  "stub fix"
+        affected_files:   []
+        confidence:       0.95
+        reasoning:        "stub"
+        status:           "passed"
+        tests_run:        { passed: 1, failed: 0, log: "PASS" }
+        verdict:          "pass"
+        intent:           "accept"
+        reason:           "stub"
+  host.agent.ask:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Stub proposal"
+        summary_markdown: "Stub proposal body."
+        root_cause:       "stub"
+        fix_description:  "stub fix"
+        affected_files:   []
+        confidence:       0.95
+        reasoning:        "stub"
+        verdict:          "pass"
+        intent:           "accept"
+        reason:           "stub"
+  host.agent.decide:
+    data:
+      ok: true
+      submitted:
+        verdict:    "pass"
+        intent:     "accept"
+        confidence: 0.95
+        reason:     "Stub LLM review accepts the checkpoint."
+
+turns:
+  - intent: { name: oversight_llm_review, slots: {} }
+    expect_state: landing
+    expect_world:
+      oversight_mode: "llm-review"
+      judge_mode: "llm_then_human"
+
+  - intent: { name: go_bugfix, slots: {} }
+    expect_state: bf.implementing
+    expect_world:
+      bf__oversight_mode: "llm-review"
+      bf__judge_mode: "llm_then_human"
+
+expect_operation_policy: bf__bugfix_full_llm_review
+expect_operation_status: running
+expect_no_errors: true

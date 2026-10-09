@@ -30,6 +30,9 @@ host_handlers:
             ok: false
             project: gears-rust
             status: ready-to-drive
+            completed: false
+            repairable: false
+            requires_drive: true
             checks:
               preflight_ok: true
               arming_verified: true
@@ -60,6 +63,12 @@ host_handlers:
           stdout: |
             {"ok": false, "project": "gears-rust", "error": "no scored cells", "hint": "run drive_cell.sh --score for at least one matrix cell before scoring"}
         error: "host.run: command exited 1"
+  host.artifacts_dir:
+    by_call:
+      completion_state:
+        data:
+          ok: true
+          path: .artifacts/external-bakeoff/report/completion-state.json
 
 turns:
   - intent: { name: accept, slots: {} }
@@ -67,8 +76,6 @@ turns:
     expect_host_calls:
       - handler: host.run
         id: completion_local
-      - handler: host.run
-        id: summarize
     expect_view_matches: "Bake-off · running"
 
 expect_no_errors: false

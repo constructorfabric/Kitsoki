@@ -16,6 +16,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"kitsoki/internal/ghagent"
+	"kitsoki/internal/ghagent/bugdeck"
 	"kitsoki/internal/ghagent/githubapp"
 	"kitsoki/internal/host"
 	"kitsoki/internal/inbox"
@@ -34,15 +35,21 @@ func newGHAgentServeCmd() *cobra.Command {
 		worker            string
 		pollInterval      time.Duration
 		reconcileInterval time.Duration
+		drainInterval     time.Duration
 		stuckAfter        time.Duration
 		maxAttempts       int
 		incidentRepo      string
+		projectRoot       string
 		webhookSecret     string
 		useGitHubApp      bool
 		appID             int64
 		installationID    int64
 		appKeyFile        string
 		assetDir          string
+		decksDir          string
+		evidenceDir       string
+		slideyDir         string
+		slideyBin         string
 	)
 	cmd := &cobra.Command{
 		Use:   "serve",
@@ -55,11 +62,6 @@ func newGHAgentServeCmd() *cobra.Command {
 			if strings.TrimSpace(publicBaseURL) == "" {
 				return fmt.Errorf("gh-agent serve: --public-base-url is required")
 			}
-			restoreGHToken, err := setupGitHubAppAuth(ctx, useGitHubApp, appID, installationID, appKeyFile)
-			if err != nil {
-				return err
-			}
-			defer restoreGHToken()
 
 			db, err := sql.Open("sqlite", dbPath)
 			if err != nil {
@@ -83,9 +85,22 @@ func newGHAgentServeCmd() *cobra.Command {
 				PollInterval:      pollInterval,
 				WebhookSecret:     webhookSecret,
 				ReconcileInterval: reconcileInterval,
+				DrainInterval:     drainInterval,
 				StuckAfter:        stuckAfter,
 				MaxAttempts:       maxAttempts,
 				IncidentRepo:      incidentRepo,
+				ProjectRoot:       projectRoot,
+				UseGitHubApp:      useGitHubApp,
+				AppID:             appID,
+				InstallationID:    installationID,
+				AppKeyFile:        appKeyFile,
+				DecksDir:          decksDir,
+				EvidenceDir:       evidenceDir,
+				SlideyDir:         slideyDir,
+				SlideyBin:         slideyBin,
+			}
+			if err := withGHAgentAuth(ctx, opts, func(context.Context) error { return nil }); err != nil {
+				return err
 			}
 			return runGHAgentServe(ctx, store, opts)
 		},
@@ -98,15 +113,21 @@ func newGHAgentServeCmd() *cobra.Command {
 	cmd.Flags().StringVar(&worker, "worker", "gh-agent-1", "worker id holding the claim")
 	cmd.Flags().DurationVar(&pollInterval, "poll-interval", 30*time.Second, "poll fallback interval; set 0 to disable polling")
 	cmd.Flags().DurationVar(&reconcileInterval, "reconcile-interval", 1*time.Minute, "interval for stuck-job reconciliation; set 0 to disable")
+	cmd.Flags().DurationVar(&drainInterval, "drain-interval", 30*time.Second, "interval for draining queued jobs (retries/re-mentions parked while the queue starved); runs independent of --poll-interval so a webhook-only deployment (--poll-interval=0) still drains; set 0 to disable")
 	cmd.Flags().DurationVar(&stuckAfter, "stuck-after", 15*time.Minute, "active job age without updates before retry/escalation")
 	cmd.Flags().IntVar(&maxAttempts, "max-attempts", 2, "stuck-job retries before marking failed and filing an incident")
 	cmd.Flags().StringVar(&incidentRepo, "incident-repo", "", "owner/repo for gh-agent incidents; defaults to --repo")
+	cmd.Flags().StringVar(&projectRoot, "project-root", os.Getenv("KITSOKI_GH_AGENT_PROJECT_ROOT"), "local checkout root for --repo; when onboarded, issue routes use its .kitsoki app")
 	cmd.Flags().StringVar(&webhookSecret, "webhook-secret", "", "GitHub webhook secret; defaults to KITSOKI_GH_WEBHOOK_SECRET")
 	cmd.Flags().BoolVar(&useGitHubApp, "github-app", false, "authenticate as a GitHub App installation (mints GH_TOKEN)")
 	cmd.Flags().Int64Var(&appID, "gh-app-id", 0, "GitHub App id (overrides KITSOKI_GH_APP_ID)")
 	cmd.Flags().Int64Var(&installationID, "gh-app-installation-id", 0, "installation id (overrides KITSOKI_GH_APP_INSTALLATION_ID)")
 	cmd.Flags().StringVar(&appKeyFile, "gh-app-key-file", "", "path to the App's RSA private key .pem (overrides KITSOKI_GH_APP_PRIVATE_KEY_FILE)")
 	cmd.Flags().StringVar(&assetDir, "asset-dir", "/var/lib/kitsoki-gh-agent/assets", "root directory for on-disk asset blobs")
+	cmd.Flags().StringVar(&decksDir, "decks-dir", "/var/lib/kitsoki-gh-agent/decks", "directory the agent hosts rendered bug-report decks from, served at /decks/<id>")
+	cmd.Flags().StringVar(&evidenceDir, "evidence-dir", "/var/lib/kitsoki-gh-agent/evidence", "directory the agent holds per-issue bug evidence (rrweb.json/har.json) under <deck-id>/")
+	cmd.Flags().StringVar(&slideyDir, "slidey-dir", "", "slidey project dir; enables the bug-report deck auto-trigger on issues.opened (or set --slidey-bin)")
+	cmd.Flags().StringVar(&slideyBin, "slidey-bin", "", "slidey binary/entrypoint (alternative to --slidey-dir)")
 	return cmd
 }
 
@@ -119,9 +140,21 @@ type ghAgentServeOptions struct {
 	PollInterval      time.Duration
 	WebhookSecret     string
 	ReconcileInterval time.Duration
+	DrainInterval     time.Duration
 	StuckAfter        time.Duration
 	MaxAttempts       int
 	IncidentRepo      string
+	ProjectRoot       string
+	CommentMode       string
+	IntegrationBranch string
+	UseGitHubApp      bool
+	AppID             int64
+	InstallationID    int64
+	AppKeyFile        string
+	DecksDir          string
+	EvidenceDir       string
+	SlideyDir         string
+	SlideyBin         string
 }
 
 func runGHAgentServe(ctx context.Context, store *jobs.GHJobStore, opts ghAgentServeOptions) error {
@@ -130,9 +163,23 @@ func runGHAgentServe(ctx context.Context, store *jobs.GHJobStore, opts ghAgentSe
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		_, _ = io.WriteString(w, "ok\n")
 	})
+	mux.HandleFunc("/api/ready", ghAgentReadyAPIHandler(store, opts))
+	mux.HandleFunc("/api/runs", ghAgentRunsAPIHandler(store))
+	mux.HandleFunc("/runs", ghAgentRunsHandler(store))
 	mux.HandleFunc("/api/run/", ghAgentRunAPIHandler(store))
 	mux.HandleFunc("/run/", ghAgentRunHandler(store))
-	mux.HandleFunc("/gh-agent/webhook", ghAgentWebhookHandler(store, opts))
+	// Deck hosting + the bug-report deck auto-trigger share a DeckStore. The
+	// trigger only engages when slidey + the evidence/decks dirs are configured;
+	// otherwise the agent still hosts any decks produced out-of-band.
+	deckTrigger := buildDeckTrigger(opts)
+	if strings.TrimSpace(opts.DecksDir) != "" {
+		if deckStore, err := ghagent.NewDeckStore(opts.DecksDir); err != nil {
+			fmt.Fprintf(os.Stderr, "gh-agent: deck hosting disabled: %v\n", err)
+		} else {
+			mux.HandleFunc("/decks/", deckStore.Handler())
+		}
+	}
+	mux.HandleFunc("/gh-agent/webhook", ghAgentWebhookHandler(store, opts, deckTrigger))
 
 	srv := &http.Server{Addr: opts.Addr, Handler: mux}
 	errc := make(chan error, 1)
@@ -154,6 +201,17 @@ func runGHAgentServe(ctx context.Context, store *jobs.GHJobStore, opts ghAgentSe
 	}
 	if opts.ReconcileInterval > 0 && opts.StuckAfter > 0 {
 		go runGHAgentReconcileLoop(ctx, store, opts)
+	}
+	// The drain loop runs on its own ticker, independent of PollInterval:
+	// queued jobs (stuck-job retries the reconcile loop parks in GHQueued,
+	// or re-mentions the dispatcher couldn't route) previously only drained
+	// as a side effect of runGHAgentPollOnce, so a webhook-only deployment
+	// (--poll-interval=0, relying solely on GitHub push webhooks) never
+	// drained them at all — they sat in GHQueued until an operator manually
+	// intervened or polling was turned on. See
+	// docs/proposals/gh-agent-honest-issues.md task 3.
+	if opts.DrainInterval > 0 {
+		go runGHAgentDrainLoop(ctx, store, opts)
 	}
 	fmt.Fprintf(os.Stdout, "gh-agent: serving %s (public %s)\n", opts.Addr, opts.PublicBaseURL)
 	select {
@@ -180,6 +238,12 @@ func runGHAgentReconcileLoop(ctx context.Context, store *jobs.GHJobStore, opts g
 }
 
 func runGHAgentReconcileOnce(ctx context.Context, store *jobs.GHJobStore, opts ghAgentServeOptions) error {
+	return withGHAgentAuth(ctx, opts, func(authedCtx context.Context) error {
+		return runGHAgentReconcileOnceAuthed(authedCtx, store, opts)
+	})
+}
+
+func runGHAgentReconcileOnceAuthed(ctx context.Context, store *jobs.GHJobStore, opts ghAgentServeOptions) error {
 	stuck, err := store.ListStuck(ctx, time.Now().Add(-opts.StuckAfter), 50)
 	if err != nil {
 		return err
@@ -230,19 +294,159 @@ func runGHAgentPollLoop(ctx context.Context, store *jobs.GHJobStore, opts ghAgen
 }
 
 func runGHAgentPollOnce(ctx context.Context, store *jobs.GHJobStore, opts ghAgentServeOptions) error {
-	items, err := pollInboxItems(ctx, opts.Repo, "")
-	if err != nil {
-		return err
-	}
-	for _, mention := range ghagent.FilterMentions(items, opts.Repo, opts.Trigger) {
-		if _, err := dispatchGHAgentMention(ctx, store, opts, mention, nil); err != nil {
-			fmt.Fprintf(os.Stderr, "gh-agent: dispatch %s: %v\n", mention.OriginRef, err)
+	return withGHAgentAuth(ctx, opts, func(authedCtx context.Context) error {
+		if _, err := drainQueuedGHAgentJobs(authedCtx, store, opts); err != nil {
+			return err
 		}
-	}
-	return nil
+		items, err := pollInboxItems(authedCtx, opts.Repo, "")
+		if err != nil {
+			return err
+		}
+		for _, mention := range ghagent.FilterMentions(items, opts.Repo, opts.Trigger) {
+			if _, err := ghAgentDispatchMention(authedCtx, store, opts, mention, nil); err != nil {
+				fmt.Fprintf(os.Stderr, "gh-agent: dispatch %s: %v\n", mention.OriginRef, err)
+			}
+		}
+		return nil
+	})
 }
 
-func ghAgentWebhookHandler(store *jobs.GHJobStore, opts ghAgentServeOptions) http.HandlerFunc {
+// runGHAgentDrainLoop periodically redispatches jobs parked in GHQueued
+// (reconcile-loop retries, or classify-then-retry re-mentions) on its own
+// ticker, independent of runGHAgentPollLoop/PollInterval. Draining used to
+// only happen as a side effect of runGHAgentPollOnce, so any deployment that
+// relies purely on the GitHub webhook (--poll-interval=0, no scheduled poll)
+// never drained the queue at all. Splitting it out means a webhook-only
+// deployment still guarantees forward progress on a stuck/queued job within
+// one DrainInterval, without paying for (or requiring) inbox polling.
+func runGHAgentDrainLoop(ctx context.Context, store *jobs.GHJobStore, opts ghAgentServeOptions) {
+	ticker := time.NewTicker(opts.DrainInterval)
+	defer ticker.Stop()
+	for {
+		if err := runGHAgentDrainOnce(ctx, store, opts); err != nil {
+			fmt.Fprintf(os.Stderr, "gh-agent: drain: %v\n", err)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+func runGHAgentDrainOnce(ctx context.Context, store *jobs.GHJobStore, opts ghAgentServeOptions) error {
+	return withGHAgentAuth(ctx, opts, func(authedCtx context.Context) error {
+		_, err := drainQueuedGHAgentJobs(authedCtx, store, opts)
+		return err
+	})
+}
+
+func drainQueuedGHAgentJobs(ctx context.Context, store *jobs.GHJobStore, opts ghAgentServeOptions) ([]*jobs.GHJob, error) {
+	queued, err := store.ListQueued(ctx, 20)
+	if err != nil {
+		return nil, err
+	}
+	drained := make([]*jobs.GHJob, 0, len(queued))
+	for _, job := range queued {
+		mention := mentionFromQueuedJob(job, opts.Trigger)
+		labels := labelsFromQueuedJob(job)
+		drainedJob, err := ghAgentDispatchMention(ctx, store, opts, mention, labels)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "gh-agent: queued dispatch %s: %v\n", job.OriginRef, err)
+		}
+		if drainedJob == nil {
+			drainedJob, _ = store.GetJob(ctx, job.JobID)
+		}
+		if drainedJob != nil {
+			drained = append(drained, drainedJob)
+		}
+	}
+	return drained, nil
+}
+
+func mentionFromQueuedJob(job *jobs.GHJob, trigger string) ghagent.Mention {
+	if strings.TrimSpace(trigger) == "" {
+		trigger = ghagent.DefaultMentionTrigger
+	}
+	title := trigger
+	if job == nil {
+		return ghagent.Mention{Trigger: trigger}
+	}
+	if job.Story == ghagent.StoryPRRebase {
+		title += " rebase"
+	}
+	return ghagent.Mention{
+		Item: host.GitHubInboxItem{
+			Kind:   job.ObjectKind,
+			Number: job.ObjectNumber,
+			Title:  title,
+			URL:    githubObjectURL(job),
+		},
+		Repo:      job.Repo,
+		OriginRef: job.OriginRef,
+		Trigger:   trigger,
+	}
+}
+
+func labelsFromQueuedJob(job *jobs.GHJob) []string {
+	if job == nil {
+		return nil
+	}
+	switch job.Story {
+	case "stories/bugfix":
+		return []string{"bug"}
+	case "stories/dev-story":
+		return []string{"feature"}
+	default:
+		return nil
+	}
+}
+
+func githubObjectURL(job *jobs.GHJob) string {
+	if job == nil || strings.TrimSpace(job.Repo) == "" || strings.TrimSpace(job.ObjectNumber) == "" {
+		return ""
+	}
+	switch job.ObjectKind {
+	case "pr":
+		return "https://github.com/" + job.Repo + "/pull/" + job.ObjectNumber
+	case "issue":
+		return "https://github.com/" + job.Repo + "/issues/" + job.ObjectNumber
+	default:
+		return ""
+	}
+}
+
+// buildDeckTrigger assembles the bug-report deck auto-trigger from serve flags.
+// It returns nil (feature off) unless slidey and the evidence/decks dirs are all
+// configured, so existing deployments are unaffected until opted in.
+func buildDeckTrigger(opts ghAgentServeOptions) *ghagent.DeckTrigger {
+	if strings.TrimSpace(opts.SlideyDir) == "" && strings.TrimSpace(opts.SlideyBin) == "" {
+		return nil
+	}
+	if strings.TrimSpace(opts.DecksDir) == "" || strings.TrimSpace(opts.EvidenceDir) == "" {
+		return nil
+	}
+	deckStore, err := ghagent.NewDeckStore(opts.DecksDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "gh-agent: deck auto-trigger disabled: %v\n", err)
+		return nil
+	}
+	evStore, err := ghagent.NewEvidenceStore(opts.EvidenceDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "gh-agent: deck auto-trigger disabled: %v\n", err)
+		return nil
+	}
+	return &ghagent.DeckTrigger{
+		Evidence:      evStore,
+		Store:         deckStore,
+		Renderer:      bugdeck.SlideyRenderer{Dir: opts.SlideyDir, Bin: opts.SlideyBin},
+		Ticket:        host.GitHubTicketHandler,
+		PublicBaseURL: opts.PublicBaseURL,
+		FallbackRepo:  opts.Repo,
+	}
+}
+
+func ghAgentWebhookHandler(store *jobs.GHJobStore, opts ghAgentServeOptions, deckTrigger *ghagent.DeckTrigger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -263,11 +467,23 @@ func ghAgentWebhookHandler(store *jobs.GHJobStore, opts ghAgentServeOptions) htt
 			return
 		}
 		if !ok {
+			// Not an @kitsoki mention. A freshly-filed bug-report issue gets a
+			// hosted no-LLM deck instead — fire-and-forget so the webhook returns
+			// promptly (rendering takes seconds), gated on the agent already
+			// holding the issue's evidence.
+			if deckTrigger != nil && r.Header.Get("X-GitHub-Event") == "issues" {
+				fireDeckTrigger(opts, deckTrigger, body)
+			}
 			w.WriteHeader(http.StatusAccepted)
 			_, _ = io.WriteString(w, "ignored\n")
 			return
 		}
-		job, err := dispatchGHAgentMention(r.Context(), store, opts, mention, labels)
+		var job *jobs.GHJob
+		err = withGHAgentAuth(r.Context(), opts, func(authedCtx context.Context) error {
+			var dispatchErr error
+			job, dispatchErr = dispatchGHAgentMention(authedCtx, store, opts, mention, labels)
+			return dispatchErr
+		})
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -282,17 +498,61 @@ func ghAgentWebhookHandler(store *jobs.GHJobStore, opts ghAgentServeOptions) htt
 	}
 }
 
+// fireDeckTrigger runs the bug-report deck pipeline for an issues webhook in the
+// background: it mints the App token (for the deck-link comment) and calls the
+// trigger, logging the outcome. It never blocks the webhook response — deck
+// rendering takes seconds — and swallows the "not applicable" case (no on-agent
+// evidence / wrong action) quietly.
+func fireDeckTrigger(opts ghAgentServeOptions, deckTrigger *ghagent.DeckTrigger, body []byte) {
+	go func() {
+		err := withGHAgentAuth(context.Background(), opts, func(authedCtx context.Context) error {
+			url, handled, herr := deckTrigger.Handle(authedCtx, body)
+			if herr != nil {
+				return herr
+			}
+			if handled {
+				fmt.Fprintf(os.Stdout, "gh-agent: hosted bug-report deck %s\n", url)
+			}
+			return nil
+		})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "gh-agent: deck trigger failed: %v\n", err)
+		}
+	}()
+}
+
+func withGHAgentAuth(ctx context.Context, opts ghAgentServeOptions, fn func(context.Context) error) error {
+	authedCtx, restoreGHToken, err := setupGitHubAppAuth(ctx, opts.UseGitHubApp, opts.AppID, opts.InstallationID, opts.AppKeyFile)
+	if err != nil {
+		return err
+	}
+	defer restoreGHToken()
+	return fn(authedCtx)
+}
+
+var ghAgentDispatchMention = dispatchGHAgentMention
+
 func dispatchGHAgentMention(ctx context.Context, store *jobs.GHJobStore, opts ghAgentServeOptions, mention ghagent.Mention, labels []string) (*jobs.GHJob, error) {
-	d := &ghagent.Dispatcher{
-		Jobs:          store,
-		Routes:        ghagent.DefaultLabelStoryMap(),
-		Comments:      &ghagent.CommentStore{Exec: host.GitHubTicketHandler, Repo: mention.Repo},
-		WorkerID:      opts.Worker,
-		PublicBaseURL: opts.PublicBaseURL,
-		SpawnFn:       ghagent.RunStorySession,
-		IncidentFn: func(ctx context.Context, job *jobs.GHJob, errMsg string) (string, error) {
+	var comments *ghagent.CommentStore
+	if strings.TrimSpace(opts.CommentMode) != "none" {
+		comments = &ghagent.CommentStore{Exec: host.GitHubTicketHandler, Repo: mention.Repo}
+	}
+	var incidentFn func(context.Context, *jobs.GHJob, string) (string, error)
+	if comments != nil {
+		incidentFn = func(ctx context.Context, job *jobs.GHJob, errMsg string) (string, error) {
 			return fileGHAgentIncident(ctx, opts, job, errMsg)
-		},
+		}
+	}
+	d := &ghagent.Dispatcher{
+		Jobs:              store,
+		Routes:            ghagent.DefaultLabelStoryMap(),
+		Comments:          comments,
+		WorkerID:          opts.Worker,
+		PublicBaseURL:     opts.PublicBaseURL,
+		ProjectRoutes:     ghagent.ProjectRouteResolver{Root: opts.ProjectRoot},
+		SpawnFn:           ghagent.RunStorySession,
+		IncidentFn:        incidentFn,
+		IntegrationBranch: opts.IntegrationBranch,
 	}
 	return d.Dispatch(ctx, mention, labels)
 }
@@ -350,6 +610,98 @@ func publicRunURLForServe(base, jobID string) string {
 		return ""
 	}
 	return base + "/run/" + jobID
+}
+
+func ghAgentReadyAPIHandler(store *jobs.GHJobStore, opts ghAgentServeOptions) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/ready" {
+			http.NotFound(w, r)
+			return
+		}
+		recent, err := store.ListRecent(r.Context(), 200)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		stateCounts := map[string]int{}
+		for _, job := range recent {
+			stateCounts[job.State]++
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"status":              "ready",
+			"repo":                strings.TrimSpace(opts.Repo),
+			"public_base_url":     strings.TrimRight(strings.TrimSpace(opts.PublicBaseURL), "/"),
+			"worker":              strings.TrimSpace(opts.Worker),
+			"trigger":             strings.TrimSpace(opts.Trigger),
+			"drain_enabled":       opts.DrainInterval > 0,
+			"poll_enabled":        opts.PollInterval > 0,
+			"reconcile_enabled":   opts.ReconcileInterval > 0 && opts.StuckAfter > 0,
+			"project_root":        strings.TrimSpace(opts.ProjectRoot),
+			"incident_repo":       strings.TrimSpace(firstNonBlank(opts.IncidentRepo, opts.Repo)),
+			"recent_job_count":    len(recent),
+			"recent_state_counts": stateCounts,
+		})
+	}
+}
+
+func ghAgentRunsHandler(store *jobs.GHJobStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/runs" {
+			http.NotFound(w, r)
+			return
+		}
+		recent, err := store.ListRecent(r.Context(), 100)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprintf(w, `<!doctype html>
+<html><head><meta charset="utf-8"><title>kitsoki GitHub runs</title>
+<style>body{font:14px/1.45 system-ui,sans-serif;max-width:1180px;margin:40px auto;padding:0 24px;color:#17202a}table{border-collapse:collapse;width:100%%}th,td{border-bottom:1px solid #e5e7eb;padding:8px 10px;text-align:left;vertical-align:top}th{font-size:12px;text-transform:uppercase;color:#5f6b7a}.state{display:inline-block;padding:2px 8px;border-radius:999px;background:#ecfdf5;color:#065f46}.failed{background:#fef2f2;color:#991b1b}.muted{color:#5f6b7a}code{background:#f3f5f7;padding:2px 5px;border-radius:4px}</style></head>
+<body><h1>kitsoki GitHub runs</h1><p class="muted">Recent webhook and poll jobs. <a href="/api/runs">JSON</a></p><table>
+<thead><tr><th>Updated</th><th>State</th><th>Origin</th><th>Story</th><th>Run</th><th>Comment</th><th>Incident</th><th>Error</th></tr></thead><tbody>`)
+		if len(recent) == 0 {
+			fmt.Fprint(w, `<tr><td colspan="8" class="muted">No jobs recorded.</td></tr>`)
+		}
+		for _, job := range recent {
+			fmt.Fprintf(w, `<tr><td>%s</td><td><span class="%s">%s</span></td><td>%s<br><span class="muted">%s #%s</span></td><td><code>%s</code></td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>`,
+				html.EscapeString(job.UpdatedAt.Format(time.RFC3339)),
+				html.EscapeString(ghAgentStateClass(job.State)),
+				html.EscapeString(job.State),
+				htmlLinkOrCode(ghAgentJobSourceURL(job)),
+				html.EscapeString(job.ObjectKind),
+				html.EscapeString(job.ObjectNumber),
+				html.EscapeString(emptyAsDash(job.Story)),
+				htmlLinkOrCode(firstNonEmpty(job.RunURL, "/run/"+job.JobID)),
+				htmlLinkOrCode(job.CommentID),
+				htmlLinkOrCode(job.IncidentURL),
+				html.EscapeString(emptyAsDash(job.ErrMsg)),
+			)
+		}
+		fmt.Fprint(w, `</tbody></table></body></html>`)
+	}
+}
+
+func ghAgentRunsAPIHandler(store *jobs.GHJobStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/runs" {
+			http.NotFound(w, r)
+			return
+		}
+		recent, err := store.ListRecent(r.Context(), 100)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		out := make([]map[string]any, 0, len(recent))
+		for _, job := range recent {
+			out = append(out, ghAgentJobJSON(job))
+		}
+		_ = json.NewEncoder(w).Encode(out)
+	}
 }
 
 func ghAgentRunHandler(store *jobs.GHJobStore) http.HandlerFunc {
@@ -466,25 +818,30 @@ func ghAgentRunAPIHandler(store *jobs.GHJobStore) http.HandlerFunc {
 		}
 		events, _ := store.Events(r.Context(), jobID)
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"job_id":        job.JobID,
-			"origin_ref":    job.OriginRef,
-			"repo":          job.Repo,
-			"object_kind":   job.ObjectKind,
-			"object_number": job.ObjectNumber,
-			"source_url":    ghAgentJobSourceURL(job),
-			"story":         job.Story,
-			"state":         job.State,
-			"run_id":        job.RunID,
-			"run_url":       job.RunURL,
-			"comment_url":   job.CommentID,
-			"attempt_count": job.AttemptCount,
-			"incident_url":  job.IncidentURL,
-			"err_msg":       job.ErrMsg,
-			"created_at":    job.CreatedAt.Format(time.RFC3339),
-			"updated_at":    job.UpdatedAt.Format(time.RFC3339),
-			"events":        ghAgentEventsJSON(events),
-		})
+		payload := ghAgentJobJSON(job)
+		payload["events"] = ghAgentEventsJSON(events)
+		_ = json.NewEncoder(w).Encode(payload)
+	}
+}
+
+func ghAgentJobJSON(job *jobs.GHJob) map[string]any {
+	return map[string]any{
+		"job_id":        job.JobID,
+		"origin_ref":    job.OriginRef,
+		"repo":          job.Repo,
+		"object_kind":   job.ObjectKind,
+		"object_number": job.ObjectNumber,
+		"source_url":    ghAgentJobSourceURL(job),
+		"story":         job.Story,
+		"state":         job.State,
+		"run_id":        job.RunID,
+		"run_url":       job.RunURL,
+		"comment_url":   job.CommentID,
+		"attempt_count": job.AttemptCount,
+		"incident_url":  job.IncidentURL,
+		"err_msg":       job.ErrMsg,
+		"created_at":    job.CreatedAt.Format(time.RFC3339),
+		"updated_at":    job.UpdatedAt.Format(time.RFC3339),
 	}
 }
 
@@ -515,7 +872,7 @@ func htmlLinkOrCode(v string) string {
 		return `<span class="muted">-</span>`
 	}
 	escaped := html.EscapeString(v)
-	if strings.HasPrefix(v, "https://") || strings.HasPrefix(v, "http://") {
+	if strings.HasPrefix(v, "https://") || strings.HasPrefix(v, "http://") || strings.HasPrefix(v, "/") {
 		return `<a href="` + escaped + `">` + escaped + `</a>`
 	}
 	return `<code>` + escaped + `</code>`

@@ -1,0 +1,32 @@
+# G-VIEW gate teeth, negative case, legacy (machine-only) rig.
+#
+# go_bad lands in `broken`, whose on_enter binds a host call and whose view
+# then uses a pongo2 filter that does not exist. This fixture intentionally
+# omits expect_view_matches so the ONLY thing that can fail this turn is the
+# automatic G-VIEW gate (runOneFlowLegacy in internal/testrunner/flows.go),
+# proving the harness no longer silently swallows the post-bind RenderState
+# error. See internal/testrunner/gview_gate_test.go for the assertion on
+# RunFlows' report (must be Failed, must name the state and the render
+# error).
+#
+# use_orchestrator: false pins this fixture to runOneFlowLegacy explicitly
+# (shouldUseOrchestrator otherwise picks the orchestrator path whenever
+# host_handlers is declared — see flows.go). The legacy rig calls
+# machine.Turn directly and never dispatches on_enter host invokes, so
+# `broken`'s bind never actually lands (scan_result stays at its schema
+# default) — that's fine: the gate under test is the RENDER path, not the
+# bind, and the view's bad filter fails regardless of the bound value.
+#
+# To run:
+#   go run ./cmd/kitsoki test flows testdata/apps/view_render_gap/app.yaml
+
+test_kind: flow
+app: ../app.yaml
+initial_state: lobby
+use_orchestrator: false
+
+turns:
+  - intent: { name: go_bad, slots: {} }
+    expect_state: broken
+
+expect_terminal: true

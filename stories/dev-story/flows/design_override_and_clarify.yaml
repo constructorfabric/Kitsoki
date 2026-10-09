@@ -12,7 +12,10 @@ initial_state: design_search
 initial_world:
   judge_mode:         "human"
   design_idea:      "Add a local model agent sidecar."
+  design_slug:      "lmo"
   design_workspace: "docs/proposals/.workspace/lmo"
+
+starlark_inspect_cassette: ../cassettes/design_lmo.inspect.yaml
 
 host_handlers:
   host.agent.decide:
@@ -32,14 +35,6 @@ host_handlers:
   # folder (uniquify), runs the semantic reference search, then advances.
   host.agent.search:
     data: { hits: [], top: null }
-  host.run:
-    by_call:
-      uniquify:
-        data:
-          ok: true
-          exit_code: 0
-          stdout: '{"slug":"lmo","workspace":"docs/proposals/.workspace/lmo"}'
-          stdout_json: { slug: "lmo", workspace: "docs/proposals/.workspace/lmo" }
   host.artifacts_dir:
     data: { ok: true, path: "docs/proposals/.workspace/lmo/out.md", message_id: "out#1" }
   # Stubs for design_refine on_enter (advanced to by override_new → materialize)

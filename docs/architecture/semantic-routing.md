@@ -9,36 +9,33 @@ implementation lives in [`internal/semroute/`](../../internal/semroute)
 (matcher, template compiler, Aho-Corasick wiring) and
 [`internal/slotparse/`](../../internal/slotparse) (typed slot parsers).
 
-## 0. The default is LLM-only routing
+## 0. The default is app-controlled routing
 
 Routing is always a **distinct, isolated decision** — separate from
 the agent conversation (`host.agent.converse`, the workbench) and from
 the deterministic state-machine control that runs once an intent is
-chosen. **By default that decision is made by the main model**
-(`harness.RunTurn`): a free-text turn is classified into one of the
-allowed intents by a single, schema-bounded model call, and the
-deterministic semantic-routing stack below is **off**.
+chosen. When neither the global flag nor the env var is set, each app's
+`routing.enabled` config decides whether the deterministic stack runs.
 
-The deterministic stack (semroute synonym/template matching, the
-turn-cache, the `default_intent` sink, and the app-level free-form
-fallback) is a performance/precision optimisation that needs more
-tuning before it carries production traffic, so it is opt-in:
+The deterministic stack includes semroute synonym/template matching,
+the turn-cache, the `default_intent` sink, and the app-level free-form
+fallback. Apps such as `dev-story` and `kitsoki-dev` rely on those
+tiers so workbench prose is captured by the authored `work` intent
+before the main model can guess a route.
 
 | How                                | Effect                                                                  |
 |------------------------------------|-------------------------------------------------------------------------|
 | `--semantic-routing` (global flag) | Force the full stack **on** for the invocation.                         |
 | `KITSOKI_SEMANTIC_ROUTING` (env)   | `1/true/on` forces it on; `0/false/off` forces it off.                  |
-| neither set (CLI default)          | Stack **off** — LLM-only routing.                                       |
-| per-app `routing.enabled:` (YAML)  | Honoured only when no global override is wired (tests, the flow runner). |
+| neither set (CLI default)          | No process override; use per-app `routing.enabled:`.                    |
+| per-app `routing.enabled:` (YAML)  | Honoured whenever no global override is wired.                          |
 
 The flag/env override wins over per-app `routing.enabled`. The CLI
-surfaces (`kitsoki run`/`web`, `kitsoki turn`, `kitsoki mcp`) resolve
-the toggle once and pass it to the orchestrator via
-`WithSemanticRouting`; the MCP studio reads `KITSOKI_SEMANTIC_ROUTING`,
-which `kitsoki mcp` exports from the resolved flag. Orchestrators built
-without the option (unit tests, `internal/testrunner` flow fixtures)
-fall back to per-app `routing.enabled`, so the existing deterministic
-test fixtures keep matching.
+surfaces (`kitsoki run`/`web`, `kitsoki turn`, `kitsoki mcp`) pass
+`WithSemanticRouting` only when the flag or env var is explicit. The MCP
+studio reads `KITSOKI_SEMANTIC_ROUTING`; `kitsoki mcp` exports it only
+for explicit overrides. Orchestrators built without the option fall back
+to per-app `routing.enabled`.
 
 **Even with the stack off, the zero-cost exact match still runs**: an
 input that exactly equals a menu display string or a unique intent
@@ -72,12 +69,15 @@ which shows every tier that ran and what each said.
 
 > Note: when the semantic stack is **enabled**, the deterministic
 > tier's exact match is provided by the semroute synonym index inside
-> `TrySemantic` (the TUI additionally runs `MatchDeterministic` before
-> submission as a fast path). When the stack is **disabled** (the
-> LLM-only default, see §0), `Orchestrator.Turn` runs `TryDeterministic`
+> `TrySemantic`. When the stack is **disabled** (by app config or
+> explicit override), `Orchestrator.Turn` runs `TryDeterministic`
 > itself so an exact menu-display or example-string match still resolves
 > without an LLM hop on every surface — then falls straight through to
-> `harness.RunTurn`.
+> `harness.RunTurn`. Every surface, including the TUI, calls `Turn` directly
+> and shares this single decision point; the TUI used to run a separate
+> `MatchDeterministic` pre-pass before submission, but that duplicated
+> `Turn`'s own deterministic tier and could disagree with it, so it was
+> removed (never-silent-runtime proposal, Task 1.3).
 
 ### 1.1 Deterministic
 
@@ -181,6 +181,40 @@ Confidence bands:
 - **0.65** — at least one slot named but unparseable; the
   orchestrator runs `ComputeClarification` so the user can fill the
   missing slot directly.
+
+**Near-miss band.** A verdict strictly between 0 (a genuine miss,
+which never reaches this switch) and `semantic_mid_bar` (0.65 by
+default) is a `near_miss`: scored above the reject floor but below
+the accept floor. It never auto-resolves to the nearest authored
+intent — that guess is exactly how prose misroutes to an adjacent
+command. Reusing the existing high/mid bars means there is no new
+tunable to drift.
+
+`TrySemantic`'s `nearMissWorkbenchDestination` (`internal/orchestrator/semantic.go`)
+resolves where the near-miss escalates, in order:
+
+1. The current room is itself a [room-workbench](room-workbench.md)
+   (`workbench:` block): the verdict routes into that room's
+   synthesized `<room>_capture` intent — the governed free-form
+   request path — filling its single required string slot with the
+   whole utterance.
+2. Otherwise, the app's `routing.free_form_fallback` floor — if it
+   names a *different* room that is itself a workbench and that
+   room's capture intent is reachable from here (the same
+   load-time-cloned arc `routeViaFreeFormFallback` relies on) —
+   escalates there instead.
+3. Otherwise no workbench is reachable: the band falls back to
+   today's off-ramp / no-match handling (the caller advances to the
+   next routing tier — turn cache, `default_intent`, the app-level
+   free-form fallback, then the main-turn interpreter).
+
+Either way the decision is recorded on the trace (`turn.near_miss`,
+with `confidence`, `threshold`, and `destination` — the resolved
+capture intent's name, or `"interpreter_fallback"`) so a near-miss is
+always visible as a routing decision, never silently absorbed into
+"no match". See
+[`room-workbench.md`](room-workbench.md) for the workbench primitive
+this wiring targets.
 
 > Case folding caveat: captured `string` slot values are NFKC-
 > normalised and lowercased by `lex.Tokenize` before the matcher

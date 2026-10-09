@@ -136,6 +136,37 @@ func TestRoutingTierMissUpdatesTranscript(t *testing.T) {
 		"live line should reflect routing tier advance; got: %q", live)
 }
 
+// TestRoutingLiveLineDefersScrollbackFlushWhileAwaiting pins the corruption
+// where the live routing row was redrawn while tea.Println was also flushing the
+// submitted input echo into scrollback. The queued echo must wait until the
+// live routing line settles, otherwise prior routing frames can be stamped into
+// the terminal history during semantic/LLM routing.
+func TestRoutingLiveLineDefersScrollbackFlushWhileAwaiting(t *testing.T) {
+	t.Parallel()
+	orch, sid := setupCloak(t)
+	m := buildModel(t, orch, sid)
+	rm, _ := tuipkg.ExtractRootModel(m)
+	tuipkg.ClearTranscriptPendingForTest(&rm)
+
+	tuipkg.SetPromptValue(&rm, "something nonexistent")
+	m2, _ := tea.Model(rm).Update(tea.KeyMsg{Type: tea.KeyEnter})
+	rm, _ = tuipkg.ExtractRootModel(m2)
+
+	require.NotEmpty(t, tuipkg.LiveLineForTest(rm), "routing should be live")
+	pending := tuipkg.PendingTranscriptForTest(rm)
+	require.Len(t, pending, 1, "input echo should stay queued while routing is live")
+	require.Contains(t, pending[0], "> something nonexistent")
+
+	m3, _ := tea.Model(rm).Update(tuipkg.RoutingTierHitMsg{
+		Tier:       tuipkg.TierLLM,
+		Intent:     "pick_branch",
+		Confidence: 0.84,
+	})
+	rm, _ = tuipkg.ExtractRootModel(m3)
+	require.Empty(t, tuipkg.LiveLineForTest(rm), "hit should settle the live line")
+	require.Empty(t, tuipkg.PendingTranscriptForTest(rm), "settled routing should flush queued scrollback")
+}
+
 // TestRoutingTierHitSettlesInTranscript asserts a hit message
 // finalises the live entry with the settled resolution line.
 func TestRoutingTierHitSettlesInTranscript(t *testing.T) {

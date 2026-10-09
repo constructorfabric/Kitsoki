@@ -1,9 +1,9 @@
 # mcp-drive — headless kitsoki-MCP delegation primitive
 
-`drive.sh` launches a **headless `claude -p`** with the kitsoki **studio MCP**
-attached, so a delegated agent can author/validate stories and drive live
-sessions entirely through the studio facade — from a script, a cron job, or
-another agent — with no interactive client.
+`drive.sh` launches a headless Claude or Codex orchestrator with the kitsoki
+**studio MCP** attached, so a delegated agent can author/validate stories and
+drive live sessions entirely through the studio facade — from a script, a cron
+job, or another agent — with no interactive client.
 
 ## The bug it fixes
 
@@ -13,13 +13,16 @@ inherits the *parent* session's MCP set; a parent started without the kitsoki
 server has none to hand down, so the subagent boots with **“No MCP servers
 configured”** and can call nothing (`session.new`, `story.read`, … all absent).
 
-The fix is to delegate to a **raw `claude -p`** with:
+The fix is to delegate to a raw backend CLI with:
 
 - `--mcp-config tools/mcp-drive/kitsoki-mcp.json` — attach the studio server fresh, and
 - `--strict-mcp-config` — use *only* that file, so a stray worktree/project
   `.mcp.json` can't shadow or drop it (see MEMORY `maker-submit-strict-mcp`).
 
-`drive.sh` encapsulates exactly that, plus the studio-tool allowlist.
+`drive.sh` encapsulates exactly that, plus a studio-MCP-only tool surface. The
+Claude path allowlists only `mcp__kitsoki__...` tools. The Codex path attaches
+the same server through `-c mcp_servers...` overrides and passes
+`--disable=shell_tool`.
 
 ## Use it
 
@@ -61,10 +64,8 @@ Non-retryable failures (bad usage / config issues) fail fast.
 - **codex** (`gpt-*`/`codex*`/`o3*`/`o4*`): `codex exec … -c mcp_servers.kitsoki.*`
   on ChatGPT **subscription** auth — no API key. This is the bake-off default
   (`MCP_DRIVE_MODEL=gpt-5.5`). The studio MCP is attached via `-c` overrides
-  (codex has no `--mcp-config`), and `--dangerously-bypass-approvals-and-sandbox`
-  is the unattended equivalent of claude's `acceptEdits` (the orchestrator only
-  clicks studio tools; the kitsoki MCP it spawns forks the worker harness, so the
-  process needs full access).
+  (codex has no `--mcp-config`), `--disable=shell_tool` removes shell access,
+  and `--dangerously-bypass-approvals-and-sandbox` lets unattended MCP calls run.
 
 Callers only depend on the **exit code** (drive_cell.sh checks rc + scans text
 for retryable errors); the on-stdout envelope is backend-specific.

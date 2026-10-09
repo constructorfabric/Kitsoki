@@ -1,0 +1,76 @@
+# workflow_entry_routing — routing-tuning substrate for WS-C C2 (see
+# .context/dev-workflows-surface-matrix-plan.md WS-C). Mines real phrasing
+# for the "fix a bug" workflow's pipeline-entry nuances at bugfix's `idle`
+# room: full pipeline vs the interactive shortcuts (quick_fix / skip_to_pr /
+# triage) vs ticket-picker handoff vs abandon.
+#
+# Run under `kitsoki test routing` (internal/testrunner/routing.go) — no
+# LLM, no recording, no harness:
+#
+#   go run ./cmd/kitsoki test routing stories/bugfix/app.yaml \
+#     --intents stories/bugfix/intents/workflow_entry_routing.yaml
+#
+# Known near-miss NOT asserted here (filed as a routing finding, not fixed
+# by this substrate ticket): "work ticket BF-42" — the NL ticket-id handoff
+# template documented at app.yaml's `work_ticket` intent — currently
+# resolves to `change_ticket` instead (a bare-string synonym match on
+# "ticket(s)" on change_ticket outranks the template match, contrary to the
+# comment above `work_ticket` in app.yaml claiming "work" collides with
+# nothing declared on idle — "ticket(s)" does). See WS-C C2 remainder.
+
+test_kind: intents
+app: ../app.yaml
+state: idle
+defaults:
+  runs: 1
+  min_pass_rate: 1.0
+
+fixtures:
+  - id: start-plain
+    intent: { name: start }
+    inputs:
+      - "start"
+  - id: quick-fix-shortcut
+    intent: { name: quick_fix }
+    inputs:
+      - "quick"
+      - "one shot"
+  - id: full-pipeline-explicit
+    intent: { name: full_pipeline }
+    inputs:
+      - "full"
+      - "all phases"
+  - id: freeform-complaint
+    intent: { name: work_complaint }
+    inputs:
+      - "fix bug the TUI swallows ESC while an LLM turn is running"
+      - "bug report the run list does not refresh after cleanup"
+  - id: triage-only-shortcut
+    intent: { name: triage }
+    inputs:
+      - "triage"
+      - "is it still a bug"
+  - id: skip-to-pr-shortcut
+    intent: { name: skip_to_pr }
+    inputs:
+      - "skip ahead"
+      - "to pr"
+  - id: change-ticket-picker
+    intent: { name: change_ticket }
+    inputs:
+      - "pick ticket"
+      - "find ticket"
+  - id: quit-abandon
+    intent: { name: quit }
+    inputs:
+      - "quit"
+      - "abort"
+
+  # ── Boundary: a required-slot free-text arc must NOT be swallowed by a
+  # bare command match — `refine`'s `feedback` slot is required precisely so
+  # a corrective note falls through past these tiers (see the app.yaml
+  # comment above `refine`). ─────────────────────────────────────────────
+  - id: refine-feedback-defers
+    defers_to_interpreter: true
+    inputs:
+      - "refine it, the reproduction missed the async case"

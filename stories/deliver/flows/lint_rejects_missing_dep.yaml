@@ -1,8 +1,13 @@
-# lint_rejects_missing_dep — lint finds a dangling dep → @exit:needs-human, specific last_error.
+# lint_rejects_missing_dep — lint finds a dangling dep with the refine budget
+# ALREADY exhausted (refine_budget: 0 seeded) → immediate @exit:needs-human
+# with a specific last_error. This is the "budget already spent" case,
+# distinct from lint_fail_refine_loop (budget available, loop succeeds) and
+# refine_budget_exhausted (budget spent by repeated review revisions).
 #
 # The decomposer returns a manifest where slice-1 references slice-0 in its deps,
-# but slice-0 does not exist. The lint script mock returns route:"fail" with a
-# specific error naming the offending brief and the unknown dep.
+# but slice-0 does not exist. The real Starlark lint script reads that manifest
+# from the inspect cassette and deliver routes to @exit:needs-human with the
+# wrapped budget-exhausted error carrying the specific lint failure.
 
 test_kind: flow
 app: ../app.yaml
@@ -10,6 +15,9 @@ initial_state: configure
 initial_world:
   base_branch: main
   main_worktree_path: "."
+  refine_budget: 0
+
+starlark_inspect_cassette: ../cassettes/lint_missing_dep.inspect.yaml
 
 host_handlers:
   host.agent.task:
@@ -22,15 +30,6 @@ host_handlers:
                 brief: "Implement slice 1 so that go test ./... passes."
                 gate_command: "go test ./..."
                 deps: [slice-0]   # dangling: slice-0 does not exist
-  host.run:
-    by_call:
-      lint:
-        data:
-          ok: true
-          exit_code: 0
-          stdout_json:
-            route: "fail"
-            error: "brief 'slice-1' has dep 'slice-0' which is not a known brief id"
 
 turns:
   - intent:
@@ -39,7 +38,7 @@ turns:
         epic_path: "stories/deliver/testdata/fixture_epic.md"
     expect_state: __exit__needs-human
     expect_world:
-      last_error: "brief 'slice-1' has dep 'slice-0' which is not a known brief id"
+      last_error: "Refine budget exhausted after 0 cycles. Last lint error: brief 'slice-1' has dep 'slice-0' which is not a known brief id"
 
 expect_terminal: true
 expect_no_errors: true

@@ -66,7 +66,7 @@ func (o *Orchestrator) RewindRoute(ctx context.Context, sid app.SessionID, decis
 	startWorld := o.InitialWorld()
 	if hasSnap {
 		startState = snap.StatePath
-		if unmarshalErr := json.Unmarshal(snap.WorldJSON, &startWorld.Vars); unmarshalErr != nil {
+		if unmarshalErr := json.Unmarshal(snap.WorldJSON, &startWorld); unmarshalErr != nil {
 			sessMu.Unlock()
 			return nil, fmt.Errorf("orchestrator: RewindRoute: unmarshal snapshot world: %w", unmarshalErr)
 		}
@@ -109,7 +109,7 @@ func (o *Orchestrator) RewindRoute(ctx context.Context, sid app.SessionID, decis
 
 	// Snapshot at turnN with the pre-turn state so that the next LoadHistory
 	// (WHERE turn > turnN) skips the overridden turn-N events without deleting them.
-	worldJSON, err := json.Marshal(pre.World.Vars)
+	worldJSON, err := json.Marshal(pre.World)
 	if err != nil {
 		sessMu.Unlock()
 		return nil, fmt.Errorf("orchestrator: RewindRoute: marshal world: %w", err)

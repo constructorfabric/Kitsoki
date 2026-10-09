@@ -1,0 +1,23 @@
+{
+  "axis": {
+    "task": "vscode-01-docs-site-release"
+  },
+  "cell_id": "cost-bench-pilot--kitsoki-codex-native--task:vscode-01-docs-site-release",
+  "evidence_refs": [
+    "/workspace/kitsoki/tools/arena/corpus/cost-bench.manifest.yaml#vscode-01-docs-site-release",
+    "/Users/brad/code/Kitsoki/.worktrees/generalized-usage-rebase/.artifacts/arena/paired-task-work/vscode-01-docs-site-release--kitsoki--codex--gpt-5.5/src/vs/sessions/LAYOUT_CONTROLLER.md"
+  ],
+  "health": "model:result",
+  "job_type": "paired-task",
+  "metrics": {
+    "cost_usd": 1.177037,
+    "host": "local",
+    "tokens": 4040517,
+    "wall_s": 987.612
+  },
+  "notes": "REFRESHED (replaces the prior infra:stale cell from the pre-fix dispatch): drive.sh exit=0: {\"type\":\"thread.started\",\"thread_id\":\"019f303d-04ca-7b90-a7d9-0ee275359e3c\"}; cost_usd=1.177037 (cache-aware estimate over REAL trace usage: 386844 fresh input + 3629696 cache-read input + 23977 output tokens; subscription auth reports no metered cost); github_content oracle green=False. Real result through the actual kitsoki bugfix pipeline (post-fix dispatch) — the pipeline drove to completion but the produced doc content did not match the expected upstream commit text. See CAVEATS.md for the held-out-split disclosure (this task is `split: heldout`, not training — this execution does not count as WB.5's official confirmation run).",
+  "target_id": "cost-bench-pilot",
+  "trace_ref": "/workspace/kitsoki/.artifacts/arena/paired-task-work/vscode-01-docs-site-release--kitsoki--codex--gpt-5.5.jsonl",
+  "variant_id": "kitsoki-codex-native",
+  "verdict": "failed"
+}

@@ -1,0 +1,55 @@
+# gitops_issue_status — kitsoki-dev can inspect a GitHub issue from its native
+# git-ops hub, through iface.ticket -> host.local_github.ticket.
+#
+# This is the story-owned replacement for an operator or agent typing
+# `gh issue view 105` directly. The flow stubs host.local_github.ticket; no
+# real GitHub call or LLM runs.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: core.landing
+initial_world:
+  core__ticket_repo: "constructorfabric/Kitsoki"
+
+host_handlers:
+  host.run:
+    by_call:
+      refresh_intercept:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            branch:             main
+            main_worktree_path: "."
+            commits_ahead:      0
+            commits_behind:     0
+            has_uncommitted:    false
+            on_integration:     true
+            no_common_ancestor: false
+  host.local_github.ticket:
+    by_op:
+      get:
+        data:
+          ok: true
+          id: "105"
+          title: "Replay miss must fail closed"
+          status: "closed"
+          source: "github"
+          url: "https://github.com/constructorfabric/Kitsoki/issues/105"
+          body: "Replay sessions must never fall through to a live agent."
+
+turns:
+  - intent: { name: core__go_gitops, slots: {} }
+    expect_state: core.gitops.intercept
+
+  - intent: { name: core__gitops__issue_status, slots: { id: "105" } }
+    expect_state: core.gitops.intercept
+    expect_world:
+      core__gitops__ticket_repo: "constructorfabric/Kitsoki"
+      core__gitops__issue_id: "105"
+      core__gitops__issue_title: "Replay miss must fail closed"
+      core__gitops__issue_status: "closed"
+      core__gitops__issue_source: "github"
+      core__gitops__issue_url: "https://github.com/constructorfabric/Kitsoki/issues/105"
+
+expect_no_errors: true

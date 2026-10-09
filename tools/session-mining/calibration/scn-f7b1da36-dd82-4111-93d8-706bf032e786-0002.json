@@ -1,0 +1,24 @@
+{
+  "schema_version": "1.0",
+  "kind": "conversation",
+  "id": "scn-f7b1da36-dd82-4111-93d8-706bf032e786-0002",
+  "source": "mined",
+  "provenance": {
+    "corpus": "claude-code",
+    "session_id": "f7b1da36-dd82-4111-93d8-706bf032e786",
+    "span_idx": 2
+  },
+  "persona": "maintainer",
+  "goal": "delete them - it's a testing node so it's ok",
+  "turns": [
+    {
+      "role": "user",
+      "text": "delete them - it's a testing node so it's ok",
+      "corrected": false
+    }
+  ],
+  "expected_effects": [
+    "Bash: ssh root@<IP> <val> import sqlite3 conn=sqlite3.co completed"
+  ],
+  "abandoned": false
+}

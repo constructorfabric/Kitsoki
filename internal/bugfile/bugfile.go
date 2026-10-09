@@ -20,6 +20,8 @@ import (
 	"time"
 	"unicode"
 
+	"kitsoki/internal/reportmeta"
+
 	"gopkg.in/yaml.v3"
 )
 
@@ -41,6 +43,7 @@ type CreateRequest struct {
 
 	// classification / evidence
 	Severity string
+	Labels   []string
 	TraceRef string
 
 	// TargetDir overrides the resolved target-root (escape hatch); when
@@ -50,6 +53,10 @@ type CreateRequest struct {
 	// FiledBy records who filed the bug (frontmatter filed_by). Empty is
 	// allowed; the CLI passes $USER.
 	FiledBy string
+
+	// Runtime records the kitsoki engine/story versions active at filing time.
+	// When empty, Create captures engine metadata from the resolved target root.
+	Runtime reportmeta.Snapshot
 
 	// Now injects the filed-at clock for deterministic tests. Zero value
 	// means "use time.Now().UTC()".
@@ -134,8 +141,13 @@ func Create(req CreateRequest) (id string, relPath string, absPath string, err e
 		StatePath:  statePath,
 		Component:  component,
 		Severity:   req.Severity,
+		Labels:     cleanLabels(req.Labels),
 		Status:     "open",
 		TraceRef:   req.TraceRef,
+		Runtime:    req.Runtime,
+	}
+	if rec.Runtime.Empty() {
+		rec.Runtime = reportmeta.Capture(root, nil)
 	}
 
 	// Pull the short git SHA at filing time for kitsoki-target bugs.
@@ -229,11 +241,13 @@ type Record struct {
 	KitsokiRev string // kitsoki-only, short SHA at write time
 
 	// classification
-	Severity string // optional
-	Status   string // "open" default; for now always "open" on create
+	Severity string   // optional
+	Labels   []string // optional
+	Status   string   // "open" default; for now always "open" on create
 
 	// evidence
 	TraceRef string // optional, both
+	Runtime  reportmeta.Snapshot
 
 	// body
 	Body       string
@@ -322,6 +336,16 @@ func RenderMarkdown(r Record) string {
 		}
 	}
 
+	if fields := r.Runtime.Fields(); len(fields) > 0 {
+		sb.WriteString("\n# --- runtime -------------------------------------------------\n")
+		for _, f := range fields {
+			sb.WriteString(f.Key)
+			sb.WriteString(": ")
+			sb.WriteString(YAMLQuoteLine(f.Value))
+			sb.WriteString("\n")
+		}
+	}
+
 	sb.WriteString("\n# --- classification ------------------------------------------\n")
 	if r.Severity != "" {
 		sb.WriteString("severity: ")
@@ -335,7 +359,16 @@ func RenderMarkdown(r Record) string {
 	sb.WriteString("status: ")
 	sb.WriteString(YAMLQuoteLine(status))
 	sb.WriteString("\n")
-	sb.WriteString("labels: []\n")
+	if len(r.Labels) == 0 {
+		sb.WriteString("labels: []\n")
+	} else {
+		sb.WriteString("labels:\n")
+		for _, label := range r.Labels {
+			sb.WriteString("  - ")
+			sb.WriteString(YAMLQuoteLine(label))
+			sb.WriteString("\n")
+		}
+	}
 
 	sb.WriteString("\n# --- evidence ------------------------------------------------\n")
 	if r.TraceRef != "" {
@@ -358,6 +391,26 @@ func RenderMarkdown(r Record) string {
 		}
 	}
 	return sb.String()
+}
+
+func cleanLabels(labels []string) []string {
+	if len(labels) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(labels))
+	seen := map[string]struct{}{}
+	for _, label := range labels {
+		label = strings.TrimSpace(label)
+		if label == "" {
+			continue
+		}
+		if _, ok := seen[label]; ok {
+			continue
+		}
+		seen[label] = struct{}{}
+		out = append(out, label)
+	}
+	return out
 }
 
 // YAMLQuoteLine returns s wrapped in double quotes with inner quotes and

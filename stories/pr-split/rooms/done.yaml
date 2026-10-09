@@ -1,0 +1,18 @@
+# done — terminal. Summarize the PRs opened (or the dry-run plan).
+
+states:
+
+  done:
+    description: "Summary of the concern-grouped PRs."
+    terminal: true
+    relevant_world: [opened_prs, dry_run, source_branch, integration_branch]
+    view:
+      - kv:
+          pairs:
+            Source:      '{{ world.source_branch }}'
+            Integration: '{{ world.integration_branch }}'
+            "Dry run":   '{% if world.dry_run %}yes (no PRs opened){% else %}no{% endif %}'
+      - heading: "Pull requests"
+      - template: |
+          {% for p in world.opened_prs.items %}- [{{ p.concern }}] {{ p.branch }} ({{ p.commits }} commits){% if p.url %} → {{ p.url }}{% endif %}
+          {% empty %}(none){% endfor %}

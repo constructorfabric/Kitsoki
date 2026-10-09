@@ -129,6 +129,9 @@ intents:
   run_more:
     description: "(internal) completion still needs manual cell drives — route back to running before rechecking."
     priority: 1
+  summarize:
+    description: "(internal) completion is ready — roll cell verdicts into the final report summary."
+    priority: 1
   repaired:
     description: "(internal) the deterministic repair loop finished — recheck completion."
     priority: 1

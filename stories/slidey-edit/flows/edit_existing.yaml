@@ -19,6 +19,11 @@ initial_world:
 host_handlers:
   # host.agent.task intentionally ABSENT — the existing-deck path runs no agent.
 
+  host.git_worktree:
+    by_call:
+      prepare_workspace:
+        data: { ok: true, path: ".capsules/workspaces/slidey-edit-flow" }
+
   host.slidey.render:
     by_call:
       render_deck:
@@ -74,7 +79,7 @@ turns:
       deck_handle: "slidey-edit#1"
     expect_host_calls:
       - handler: host.slidey.render
-        args: { call: "render_deck" }
+        args: { call: "render_deck", spec_path: ".capsules/workspaces/slidey-edit-flow/stories/slidey-edit/baked/deck.json" }
       - handler: host.artifacts_dir
         args: { call: "emit_deck" }
 

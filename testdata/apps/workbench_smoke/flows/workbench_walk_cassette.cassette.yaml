@@ -1,0 +1,24 @@
+# Host cassette for workbench_walk_cassette.yaml (room-workbench Task 1.4a).
+# One host.agent.task episode standing in for the workbench's synthesized
+# on_enter dispatch (internal/app/workbench.go). response.data.submitted
+# matches the synthesized effect's `bind: {bench_note: submitted}`.
+kind: host_cassette
+app_id: workbench-smoke
+app_version: "0.1.0"
+match_on: [handler]
+
+episodes:
+  - id: bench_dispatch
+    match: { handler: host.agent.task }
+    response:
+      data:
+        ok: true
+        submitted:
+          summary: "Picked up the free-form request and got it done."
+          details: "Would have edited a file; stayed read-only pending a write-mode grant."
+    agent:
+      verb: task
+      agent: bench_agent
+      model: ""
+      duration_ms: 500
+      response: "Picked up the free-form request and got it done."

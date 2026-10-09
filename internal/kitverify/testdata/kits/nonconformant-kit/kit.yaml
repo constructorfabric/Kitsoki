@@ -1,0 +1,16 @@
+# nonconformant-kit — S4 fixture: the same shape as ../conformant-kit but
+# with three deliberate contract violations kitverify must catch:
+#   1. exits.done.requires: [pr_url] but the exit-firing transition never
+#      sets pr_url.
+#   2. exports.intents names "ghost", an intent that does not exist.
+#   3. host_interfaces.ticket.operations.search declares limit as a string
+#      and an extra "note" output field, mismatching
+#      opschema.Builtins()'s registered host.local_files.ticket.search shape
+#      (limit: int, output: {tickets: list}).
+schema: kit/v1
+kit: nonconformant
+namespace: kitsoki-test
+version: 0.1.0
+title: Nonconformant checker kit (S4 negative fixture)
+provides:
+  stories: [checker]

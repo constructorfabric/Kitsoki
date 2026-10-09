@@ -1,0 +1,60 @@
+# headless_ticket_autostarts_reproducing — a headless dispatcher (goal-seeker via
+# punch-list) that seeds ONLY `ticket_id` (+ ticket_title) via a target session's
+# `initial_world` — no operator/driver intent at all — must land the pipeline in
+# `reproducing`, never stuck at `idle` waiting for a `start` the driver's free-text
+# turn might not name, and never misrouted to `quit`. idle.on_enter's autostart
+# chain (rooms/idle.yaml "Step 3": `emit_intent: start` when ticket_id is set and
+# bf_autostart_attempted is still false) already does this deterministically, with
+# NO semantic routing involved — the fix carrying ticket_id through the
+# goal-seeker → punch-list → target-session seam (gs_manifest.star's `world_in`,
+# forwarded by punch-list's driver as `initial_world`) is what makes this autostart
+# actually fire for a live headless drive instead of the target session sitting at
+# idle with an empty ticket_id, forcing the driver's free text to be routed by the
+# semantic matcher (which — per the diagnosed live run — can misroute to `quit`).
+#
+# idle's on_enter only runs on a REAL transition into idle — seeding
+# initial_state: idle bypasses on_enter entirely (see idle.yaml's own note and
+# flows/headless_thread_default.yaml, which documents the same constraint). So
+# this fixture seeds at `reproducing` and uses reproducing's own `restart_from`
+# arc to bounce back through idle for real ("leave and re-enter via idle so
+# on_enter fires again" — the same idiom flows/headless_thread_default.yaml uses).
+# judge_mode=human keeps the on_enter cascade from advancing PAST reproducing, so
+# the assertion isolates exactly the autostart routing this fixture is proving.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: reproducing
+initial_world:
+  ticket_id:       "TKT-HEADLESS-DISPATCH"
+  ticket_title:    "Dispatched by a headless drive with only ticket_id seeded"
+  bugfix_mode:     "full"
+  judge_mode:      "human"
+
+host_handlers:
+  host.append_to_file: { data: { ok: true, message_id: "msg-1" } }
+  host.inbox.add:       { data: { ok: true, id: "ib-1" } }
+  host.git_worktree:    { data: { ok: true, log: "synced" } }
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary_title:        "Reproduced"
+        summary_markdown:     "Repro artifact body."
+        bug_verified:         true
+        involved_components:  []
+
+turns:
+  # restart_from bounces reproducing → idle (bf_autostart_attempted: false,
+  # reproduction_artifact cleared) → idle.on_enter fires FOR REAL: ticket_id is
+  # set and workdir/workspace_id are still empty, so Step 1 derives them, Step 2
+  # provisions the worktree, and Step 3 auto-emits `start` — landing back in
+  # `reproducing` with NO intervening operator/driver turn and no NL routing.
+  - intent: { name: restart_from, slots: { stage: reproducing } }
+    expect_state: reproducing
+    expect_not_state: idle
+    expect_world:
+      ticket_id: "TKT-HEADLESS-DISPATCH"
+      bf_autostart_attempted: true
+
+expect_terminal: false
+expect_no_errors: true

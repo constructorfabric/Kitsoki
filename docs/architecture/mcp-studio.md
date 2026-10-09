@@ -56,7 +56,7 @@ flowchart LR
 ```
 
 The server core records **nothing new**: each driving handle writes through the
-same JSONL event sink as [`kitsoki turn --trace`](developer-guide.md#61-the-trace-is-your-transcript),
+same JSONL event sink as [`kitsoki turn --trace`](../guide/development/developer-guide.md#61-the-trace-is-your-transcript),
 so routed intents, `agent.call.*`, and transitions land in that session's
 trace and replay unchanged. The studio session itself is ephemeral process
 state; its handles point at durable traces. Handle resolution is **fail-fast** —
@@ -149,10 +149,13 @@ uses, so the MCP surface can never disagree with them.
 | Tool | Shape | Wraps |
 |---|---|---|
 | `story.read` | `{path} → {content}` | workspace-scoped file read |
-| `story.write` | `{path, content} → {written, validation}` | write, then **auto-validate** in one round-trip; path-escape rejected |
+| `story.write` | `{path, content, validate?} → {written, validated, validation?}` | write, then auto-validate when the workspace contains `app.yaml` (override with `validate`); path-escape rejected |
 | `story.validate` | `{dir?} → {ok, errors[]}` | `app.Load` → `[]ValidationError{File, Line, Column, Message}` — the full load-time invariant set |
-| `story.graph` | `{dir?, room?} → {rooms[] \| detail \| agents[]}` | `graph.RoomList` / `Detail` / `AgentContracts` (the pure functions behind `/editor`) |
+| `story.graph` | `{dir?, graph?, room?, agents?} → {graph \| rooms[] \| detail \| agents[]}` | `graph=true` returns renderer-neutral `kitsoki.graph/v1` nodes/edges; legacy modes still wrap `graph.RoomList` / `Detail` / `AgentContracts` |
 | `story.test` | `{dir?, flows?} → {report}` | `testrunner.RunFlows` (no LLM; honours `--recording`/`--host-cassette`) |
+| `story.list` | `{dir?, glob?} → {files[]}` | discover a story's files (the counterpart to `story.read`'s exact path) — [`story_search.go`](../../internal/mcp/studio/story_search.go) |
+| `story.search` | `{dir?, pattern, glob?, regex?} → {hits[{file, line, text}]}` | grep across a story (room ref / intent / host call / world key) without the host `Grep` |
+| `story.turn` | `{dir?, state, intent, slots?, world?} → {next_state, world_after, effects, host_calls[], host_errors, guard_hint, …}` | dry-run ONE transition (`orchestrator.OneShot`, persists nothing) — the debugging microscope; [`story_turn.go`](../../internal/mcp/studio/story_turn.go) |
 
 ### `workflow.*` — draft, validate, launch, export
 
@@ -190,9 +193,9 @@ deterministic direct path or a read.
 | `session.new` | `{story_path, harness?, cassette?, trace?} → {handle, state}` | open a driving handle (default `harness:replay`) |
 | `session.attach` | `{story_path, key, …} → {handle, state}` | co-drive an existing keyed session via the external-attach bridge |
 | `session.drive` | `{handle, input, async_after_ms?} → {outcome, frame} \| {running} \| {awaiting_operator}` | **free text** → `orch.Turn` (interpretive route); returns `running` after a bounded wait instead of letting long live turns time out |
-| `session.submit` | `{handle, intent, slots?} → {outcome, frame}` | `SubmitDirect` — pick a menu intent |
-| `session.continue` | `{handle, slots} → {outcome, frame}` | `ContinueTurn` — supply missing slots |
-| `session.answer` | `{handle, question_id, answers} → {outcome, frame} \| {awaiting_operator}` | resume a parked operator-ask (see below) |
+| `session.submit` | `{handle, intent, slots?, async_after_ms?} → {outcome, frame} \| {running} \| {awaiting_operator}` | `SubmitDirect` — pick a menu intent; shares the bounded wait/poll path |
+| `session.continue` | `{handle, slots, async_after_ms?} → {outcome, frame} \| {running} \| {awaiting_operator}` | `ContinueTurn` — supply missing slots; shares the bounded wait/poll path |
+| `session.answer` | `{handle, question_id, answers, async_after_ms?} → {outcome, frame} \| {running} \| {awaiting_operator}` | resume a parked operator-ask (see below); shares the bounded wait/poll path after the answer is delivered |
 | `session.status` | `{handle} → {state, allowed_intents, running?, status?, last_error?, exit?}` | compact, overflow-proof snapshot — **never embeds world**; reads only the well-known keys `status`/`last_error`/`exit` from the world. Use instead of `session.inspect` when the world may hold multi-KB LLM artifacts. |
 | `session.teleport` | `{handle, notification_id} → {outcome, frame}` | jump to an inbox notification's saved target and mark it read |
 | `session.inspect` | `{handle, omit_world?, max_value_len?} → {state, world, allowed_intents, last_view, async, running?, jobs[], notifications[], pending_drives[], backgrounded_chats[], operator_questions[], mining_proposals[], last_turns[]}` | `buildInspectOutput` + session JobStore / ChatStore / trace side channel (read-only); `omit_world:true` drops world entirely; `max_value_len:N` truncates each value to N chars with `…` |
@@ -204,13 +207,18 @@ Every drive/submit/continue returns **both** the structured `TurnOutcome` (mode,
 new state, allowed intents, slots needed) **and** the rendered `Frame` — so the
 agent reasons on metadata and *sees* the screen in one call.
 
-Long live `session.drive` calls are bounded by default. If a turn is still
-executing after the wait window, the tool returns
+Long live turn calls (`session.drive`, `session.submit`, `session.continue`, and
+the post-answer wait in `session.answer`) are bounded by default. If a turn is
+still executing after the wait window, the tool returns
 `{ok:true, running:{handle,input,started_at_unix_micro,poll:"session.status"}}`
 while the same turn continues in the session runtime. Clients should poll
 `session.status` first; it repeats the same compact `running` object until the
-turn settles, then exposes the folded state and allowed intents. Use
-`session.inspect` when the driver needs a reacquire snapshot: it also exposes
+turn settles, then exposes the folded state and allowed intents. If a poll shows
+no change, wait outside the session before polling again instead of emitting a
+burst of identical status reads; for example, `host.run {cmd:"sleep 10"}` then
+`session.status`, followed by a bounded `session.trace {since:<previous_last_turn>,
+limit:20, kinds:[...]}` read to confirm trace freshness. Use `session.inspect`
+when the driver needs a reacquire snapshot: it also exposes
 `running` and increments `async.running_drive` while the turn is active. The
 default wait is 25 seconds; pass `async_after_ms` to lower or raise it for one
 call, or a negative value to disable early return and wait synchronously.
@@ -403,44 +411,129 @@ image or accessibility-tree payload.
 
 ### `issue.*` — file a gap (with evidence bundled)
 
-The agent that drives kitsoki through this MCP has no shell and no write tools,
-so when the *studio surface itself* can't do something needed to develop, test,
-run, introspect, trace, or debug a story, it can't reach for `gh`. `issue.create`
-closes that gap from inside the MCP — and, because the studio already produces
-the evidence, it bundles it in.
+The agent that drives kitsoki through this MCP has no raw shell. When the *studio
+surface itself* can't do something needed to develop, test, run, introspect,
+trace, or debug a story, that gap must be **filed**. `issue.create` is the
+evidence-bundling path for that (distinct from `gh.*`, which is for everyday
+issue/PR reads + comments): because the studio already produces the evidence, it
+renders assets, folds in a handle's trace/inspect or an on-disk TUI/session
+trace, and files the issue — all server-side.
 ([`issue_tools.go`](../../internal/mcp/studio/issue_tools.go).)
 
 | Tool | Shape | Wraps |
 |---|---|---|
-| `issue.create` | `{title, body?, labels?, repo?, handle?, include_trace?, trace_limit?, include_inspect?, include_visual_recordings?, assets?} → {url, number, labels[], assets[]}` | render assets → `.artifacts`, bundle a handle's trace/inspect and stopped visual recordings, then the injectable `IssueFiler` (prod: `gh`) |
+| `issue.create` | `{title, body?, labels?, repo?, sink?, repo_root?, handle?, trace_ref?, trace_path?, trace_app?, trace_ticket?, include_trace?, trace_limit?, include_inspect?, include_visual_recordings?, assets?} → {ok, url?, number?, local_path?, filing_error?, labels[], assets[]}` | render assets → `.artifacts`, bundle a handle's trace/inspect or resolved on-disk trace and stopped visual recordings, then write a local artifact ticket by default or call the injectable `IssueFiler` when `sink:"github"` |
 
 Three things happen server-side so the agent never handles bytes:
 
 - **assets** — each `assets[]` entry (`kind: tui_png | web | tui_text`, targeting
   a handle or a `{story_path, state, world}` spec) is rendered through the same
   `composeRenderFrame` / `shot.RenderPNG` / `webShot` seams `render.*` use,
-  written under the artifacts dir (`.artifacts/mcp-issues/<slug>/`), and
+  written under the artifacts dir (`.artifacts/mcp-issues/<slug-or-slug-N>/`), and
   referenced in the body **by relative path**. Asset *upload* isn't wired yet —
   the path is a stopgap reference, flagged with an HTML comment; `IssueResult`
   already carries the asset list so the upgrade is localized to the filer.
 - **context** — with a `handle` and `include_trace` / `include_inspect`, the
   session's trace tail (the same `session.trace` returns) and inspect snapshot
   are folded into the body, so a gap report is reproducible by construction.
+  For bugs found in a different surface such as a TUI session, pass
+  `trace_path` for the JSONL file, or pass `trace_ref` plus optional
+  `trace_app` / `trace_ticket` to resolve the newest matching trace under
+  `.kitsoki/sessions` or `~/.kitsoki/sessions`. Trace-backed reports reconstruct
+  the latest world from `world.update` events and write redacted
+  `trace.redacted.jsonl` / `world.redacted.json` sidecars under the same
+  `.artifacts/mcp-issues/<slug-or-slug-N>/` directory. The numeric suffix is
+  added only when an earlier report with the same title already has sidecars, so
+  repeated titles do not overwrite prior evidence.
 - **visual recordings** — `include_visual_recordings:["rec1", ...]` copies each
   stopped `visual.record` bundle into the issue artifact directory and links its
   `timeline.json`, `capture.semantic.json`, and optional `session.rrweb.json`.
   This is the no-raw-browser-state path for filing a visual failure: semantic
   state/action history plus the masked rrweb replay, without dumping DOMs into
   the issue body.
-- **file** — the composed `{repo, title, body, labels}` goes to the injected
+- **file** — by default the composed report is written as a local artifact
+  ticket under `.artifacts/issues/bugs`. Passing `sink: "github"` sends the
+  composed `{repo, root, title, body, labels}` to the injected
   [`IssueFiler`](../../internal/mcp/studio/issue_tools.go) seam. The
-  `source-autonomous` label is always applied (first) so agent-filed issues are
-  filterable. Production (`cmd/kitsoki`) shells to `gh issue create` (and
-  best-effort `gh label create --force source-autonomous`); a test injects a fake
-  that records the request and returns a canned URL — no network, no LLM. With no
-  filer wired the tool returns a structured `ISSUE_UNAVAILABLE`. `issue.create`
-  is allowed in `--read-only` mode (it mutates `.artifacts` + GitHub, not the
-  story tree).
+  `source-autonomous` label is always applied first and is persisted in local
+  artifact ticket frontmatter, so agent-filed issues are filterable. The
+  `cmd/kitsoki` filing path is production: native `host.gh.ticket` / GitHub REST API,
+  and it infers `repo` from `root`/`workdir` when the caller omits it; a test
+  injects a fake that records the request and returns a canned URL — no network,
+  no LLM. With no filer
+  wired, only the GitHub sink returns a structured `ISSUE_UNAVAILABLE`. If
+  remote filing fails after the issue markdown is composed, the tool writes an
+  `.artifacts/mcp-issues/unfiled/*.md` recovery file and returns `ok:false` with
+  `local_path` and `filing_error`. `issue.create` is allowed in `--read-only`
+  mode (it mutates `.artifacts` and, only when requested, GitHub; not the story
+  tree).
+
+### `host.*` — the standalone gate-runner
+
+`host.run` runs a command against a worktree directory and returns its exit code
++ combined output, OUTSIDE any live session — so the driver can independently
+re-confirm a committed tip is GREEN (`go test ./...`, a story's `gate_command`)
+rather than trust an agent's self-report. It reuses the same `host.RunHandler`
+a story's `host.run` *effect* uses, so gate semantics never drift.
+([`host_tools.go`](../../internal/mcp/studio/host_tools.go).)
+
+| Tool | Shape | Wraps |
+|---|---|---|
+| `host.run` | `{dir, cmd, args?, timeout?, truncate_output?} → {ok, exit_code, stdout, truncated?, output_path?}` | `host.RunHandler` (bash unless `args` ⇒ direct exec); a non-zero exit is data, not an error; stdout tail-truncated with the full output spilled to a sidecar |
+
+### `trace.*` — read a trace off disk; convert one to a flow
+
+`session.trace` reads an *open* handle's in-memory history and blocks while that
+handle is mid-turn. `trace.read` reads a trace **off disk** — a `kitsoki web`
+session journal under `~/.kitsoki/sessions`, a background-run trace, a maker
+worktree's trace — with a **lock-free** read that never collides with a live
+writer. `trace.to_flow` turns a recorded trace into a replayable flow fixture (+
+host cassette), closing the no-LLM test loop inside the MCP: dogfood live →
+`trace.to_flow` → `story.test`. ([`trace_tools.go`](../../internal/mcp/studio/trace_tools.go).)
+
+| Tool | Shape | Wraps |
+|---|---|---|
+| `trace.read` | `{path \| session_id \| app, root?, since?, until?, kinds?, limit?, truncate_payload?, errors_only?} → {source_path, events[], last_turn, summary:{by_kind, errors[]}}` | resolve + parse JSONL into `store.Event` (lock-free), filtered; mirrors `kitsoki trace` |
+| `trace.to_flow` | `{trace, app, out, recording?, app_id?, initial_state?} → {flow_path, cassette_path?, num_turns, num_episodes}` | `testrunner.ConvertTraceToFlow` (wraps `kitsoki trace to-flow`) |
+
+### `vcs.*` / `worktree.*` — a structured git surface
+
+Git was the single biggest reason a driver shelled out: worktree lifecycle,
+status/diff/log, and the squash-merge that lands a fix. These cover it with
+structure (all git runs through `host.RunHandler` in argv mode — no shell), and
+**`vcs.integrate` replaces the `reset --soft main` ritual that once destroyed
+main**: it runs a guarded 3-way squash merge *from the integration checkout*,
+which cannot revert work landed on `onto` since the branch's base.
+([`vcs_tools.go`](../../internal/mcp/studio/vcs_tools.go).)
+
+| Tool | Shape | Notes |
+|---|---|---|
+| `vcs.status` | `{dir} → {branch, upstream?, ahead, behind, clean, files[{xy, path}]}` | porcelain v1, structured. Read-only |
+| `vcs.diff` | `{dir, from?, to?, paths?, stat?, name_only?, include_untracked?} → {diff, truncated?, output_path?, warnings?, untracked?}` | textual; full diff spills to a sidecar. Untracked files are omitted by default with a warning; pass `include_untracked:true` to include them. Read-only |
+| `vcs.log` | `{dir, n?, paths?} → {commits[{hash, subject}]}` | Read-only |
+| `worktree.list` | `{dir} → {worktrees[{path, head, branch?, detached?}]}` | Read-only |
+| `worktree.create` | `{dir, branch, base?, path?} → {path, branch, base}` | `git worktree add -b`; lands under `.worktrees/` by convention |
+| `worktree.remove` | `{dir, path, force?} → {removed}` | `git worktree remove` |
+| `vcs.commit` | `{dir, message, paths?} → {commit, nothing_to_commit?}` | stage (`-A` or paths) + commit |
+| `vcs.integrate` | `{dir, branch, onto?, message, worktree_path?, delete_branch?} → {integrated, commit?, conflicts[]?, refused?}` | **guarded** land: repositories with `scripts/merge-to-main.sh` and `onto:"main"` use that repo guard helper; otherwise this is a guarded squash-land that refuses unless `dir` is on `onto`, `onto`'s tree is clean, and `branch` has commits beyond its merge-base; conflicts restore the clean tip |
+
+The read tools stay available on a `--read-only` server; the mutating ones
+(`worktree.create/remove`, `vcs.commit`, `vcs.integrate`) are dropped there.
+
+### `gh.*` — read GitHub issues/PRs, post comments
+
+The everyday GitHub reads a developing agent needs — list open issues, view a
+PR's body + changed files + diff (the bake-off needs a filed bug's own
+regression test), comment — stay behind Studio MCP tools. Issue listing and
+comments and PR view use the native `host.gh.ticket` / `host.git` providers and
+GitHub API helpers.
+([`gh_tools.go`](../../internal/mcp/studio/gh_tools.go).)
+
+| Tool | Shape | Notes |
+|---|---|---|
+| `gh.issues` | `{repo?, state?, assignee?, search?, limit?, dir?} → {issues[]}` | Native `host.gh.ticket.search` result. Read-only |
+| `gh.pr_view` | `{number, repo?, include_diff?, dir?} → {pr, diff?}` | Native GitHub PR/files/diff API. Read-only |
+| `gh.comment` | `{number, body, on?:issue\|pr, repo?, dir?} → {url}` | Native `host.gh.ticket.comment` / `host.git.pr_comment`. Mutating (dropped `--read-only`) |
 
 ## Operator-ask — the MCP client *is* the operator
 

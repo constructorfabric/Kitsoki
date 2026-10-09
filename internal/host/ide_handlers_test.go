@@ -138,8 +138,8 @@ func TestIDEGetDiagnostics_Connected(t *testing.T) {
 	if link.lastTool != "getDiagnostics" {
 		t.Fatalf("tool: want getDiagnostics, got %q", link.lastTool)
 	}
-	if link.lastArgs["uri"] != "/a.go" {
-		t.Fatalf("path must be sent as uri, got %v", link.lastArgs)
+	if link.lastArgs["path"] != "/a.go" {
+		t.Fatalf("path must be sent as path, got %v", link.lastArgs)
 	}
 	diags, ok := res.Data["diagnostics"].([]any)
 	if !ok || len(diags) != 1 {

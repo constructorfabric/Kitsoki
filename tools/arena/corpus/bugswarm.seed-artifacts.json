@@ -1,0 +1,23 @@
+{
+  "kind": "bugswarm_artifact_seed",
+  "version": 1,
+  "source": "bugswarm",
+  "selection_notes": [
+    "Metadata-only seed for wiring the reusable BugSwarm arena source into the GLM-5.2 comparison report.",
+    "The image tag is the public square/okio artifact used in the official BugSwarm experiment setup tutorial.",
+    "This seed does not prove RED/GREEN behavior; run bugswarm_verify_source.py --execute before scheduling live GLM-5.2 cells."
+  ],
+  "artifacts": [
+    {
+      "image_tag": "square-okio-140452393",
+      "repo": "square/okio",
+      "failed_job_id": "140452393",
+      "passed_job_id": "140452394",
+      "language": "Java",
+      "build_system": "Maven",
+      "classification": "tutorial-seed",
+      "source_url": "https://www.bugswarm.org/docs/tutorials/setting-up-an-experiment/",
+      "selection_note": "Official BugSwarm tutorial artifact; the tutorial documents run_failed.sh and run_passed.sh execution in fresh containers."
+    }
+  ]
+}

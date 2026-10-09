@@ -10,6 +10,12 @@ test_kind: flow
 app: ../app.yaml
 initial_state: landing
 initial_world:
+  # Opt out of bf's auto_triage pre-flight (default on): this fixture tests
+  # the downstream bugfix walk, not triage. Parent-level key — the import
+  # wrapper re-seeds bf__auto_triage on entry; only the world_in projection
+  # sticks. The pre-flight contract lives in
+  # stories/bugfix/flows/preflight_triage_*.yaml.
+  auto_triage: false
   workdir:        ".worktrees/tkt-100"
   workspace_id:   "ws-100"
   base_branch:    "main"
@@ -18,9 +24,24 @@ initial_world:
 
 host_handlers:
   host.local_files.ticket:
-    data:
-      ok: true
-      tickets: "TKT-100: foo"
+    by_op:
+      search:
+        data:
+          ok: true
+          tickets:
+            - id:       "TKT-100"
+              title:    "foo"
+              type:     "bug"
+              status:   "open"
+              priority: "P2"
+              url:      "TKT-100"
+      get:
+        data:
+          ok: true
+          id:    "TKT-100"
+          title: "foo"
+          type:  "bug"
+          url:   "TKT-100"
   # bugfix's executing rooms call host.agent.task / decide / ask + iface
   # handlers; we provide bare stubs even though pickup_to_bugfix only
   # walks INTO bf and stops at idle.

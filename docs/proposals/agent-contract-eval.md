@@ -392,9 +392,11 @@ only for the named call site.
 - [ ] 1.1 `cassette lint --app`: resolve episode -> call-site schema/toolbox,
           validate submitted output via agent.ValidateSubmission
 - [ ] 1.2 Check flow `host_handlers` stubs under `kitsoki test flows`
-- [ ] 1.3 Check recorded tool uses against declared toolbox/effect when
+- [x] 1.3 Check recorded tool uses against declared toolbox/effect when
           agent-capability-model metadata is present
 - [ ] 1.4 Mutation tests for broken schema and out-of-box tool use
+          (`internal/agenteval/conformance` covers out-of-box tool-use traces;
+          schema mutation tests remain with cassette/flow stub lint wiring)
 
 ## 2. Eval dataset + report format
 - [x] 2.1 Load `kind: agent_eval` files with task boundedness, matrix,

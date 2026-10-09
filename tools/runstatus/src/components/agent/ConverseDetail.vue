@@ -48,11 +48,7 @@
 
     <CollapsibleText label="System Prompt" :text="systemPrompt" />
     <CollapsibleText label="Prompt" :text="prompt" />
-
-    <div v-if="responseText" class="converse-detail__block">
-      <span class="od-label">Final Response</span>
-      <pre class="od-pre od-pre--response">{{ responseText }}</pre>
-    </div>
+    <CollapsibleText label="Final Response" :text="responseText" markdown />
   </div>
 </template>
 
@@ -205,12 +201,6 @@ function msgText(msg: ChatMessage): string {
   margin: 0;
 }
 
-.converse-detail__block {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-}
-
 .od-label {
   color: var(--k-fg-muted, #64748b);
   font-size: 0.75rem;
@@ -229,10 +219,6 @@ function msgText(msg: ChatMessage): string {
   margin: 0;
   max-height: 14rem;
   overflow-y: auto;
-}
-
-.od-pre--response {
-  color: var(--k-fg, #e2e8f0);
 }
 
 /* ── Spatial attachment ──────────────────────────────────────────────────── */

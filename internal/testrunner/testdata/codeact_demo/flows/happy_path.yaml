@@ -1,0 +1,56 @@
+# RED-gate flow fixture for goal docs/goals/codeact/GOAL.md G2. Stubs
+# host.agent.codeact under host_handlers: with a canned response shaped to
+# match host.Result{Data: map[string]any{...}} — the SAME envelope every
+# other host.agent.* handler returns (see testdata/apps/agent_probe's
+# who_are_you.cassette.yaml: `data: {ok: true, stdout: "..."}`). The inner
+# fields (terminated, payload, steps) are this fixture's ASSUMPTION about
+# what internal/host/codeact's eventual host.agent.codeact handler will
+# expose, approximated from internal/host/codeact/executor.go's Result type
+# (Steps []StepResult, Terminated string, Payload map[string]any) — no real
+# handler exists yet (s1 only built the executor core, not the host.* glue),
+# so whoever wires host.agent.codeact into internal/host's Registry should
+# reconcile this shape against whatever they actually return and adjust this
+# fixture rather than treat it as a frozen contract.
+#
+# MEASURED, not assumed: this fixture currently PASSES (vacuously), for the
+# same reason TestLoad_CodeactValidCapabilities_Accepted (loader_codeact_test.go)
+# does. internal/app/loader.go's `hosts:` allow-list is purely self-declared
+# (allowedHosts is built straight from def.Hosts, ~loader.go line 1023-1029;
+# there is no global registry cross-check), so declaring
+# `hosts: [host.agent.codeact]` in app.yaml is sufficient for it to "load".
+# And because this flow fixture stubs host.agent.codeact directly under
+# host_handlers:, RunFlows's cassette dispatcher matches the stub by handler
+# name and never needs a real internal/host Registry entry — so the turn
+# completes and the bind: assertions pass today with zero codeact
+# implementation behind them. This is intentional per
+# docs/goals/codeact/decomposition.yaml's s2 gate ("a story flow fixture
+# exercising a codeact room (stubbed agent) passes") — it is the ACCEPTANCE
+# fixture for G2, not a RED gate by itself. The RED half of G2 lives in
+# internal/app/loader_codeact_test.go's unknown-capability and
+# sandbox-rejection tests: once that validation lands, this fixture (using
+# only the sanctioned "world" capability, no sandbox: block) must keep
+# passing unchanged.
+test_kind: flow
+app: ../app.yaml
+
+initial_state: work
+initial_world:
+  result_payload: {}
+  result_terminated: ""
+
+host_handlers:
+  host.agent.codeact:
+    data:
+      ok: true
+      terminated: "done"
+      payload: { total: 7 }
+      steps:
+        - snippet: "def main(ctx):\n    return {'total': 7}"
+          observation: { total: 7 }
+
+turns:
+  - intent: { name: go, slots: {} }
+    expect_state: done
+    expect_world:
+      result_terminated: "done"
+      result_payload: { total: 7 }

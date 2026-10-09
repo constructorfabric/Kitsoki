@@ -1,0 +1,77 @@
+# Graph-level happy path for the first acceptance bundle. The Starlark call is
+# stubbed here so the flow stays small and no artifact writes happen under the
+# test runner; the validation gate for this story also runs a stateless turn
+# without the stub to exercise scripts/build_first_acceptance.star for real.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: ready
+initial_world:
+  feature_path: features/complete-product-tour.yaml
+  scenario_id: product-discovery
+  persona_id: core-maintainer
+  target_arg: all
+  run_id: flow-complete-product-tour
+  output_root: .artifacts/scenario-product-platform-flow
+
+host_handlers:
+  host.starlark.run:
+    by_call:
+      build_first_acceptance:
+        data:
+          pack_summary:
+            feature_id: complete-product-tour
+            feature_title: The complete product tour
+            scenario_id: product-discovery
+            scenario_title: Product discovery walkthrough
+            persona_id: core-maintainer
+            target_count: 3
+            semantic_ref_count: 16
+            feature_count: 1
+            scenario_count: 1
+            pack_path: .artifacts/scenario-product-platform-flow/flow-complete-product-tour/scenario-pack.yaml
+          run_bundle:
+            schema: scenario-run-bundle/v1
+            run_id: flow-complete-product-tour
+            targets: web,tui,vscode
+            targets_list: [web, tui, vscode]
+            target_count: 3
+            pass_count: 2
+            degraded_count: 1
+            fail_count: 0
+            verdict: degraded
+            summary: 2 / 3 targets passed; 1 degraded; 0 failed.
+          report_paths:
+            pack: .artifacts/scenario-product-platform-flow/flow-complete-product-tour/scenario-pack.yaml
+            run_bundle: .artifacts/scenario-product-platform-flow/flow-complete-product-tour/run-bundle.json
+            report: .artifacts/scenario-product-platform-flow/flow-complete-product-tour/report.md
+            deck: .artifacts/scenario-product-platform-flow/flow-complete-product-tour/deck.slidey.json
+            release_readiness: .artifacts/scenario-product-platform-flow/flow-complete-product-tour/reports/release-readiness.md
+            product_learning: .artifacts/scenario-product-platform-flow/flow-complete-product-tour/reports/product-learning.md
+            completion_state: .artifacts/scenario-product-platform-flow/flow-complete-product-tour/completion-state.json
+            semantic_resolution: .artifacts/scenario-product-platform-flow/flow-complete-product-tour/semantic-resolution.json
+            arena_rollup: .artifacts/scenario-product-platform-flow/flow-complete-product-tour/arena/rollup.json
+            site: .artifacts/scenario-product-platform-flow/flow-complete-product-tour/site/complete-product-tour.md
+          site_path: .artifacts/scenario-product-platform-flow/flow-complete-product-tour/site/complete-product-tour.md
+
+turns:
+  - intent:
+      name: build
+      slots: {}
+    expect_state: complete
+    expect_world:
+      status: complete
+      site_path: .artifacts/scenario-product-platform-flow/flow-complete-product-tour/site/complete-product-tour.md
+    expect_host_calls:
+      - handler: host.starlark.run
+        args: { call: build_first_acceptance }
+    expect_view_matches: "Release Readiness"
+
+  - intent: { name: reset, slots: {} }
+    expect_state: ready
+    expect_world:
+      status: idle
+      site_path: ""
+
+expect_terminal: false
+expect_no_errors: true

@@ -1,0 +1,49 @@
+{
+  "items": [
+    {
+      "artifacts": {
+        "flow-fixture": "stories/dev-story/flows/onboard_gears_rust.yaml",
+        "session_trace": ".context/dwf3-a3-recording-notes.md"
+      },
+      "evidence": [
+        "session_trace",
+        "rendered_tui_frame",
+        "generated_config_diff",
+        "onboarding_smoke_result",
+        "key_interaction_video",
+        "flow-fixture"
+      ],
+      "evidence_dir": "evidence/gears-rust--core-maintainer/project-onboarding",
+      "evidence_status": "captured",
+      "id": "project-onboarding",
+      "label": "Project onboarding",
+      "primary_story": "stories/dev-story/app.yaml",
+      "required_mcp": [
+        "session.open",
+        "session.inspect",
+        "render.tui",
+        "visual.observe"
+      ],
+      "stage": "onboard_project",
+      "status": "captured",
+      "success_criteria": [
+        "Generated project config names real commands and relevant project files.",
+        "Persona can state the next Kitsoki command or room to use.",
+        "No silent operator-question defaulting occurs."
+      ],
+      "task": "Use the documented Kitsoki onboarding path to configure the assigned repository and explain how bugfix/design work should be launched.",
+      "task_prompt": "Onboard constructorfabric/gears-rust using Kitsoki's documented project setup path. Confirm the generated project profile names plausible rust commands, repo files, and the next story to launch.",
+      "transports": {
+        "allowed": [
+          "tui",
+          "web",
+          "vscode"
+        ],
+        "required": [
+          "tui"
+        ]
+      }
+    }
+  ],
+  "run_id": "20260705T225534Z-gears-rust-core-maintainer-dwf3-a3-onboard"
+}

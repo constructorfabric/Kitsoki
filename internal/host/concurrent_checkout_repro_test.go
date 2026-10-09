@@ -6,29 +6,26 @@ package host_test
 // git churn and unrecoverable WIP loss").
 //
 // Root cause: the `workspace` host_interface (host.git_worktree) had NO
-// per-session key. `workspace.create` derived the on-disk worktree path
-// purely from the ticket-scoped `id` (`.worktrees/<id>`); the engine never
-// threaded a session id into the provider. So two *distinct* concurrent
-// sessions that happened to target the same ticket resolved to the SAME
-// checkout — and the idempotency short-circuit handed the second session that
-// same live tree as "ok". Once they shared a tree, a routine
+// per-session key. `workspace.create` derived the on-disk workspace path
+// purely from the ticket-scoped `id`; the engine never threaded a session id
+// into the provider. So two *distinct* concurrent sessions that happened to
+// target the same ticket resolved to the SAME checkout — and the idempotency
+// short-circuit handed the second session that same live tree as "ok". Once
+// they shared a tree, a routine
 // non-destructive-looking git op in one session (e.g. `git checkout -- <file>`
 // to discard local edits before a restart) silently and unrecoverably
 // destroyed the other session's uncommitted WIP.
 //
 // Fix — the host-side SAFETY NET (exercised here): the orchestrator projects
 // its per-session SessionID into the story world as `world.session_id`, which
-// stories/bugfix/rooms/idle.yaml threads into workspace.create. worktreeCreate
-// writes a `.kitsoki-owner` sentinel on a successful `git worktree add`, and the
+// stories/bugfix/rooms/idle.yaml threads into workspace.create. The
+// script-backed provider writes owner metadata on a successful create, and the
 // idempotency short-circuit refuses to return an existing tree owned by a
-// DIFFERENT session — so a second session racing the same on-disk worktree
+// DIFFERENT session — so a second session racing the same on-disk workspace
 // fails loudly instead of being silently handed the first session's live tree.
-// (The worktree dir stays ticket-scoped `bf-<ticket>`; keying it per-session for
-// same-ticket concurrency is a possible future enhancement, not needed to close
-// the destructive bug — the sentinel already prevents the data loss.)
 //
 // This is a REAL on-disk git regression test (no fake runner): it exercises
-// the actual `git worktree add` + the actual `cliExec` real-exec path.
+// the actual script-backed clone create + the actual `cliExec` real-exec path.
 
 import (
 	"context"
@@ -38,6 +35,7 @@ import (
 	"strings"
 	"testing"
 
+	"kitsoki/internal/capsuletest"
 	"kitsoki/internal/host"
 )
 
@@ -58,18 +56,7 @@ func reproGit(t *testing.T, dir string, args ...string) string {
 // session's live tree), so the first session's uncommitted WIP is never at
 // risk — while legitimate same-session re-entry still short-circuits to ok.
 func TestRepro_ConcurrentSessionsShareCheckout_DestroysWIP(t *testing.T) {
-	repo := t.TempDir()
-
-	// A real main checkout with one committed, tracked file.
-	reproGit(t, repo, "init", "--quiet", "--initial-branch=main")
-	reproGit(t, repo, "config", "user.email", "repro@test.invalid")
-	reproGit(t, repo, "config", "user.name", "Repro")
-	appYAML := filepath.Join(repo, "app.yaml")
-	if err := os.WriteFile(appYAML, []byte("version: v1\n"), 0o644); err != nil {
-		t.Fatalf("seed app.yaml: %v", err)
-	}
-	reproGit(t, repo, "add", "-A")
-	reproGit(t, repo, "commit", "--quiet", "-m", "init")
+	repo := capsuletest.Open(t, "worktree-repro-repo")
 
 	ctx := context.Background()
 	ticket := "2026-06-03T121409Z-demo"
@@ -78,8 +65,8 @@ func TestRepro_ConcurrentSessionsShareCheckout_DestroysWIP(t *testing.T) {
 	// workspace_id / branch follow the bugfix story convention
 	// (stories/bugfix/rooms/idle.yaml). Post-fix, the story keys the
 	// on-disk dir on BOTH ticket and session (bf-<ticket>-<session>) and
-	// threads `session_id` into workspace.create, which records a
-	// `.kitsoki-owner` sentinel. Here we exercise the host-side SAFETY NET
+	// threads `session_id` into workspace.create, which records owner
+	// metadata. Here we exercise the host-side SAFETY NET
 	// directly: two sessions race for the SAME on-disk id (the worst case —
 	// a caller that did NOT add the session dimension to the id), and the
 	// sentinel must make the second session fail loudly instead of silently
@@ -101,6 +88,9 @@ func TestRepro_ConcurrentSessionsShareCheckout_DestroysWIP(t *testing.T) {
 	pathA, _ := resA.Data["path"].(string)
 	if pathA == "" {
 		t.Fatalf("session A: empty path %#v", resA.Data)
+	}
+	if filepath.Base(filepath.Dir(pathA)) != "workspaces" {
+		t.Fatalf("session A path should be a managed capsule workspace, got %q", pathA)
 	}
 
 	// Session A makes uncommitted progress on a tracked file — its WIP.

@@ -58,6 +58,7 @@ states:
         with:
           filter: "assignee=me"
           repo: "{{ world.ticket_repo }}"
+          root: "{{ world.repo_root }}"
         bind:
           standup_summary: tickets
         on_error: standup

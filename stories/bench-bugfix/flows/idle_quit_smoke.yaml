@@ -1,0 +1,39 @@
+# idle_quit_smoke — the ratchet baseline for stories/bench-bugfix.
+#
+# WB.4 (docs/goals/generalized-usage/decomposition.yaml) requires the round
+# protocol's replay gate (`kitsoki test flows stories/bench-bugfix/app.yaml`) to
+# stay green across training-pass patches. Before this flow existed the story
+# had ZERO flow fixtures, so the gate command errored outright ("no flow
+# fixtures matched") rather than passing vacuously — a real RED, not a
+# theoretical one. This is the smallest possible no-LLM regression flow: it
+# proves the generic bench-bugfix instance (imports ../bugfix as the root,
+# rebinds ticket/vcs/ci/workspace/transport to the local-file/git host set) boots
+# and its idle room's `quit` intent reaches the mapped `abandoned` exit — which
+# bench-bugfix's own `exits:` block routes to the `finished` state. Any future
+# training-pass patch to stories/bench-bugfix/** must keep this green; add
+# narrower flows alongside it as patches land (see round training packets).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: bf.idle
+initial_world:
+  ticket_id:       "TKT-SMOKE"
+  ticket_title:    "Smoke ticket for the bench-bugfix ratchet baseline"
+  thread:          "TKT-SMOKE"
+  workspace_id:    "smoke-fix"
+  workdir:         ".worktrees/smoke-fix"
+  feature_branch:  "smoke-fix"
+  base_branch:     "main"
+  bugfix_mode:     "full"
+  judge_mode:      "human"
+  bf_autostart_attempted: true
+  gate_command:    ""
+  test_cmd:        ""
+
+turns:
+  - intent: { name: quit, slots: {} }
+    expect_state: finished
+    expect_world:
+      ticket_id: "TKT-SMOKE"
+
+expect_no_errors: true

@@ -1,0 +1,59 @@
+# never_silent_infra_error_bounce — failure class: INFRA-level host failure
+# (the "no handler registered" / handler-crash shape from
+# .agents/skills/kitsoki-debugging/SKILL.md, distinct from a domain-level
+# host.Result.Error).
+#
+# Same walk as never_silent_sync_error_bounce, but iface.workspace.sync fails
+# at the infrastructure level (the stub returns (Result{}, error), which is
+# what a missing/mis-registered handler or a panicking handler produces).
+# The `on_error: idle` redirect must surface the failure exactly like a
+# domain error: world.last_error set, "⚠ Action failed" banner rendered on
+# the idle view. A regression that treats infra errors as silently
+# recoverable fails here.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: proposing
+initial_world:
+  ticket_id:      "TKT-902"
+  thread:         "TKT-902"
+  judge_mode:     "human"
+  workspace_id:   "bf-TKT-902"
+  feature_branch: "fix/TKT-902"
+  workdir:        ".worktrees/bf-TKT-902"
+  bf_autostart_attempted: true
+  propose_fix_artifact:
+    summary_title:    "Stub proposal"
+    summary_markdown: "stub"
+    affected_files:   ["x.go"]
+    confidence:       0.9
+
+host_handlers:
+  host.append_to_file:
+    data: { ok: true, message_id: "msg-1" }
+  host.inbox.add:
+    data: { ok: true, id: "ib-1" }
+  host.git_worktree:
+    by_op:
+      create:
+        data: { ok: true, log: "reused existing worktree" }
+      sync:
+        infra_error: "no handler registered for namespace host.git_worktree.sync"
+  host.git:
+    data: { ok: true, sha: "abc", diff: "" }
+  host.local:
+    data: { ok: true, log: "PASS", passed: 1, failed: 0 }
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary_title: "stub"
+
+turns:
+  - intent: { name: accept, slots: {} }
+    expect_state: idle
+    expect_world:
+      last_error: "no handler registered for namespace host.git_worktree.sync"
+    expect_view_matches: "Action failed"
+
+expect_terminal: false

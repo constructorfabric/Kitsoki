@@ -1,0 +1,34 @@
+# No-LLM paired-task fixture for the WB.2 arena gate.
+#
+# The fake backend in tests/run_no_llm.py returns deterministic oracle JSON for
+# these cells. A live run uses the same cell shape but must be explicitly invoked
+# with `arena run --live`.
+
+job_type: paired-task
+
+targets:
+  - id: cost-bench-fixture
+    label: "cost bench fixture"
+    image: kitsoki-arena/paired-task:latest
+
+variants:
+  - id: kitsoki
+    backend: codex
+    model: gpt-5.5
+    effort: medium
+  - id: single-briefed
+    backend: codex
+    model: gpt-5.5
+    effort: medium
+  - id: single-naive
+    backend: codex
+    model: gpt-5.5
+    effort: low
+
+axes:
+  task: [api-routing, flaky-test]
+
+placement:
+  hosts: [local]
+  concurrency: 2
+  retry: 1

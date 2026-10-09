@@ -1,6 +1,6 @@
 # refine_budget_exhaust_validating — validating_cycle hits validating_budget;
 # next refine routes to @exit:abandoned. This is the late-pipeline budget
-# bail; mirrors cyber-repo's phase_9_7 cycle-budget arcs.
+# bail; mirrors focused-engineering's phase_9_7 cycle-budget arcs.
 
 test_kind: flow
 app: ../app.yaml

@@ -1,0 +1,69 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://kitsoki.dev/schemas/usable-kitsoki-gate/parity-verdict-record/v1.0.0",
+  "title": "usable-kitsoki-gate parity verdict record",
+  "description": "One record per scenario x persona x surface, emitted at the end of a usable-kitsoki-gate arena cell (docs/proposals/usable-kitsoki-release-gate.md, Event/format model). Compares what the ORIGINAL mined session completed (source_completed, S4's outcomes.py oracle) against what a live kitsoki workbench run completed on the identical scenario (candidate_completed, S1's per-turn completion trace), plus the two zero-tolerance regression flags (silent_bounce, misroute_adjacent). This is job-type-specific evidence alongside the job-agnostic CellResult (schemas/completion-state.schema.json) -- the cell's aggregate score still rolls up into that shared verdict/health/metrics contract; this record is the per-scenario detail an aggregate rule (see usable_kitsoki_gate_constants.py) reduces over.",
+  "version": "1.0.0",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "scenario_id",
+    "persona",
+    "surface",
+    "source_completed",
+    "candidate_completed",
+    "silent_bounce",
+    "misroute_adjacent",
+    "evidence_refs"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0.0",
+      "description": "Version of this contract the record was written against. Consumers reject unknown major versions rather than silently misreading a field."
+    },
+    "scenario_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "= the scenario IR's `id` field, verbatim (S4, docs/proposals/scenario-foundry.md's worked example: e.g. \"scn-git-ops-0007\"). This is a documented ALIAS, not a second identity scheme: the release-gate proposal's own Event/format model example writes `scenario_id` where the IR field is named `id` -- this schema resolves that naming gap by defining scenario_id := IR.id. Do not derive a different string (e.g. from provenance.session_id + a turn offset); join back to the IR by exact equality on this value."
+    },
+    "persona": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Persona id the scenario was driven as (S4's persona axis, e.g. \"impatient-debugger\", \"core-maintainer\")."
+    },
+    "surface": {
+      "type": "string",
+      "enum": ["web", "tui", "mcp"],
+      "description": "Which kitsoki surface drove this scenario. The rollup gates on the WORST of these three per usable_kitsoki_gate_constants.WORST_SURFACE_GATING -- see that module for the rationale."
+    },
+    "source_completed": {
+      "type": "boolean",
+      "description": "Did the ORIGINAL mined session complete this ask? Read off S4's outcomes.py `satisfaction` signal (the oracle is the source session, never re-adjudicated by an LLM at gate time)."
+    },
+    "candidate_completed": {
+      "type": "boolean",
+      "description": "Did THIS workbench run (S1) complete the identical ask, this run? Read off S1's per-scenario-turn completion signal keyed to the scenario IR's expected_effects list -- see docs/tracing/usable-kitsoki-gate.md '#producer-contract' for the exact emission contract S1 must satisfy."
+    },
+    "silent_bounce": {
+      "type": "boolean",
+      "description": "True iff an on_error arc fired with no rendered explanation to the user (kills R2 regressions -- zero tolerance, see usable_kitsoki_gate_constants.GATE_CONDITIONS)."
+    },
+    "misroute_adjacent": {
+      "type": "boolean",
+      "description": "True iff the workbench routed to a command adjacent to the ask rather than the ask itself (kills R3 regressions -- zero tolerance, see usable_kitsoki_gate_constants.GATE_CONDITIONS)."
+    },
+    "evidence_refs": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "Pointers to durable proof for this record -- e.g. .artifacts/usable-kitsoki-gate/<run_id>/<scenario_id>/trace.jsonl, .../rrweb.json. Never empty: every parity record must be reproducible from evidence, not just asserted."
+    },
+    "notes": {
+      "type": "string",
+      "default": "",
+      "description": "Free-text context for a disagreement between source_completed and candidate_completed, or for why a bounce/misroute flag fired -- e.g. \"workbench asked a clarifying question the source session never needed\". Optional; empty string when there is nothing to say."
+    }
+  }
+}

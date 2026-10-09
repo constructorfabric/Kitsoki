@@ -1,0 +1,77 @@
+# ci-status rooms — idle → checking (native host.git.pr_status).
+#
+# checking.on_enter runs ONE host.git call that fetches the PR check summary and
+# failed-check details through native GitHub REST APIs. It does NOT exit — read
+# the result with session.world {checks_summary | failed_log | ci_conclusion}.
+
+states:
+
+  idle:
+    description: "CI status — parked. Submit `check` to fetch PR checks."
+    view:
+      - prose: "Fetch CI for PR #{{ world.pr_number|default:'(none)' }} on {{ world.repo|default:'(infer)' }}."
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "check"
+              hint:   "fetch checks"
+              intent: check
+            - label:  "look"
+              intent: look
+            - label:  "quit"
+              intent: quit
+    relevant_world: [repo, pr_number, branch]
+    on:
+      check:
+        - target: checking
+      look:
+        - target: .
+      quit:
+        - target: "@exit:abandoned"
+          effects:
+            - set:
+                status: "abandoned"
+
+  checking:
+    description: "Fetched CI checks."
+    view:
+      - heading: "Checks"
+      - code: '{{ world.checks_summary|default:"(pending)" }}'
+      - heading: "Failed checks"
+      - code: '{{ world.failed_log|default:"(none)" }}'
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "recheck"
+              intent: check
+            - label:  "look"
+              intent: look
+            - label:  "quit"
+              intent: quit
+    relevant_world: [repo, pr_number, branch, worktree_path, checks_summary, failed_log, ci_conclusion, run_exit, run_stdout, last_error]
+    on_enter:
+      - invoke: host.git
+        id: ci_status_native
+        with:
+          op: pr_status
+          pr_id: "{{ world.pr_number }}"
+          repo: "{{ world.repo }}"
+          workdir: "{{ world.worktree_path }}"
+        bind:
+          checks_summary: "checks_summary"
+          failed_log:     "failed_log"
+          ci_conclusion:  "state"
+          run_stdout:     "checks_summary"
+        on_error: checking
+    on:
+      check:
+        - target: checking
+      look:
+        - target: .
+      quit:
+        - target: "@exit:abandoned"
+          effects:
+            - set:
+                status: "abandoned"

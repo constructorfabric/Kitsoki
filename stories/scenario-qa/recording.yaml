@@ -1,0 +1,76 @@
+# Hand-authored natural prompt routing fixtures for the Scenario QA story.
+#
+# These are the operator-facing prompts docs/help should advertise. Keep them
+# deterministic: they should resolve through display/example/semantic-template
+# routing before any LLM fallback.
+kind: recording
+app_id: scenario-qa
+app_version: 0.1.0
+generated_at: "2026-07-09T00:00:00Z"
+generator: "hand-authored (natural prompt fixtures)"
+min_confidence: 1.00
+
+entries:
+  - state: idle
+    input: "preview required user input affordance as a QA engineer and developer transport=web,tui target=kitsoki seed=affordance-demo"
+    intent:
+      name: check_request
+      slots:
+        request: "preview required user input affordance as a QA engineer and developer transport=web,tui target=kitsoki seed=affordance-demo"
+    confidence: 1.00
+    majority_of: 1
+
+  - state: idle
+    input: "required user input affordance as a QA engineer and developer transport=web,tui target=kitsoki seed=affordance-demo"
+    intent:
+      name: check_request
+      slots:
+        request: "required user input affordance as a QA engineer and developer transport=web,tui target=kitsoki seed=affordance-demo"
+    confidence: 1.00
+    majority_of: 1
+
+  - state: report
+    input: "main room"
+    intent:
+      name: main_room
+      slots: {}
+    confidence: 1.00
+    majority_of: 1
+
+  - state: idle
+    input: "preview bugfix across all transports"
+    intent:
+      name: preview
+      slots:
+        scenario: bugfix
+        transport: all
+    confidence: 1.00
+    majority_of: 1
+
+  - state: idle
+    input: "check bugfix across all transports for core-maintainer on gears-rust"
+    intent:
+      name: check
+      slots:
+        scenario: bugfix
+        transport: all
+        persona: "core maintainer"
+        target: "gears rust"
+    confidence: 1.00
+    majority_of: 1
+
+  - state: recording
+    input: "next transport"
+    intent:
+      name: next_leg
+      slots: {}
+    confidence: 1.00
+    majority_of: 1
+
+  - state: report
+    input: "report"
+    intent:
+      name: report
+      slots: {}
+    confidence: 1.00
+    majority_of: 1

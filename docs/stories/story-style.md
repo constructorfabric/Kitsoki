@@ -139,8 +139,111 @@ Conventions:
     when:  "!available('start_journey')"
   ```
 
+  Use room-level `prerequisites:` instead when the missing thing is setup or
+  readiness for the whole room, not just one action. A prerequisite is declared
+  beside the state, evaluates deterministically from `world.*`, and the runtime
+  renders the warning/help block consistently in TUI, web, screenshots, and flow
+  output:
+
+  ```yaml
+  prerequisites:
+    - id: project-onboarding
+      title: "Project onboarding"
+      satisfied_when: "world.init_profile_status == 'applied'"
+      summary: "Local setup has not been applied."
+      action:
+        label: "onboard"
+        intent: go_init
+  ```
+
 - **`look` is always last** and always `target: .`. It needs no hint.
 - Don't number the items. Selection highlight is the renderer's job.
+
+---
+
+## 3.4 User messaging
+
+Messaging is part of the story contract. A room must keep the operator oriented
+from the first visible turn: what Kitsoki understood, which path it selected,
+what mode/consequence applies, and what the next action is. The standard is
+terse and informative, not chatty.
+
+This applies especially to free-form captures, contextual routers, imported
+story handoffs, workbench rooms, authoring/builder stories, long-running host
+calls, and any room that moves from read-only exploration to write-capable work.
+
+Required signals:
+
+- **Interpreted input** — the captured request, ticket, document path, proposal,
+  or resolved slots the story will use.
+- **Selected path** — the story/import/state/workbench the request is entering.
+  If the story inferred a route, name it before it starts work.
+- **Mode and consequence** — read-only vs write-capable, branch/workspace, cost,
+  external post, or destructive action.
+- **Next action** — the thing now happening, or the operator action that is
+  actually required.
+
+Use `view` for durable orientation and `say:` for one-turn acknowledgements:
+
+- Put persistent facts in typed elements, usually `kv:`:
+
+  ```yaml
+  - kv:
+      pairs:
+        Request: '{{ world.landing_request|default:"(none)" }}'
+        Story: "story_authoring"
+        Story root: '{{ world.working_dir|default:"(not yet chosen)" }}'
+        Mode: "read-only until edit approval"
+        Next: '{{ world.next_action|default:"(pending)" }}'
+  ```
+
+- Use a short `say:` when a capture or handoff immediately dispatches another
+  room/agent, so the transcript contains an acknowledgement before the operator
+  loses control:
+
+  ```yaml
+  - set: { landing_request: "{{ slots.request }}" }
+  - say: "Request captured for story_authoring; starting read-only intake."
+  ```
+
+- Use `say:` for outcomes, route changes, and recoverable failures. Do not use
+  it as the only place a durable value appears; a later `look` must still show
+  the state.
+
+Only interrupt when the operator must decide or supply data. Stop for missing
+required inputs, ambiguous routes with materially different outcomes, write or
+external side effects, destructive actions, high-cost calls, or policy/security
+gates. Do not stop just to confirm values that are already clear and safe; show
+the interpretation and continue. A confirmation turn with one safe forward path
+is ceremony (see [`authoring.md` §3.1](authoring.md#31-avoid-ceremony-steps)).
+
+Good operator-facing messages are concrete:
+
+| Weak | Better |
+|---|---|
+| `Processing...` | `Request captured for bugfix; searching local tickets.` |
+| `Starting agent.` | `Dispatching read-only landing agent for: {{ slots.request }}` |
+| `Done.` | `Story authoring result saved; review, refine, or clear.` |
+| `Failed.` | `Ticket search failed: {{ world.last_error }}. Retry or update provider setup.` |
+
+Do not narrate implementation mechanics unless the operator can act on them.
+Provider names, route ids, call ids, and trace internals belong in the view only
+when they explain the next action or a failure. Keep messages to one sentence
+unless the room is a review surface.
+
+Flow fixtures should prove the messaging, not just the state transition:
+
+```yaml
+turns:
+  - intent: { name: landing_capture, slots: { request: "implement .context/proposal.md" } }
+    expect_events:
+      - kind: machine.say
+        effect: { text: "Request captured for story_authoring; starting read-only intake." }
+    expect_view_matches: "Story root[\\s\\S]*read-only[\\s\\S]*implement \\.context/proposal\\.md"
+```
+
+For generated or imported rooms, test both the child story directly and the
+imported/root-prefixed surface so aliasing does not erase the user's context.
 
 ---
 

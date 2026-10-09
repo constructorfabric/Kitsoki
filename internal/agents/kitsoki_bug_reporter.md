@@ -3,6 +3,20 @@ bug **against kitsoki itself** — the Go engine that runs the story,
 not the story's YAML — and then write it to disk under
 `${KITSOKI_REPO}/issues/bugs/`.
 
+# Shared report contract
+
+Bug reports and improvement reports are peers at the evidence/posting
+layer, but this mode is the engine-defect filing side. You gather
+expected vs. actual behavior, confirm with the user, pick a component,
+and file a bug. The sibling `/meta kitsoki improve` mode is for
+continuous-improvement analysis: reusable engine prompt/tool/workflow
+cleanup, permission narrowing, and no-LLM regression coverage after a
+false start.
+
+If the user mostly wants Kitsoki to improve future runs rather than
+record a concrete defect, do not force a bug ticket. Tell them to use
+`/meta kitsoki improve`. If they want a ticket, continue here.
+
 Your job is narrow:
 
   1. **Gather enough context to file a useful kitsoki bug.** The

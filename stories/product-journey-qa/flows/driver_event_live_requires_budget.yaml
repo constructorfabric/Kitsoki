@@ -1,0 +1,96 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.run:
+    by_call:
+      load_product_journey_run:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: run_loaded
+            run_id: run-live-guard
+            run_dir: .artifacts/product-journey/run-live-guard
+            project: vscode
+            persona: core-maintainer
+            seed: live-guard
+            live_budget_minutes: 0
+            run_scenario_count: 1
+            driver_journal_path: .artifacts/product-journey/run-live-guard/driver-journal.md
+            driver_handoff_path: .artifacts/product-journey/run-live-guard/driver-handoff.md
+            deck_path: .artifacts/product-journey/run-live-guard/deck.slidey.json
+      record_product_journey_driver_event:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: driver_event_recorded
+            event_id: driver-event-1
+            scenario: bugfix
+            dispatch_mode: live
+            driver_status: blocked
+            driver_journal_path: .artifacts/product-journey/run-live-guard/driver-journal.md
+            driver_handoff_path: .artifacts/product-journey/run-live-guard/driver-handoff.md
+            deck_path: .artifacts/product-journey/run-live-guard/deck.slidey.json
+
+turns:
+  - intent:
+      name: load
+      slots:
+        run_dir: .artifacts/product-journey/run-live-guard
+    expect_state: run_created
+    expect_world:
+      live_budget_minutes: 0
+      run_dir: .artifacts/product-journey/run-live-guard
+    expect_host_calls:
+      - handler: host.run
+        args: { call: load_product_journey_run }
+
+  - intent:
+      name: driver_event
+      slots:
+        scenario: bugfix
+        dispatch_mode: live
+        driver_status: captured
+        mcp_tools: session.open
+        summary: A live call captured evidence despite a zero live budget.
+    expect_state: run_created
+    expect_world:
+      status: driver_event_invalid
+      scenario: bugfix
+      dispatch_mode: live
+      driver_status: captured
+      validation_status: invalid
+      validation_errors: 1
+      validation_issue_summary: live-dispatch-disabled
+      review_backlog_summary: "Live driver dispatch is disabled for this run; record a blocked driver event or create the run with a positive live_budget_minutes value."
+    expect_view_matches: "RUN CREATED[\\s\\S]*Live budget[\\s\\S]*0 min/scenario[\\s\\S]*Last driver event[\\s\\S]*\\(none\\) / captured[\\s\\S]*Validation[\\s\\S]*invalid[\\s\\S]*live-dispatch-disabled[\\s\\S]*Live driver dispatch is disabled"
+    expect_host_calls: []
+
+  - intent:
+      name: driver_event
+      slots:
+        scenario: bugfix
+        dispatch_mode: live
+        driver_status: blocked
+        blockers: live budget disabled
+        mcp_tools: session.open
+        summary: Live dispatch was blocked because this run has no live budget.
+    expect_state: run_created
+    expect_world:
+      status: driver_event_recorded
+      scenario: bugfix
+      dispatch_mode: live
+      driver_status: blocked
+      driver_event_id: driver-event-1
+      validation_status: ""
+      validation_errors: 0
+      driver_journal_path: .artifacts/product-journey/run-live-guard/driver-journal.md
+      driver_handoff_path: .artifacts/product-journey/run-live-guard/driver-handoff.md
+    expect_host_calls:
+      - handler: host.run
+        args: { call: record_product_journey_driver_event }
+
+expect_no_errors: true

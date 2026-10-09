@@ -1,0 +1,82 @@
+# init_readiness_check -- after first-run onboarding applies files, the operator
+# can explicitly run the generated readiness verifier from the story. The host
+# call is stubbed; no target project commands run in this fixture.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: init_done
+initial_world:
+  init_target_path: "/tmp/kitsoki-init-fixtures/acme-py"
+  init_project_id: "acme-py"
+  init_project_title: "Acme Py"
+  init_profile_status: "applied"
+  init_apply_result:
+    status: "applied"
+    config_path: "/tmp/kitsoki-init-fixtures/acme-py/.kitsoki.yaml"
+    profile_path: "/tmp/kitsoki-init-fixtures/acme-py/.kitsoki/project-profile.yaml"
+    instance_path: "/tmp/kitsoki-init-fixtures/acme-py/.kitsoki/stories/acme-py-dev/app.yaml"
+    gitignore_path: "/tmp/kitsoki-init-fixtures/acme-py/.gitignore"
+    profile_validation:
+      ok: true
+      warnings: []
+    writes:
+      - "/tmp/kitsoki-init-fixtures/acme-py/.kitsoki.yaml"
+      - "/tmp/kitsoki-init-fixtures/acme-py/.kitsoki/project-profile.yaml"
+
+host_handlers:
+  host.run:
+    by_call:
+      readiness:
+        data:
+          ok: false
+          exit_code: 1
+          stdout: '{"schema":"kitsoki-readiness/v1","status":"fail","out":".artifacts/kitsoki-readiness.json","checks":[{"id":"story-load","status":"pass","detail":"go run ./cmd/kitsoki validate .kitsoki/stories/acme-py-dev/app.yaml"},{"id":"tests","status":"fail","detail":"python -m pytest exited 1"}]}'
+          stdout_json:
+            schema: "kitsoki-readiness/v1"
+            status: "fail"
+            out: ".artifacts/kitsoki-readiness.json"
+            checks:
+              - id: "story-load"
+                status: "pass"
+                detail: "go run ./cmd/kitsoki validate .kitsoki/stories/acme-py-dev/app.yaml"
+              - id: "tests"
+                status: "fail"
+                detail: "python -m pytest exited 1"
+
+turns:
+  - intent: { name: run_readiness, slots: {} }
+    expect_state: init_readiness
+    expect_world:
+      init_profile_status: "checking-readiness"
+      init_readiness_ok: false
+      init_readiness_result:
+        schema: "kitsoki-readiness/v1"
+        status: "fail"
+        out: ".artifacts/kitsoki-readiness.json"
+        checks:
+          - id: "story-load"
+            status: "pass"
+            detail: "go run ./cmd/kitsoki validate .kitsoki/stories/acme-py-dev/app.yaml"
+          - id: "tests"
+            status: "fail"
+            detail: "python -m pytest exited 1"
+    expect_view_matches: "python -m pytest exited 1"
+
+  - intent: { name: readiness_checked, slots: {} }
+    expect_state: init_done
+    expect_world:
+      init_profile_status: "applied"
+      init_readiness_result:
+        schema: "kitsoki-readiness/v1"
+        status: "fail"
+        out: ".artifacts/kitsoki-readiness.json"
+        checks:
+          - id: "story-load"
+            status: "pass"
+            detail: "go run ./cmd/kitsoki validate .kitsoki/stories/acme-py-dev/app.yaml"
+          - id: "tests"
+            status: "fail"
+            detail: "python -m pytest exited 1"
+    expect_view_matches: "Readiness"
+
+expect_no_errors: true

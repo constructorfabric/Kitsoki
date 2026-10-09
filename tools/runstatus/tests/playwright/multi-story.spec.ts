@@ -196,9 +196,9 @@ test.describe("multi-story full-product walkthrough (live, no-LLM)", () => {
 
     // Drive a text-slot intent: select the intent, type, send. These run as
     // pre-step hooks WHILE the tour overlay sits on the prior (centered) step,
-    // whose backdrop intercepts hit-test clicks — so set the value through the
+    // whose popover can affect hit-test clicks — so set the value through the
     // input's native setter (firing a real `input` event for Vue's v-model) and
-    // dispatch the click on the send button directly, bypassing the backdrop.
+    // dispatch the click on the send button directly, bypassing hit-testing.
     async function sendText(intent: string, text: string): Promise<void> {
       const select = page.getByTestId("composer-select");
       if ((await select.count()) > 0) await select.selectOption(intent).catch(() => undefined);
@@ -214,9 +214,9 @@ test.describe("multi-story full-product walkthrough (live, no-LLM)", () => {
       await dwell(page, SETTLE_MS);
       await page.getByTestId("composer-send").first().evaluate((el) => (el as HTMLElement).click());
     }
-    // Drive a slot-less intent by dispatching the button's DOM click (the
-    // overlay backdrop is up during the pre-step hook, so a hit-test click on
-    // the button beneath it would be intercepted).
+    // Drive a slot-less intent by dispatching the button's DOM click so the
+    // pre-step hook does not depend on browser hit-testing around the tour
+    // popover.
     async function clickIntent(intent: string): Promise<void> {
       const btn = page.getByTestId(`intent-btn-${intent}`).first();
       // toBeEnabled (not just toBeVisible): action buttons are

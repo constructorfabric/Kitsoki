@@ -1,0 +1,62 @@
+# idle_report_guard_accepts_either_run_dir_var — regression for the
+# undocumented run_dir/run_dir_rel coupling fix in rooms/idle.yaml: the
+# idle room's "report" intent used to guard ONLY on world.run_dir_rel, while
+# the "report" choice item's own visibility guards on world.run_dir — an
+# undocumented coupling that only worked because plan.yaml happens to always
+# bind both together at the same call site. This proves the guard now
+# accepts EITHER var being set (fires "no run yet" only when BOTH are
+# empty), so a future refactor that stops (re)binding one of the pair at one
+# call site can't silently detach the guard from the menu item it gates.
+#
+# This seeds world directly via initial_world (a completed run already
+# "happened") and drives straight from idle into report's own on_enter,
+# which still needs its two host calls stubbed (report.md/deck-building) to
+# stay hermetic — the point under test is purely the idle -> report
+# TRANSITION guard, not the report room's own pipeline.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  run_id: "scenario-qa-seeded-run"
+  # run_dir_rel is deliberately LEFT EMPTY here — simulating exactly the
+  # drift scenario the fix defends against: only run_dir got (re)bound.
+  run_dir: "/repo/.artifacts/product-journey/scenario-qa-seeded-run"
+  run_dir_rel: ""
+  leg_results:
+    items:
+      - leg_id: "bugfix::tui"
+        scenario: "bugfix"
+        transport: "tui"
+        verdict: "pass"
+        driver_status: "captured"
+        evidence_level: "frame-level"
+  pass_count: 1
+  fail_count: 0
+  degraded_count: 0
+
+host_handlers:
+  host.run:
+    by_call:
+      build_scenario_qa_deck:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: scenario_qa_deck_built
+            deck_path: /repo/.artifacts/product-journey/scenario-qa-seeded-run/deck.slidey.json
+  host.starlark.run:
+    by_call:
+      build_report:
+        data:
+          report_path: ".artifacts/product-journey/scenario-qa-seeded-run/report.md"
+          report_summary: "1 / 1 transport checks passed."
+
+turns:
+  - intent: { name: report, slots: {} }
+    expect_state: report
+    expect_world:
+      last_error: ""
+    expect_view_matches: "SCENARIO QA REPORT"
+
+expect_no_errors: true

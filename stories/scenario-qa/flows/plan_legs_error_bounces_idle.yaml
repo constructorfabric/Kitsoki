@@ -1,0 +1,54 @@
+# plan_legs_error_bounces_idle — plan.yaml's SECOND invoke (host.starlark.run
+# → plan_legs) fails after the run bundle was already built: on_error: idle
+# routes back without ever reaching execute. Exercises plan.yaml:109
+# separately from the first invoke's own on_error (plan_run_error_bounces_
+# idle.yaml) — a regression that only broke the second invoke's error route
+# would not be caught by that fixture alone. See that fixture's header
+# comment for how world.last_error/status land here.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.run:
+    by_call:
+      emit_scenario_qa_run:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            run_id: scenario-qa-run-legs-error
+            run_dir: /repo/.artifacts/product-journey/scenario-qa-run-legs-error
+            driver_plan_path: /repo/.artifacts/product-journey/scenario-qa-run-legs-error/driver-plan.md
+            execution_plan_path: /repo/.artifacts/product-journey/scenario-qa-run-legs-error/execution-plan.md
+            agent_brief_path: /repo/.artifacts/product-journey/scenario-qa-run-legs-error/agent-brief.md
+
+  host.starlark.run:
+    by_call:
+      plan_legs:
+        error: "host.starlark.run: plan_legs.star: ctx.fs.read: no such file .artifacts/product-journey/scenario-qa-run-legs-error/driver-plan.json"
+
+turns:
+  - intent:
+      name: check
+      slots:
+        scenario: bugfix
+        transport: tui
+        persona: core-maintainer
+        target: gears-rust
+        seed: story-flow
+    expect_state: idle
+    expect_world:
+      status: "planning"
+      run_id: "scenario-qa-run-legs-error"
+      last_error: "host.starlark.run: plan_legs.star: ctx.fs.read: no such file .artifacts/product-journey/scenario-qa-run-legs-error/driver-plan.json"
+    expect_host_calls:
+      - handler: host.run
+        args: { call: emit_scenario_qa_run }
+      - handler: host.starlark.run
+        args: { call: plan_legs }
+    expect_no_host_calls: [host.agent.task]
+    expect_view_matches: "no such file .artifacts/product-journey/scenario-qa-run-legs-error/driver-plan.json"
+
+expect_no_errors: true

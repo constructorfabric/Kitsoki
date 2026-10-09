@@ -29,6 +29,11 @@ import (
 	"kitsoki/internal/testrunner"
 )
 
+type traceResolveOptions struct {
+	AppFilter string
+	TicketID  string
+}
+
 // resolveTraceArg resolves the trace source for `kitsoki trace`, so the operator
 // never has to hand-find a JSONL path. Precedence:
 //
@@ -42,6 +47,10 @@ import (
 // (e.g. "kitsoki-dev"). root is normally store.SessionsDir(); it is a parameter
 // so the resolver is testable against a temp tree.
 func resolveTraceArg(root, arg, appFilter string) (string, error) {
+	return resolveTraceArgWithOptions(root, arg, traceResolveOptions{AppFilter: appFilter})
+}
+
+func resolveTraceArgWithOptions(root, arg string, opts traceResolveOptions) (string, error) {
 	if arg == "-" {
 		return "-", nil
 	}
@@ -52,8 +61,8 @@ func resolveTraceArg(root, arg, appFilter string) (string, error) {
 	}
 
 	searchDir := root
-	if appFilter != "" {
-		searchDir = filepath.Join(root, appFilter)
+	if opts.AppFilter != "" {
+		searchDir = filepath.Join(root, opts.AppFilter)
 	}
 	type cand struct {
 		path string
@@ -67,6 +76,12 @@ func resolveTraceArg(root, arg, appFilter string) (string, error) {
 		if arg != "" && !strings.Contains(filepath.Base(p), arg) {
 			return nil
 		}
+		if opts.TicketID != "" {
+			ok, e := traceMatchesTicket(p, opts.TicketID)
+			if e != nil || !ok {
+				return nil
+			}
+		}
 		if info, e := d.Info(); e == nil {
 			cands = append(cands, cand{p, info.ModTime()})
 		}
@@ -77,10 +92,56 @@ func resolveTraceArg(root, arg, appFilter string) (string, error) {
 		if arg != "" {
 			hint += fmt.Sprintf(" matching %q", arg)
 		}
+		if opts.TicketID != "" {
+			hint += fmt.Sprintf(" with ticket_id %q", opts.TicketID)
+		}
 		return "", fmt.Errorf("%s (pass an explicit path, or run a session first)", hint)
 	}
 	sort.Slice(cands, func(i, j int) bool { return cands[i].mod.After(cands[j].mod) })
 	return cands[0].path, nil
+}
+
+func traceMatchesTicket(path, ticketID string) (bool, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = f.Close() }()
+	return traceReaderMatchesTicket(f, ticketID), nil
+}
+
+func traceReaderMatchesTicket(r io.Reader, ticketID string) bool {
+	want := strings.TrimSpace(ticketID)
+	if want == "" {
+		return false
+	}
+	sc := bufio.NewScanner(r)
+	sc.Buffer(make([]byte, 0, 1<<20), 64<<20)
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" {
+			continue
+		}
+		var rec eventRecord
+		if err := json.Unmarshal([]byte(line), &rec); err != nil {
+			continue
+		}
+		if rec.Kind != string(store.EffectApplied) {
+			continue
+		}
+		p, _ := rec.Payload.(map[string]any)
+		set, _ := p["set"].(map[string]any)
+		for k, v := range set {
+			if isTicketIDWorldKey(k) && strings.TrimSpace(fmt.Sprint(v)) == want {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func isTicketIDWorldKey(k string) bool {
+	return k == "ticket_id" || strings.HasSuffix(k, "__ticket_id")
 }
 
 // ─── Style helpers (NO_COLOR aware) ──────────────────────────────────────────
@@ -690,6 +751,7 @@ func traceCmd() *cobra.Command {
 SOURCE RESOLUTION — you rarely need a full path. The argument is resolved as:
   (none)                  newest session under ~/.kitsoki/sessions
   --app <id>              ...restricted to that app's subdirectory
+  --ticket <id>           newest session whose world ticket_id matches
   <substring>             newest session whose filename contains it (e.g. an id)
   <path>                  that exact file
   -                       stdin
@@ -710,6 +772,7 @@ VIEWS:
 
 EXAMPLES:
   kitsoki trace --turns --app kitsoki-dev      # newest kitsoki-dev session, digested
+  kitsoki trace --turns --ticket 64            # newest trace for ticket 64
   kitsoki trace --turns 7ca57b33               # a specific session by id prefix
   kitsoki trace --turn 3 --app kitsoki-dev     # turn 3 with the full dispatched prompt
   kitsoki trace                                # raw stream of the newest session
@@ -721,7 +784,11 @@ EXAMPLES:
 				arg = args[0]
 			}
 			appFilter, _ := cmd.Flags().GetString("app")
-			path, err := resolveTraceArg(store.SessionsDir(), arg, appFilter)
+			ticketID, _ := cmd.Flags().GetString("ticket")
+			path, err := resolveTraceArgWithOptions(store.SessionsDir(), arg, traceResolveOptions{
+				AppFilter: appFilter,
+				TicketID:  ticketID,
+			})
 			if err != nil {
 				return err
 			}
@@ -757,6 +824,7 @@ EXAMPLES:
 	cmd.Flags().Bool("turns", false, "print a compact per-turn digest (input → route → prompt → outcome) instead of the raw event stream")
 	cmd.Flags().Int("turn", 0, "focus a single turn number and print its dispatched prompts in full (implies --turns)")
 	cmd.Flags().String("app", "", "restrict session resolution to this app's subdirectory (e.g. kitsoki-dev)")
+	cmd.Flags().String("ticket", "", "restrict session resolution to traces whose world ticket_id matches this id")
 
 	cmd.AddCommand(traceToFlowCmd())
 	cmd.AddCommand(traceStatusCmd())
@@ -782,7 +850,6 @@ type traceStatus struct {
 // — an unparseable line is skipped, so this works on an in-flight session.
 func scanTraceStatus(r io.Reader) traceStatus {
 	var st traceStatus
-	worldVals := map[string]any{}
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 1<<20), 64<<20) // prompts/diffs make for big lines
 	for sc.Scan() {
@@ -811,24 +878,62 @@ func scanTraceStatus(r io.Reader) traceStatus {
 			}
 			if json.Unmarshal(e.Payload, &p) == nil {
 				for k, v := range p.Set {
-					worldVals[k] = v
+					if isStatusWorldKey(k) {
+						if s := strings.TrimSpace(fmt.Sprint(v)); s != "" {
+							st.Status = s
+						}
+					}
+					if isTraceReasonWorldKey(k) {
+						if s := strings.TrimSpace(fmt.Sprint(v)); s != "" {
+							st.LastError = s
+						}
+					}
+					if isSessionCostWorldKey(k) {
+						if f, ok := numericFloat(v); ok {
+							st.SessionCost = f
+						}
+					}
 				}
 			}
 		}
-	}
-	if v, ok := worldVals["last_error"].(string); ok {
-		st.LastError = v
-	}
-	if v, ok := worldVals["status"].(string); ok {
-		st.Status = v
-	}
-	if v, ok := worldVals["session_cost_usd"].(float64); ok {
-		st.SessionCost = v
 	}
 	if strings.Contains(st.State, "__exit__") {
 		st.Exit = st.State
 	}
 	return st
+}
+
+func isStatusWorldKey(k string) bool {
+	return k == "status" || strings.HasSuffix(k, "__status")
+}
+
+func isTraceReasonWorldKey(k string) bool {
+	return k == "last_error" || strings.HasSuffix(k, "__last_error") ||
+		k == "human_review_reason" || strings.HasSuffix(k, "__human_review_reason") ||
+		k == "abandon_reason" || strings.HasSuffix(k, "__abandon_reason") ||
+		k == "needs_human_reason" || strings.HasSuffix(k, "__needs_human_reason")
+}
+
+func isSessionCostWorldKey(k string) bool {
+	return k == "session_cost_usd" || strings.HasSuffix(k, "__session_cost_usd")
+}
+
+func numericFloat(v any) (float64, bool) {
+	switch n := v.(type) {
+	case float64:
+		return n, true
+	case float32:
+		return float64(n), true
+	case int:
+		return float64(n), true
+	case int64:
+		return float64(n), true
+	case json.Number:
+		f, err := n.Float64()
+		return f, err == nil
+	default:
+		return 0, false
+	}
 }
 
 // traceStatusCmd implements `kitsoki trace status`: a one-shot, cross-process,
@@ -850,8 +955,8 @@ works on a LIVE session another connection/process is driving (the MCP server
 serialises calls per connection and sessions are per-process). A partially-written
 trailing line is skipped safely.
 
-Source resolution matches 'kitsoki trace' (newest session / --app / id-substring /
-exact path / -).`,
+Source resolution matches 'kitsoki trace' (newest session / --app / --ticket /
+id-substring / exact path / -).`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			arg := ""
@@ -859,7 +964,11 @@ exact path / -).`,
 				arg = args[0]
 			}
 			appFilter, _ := cmd.Flags().GetString("app")
-			path, err := resolveTraceArg(store.SessionsDir(), arg, appFilter)
+			ticketID, _ := cmd.Flags().GetString("ticket")
+			path, err := resolveTraceArgWithOptions(store.SessionsDir(), arg, traceResolveOptions{
+				AppFilter: appFilter,
+				TicketID:  ticketID,
+			})
 			if err != nil {
 				return err
 			}
@@ -885,6 +994,7 @@ exact path / -).`,
 	}
 	cmd.Flags().Bool("json", false, "emit machine-readable JSON instead of the human summary")
 	cmd.Flags().String("app", "", "restrict session resolution to this app's subdirectory (e.g. kitsoki-dev)")
+	cmd.Flags().String("ticket", "", "restrict session resolution to traces whose world ticket_id matches this id")
 	return cmd
 }
 

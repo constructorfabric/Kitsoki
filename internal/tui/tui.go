@@ -27,6 +27,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"kitsoki/internal/app"
+	"kitsoki/internal/bugprivacy"
 	"kitsoki/internal/chats"
 	"kitsoki/internal/clock"
 	"kitsoki/internal/expr"
@@ -47,6 +48,9 @@ import (
 )
 
 const githubInboxPollInterval = 5 * time.Minute
+const completionImprovePrompt = "[Improve this run]\nRun `/meta improve` now to review false starts, unexpected output, wasted tool calls, prompt/tool/script changes, permission cleanup, evidence-backed posting, and no-LLM regression coverage. In the web UI, enable \"Auto-run at completion\" to create this report automatically after future runs; evidence reports can stay local, post to GitHub via `--ticket-repo`, or use a private `--improve-ticket-provider`."
+
+const metaImproveAutoPrompt = "Review this completed session for false starts, unexpected output, wasted tool calls, prompt/tool/script improvements, permission cleanup, and no-LLM regression coverage. Produce the standard introspection improvement report, including evidence/posting recommendations for the follow-up report."
 
 // Mode describes which interaction mode the TUI is currently in.
 type Mode int
@@ -76,6 +80,9 @@ const (
 	// listed chats; Enter resumes one; Esc closes the overlay and
 	// returns to ModeOnPath.
 	ModeMetaSessions
+	// ModeStorySelector is active while /stories owns the keyboard. Arrow keys
+	// navigate the discovered story catalogue; Enter launches one; Esc closes.
+	ModeStorySelector
 	// ModeWorldView is active while /world's dedicated hierarchical
 	// viewer owns the pane. Arrow keys move the cursor; Enter expands
 	// or collapses nodes; q/Esc returns to chat.
@@ -126,6 +133,7 @@ type MenuChanged struct {
 type turnOutcomeMsg struct {
 	outcome *orchestrator.TurnOutcome
 	input   string // the user input that triggered this turn
+	summary string
 	err     error
 }
 
@@ -159,6 +167,7 @@ type RootModel struct {
 	menuSystem       menuSystemModel
 	metaMode         metaModel
 	sessionsPanel    sessionsPanelModel
+	storySelector    storySelectorModel
 	worldView        worldViewModel
 	prompt           textarea.Model
 
@@ -168,6 +177,11 @@ type RootModel struct {
 	// field; /input restores this draft so the user can resume
 	// composing.
 	pendingDraft string
+
+	// pendingHarnessPick remembers that the last slash command rendered a
+	// numbered harness picker. A bare follow-up like `3` should select from that
+	// picker, not fall through to semantic/LLM routing.
+	pendingHarnessPick string
 
 	// routing tracks the live routing-pipeline state for the in-flight turn:
 	// which tiers were tried/missed and which one won. Reset at submit time,
@@ -228,6 +242,13 @@ type RootModel struct {
 	// turns if the `result` stream event is lost to backpressure.
 	metaStreamPending string
 
+	// flushStreamPendingDuringLive is set when a streaming agent event queued
+	// visible transcript activity while an in-flight live line is active. The
+	// normal pending-flush guard suppresses scrollback while routing live rows
+	// are changing; streaming tool/thinking lines are different because they are
+	// the operator's proof that long-running work is alive.
+	flushStreamPendingDuringLive bool
+
 	// initialTypedView carries the typed-view payload for the very
 	// first frame so NewRootModel can paint via AppendSystemTyped (the
 	// typed-element-aware path) instead of AppendSystem (which re-runs
@@ -237,6 +258,16 @@ type RootModel struct {
 	initialTypedView *app.View
 	initialTypedEnv  expr.Env
 	initialTypedRR   *render.AppRenderer
+
+	// startupNotices are project/runtime notices printed once at TUI startup.
+	// They are intentionally outside the orchestrator transcript model: callers
+	// compute them from local CLI state before the session begins.
+	startupNotices []string
+
+	// storySwitch is installed by the CLI when /stories should launch a selected
+	// story. The TUI invokes it synchronously before quitting; the caller then
+	// restarts a fresh Bubble Tea program for the selected app.yaml.
+	storySwitch func(StoryOption)
 
 	// clk is the injectable time source used by the inbox polling ticker.
 	// When nil, clock.Real() is used. Tests inject a *clock.Fake so they can
@@ -271,6 +302,22 @@ type RootModel struct {
 	// rows are simply absent and the miner-service queue remains authoritative.
 	traceHistory func() (store.History, error)
 
+	// bugRoot is the repo/story root where /bug writes local issues/bugs/ or
+	// .artifacts/bug-reports evidence. When empty, /bug resolves the nearest git
+	// root above appPath, then falls back to cwd.
+	bugRoot string
+
+	// bugTicketRepo, when set, routes /bug to a GitHub issue and uploads the TUI
+	// evidence through host.GitHubFileBug. Empty preserves local issues/bugs/.
+	bugTicketRepo string
+
+	// bugPrivacyChecker, when set, runs the provider-backed /bug privacy gate
+	// before local or GitHub filing. Nil keeps deterministic scrubbing only.
+	bugPrivacyChecker bugprivacy.Checker
+	// bugPrivacyCheckerResolver optionally builds a checker from the current
+	// harness selection right before /bug files.
+	bugPrivacyCheckerResolver BugPrivacyCheckerResolver
+
 	// lastCtrlC is the time the most recent Ctrl+C was pressed, used to
 	// detect a double-tap quit. Zero means no recent press (or the window
 	// has expired).
@@ -292,6 +339,18 @@ type RootModel struct {
 
 	// lastInput remembers the input that triggered the current turn.
 	lastInput string
+
+	// lastRoutedIntent / lastRoutedTier / lastRoutedState snapshot the most
+	// recently RESOLVED turn's routing outcome (see routing_pipeline.go),
+	// captured at the same point m.routing settles (handleTurnOutcome) —
+	// m.routing itself gets reset to a fresh pipeline at the START of the
+	// NEXT submitInput, so these are the durable copy the `/route` feedback
+	// command reads (WS-C C4 routing-dissatisfaction substrate; see
+	// docs/testing/routing-tuning.md). Empty lastRoutedIntent means no turn
+	// has resolved yet this session (or the last turn was a slash command).
+	lastRoutedIntent string
+	lastRoutedTier   string
+	lastRoutedState  app.StatePath
 
 	// inputHistory is an in-memory, per-session ring of past prompt
 	// submissions (oldest at index 0, newest at the end). Up/Down arrows
@@ -327,6 +386,11 @@ type RootModel struct {
 	// lifecycle events (continue-mode dual-write).
 	// Nil disables journal writes (back-compat default for tests).
 	journalWriter journal.Writer
+
+	// journalReader, when non-nil, lets read-only TUI affordances resolve
+	// typed session facts that are not part of the event history, such as
+	// artifact.emitted handle -> path mappings for /work artifact.
+	journalReader journal.Reader
 
 	// traceRing is an optional in-memory ring buffer.  When non-nil and
 	// traceFileExternal is false, buildMetaTurnContext snapshots it to
@@ -453,6 +517,10 @@ type RootModel struct {
 	// run without launching a real opener. Nil means "use the default OS
 	// opener" (set in NewRootModel) — the production behavior.
 	openArtifact func(path string) error
+
+	// slashSuggester ranks and filters slash-command completions for the
+	// prompt affordance. Nil falls back to the ordered built-in catalogue.
+	slashSuggester SlashSuggester
 }
 
 const recentBackgroundCap = 8
@@ -495,6 +563,44 @@ func WithChatStore(cs *chats.Store) RootModelOption {
 // service snapshot is not available.
 func WithTraceHistory(fn func() (store.History, error)) RootModelOption {
 	return func(m *RootModel) { m.traceHistory = fn }
+}
+
+// WithBugRoot sets the root where TUI-filed /bug reports write local
+// issues/bugs/ or .artifacts/bug-reports evidence. Tests use this to keep
+// reports in a temp dir; production normally lets the command resolve from
+// appPath.
+func WithBugRoot(root string) RootModelOption {
+	return func(m *RootModel) { m.bugRoot = root }
+}
+
+// WithBugTicketRepo routes /bug to a GitHub issue on repo and uploads scrubbed
+// TUI evidence as GitHub release assets. Empty keeps the local-file path.
+func WithBugTicketRepo(repo string) RootModelOption {
+	return func(m *RootModel) { m.bugTicketRepo = strings.TrimSpace(repo) }
+}
+
+// WithBugPrivacyChecker enables the provider-backed /bug privacy gate.
+func WithBugPrivacyChecker(checker bugprivacy.Checker) RootModelOption {
+	return func(m *RootModel) { m.bugPrivacyChecker = checker }
+}
+
+// BugPrivacyCheckerResolver builds the provider-backed /bug privacy gate for
+// the current harness profile selection.
+type BugPrivacyCheckerResolver func(orchestrator.ProfileSelection) bugprivacy.Checker
+
+// WithBugPrivacyCheckerResolver enables selection-aware provider-backed /bug
+// privacy checks. A nil resolver or nil returned checker falls back to
+// WithBugPrivacyChecker, then deterministic scrubbing only.
+func WithBugPrivacyCheckerResolver(resolver BugPrivacyCheckerResolver) RootModelOption {
+	return func(m *RootModel) { m.bugPrivacyCheckerResolver = resolver }
+}
+
+// WithSlashSuggester injects the ranking/filtering implementation used by the
+// prompt slash-command affordance. The default suggester preserves catalogue
+// order; tests and future product tuning can swap in recency/frequency ranking
+// without changing input handling.
+func WithSlashSuggester(s SlashSuggester) RootModelOption {
+	return func(m *RootModel) { m.slashSuggester = s }
 }
 
 // WithIDEDenyList seeds the kitsoki-side deny list that gates ambient editor
@@ -562,6 +668,13 @@ func WithJournalWriter(jw journal.Writer) RootModelOption {
 	return func(m *RootModel) { m.journalWriter = jw }
 }
 
+// WithJournalReader injects a read-only journal.Reader into the RootModel.
+// When nil, surfaces that can use typed journal entries fall back to their
+// legacy event/world data.
+func WithJournalReader(jr journal.Reader) RootModelOption {
+	return func(m *RootModel) { m.journalReader = jr }
+}
+
 // WithInitialTypedView wires the typed-view payload for the initial
 // frame (typed View / runtime env / per-app renderer) so NewRootModel
 // can call transcript.AppendSystemTyped instead of AppendSystem when
@@ -575,6 +688,30 @@ func WithInitialTypedView(typed *app.View, env expr.Env, rr *render.AppRenderer)
 		m.initialTypedView = typed
 		m.initialTypedEnv = env
 		m.initialTypedRR = rr
+	}
+}
+
+// WithStartupNotice appends a one-shot system notice to the TUI scrollback at
+// construction time. Empty notices are ignored.
+func WithStartupNotice(notice string) RootModelOption {
+	return func(m *RootModel) {
+		if strings.TrimSpace(notice) != "" {
+			m.startupNotices = append(m.startupNotices, notice)
+		}
+	}
+}
+
+// WithStorySelector wires the discovered story catalogue behind /stories. The
+// callback is invoked when the user selects a row; callers that only need a
+// read-only selector may pass nil.
+func WithStorySelector(stories []StoryOption, discoverErr error, onSelect func(StoryOption)) RootModelOption {
+	return func(m *RootModel) {
+		errText := ""
+		if discoverErr != nil {
+			errText = discoverErr.Error()
+		}
+		m.storySelector.SetStories(stories, errText)
+		m.storySwitch = onSelect
 	}
 }
 
@@ -711,9 +848,11 @@ func NewRootModel(orch *orchestrator.Orchestrator, sid app.SessionID, appPath, i
 		menuSystem:       newMenuSystemModel(metaMenuEntries(orch.AppDef())),
 		metaMode:         newMetaModel(),
 		sessionsPanel:    newSessionsPanelModel(),
+		storySelector:    newStorySelectorModel(),
 		prompt:           ti,
 		spinner:          sp,
 		openArtifact:     osOpenArtifact,
+		slashSuggester:   defaultSlashSuggester{},
 	}
 
 	// Set initial state.
@@ -739,7 +878,6 @@ func NewRootModel(orch *orchestrator.Orchestrator, sid app.SessionID, appPath, i
 			m.transcript.pending = append(m.transcript.pending, welcome)
 		}
 	}
-
 	// Show initial view in transcript. When the root state's view is a
 	// typed element-array, prefer AppendSystemTyped so the elements
 	// dispatcher renders fresh at viewport width — feeding the
@@ -775,9 +913,7 @@ func NewRootModel(orch *orchestrator.Orchestrator, sid app.SessionID, appPath, i
 			}
 		}
 		m.transcript.AppendSystemTyped(initialView, typedForBody, m.initialTypedEnv, m.initialTypedRR)
-		if m.mode == ModeChoosing {
-			m.transcript.AppendLive(m.choice.View(m.transcript.wrapWidth()))
-		}
+		appendStartupNotices(&m)
 	} else if initialView != "" {
 		slog.Info("tui.initial_paint",
 			"path", "legacy_system",
@@ -785,6 +921,9 @@ func NewRootModel(orch *orchestrator.Orchestrator, sid app.SessionID, appPath, i
 			"has_ansi", strings.Contains(initialView, "\x1b["),
 		)
 		m.transcript.AppendSystem(initialView)
+		appendStartupNotices(&m)
+	} else {
+		appendStartupNotices(&m)
 	}
 
 	// Populate initial menu.
@@ -813,6 +952,12 @@ func NewRootModel(orch *orchestrator.Orchestrator, sid app.SessionID, appPath, i
 	}
 
 	return m
+}
+
+func appendStartupNotices(m *RootModel) {
+	for _, notice := range m.startupNotices {
+		m.transcript.AppendStartupNotice(notice)
+	}
 }
 
 // metaMenuEntries enumerates every declared meta mode (sorted by name)
@@ -1019,7 +1164,7 @@ func (m RootModel) pollInbox(syncGitHub bool) tea.Msg {
 func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	nm, cmd := m.updateInner(msg)
 	if rm, ok := nm.(RootModel); ok {
-		if flush := rm.transcript.FlushPending(); flush != nil {
+		if flush := rm.flushPendingWhenStable(); flush != nil {
 			if cmd == nil {
 				cmd = flush
 			} else {
@@ -1029,6 +1174,22 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return rm, cmd
 	}
 	return nm, cmd
+}
+
+// flushPendingWhenStable emits queued scrollback unless the bottom live region
+// is actively redrawing an awaiting-turn routing line. tea.Println scrolls above
+// Bubble Tea's live region; doing that while the routing line is still changing
+// can leave prior frames stamped into scrollback. Once the live line settles or
+// cancels, the normal flush path resumes and emits the queued input echo plus the
+// resolved routing row together.
+func (m *RootModel) flushPendingWhenStable() tea.Cmd {
+	if m.mode == ModeAwaitingLLM && m.transcript.hasLive() {
+		if !m.flushStreamPendingDuringLive {
+			return nil
+		}
+		m.flushStreamPendingDuringLive = false
+	}
+	return m.transcript.FlushPending()
 }
 
 func (m RootModel) updateInner(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -1062,17 +1223,15 @@ func (m RootModel) updateInner(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if m.mode == ModeMetaSessions {
 		return m.updateSessionsPanel(msg)
 	}
+	// If the story selector is active, it owns the keyboard until the user picks
+	// a story or hits Esc.
+	if m.mode == ModeStorySelector {
+		return m.updateStorySelector(msg)
+	}
 
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		slog.Debug("tui.resize",
-			slog.Int("width", msg.Width),
-			slog.Int("height", msg.Height),
-		)
-		m.width = msg.Width
-		m.height = msg.Height
-		m = m.resize()
-		return m, nil
+		return m.handleWindowSize(msg)
 
 	case tea.KeyMsg:
 		return m.routeKey(msg)
@@ -1088,6 +1247,12 @@ func (m RootModel) updateInner(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case minePassDoneMsg:
 		return m.handleMinePassDone(msg)
+
+	case bugCommandDoneMsg:
+		if msg.body != "" {
+			m.transcript.AppendBlock(msg.body)
+		}
+		return m, nil
 
 	case spatialPointMsg:
 		return m.handleSpatialPoint(msg)
@@ -1109,6 +1274,9 @@ func (m RootModel) updateInner(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case menuSystemChoiceMsg:
 		return m.handleMenuSystemChoice(msg)
+
+	case storySelectorChoiceMsg:
+		return m.handleStorySelectorChoice(msg)
 
 	case metaEnterDoneMsg:
 		return m.handleMetaEnterDone(msg)
@@ -1195,6 +1363,7 @@ func (m RootModel) updateInner(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.routing.markHit(tm.Tier, tm.Intent, hitDetailFor(tm), tm.Confidence, tm.Tier == TierLLM)
 			if m.transcript.hasLive() {
 				m.transcript.FinalizeLive(m.routing.renderResolved())
+				m.snapshotRoutedTurn()
 			}
 		case RoutingAmbiguousMsg:
 			m.transcript.UpdateLive(ir.r.RoutingResolved(blocks.Resolved{
@@ -1327,10 +1496,7 @@ func (m RootModel) updateSlotFilling(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleSupplementSlots(msg)
 
 	case tea.WindowSizeMsg:
-		m.width = msg.Width
-		m.height = msg.Height
-		m = m.resize()
-		return m, nil
+		return m.handleWindowSize(msg)
 
 	case tea.KeyMsg:
 		switch msg.Type {
@@ -1526,6 +1692,14 @@ func (m RootModel) routeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	if msg.Type == tea.KeyTab && m.slashCompletionActive() {
+		if completion, ok := m.primarySlashCompletion(); ok {
+			m.prompt.SetValue(completion)
+			m.prompt.CursorEnd()
+			return m, nil
+		}
+	}
+
 	// i1–i9: inbox selection keys (only when prompt is empty).
 	if s := msg.String(); len(s) == 2 && s[0] == 'i' && s[1] >= '1' && s[1] <= '9' {
 		if strings.TrimSpace(m.prompt.Value()) == "" {
@@ -1716,6 +1890,22 @@ func (m *RootModel) appendHistory(input string) {
 	m.historyDraft = ""
 }
 
+// snapshotRoutedTurn copies the just-resolved m.routing pipeline's outcome
+// into the durable lastRouted* fields (WS-C C4 routing-dissatisfaction
+// substrate). Call this at the SAME point m.routing settles — m.routing
+// itself gets reset to a fresh pipeline at the start of the next
+// submitInput, so a `/route up|down` typed after that reset must read a
+// snapshot, not the live (possibly already-reset) pipeline. A no-op when
+// the pipeline never resolved (e.g. the turn was rejected/cancelled).
+func (m *RootModel) snapshotRoutedTurn() {
+	if !m.routing.resolved() {
+		return
+	}
+	m.lastRoutedIntent = m.routing.intent
+	m.lastRoutedTier = m.routing.winnerTier()
+	m.lastRoutedState = m.currentState
+}
+
 // historyNavigating reports whether the user is currently walking
 // inputHistory with arrow keys (i.e. historyIdx points at a stored entry
 // rather than the "draft" sentinel).
@@ -1801,6 +1991,16 @@ func (m RootModel) dispatchInput(input string) (tea.Model, tea.Cmd) {
 	m.transcript.AppendUserInputEcho(input)
 	ir := m.newInlineRouter()
 
+	if m.pendingHarnessPick != "" && !strings.HasPrefix(input, "/") {
+		pick := m.pendingHarnessPick
+		m.pendingHarnessPick = ""
+		if isHarnessPickInput(input) {
+			settled := ir.settledLine("system", "/"+pick, blocks.SourceDeterministic, 0, "")
+			m.transcript.AppendBlock(settled)
+			return m.handleSlashCommand("/" + pick + " " + input)
+		}
+	}
+
 	// Handle slash commands. Settled-line classification is "system"
 	// — slash commands bypass routing.
 	if strings.HasPrefix(input, "/") {
@@ -1837,36 +2037,29 @@ func (m RootModel) dispatchInput(input string) (tea.Model, tea.Cmd) {
 	m.routing = newRoutingPipeline()
 	m.transcript.AppendLive(m.routing.renderProgress())
 
-	// Cheap, side-effect-free match against the current menu. This avoids the
-	// LLM round-trip when the user typed something we can route locally — but
-	// we still dispatch the resulting transition asynchronously so a slow
-	// on_enter host call (e.g. host.agent.ask, host.run on a long command)
-	// doesn't freeze the TUI.
+	// Route through the shared orchestrator entry point, exactly like every
+	// other surface (web, one-shot, flows). Turn runs its own deterministic
+	// → semantic → LLM tier stack internally and stamps a slog event per
+	// tier (turn.deterministic_hit/miss, turn.semantic_hit/miss, ...); the
+	// routingObserver installed on this context translates those events into
+	// RoutingTier{Hit,Miss}Msg deliveries that drive the live routing chip
+	// via UpdateLive/FinalizeLive (handleTurnOutcome finalizes on
+	// completion). There is deliberately no synchronous pre-pass here: an
+	// independent MatchDeterministic call used to shortcut the deterministic
+	// tier before dispatch, but it duplicated Turn's own deterministic
+	// matching logic and could in principle disagree with it. Turn's
+	// deterministic hit is fast (no LLM round-trip) and dispatches
+	// asynchronously either way, so folding this surface into the shared
+	// entry point costs nothing and removes a second place routing behavior
+	// could drift.
 	orch := m.orch
 	sid := m.sid
-	ctx := context.Background()
-	intent, slots, hit, err := orch.MatchDeterministic(ctx, sid, input)
-	if err != nil {
-		// Drop the placeholder before printing the error.
-		m.transcript.FinalizeLive("")
-		m.transcript.AppendError("", fmt.Sprintf("error: %s", userfacing.Error(err)))
-		return m, nil
-	}
-	if hit {
-		// Deterministic match at submit time — the pipeline resolves on the
-		// first layer and settles immediately (this path has no completion-time
-		// finalizer because handleTurnOutcome skips deterministic turns).
-		m.routing.markHit(TierDeterministic, intent, "", 0, false)
-		m.transcript.FinalizeLive(m.routing.renderResolved())
-		return startAsyncTurn(m, input, asyncSubmitDirectFromInput(orch, sid, intent, slots, input, orchestrator.RouteProvenance{Source: "deterministic"}), pendingDeterministic)
-	}
-
-	// No deterministic match — the deterministic layer is passed-through; the
-	// async router (semantic → LLM) drives the rest via RoutingTier*Msg, and
-	// handleTurnOutcome finalizes. Advance the live pipeline now.
-	m.routing.markMiss(TierDeterministic, "")
-	m.transcript.UpdateLive(m.routing.renderProgress())
 	return startAsyncTurn(m, input, asyncTurn(orch, sid, input), pendingLLM)
+}
+
+func isHarnessPickInput(input string) bool {
+	n, err := strconv.Atoi(strings.TrimSpace(input))
+	return err == nil && n > 0
 }
 
 // pendingKind classifies why the TUI is currently in ModeAwaitingLLM, so the
@@ -1881,6 +2074,11 @@ const (
 	// async work is the post-transition effect dispatch (host calls, etc.).
 	pendingDeterministic
 )
+
+type asyncTurnResult struct {
+	outcome *orchestrator.TurnOutcome
+	summary string
+}
 
 // asyncTurn returns a function that runs orch.Turn for the LLM-router path.
 // It is the closure shape that startAsyncTurn understands.
@@ -1909,6 +2107,93 @@ func asyncSubmitDirectFromInput(orch *orchestrator.Orchestrator, sid app.Session
 	}
 }
 
+func asyncDriveOperation(orch *orchestrator.Orchestrator, sid app.SessionID) func(context.Context) (asyncTurnResult, error) {
+	return func(ctx context.Context) (asyncTurnResult, error) {
+		if orch == nil {
+			return asyncTurnResult{}, fmt.Errorf("work drive: no orchestrator attached")
+		}
+		drive, err := orch.DriveOperation(ctx, sid)
+		if err != nil {
+			return asyncTurnResult{}, err
+		}
+		summary := operationDriveOutcomeSummary(drive)
+		if drive != nil && drive.Final != nil {
+			return asyncTurnResult{outcome: drive.Final, summary: summary}, nil
+		}
+		out, err := orch.CurrentView(ctx, sid)
+		if err != nil {
+			return asyncTurnResult{}, err
+		}
+		return asyncTurnResult{outcome: out, summary: summary}, nil
+	}
+}
+
+func operationDriveOutcomeSummary(drive *orchestrator.OperationDriveOutcome) string {
+	if drive == nil {
+		return ""
+	}
+	turnWord := "turns"
+	if drive.Turns == 1 {
+		turnWord = "turn"
+	}
+	base := fmt.Sprintf("drove %d %s", drive.Turns, turnWord)
+	if intent := operationDriveIntentLabel(drive.LastIntent); intent != "" {
+		base += " via " + intent
+	}
+	parts := []string{base}
+	if stop := operationDriveStopLabel(drive.StopReason); stop != "" {
+		parts = append(parts, "stopped "+stop)
+	}
+	return "(work drive: " + strings.Join(parts, "; ") + ")"
+}
+
+func operationDriveIntentLabel(intent string) string {
+	return humanIntentLabel(intent)
+}
+
+func humanIntentLabel(intent string) string {
+	label := strings.TrimSpace(intent)
+	if label == "" {
+		return ""
+	}
+	if i := strings.LastIndex(label, "__"); i >= 0 {
+		label = label[i+2:]
+	}
+	label = strings.ReplaceAll(label, "_", " ")
+	return strings.Join(strings.Fields(label), " ")
+}
+
+func operationDriveStopLabel(reason string) string {
+	reason = strings.TrimSpace(reason)
+	switch reason {
+	case "":
+		return ""
+	case "no-driver-intent":
+		return "at a checkpoint"
+	case "clarify":
+		return "for missing input"
+	case "rejected":
+		return "after a rejected turn"
+	case "offpath":
+		return "after an off-path answer"
+	case "cancelled":
+		return "after cancellation"
+	case "max-turns":
+		return "at the safety turn limit"
+	case "terminal":
+		return "at a terminal state"
+	case "no-operation":
+		return "because there is no active operation"
+	case "operation-not-autonomous":
+		return "because this operation needs manual input"
+	default:
+		if strings.HasPrefix(reason, "operation-") {
+			return "because the operation is " + strings.ReplaceAll(strings.TrimPrefix(reason, "operation-"), "_", " ")
+		}
+		return "because " + strings.ReplaceAll(reason, "_", " ")
+	}
+}
+
 // startAsyncTurn puts the model into ModeAwaitingLLM and returns a tea.Cmd that
 // runs the supplied turn function asynchronously. The caller must replace its
 // own model with the returned model before returning from Update.
@@ -1916,6 +2201,18 @@ func startAsyncTurn(
 	m RootModel,
 	input string,
 	run func(ctx context.Context) (*orchestrator.TurnOutcome, error),
+	kind pendingKind,
+) (RootModel, tea.Cmd) {
+	return startAsyncTurnDetailed(m, input, func(ctx context.Context) (asyncTurnResult, error) {
+		out, err := run(ctx)
+		return asyncTurnResult{outcome: out}, err
+	}, kind)
+}
+
+func startAsyncTurnDetailed(
+	m RootModel,
+	input string,
+	run func(ctx context.Context) (asyncTurnResult, error),
 	kind pendingKind,
 ) (RootModel, tea.Cmd) {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -1955,7 +2252,7 @@ func startAsyncTurn(
 	m.metaStreamPending = ""
 
 	cmd := func() tea.Msg {
-		out, err := run(ctx)
+		res, err := run(ctx)
 		if err != nil {
 			// Only treat this as a cancellation when the error itself is a
 			// context cancellation/deadline. Checking ctx.Err() alone is wrong:
@@ -1971,7 +2268,7 @@ func startAsyncTurn(
 			}
 			return turnOutcomeMsg{outcome: nil, input: input, err: err}
 		}
-		return turnOutcomeMsg{outcome: out, input: input, err: nil}
+		return turnOutcomeMsg{outcome: res.outcome, input: input, summary: res.summary, err: nil}
 	}
 	return m, tea.Batch(m.spinner.Tick, cmd)
 }
@@ -2017,6 +2314,17 @@ func (m RootModel) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
 		next.transcript.AppendBlock(body)
 		return next, cmd
 
+	case "/bug":
+		m.transcript.AppendBlock(m.bugBlock("privacy check starting..."))
+		return m, bugCommandCmd(m, parts[1:])
+
+	case "/route":
+		body, next, cmd := RouteCommand{}.Run(m, parts[1:])
+		if body != "" {
+			next.transcript.AppendBlock(body)
+		}
+		return next, cmd
+
 	case "/intents":
 		body, next, cmd := ActionsCommand{}.Run(m, parts[1:])
 		if body != "" {
@@ -2043,6 +2351,11 @@ func (m RootModel) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
 		if body != "" {
 			next.transcript.AppendBlock(body)
 		}
+		if len(parts) == 1 && len(next.orch.Profiles()) > 0 {
+			next.pendingHarnessPick = "provider"
+		} else {
+			next.pendingHarnessPick = ""
+		}
 		return next, cmd
 
 	case "/model":
@@ -2050,12 +2363,22 @@ func (m RootModel) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
 		if body != "" {
 			next.transcript.AppendBlock(body)
 		}
+		if active := activeProfile(next.orch.Profiles()); len(parts) == 1 && len(active.Models) > 0 {
+			next.pendingHarnessPick = "model"
+		} else {
+			next.pendingHarnessPick = ""
+		}
 		return next, cmd
 
 	case "/effort":
 		body, next, cmd := EffortCommand{}.Run(m, parts[1:])
 		if body != "" {
 			next.transcript.AppendBlock(body)
+		}
+		if active := activeProfile(next.orch.Profiles()); len(parts) == 1 && len(active.Efforts) > 0 {
+			next.pendingHarnessPick = "effort"
+		} else {
+			next.pendingHarnessPick = ""
 		}
 		return next, cmd
 
@@ -2114,6 +2437,9 @@ func (m RootModel) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
 	case "/world":
 		return m.openWorldView()
 
+	case "/stories":
+		return m.openStorySelector()
+
 	case "/ide":
 		return m.handleIDESlash(parts[1:])
 
@@ -2133,9 +2459,12 @@ func (m RootModel) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
 
 	case "/work":
 		var block string
-		m, block = renderWorkBlock(m, parts[1:])
-		m.transcript.AppendBlock(block)
-		return m, nil
+		var cmd tea.Cmd
+		m, block, cmd = handleWorkSlash(m, parts[1:])
+		if block != "" {
+			m.transcript.AppendBlock(block)
+		}
+		return m, cmd
 
 	case "/meta":
 		return m.handleMetaSlash(parts[1:])
@@ -2489,7 +2818,6 @@ func (m RootModel) handleTurnOutcome(msg turnOutcomeMsg) (tea.Model, tea.Cmd) {
 		// over the destination state.
 		if m.choice.IsActive() {
 			m.choice.Close()
-			m.transcript.FinalizeLive("")
 			if m.mode == ModeChoosing {
 				m.mode = ModeOnPath
 			}
@@ -2523,6 +2851,7 @@ func (m RootModel) handleTurnOutcome(msg turnOutcomeMsg) (tea.Model, tea.Cmd) {
 				m.routing.resolveFromProvenance(routedBy, matchType, conf, intentFromEvents(out.Events))
 			}
 			m.transcript.FinalizeLive(m.routing.renderResolved())
+			m.snapshotRoutedTurn()
 		}
 		// If the new view declares an interactive choice widget,
 		// open it FIRST so we can strip the choice element from the
@@ -2551,10 +2880,6 @@ func (m RootModel) handleTurnOutcome(msg turnOutcomeMsg) (tea.Model, tea.Cmd) {
 		} else {
 			m.transcript.AppendAgentBody(out.View)
 		}
-		if m.mode == ModeChoosing {
-			m.transcript.AppendLive(m.choice.View(m.transcript.wrapWidth()))
-		}
-
 		// Update menu.
 		w := m.orch.InitialWorld() // only used for initial world; menu comes from allowed list
 		m = m.updateMenuFromAllowed(out.AllowedIntents, w)
@@ -2572,6 +2897,7 @@ func (m RootModel) handleTurnOutcome(msg turnOutcomeMsg) (tea.Model, tea.Cmd) {
 
 		if out.Mode == orchestrator.ModeCompleted {
 			m.transcript.AppendSystem("\n[Game over — start a new session to play again]")
+			m = m.appendCompletionImprovePrompt()
 			m.prompt.Placeholder = "(game over)"
 		}
 
@@ -2651,6 +2977,10 @@ func (m RootModel) handleTurnOutcome(msg turnOutcomeMsg) (tea.Model, tea.Cmd) {
 		m.renderRejection("", out)
 	}
 
+	if msg.summary != "" {
+		m.transcript.AppendSystem(msg.summary)
+	}
+
 	// Drain the next queued in-room submission via dispatchInput
 	// (skips the appendHistory step — the original enqueue already
 	// recorded the line). The dispatch goes async so the UI
@@ -2662,6 +2992,17 @@ func (m RootModel) handleTurnOutcome(msg turnOutcomeMsg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+func (m RootModel) appendCompletionImprovePrompt() RootModel {
+	if m.metaController == nil || m.orch == nil || m.orch.AppDef() == nil {
+		return m
+	}
+	if _, ok := m.orch.AppDef().MetaModes["story.improve"]; !ok {
+		return m
+	}
+	m.transcript.AppendSystem(completionImprovePrompt)
+	return m
 }
 
 // renderRejection writes a friendly clarification or guard message into
@@ -3121,6 +3462,8 @@ func (m RootModel) updateSessionsPanel(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case sessionsPanelChoiceMsg:
 		return m.handleSessionsPanelChoice(msg)
+	case tea.WindowSizeMsg:
+		return m.handleWindowSize(msg)
 	}
 	var cmd tea.Cmd
 	m.sessionsPanel, cmd = m.sessionsPanel.Update(msg)
@@ -3309,7 +3652,30 @@ func (m RootModel) handleMetaEnterDone(msg metaEnterDoneMsg) (tea.Model, tea.Cmd
 	if m.chatStore != nil {
 		m.replayMetaTranscript(msg.session.Chat.ID())
 	}
+	if m.shouldAutoRunImprove(msg.modeName, msg.session) {
+		text := metaImproveAutoPrompt
+		m.transcript.AppendTurn(text, "")
+		m.metaMode.inFlight = true
+		turn := m.buildMetaTurnContext()
+		return m, tea.Batch(m.spinner.Tick,
+			metaSendCmd(context.Background(), m.metaController, m.metaMode.session, text, turn, m.metaStreamSink))
+	}
 	return m, nil
+}
+
+func (m RootModel) shouldAutoRunImprove(modeName string, sess *metamode.Session) bool {
+	if modeName != "story.improve" && modeName != "kitsoki.improve" {
+		return false
+	}
+	if sess == nil || sess.Chat == nil {
+		return false
+	}
+	first, err := sess.Chat.FirstUserMessage()
+	if err != nil {
+		slog.Warn("tui.meta: inspect improve transcript failed", "err", err, "chat_id", sess.Chat.ID())
+		return false
+	}
+	return strings.TrimSpace(first) == ""
 }
 
 // replayMetaTranscript loads the chat-row messages for the given chat
@@ -3374,10 +3740,14 @@ func (m RootModel) handleMetaStreamEvent(msg MetaStreamMsg) RootModel {
 	if !inFlight {
 		return m
 	}
+	pendingBefore := len(m.transcript.pending)
 	ev := msg.Event
 	switch ev.Type {
-	case "assistant":
-		if ev.Thinking != "" {
+	case "assistant", "assistant.message", "assistant.reasoning", "tool.execution_start":
+		thinkingText := streamThinkingText(ev)
+		deltaText := streamDeltaText(ev)
+		tools := streamActivityTools(ev)
+		if thinkingText != "" {
 			// Extended-thinking prose. Unlike pure narration (which is
 			// deferred below because the FINAL reply also arrives as a
 			// plain assistant text message), thinking is never the reply —
@@ -3385,9 +3755,9 @@ func (m RootModel) handleMetaStreamEvent(msg MetaStreamMsg) RootModel {
 			// carries. Any earlier deferred thought is proven intermediate
 			// by this fresh assistant event, so flush it first.
 			m = m.flushPendingThought()
-			m.transcript.AppendMetaThinking(ev.Thinking)
+			m.transcript.AppendMetaThinking(thinkingText)
 		}
-		if ev.Tool != "" {
+		if len(tools) > 0 {
 			// A thought paired with a tool call is unambiguously
 			// intermediate — a tool round-trip still follows, so it is
 			// never the final answer. Any earlier deferred thought is
@@ -3395,11 +3765,11 @@ func (m RootModel) handleMetaStreamEvent(msg MetaStreamMsg) RootModel {
 			// one in full plus the compact tool breadcrumb. Render the
 			// thought first so it reads above the action it explains.
 			m = m.flushPendingThought()
-			if ev.Text != "" {
+			if deltaText != "" {
 				// Narration / "thinking" prose, in full — the transcript
 				// word-wraps it. Tight (no leading blank line) so
 				// consecutive thoughts read as one paragraph.
-				m.transcript.AppendMetaThinking(ev.Text)
+				m.transcript.AppendMetaThinking(deltaText)
 			}
 			// Tool use: compact one-line args breadcrumb (Preview is
 			// already clipped upstream), separate styling, leading blank
@@ -3407,21 +3777,17 @@ func (m RootModel) handleMetaStreamEvent(msg MetaStreamMsg) RootModel {
 			// assistant event can batch several parallel tool calls, so
 			// render each on its own line (ev.Tools); fall back to the
 			// scalar ev.Tool for events that predate the slice.
-			if len(ev.Tools) > 0 {
-				for _, tc := range ev.Tools {
-					m.transcript.AppendMetaToolUse(tc.Name, tc.Preview)
-				}
-			} else {
-				m.transcript.AppendMetaToolUse(ev.Tool, ev.Preview)
+			for _, tc := range tools {
+				m.transcript.AppendMetaToolUse(tc.Name, tc.Preview)
 			}
-		} else if ev.Text != "" {
+		} else if deltaText != "" {
 			// Pure narration with no tool call. Ambiguous until the next
 			// event: intermediate thought (flush) or final answer (drop
 			// on `result`). A previously deferred thought is now proven
 			// intermediate — this fresh assistant message followed it —
 			// so flush that one, then defer this one in its place.
 			m = m.flushPendingThought()
-			m.metaStreamPending = ev.Text
+			m.metaStreamPending = deltaText
 		}
 	case "system":
 		if ev.Subtype == "api_retry" {
@@ -3430,6 +3796,12 @@ func (m RootModel) handleMetaStreamEvent(msg MetaStreamMsg) RootModel {
 			m = m.flushPendingThought()
 			m.transcript.AppendMetaSystemNotice("(retrying claude request…)")
 		}
+	case "ladder_attempt", "ladder_fallback", "ladder_success", "ladder_exhausted", "ladder_stop":
+		// Harness-owned provenance: distinguish provider ladder movement from
+		// raw provider output so operators can see when Kitsoki is trying,
+		// abandoning, or accepting a rung.
+		m = m.flushPendingThought()
+		m.transcript.AppendMetaSystemNotice(ev.Text)
 	case "user":
 		// tool_result: noisy content we don't render, but its arrival
 		// proves any deferred thought preceded more work — flush it.
@@ -3441,7 +3813,40 @@ func (m RootModel) handleMetaStreamEvent(msg MetaStreamMsg) RootModel {
 		// here as thinking would duplicate it.
 		m.metaStreamPending = ""
 	}
+	if len(m.transcript.pending) > pendingBefore {
+		m.flushStreamPendingDuringLive = true
+	}
 	return m
+}
+
+func streamThinkingText(ev host.StreamEvent) string {
+	if ev.Thinking != "" {
+		return ev.Thinking
+	}
+	if ev.Type == "assistant.reasoning" {
+		return ev.Text
+	}
+	return ""
+}
+
+func streamDeltaText(ev host.StreamEvent) string {
+	if ev.Type == "assistant.reasoning" {
+		return ""
+	}
+	return ev.Text
+}
+
+func streamActivityTools(ev host.StreamEvent) []host.StreamToolUse {
+	switch ev.Type {
+	case "assistant", "tool.execution_start":
+		if len(ev.Tools) > 0 {
+			return ev.Tools
+		}
+		if ev.Tool != "" {
+			return []host.StreamToolUse{{Name: ev.Tool, Preview: ev.Preview}}
+		}
+	}
+	return nil
 }
 
 // flushPendingThought commits any deferred pure-narration message to the
@@ -3665,6 +4070,8 @@ func (m RootModel) reloadOrchestratorAfterMetaWithFiles(changed []string) (tea.M
 //   - While inFlight (a turn is mid-flight), Enter is ignored.
 func (m RootModel) updateMeta(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		return m.handleWindowSize(msg)
 	case metaSendDoneMsg:
 		return m.handleMetaSendDone(msg)
 	case metaEnterDoneMsg:
@@ -3911,6 +4318,9 @@ func (m RootModel) exitMetaMode() RootModel {
 // updateMenuSystem routes keys to the overlay and reverts to ModeOnPath when
 // the user dismisses it without choosing.
 func (m RootModel) updateMenuSystem(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if msg, ok := msg.(tea.WindowSizeMsg); ok {
+		return m.handleWindowSize(msg)
+	}
 	var cmd tea.Cmd
 	m.menuSystem, cmd = m.menuSystem.Update(msg)
 	if !m.menuSystem.IsActive() && m.mode == ModeMenu {
@@ -3944,8 +4354,71 @@ func (m RootModel) handleMenuSystemChoice(msg menuSystemChoiceMsg) (tea.Model, t
 		return next, cmd
 	case menuActionWorld:
 		return m.openWorldView()
+	case menuActionStories:
+		return m.openStorySelector()
 	}
 	return m, nil
+}
+
+func (m RootModel) openStorySelector() (tea.Model, tea.Cmd) {
+	if len(m.storySelector.stories) == 0 {
+		msg := "(stories: no stories discovered"
+		if m.storySelector.err != "" {
+			msg += " - " + m.storySelector.err
+		}
+		msg += ")"
+		m.transcript.AppendBlock(blocks.New(m.transcript.width, m.currentTheme()).SlashOutput(msg))
+		return m, nil
+	}
+	m.mode = ModeStorySelector
+	m.storySelector.Open(m.appPath)
+	return m, nil
+}
+
+func (m RootModel) updateStorySelector(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case storySelectorChoiceMsg:
+		return m.handleStorySelectorChoice(msg)
+	case tea.WindowSizeMsg:
+		return m.handleWindowSize(msg)
+	case tea.KeyMsg:
+		if msg.Type == tea.KeyCtrlC {
+			m.mode = ModeOnPath
+			m.storySelector.Close()
+			m.transcript.AppendSystem("(story selection cancelled)")
+			return m, nil
+		}
+		updated, cmd := m.storySelector.Update(msg)
+		m.storySelector = updated
+		if !m.storySelector.IsActive() && m.mode == ModeStorySelector {
+			m.mode = ModeOnPath
+		}
+		return m, cmd
+	default:
+		return m, nil
+	}
+}
+
+func (m RootModel) handleStorySelectorChoice(msg storySelectorChoiceMsg) (tea.Model, tea.Cmd) {
+	m.mode = ModeOnPath
+	m.storySelector.Close()
+	if strings.TrimSpace(msg.story.Path) == "" {
+		m.transcript.AppendSystem("(stories: selected story has no app.yaml path)")
+		return m, nil
+	}
+	if m.storySwitch == nil {
+		m.transcript.AppendBlock(blocks.New(m.transcript.width, m.currentTheme()).SlashOutput(
+			"(stories: story launching is not wired in this session)"))
+		return m, nil
+	}
+	if sameStoryPath(m.appPath, msg.story.Path) {
+		m.transcript.AppendBlock(blocks.New(m.transcript.width, m.currentTheme()).SlashOutput(
+			"(stories: already running " + storySelectorLabel(msg.story) + ")"))
+		return m, nil
+	}
+	m.storySwitch(msg.story)
+	m.quitting = true
+	return m, tea.Quit
 }
 
 // updateDisambiguating handles input while the disambiguation model is
@@ -3958,10 +4431,7 @@ func (m RootModel) updateDisambiguating(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleDisambiguationChoice(msg)
 
 	case tea.WindowSizeMsg:
-		m.width = msg.Width
-		m.height = msg.Height
-		m = m.resize()
-		return m, nil
+		return m.handleWindowSize(msg)
 
 	case tea.KeyMsg:
 		switch msg.Type {
@@ -4035,13 +4505,7 @@ func (m RootModel) updateDisambiguating(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m RootModel) updateChoosing(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.width = msg.Width
-		m.height = msg.Height
-		m = m.resize()
-		// Re-render the widget at the new width so the live region
-		// reflows in place.
-		m.transcript.UpdateLive(m.choice.View(m.transcript.wrapWidth()))
-		return m, nil
+		return m.handleWindowSize(msg)
 
 	case turnOutcomeMsg:
 		// A turn outcome arriving while ModeChoosing means an
@@ -4049,7 +4513,6 @@ func (m RootModel) updateChoosing(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// pressed Enter on the prompt). Close the widget and fall
 		// through to the normal handler.
 		m.choice.Close()
-		m.transcript.FinalizeLive("")
 		m.mode = ModeOnPath
 		return m.handleTurnOutcome(msg)
 
@@ -4071,10 +4534,6 @@ func (m RootModel) updateChoosing(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.choice, cmd, commit = m.choice.Update(msg)
 
-		// Always refresh the live region after a key — even a no-op
-		// arrow may have moved the cursor.
-		m.transcript.UpdateLive(m.choice.View(m.transcript.wrapWidth()))
-
 		if commit == nil {
 			return m, cmd
 		}
@@ -4092,10 +4551,10 @@ func (m RootModel) updateChoosing(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// draft remains in m.pendingDraft, reachable via
 				// /input.
 				slog.Debug("tui.choice.to_chat")
-				m.transcript.FinalizeLive("")
+				m.transcript.AppendBlock(body)
 				m.transcript.AppendSystem("(picker dismissed — type to chat. /input restores your prior draft.)")
 			} else {
-				m.transcript.FinalizeLive(body)
+				m.transcript.AppendBlock(body)
 				m.transcript.AppendSystem("(picker cancelled)")
 				// Cancel via Esc — restore the pre-widget draft so
 				// the user can continue editing where they left off.
@@ -4111,7 +4570,7 @@ func (m RootModel) updateChoosing(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Commit — finalise the widget and dispatch.
 		m.choice.Close()
-		m.transcript.FinalizeLive(body)
+		m.transcript.AppendBlock(body)
 		display := commit.Intent
 		m.lastInput = display
 		next, asyncCmd := startAsyncTurn(m, display,
@@ -4169,11 +4628,10 @@ func (m RootModel) handleOperatorQuestion(msg operatorQuestionMsg) (tea.Model, t
 func (m RootModel) updateOperatorQuestion(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.width = msg.Width
-		m.height = msg.Height
-		m = m.resize()
+		var cmd tea.Cmd
+		m, cmd = m.handleWindowSize(msg)
 		m.transcript.UpdateLive(m.operatorQuestion.View(m.transcript.wrapWidth()))
-		return m, nil
+		return m, cmd
 
 	case turnOutcomeMsg:
 		// The turn completed/cancelled while the question was on screen — the
@@ -4366,9 +4824,12 @@ func (m *RootModel) refreshPromptPlaceholder() {
 		m.prompt.Placeholder = "describe what you want, or /help"
 		return
 	}
-	label := def.Intent
-	if def.Display != "" {
-		label = def.Display
+	label := strings.TrimSpace(def.Display)
+	if label == "" {
+		label = def.Intent
+	}
+	if label == def.Intent || strings.Contains(label, "__") {
+		label = humanIntentLabel(label)
 	}
 	m.prompt.Placeholder = "↵ " + label + " · describe what you want, or /help"
 }
@@ -4378,6 +4839,24 @@ func (m RootModel) updateLocation(out *orchestrator.TurnOutcome) RootModel {
 	loc := orchestrator.ComputeLocation(m.orch.AppDef(), out.NewState, w, out.TurnNumber)
 	m.location, _ = m.location.Update(locationUpdated{loc: loc})
 	return m
+}
+
+func (m RootModel) handleWindowSize(msg tea.WindowSizeMsg) (RootModel, tea.Cmd) {
+	slog.Debug("tui.resize",
+		slog.Int("width", msg.Width),
+		slog.Int("height", msg.Height),
+	)
+	m.width = msg.Width
+	m.height = msg.Height
+	m = m.resize()
+
+	// A resize is a regular Bubble Tea redraw. Do not issue ClearScreen here:
+	// Kitsoki deliberately runs in the normal screen so transcript history stays
+	// native, and clearing on every SIGWINCH makes terminals append another full
+	// live chrome frame to scrollback. If a resize happens while transcript
+	// scrollback is already queued, preserve that flush; otherwise let the
+	// renderer repaint the resized live region in place.
+	return m, (&m).flushPendingWhenStable()
 }
 
 func (m RootModel) resize() RootModel {
@@ -4501,29 +4980,13 @@ func (m RootModel) View() string {
 	var promptLine string
 	switch m.mode {
 	case ModeChoosing:
-		// While the choice widget owns focus the prompt textarea is
-		// inert — keystrokes route to the widget, not the buffer.
-		// Suppress the textarea entirely; the widget's own footer
-		// (above the divider) advertises its keymap, so a second
-		// hint here would either repeat it or — worse — mislead in
-		// modes where typed letters get absorbed by the picker
-		// (paramMode, form mode). When there's a draft worth
-		// restoring, surface a single line about /input.
-		if m.pendingDraft != "" {
-			promptLine = lipgloss.NewStyle().
-				Foreground(colorMuted).
-				Italic(true).
-				Render("(picker active — /input restores your prior draft)")
-		} else {
-			promptLine = lipgloss.NewStyle().
-				Foreground(colorMuted).
-				Italic(true).
-				Render("(picker active)")
-		}
+		promptLine = m.choicePromptLine()
 	case ModeMenu:
 		promptLine = m.menuSystem.View()
 	case ModeMetaSessions:
 		promptLine = m.sessionsPanel.View()
+	case ModeStorySelector:
+		promptLine = m.storySelector.View()
 	case ModeAwaitingLLM:
 		// Keep the textarea visible during in-flight so the user
 		// can type the next message — Enter enqueues. A muted
@@ -4590,6 +5053,44 @@ func (m RootModel) View() string {
 	// byte-identical to the pre-composer assembly.
 	parts := composeChromeParts(m, m.width, promptLine, bannerLine)
 	return joinChromeParts(parts)
+}
+
+const (
+	choiceChromeMinRows     = 4
+	choiceChromeDefaultRows = 12
+	choiceChromeReserved    = 8
+)
+
+func choiceChromeMaxRows(height int) int {
+	if height <= 0 {
+		return choiceChromeDefaultRows
+	}
+	rows := height - choiceChromeReserved
+	if rows < choiceChromeMinRows {
+		rows = choiceChromeMinRows
+	}
+	if rows > choiceChromeDefaultRows {
+		rows = choiceChromeDefaultRows
+	}
+	return rows
+}
+
+func (m RootModel) choicePromptLine() string {
+	if m.choice.IsActive() {
+		return m.choice.ChromeView(m.transcript.wrapWidth(), choiceChromeMaxRows(m.height))
+	}
+	return pickerActiveLine(m.pendingDraft)
+}
+
+func pickerActiveLine(pendingDraft string) string {
+	text := "(picker active)"
+	if pendingDraft != "" {
+		text = "(picker active — /input restores your prior draft)"
+	}
+	return lipgloss.NewStyle().
+		Foreground(colorMuted).
+		Italic(true).
+		Render(text)
 }
 
 // promptPrefix returns the styled mode-specific prompt prefix.
@@ -4816,6 +5317,8 @@ func modeLabel(mode Mode) string {
 		return "meta"
 	case ModeMetaSessions:
 		return "sessions"
+	case ModeStorySelector:
+		return "stories"
 	case ModeSlotFilling:
 		return "slot-fill"
 	case ModeDisambiguating:

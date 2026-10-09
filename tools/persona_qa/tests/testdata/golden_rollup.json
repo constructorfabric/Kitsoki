@@ -1,0 +1,164 @@
+{
+  "by_job_type": {
+    "bugfix": {
+      "avg_cost_usd": 0.282,
+      "infra_failures": 1,
+      "n": 6,
+      "verdicts": {
+        "armed": 3,
+        "blocked": 1,
+        "failed": 2
+      },
+      "win_rate": 0.5
+    }
+  },
+  "by_target": {
+    "query-string": {
+      "avg_cost_usd": 0.282,
+      "infra_failures": 1,
+      "n": 6,
+      "verdicts": {
+        "armed": 3,
+        "blocked": 1,
+        "failed": 2
+      },
+      "win_rate": 0.5
+    }
+  },
+  "by_variant": {
+    "kitsoki-gpt-5.5": {
+      "avg_cost_usd": 0.17,
+      "infra_failures": 0,
+      "n": 3,
+      "verdicts": {
+        "armed": 2,
+        "failed": 1
+      },
+      "win_rate": 0.6667
+    },
+    "single-gpt-5.5": {
+      "avg_cost_usd": 0.45,
+      "infra_failures": 1,
+      "n": 3,
+      "verdicts": {
+        "armed": 1,
+        "blocked": 1,
+        "failed": 1
+      },
+      "win_rate": 0.3333
+    }
+  },
+  "cells": [
+    {
+      "axis": {
+        "bug": "qs1"
+      },
+      "cell_id": "query-string--kitsoki-gpt-5.5--bug:qs1",
+      "evidence_refs": [],
+      "health": "model:result",
+      "job_type": "bugfix",
+      "metrics": {
+        "cost_usd": 0.12
+      },
+      "notes": "ok",
+      "target_id": "query-string",
+      "trace_ref": "",
+      "variant_id": "kitsoki-gpt-5.5",
+      "verdict": "armed"
+    },
+    {
+      "axis": {
+        "bug": "qs2"
+      },
+      "cell_id": "query-string--kitsoki-gpt-5.5--bug:qs2",
+      "evidence_refs": [],
+      "health": "model:result",
+      "job_type": "bugfix",
+      "metrics": {
+        "cost_usd": 0.3
+      },
+      "notes": "failed",
+      "target_id": "query-string",
+      "trace_ref": "",
+      "variant_id": "kitsoki-gpt-5.5",
+      "verdict": "failed"
+    },
+    {
+      "axis": {
+        "bug": "qs3"
+      },
+      "cell_id": "query-string--kitsoki-gpt-5.5--bug:qs3",
+      "evidence_refs": [],
+      "health": "model:result",
+      "job_type": "bugfix",
+      "metrics": {
+        "cost_usd": 0.09
+      },
+      "notes": "ok",
+      "target_id": "query-string",
+      "trace_ref": "",
+      "variant_id": "kitsoki-gpt-5.5",
+      "verdict": "armed"
+    },
+    {
+      "axis": {
+        "bug": "qs1"
+      },
+      "cell_id": "query-string--single-gpt-5.5--bug:qs1",
+      "evidence_refs": [],
+      "health": "model:result",
+      "job_type": "bugfix",
+      "metrics": {
+        "cost_usd": 0.5
+      },
+      "notes": "ok",
+      "target_id": "query-string",
+      "trace_ref": "",
+      "variant_id": "single-gpt-5.5",
+      "verdict": "armed"
+    },
+    {
+      "axis": {
+        "bug": "qs2"
+      },
+      "cell_id": "query-string--single-gpt-5.5--bug:qs2",
+      "evidence_refs": [],
+      "health": "infra:harness",
+      "job_type": "bugfix",
+      "metrics": {},
+      "notes": "infra",
+      "target_id": "query-string",
+      "trace_ref": "",
+      "variant_id": "single-gpt-5.5",
+      "verdict": "blocked"
+    },
+    {
+      "axis": {
+        "bug": "qs3"
+      },
+      "cell_id": "query-string--single-gpt-5.5--bug:qs3",
+      "evidence_refs": [],
+      "health": "model:result",
+      "job_type": "bugfix",
+      "metrics": {
+        "cost_usd": 0.4
+      },
+      "notes": "failed",
+      "target_id": "query-string",
+      "trace_ref": "",
+      "variant_id": "single-gpt-5.5",
+      "verdict": "failed"
+    }
+  ],
+  "summary": {
+    "avg_cost_usd": 0.282,
+    "infra_failures": 1,
+    "n": 6,
+    "verdicts": {
+      "armed": 3,
+      "blocked": 1,
+      "failed": 2
+    },
+    "win_rate": 0.5
+  }
+}

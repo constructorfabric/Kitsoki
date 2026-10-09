@@ -1,0 +1,120 @@
+# bugfix_regression_gate_unchecked_degrades — gh40 regression.
+#
+# When a regression gate IS configured (gate_command != '') but the RED gate
+# could NOT run (regression_gate_checked == false — e.g. HEAD~1 missing, the
+# scratch-worktree add failed, or the studio host-effect executor skipped it,
+# gh39), there is no pre-fix RED fact to enforce. That is the SAME epistemic
+# state as an empty gate_command, so the accept arc must DEGRADE GRACEFULLY:
+# land the fix and let the tail re-verify the landing gate GREEN on the merged
+# commit — NOT hard-exit to @exit:needs-human mislabelling it a characterization
+# test.
+#
+# WHY this is RED→GREEN: on PRE-FIX code the direct-ship trap fires on
+# `!regression_red_pre_fix` alone — which is false here because the gate never
+# ran — so accept routes to __exit__needs-human with an empty "Pre-fix gate
+# output:" → fixture FAILS (RED). On FIXED code the trap also requires
+# `regression_gate_checked`, so the unchecked case falls through to the
+# direct-ship tail → __exit__shipped → fixture PASSES (GREEN).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  ticket_id:        "TKT-GATE-UNCHECKED"
+  ticket_title:     "Fix whose RED gate could not run pre-fix"
+  thread:           "TKT-GATE-UNCHECKED"
+  workspace_id:     "wu-fix"
+  workdir:          ".worktrees/wu-fix"
+  feature_branch:   "wu-fix"
+  base_branch:      "main"
+  bugfix_mode:      "full"
+  judge_mode:       "human"
+  bf_autostart_attempted: true        # park idle; the flow drives `start`
+  bugfix_exit:      "direct-ship"
+  gate_command:     "kitsoki test flows stories/bugfix/app.yaml"
+
+host_handlers:
+  host.append_to_file: { data: { ok: true } }
+  host.inbox.add:      { data: { ok: true } }
+  host.git_worktree:   { data: { ok: true, log: "", path: ".worktrees/wu-fix" } }
+  host.git:            { data: { ok: true, sha: "abc", diff: "" } }
+  host.local:          { data: { ok: true, log: "PASS", passed: 1, failed: 0 } }
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Regression test added; fix applied"
+        summary_markdown: "Test fails pre-fix, passes post-fix; fix applied."
+        status:           "passed"
+        outcome:          "pass"
+        bug_verified:     true
+        applied:          true
+        files_changed:    ["internal/foo/bar.go", "internal/foo/bar_test.go"]
+  host.agent.ask:
+    data:
+      ok: true
+      submitted: { summary_title: "Fix proposal", summary_markdown: "Apply fix.", fix_description: "x", root_cause: "y", affected_files: ["internal/foo/bar.go"] }
+  host.agent.decide:
+    data: { ok: true, submitted: { summary_title: "ok", summary_markdown: "ok", outcome: "pass", status: "passed", verdict: "accept", intent: "accept", confidence: 0.9 } }
+  host.run:
+    by_call:
+      # testing's PRE-FIX regression gate — could NOT run (no HEAD~1 snapshot).
+      # red:false + checked:false ⇒ RED was never established.
+      regression_gate_exec:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            red:     false
+            checked: false
+            log:     "no pre-fix snapshot (HEAD~1 missing — fix not committed as a discrete tip?)"
+      # the ship-it tail: integrate
+      integrate_exec:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            outcome:        integrated
+            integrated_sha: "d00dfee"
+            last_op_ok:     true
+            last_error:     ""
+      # the tail's verify: GREEN on the merged commit (this is the safety net —
+      # RED could not be established, but the landing gate is re-verified GREEN).
+      verify-rerun: { data: { ok: true, exit_code: 0, stdout: "ok" } }
+      # the tail's cleanup
+      cleanup_exec:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            outcome:    cleaned
+            last_op_ok: true
+            last_error: ""
+
+turns:
+  - intent: { name: start,  slots: {} }
+    expect_state: reproducing
+  - intent: { name: accept, slots: {} }
+    expect_state: proposing
+  - intent: { name: accept, slots: {} }
+    expect_state: implementing
+  - intent: { name: accept, slots: {} }
+    expect_state: testing
+    # testing's on_enter fired: the regression gate could not run → checked=false.
+    expect_world:
+      regression_red_pre_fix:  false
+      regression_gate_checked: false
+  # accept from testing: gate could not establish RED (checked=false) → DEGRADE
+  # GRACEFULLY into the ship-it tail (NOT __exit__needs-human). The tail
+  # re-verifies the landing gate GREEN on the merged commit.
+  - intent: { name: accept, slots: {} }
+    expect_state: __exit__shipped
+    expect_world:
+      status:                  shipped
+      shipped_sha:             "d00dfee"
+      tail__integrate_outcome: integrated
+      tail__verify_ok:         true
+      tail__cleanup_outcome:   cleaned
+
+expect_terminal: true
+expect_no_errors: true

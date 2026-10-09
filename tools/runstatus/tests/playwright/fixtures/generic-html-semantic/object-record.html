@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+      :root { font-family: Inter, ui-sans-serif, system-ui, sans-serif; color: #172033; }
+      body { margin: 0; background: #f5f7fb; }
+      .record { width: 900px; height: 520px; box-sizing: border-box; padding: 44px 58px; background: #f5f7fb; }
+      .top { display: flex; justify-content: space-between; gap: 24px; align-items: start; margin-bottom: 26px; }
+      h2 { margin: 0; font-size: 32px; line-height: 1.1; letter-spacing: 0; }
+      .id { color: #667085; font-size: 13px; font-weight: 700; margin-bottom: 8px; }
+      .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+      .field { background: #ffffff; border: 1px solid #d9e0ea; border-radius: 8px; padding: 18px 20px; min-height: 78px; box-shadow: 0 10px 24px rgba(15, 23, 42, .07); }
+      .field span { display: block; color: #64748b; font-size: 12px; font-weight: 800; text-transform: uppercase; margin-bottom: 10px; }
+      .field strong { display: inline-flex; align-items: center; min-height: 34px; font-size: 24px; line-height: 1; }
+      .priority { color: #b42318; }
+      .status { color: #175cd3; }
+      .body { margin-top: 22px; background: #ffffff; border: 1px solid #d9e0ea; border-radius: 8px; padding: 22px; color: #475467; line-height: 1.55; }
+    </style>
+  </head>
+  <body>
+    <article class="record">
+      <div class="top">
+        <div>
+          <div class="id">ISS-248</div>
+          <h2>Payment retry fails after profile refresh</h2>
+        </div>
+      </div>
+      <section class="grid">
+        <div class="field"><span>Status</span><strong class="status" data-field="status">Blocked</strong></div>
+        <div class="field"><span>Priority</span><strong class="priority" data-field="priority">P1</strong></div>
+        <div class="field"><span>Owner</span><strong data-field="owner">Nora</strong></div>
+      </section>
+      <section class="body">
+        The page is ordinary HTML, but the sidecar says these boxes represent
+        typed object fields. Feedback can target <strong>issue.priority</strong>
+        instead of only a span element.
+      </section>
+    </article>
+  </body>
+</html>

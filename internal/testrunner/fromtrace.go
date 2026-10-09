@@ -53,10 +53,11 @@ type traceLine struct {
 // flow turn. slots is the resolved slot map (values may be strings, e.g.
 // n: "1").
 type transitionPayload struct {
-	From   string         `json:"from"`
-	To     string         `json:"to"`
-	Intent string         `json:"intent"`
-	Slots  map[string]any `json:"slots"`
+	From      string         `json:"from"`
+	To        string         `json:"to"`
+	Intent    string         `json:"intent"`
+	Slots     map[string]any `json:"slots"`
+	Synthetic bool           `json:"synthetic"`
 }
 
 // turnInputPayload is the turn.input (store.UserInputReceived) payload. input is
@@ -188,6 +189,7 @@ func convertTraceLines(lines []traceLine, opts ConvertOptions) (*FlowFromTrace, 
 	// turn from the turn.input event. The transition that re-drives a turn shares
 	// the same turn number, so we look the input up by tl.Turn when emitting the
 	// flow turn and stamp it onto display_input: for faithful replay.
+	operatorTurn := map[int64]bool{}
 	originalInputByTurn := map[int64]string{}
 	var turns []flowTurnDoc
 	var episodes []cassetteEpisodeDoc
@@ -200,6 +202,7 @@ func convertTraceLines(lines []traceLine, opts ConvertOptions) (*FlowFromTrace, 
 				// falls back to the synthetic "[intent] <name>" string.
 				continue
 			}
+			operatorTurn[tl.Turn] = true
 			if p.Input != "" {
 				originalInputByTurn[tl.Turn] = p.Input
 			}
@@ -211,6 +214,12 @@ func convertTraceLines(lines []traceLine, opts ConvertOptions) (*FlowFromTrace, 
 			if p.Intent == "" {
 				// A transition with no resolved intent is not re-drivable; skip
 				// it but keep going (e.g. synthetic timeout firings).
+				continue
+			}
+			if p.Synthetic {
+				continue
+			}
+			if len(operatorTurn) > 0 && !operatorTurn[tl.Turn] {
 				continue
 			}
 			turns = append(turns, flowTurnDoc{

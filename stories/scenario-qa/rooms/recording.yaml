@@ -1,0 +1,119 @@
+# recording — append the current leg's driver+judge outcome to
+# world.leg_results (scripts/record_leg_result.star), then either drain to
+# report (auto, when this was the last leg) or advance to the next transport
+# leg. `world.pause` picks how that advance happens:
+#
+#   pause=auto (default)      self-emit "next leg" right here, in the SAME
+#                              turn — the whole "transport=all" run drains to
+#                              report without an operator/flow turn between
+#                              legs. "check bugfix on all transports" → one
+#                              report.
+#   pause=each-leg (opt-out)  PAUSE here for an explicit "next leg" turn —
+#                              the original ceremony, still available for a
+#                              caller that wants to watch/gate each leg
+#                              individually (e.g. `next_leg` via TUI/web, or
+#                              `session.submit next_leg` over MCP).
+#
+# Each leg is still its own execute → judge → recording hop, so pause=auto
+# does NOT collapse the pipeline into one big host call — it just removes
+# the operator from the loop. That is safe within the engine's
+# EmitIntentMaxDepth (24): the resolve→execute→judge→recording→execute→…
+# chain costs one legs_ready emit plus ~3 emit_intents per leg
+# (leg_driven, leg_judged, next_leg/legs_drained), i.e. roughly 1+3N total
+# emits for N legs. Measured directly with `kitsoki test flows` (see
+# flows/check_all_transports_auto.yaml): N=4 (today's full "transport=all",
+# tui+web+vscode+cli) drains cleanly in one turn with room to spare; the
+# chain only actually hits "emit_intent: dispatch exceeded max depth" around
+# N=8. If a future transport catalog ever grows that large, the failure is
+# loud (a harness error, never a silently wrong report) — that headroom is
+# not engineered around here because no known transport count is anywhere
+# close to it today.
+#
+# `next_leg` stays a real, separately-submittable intent either way (not
+# folded away): pause=each-leg drives it from the `on:` map same as always,
+# and pause=auto's self-emit dispatches through THAT SAME `on:` handler
+# (emit_intent re-enters the current state's own intent routing), so the
+# "advance to the next leg" effects are declared exactly once.
+
+states:
+
+  recording:
+    description: "Recording the current transport check's outcome, then advancing to the next transport or the report."
+    relevant_world: [leg_index, leg_count, current_leg, drive_result, judge_result, leg_results, pass_count, fail_count, degraded_count, pause, last_error, status]
+    view:
+      - heading: "Scenario QA · recording"
+      - kv:
+          pairs:
+            Transport check: "{{ world.leg_index + 1 }} of {{ world.leg_count }}"
+            Transport: "{{ world.current_leg.transport }}"
+            Pause mode: "{{ world.pause }}"
+            Driver status: '{{ world.drive_result.status|default:"—" }}'
+            Verdict: '{{ world.judge_result.verdict|default:"—" }}'
+            Recorded: "{{ world.leg_results.items|length }}"
+            Pass: "{{ world.pass_count }}"
+            Fail: "{{ world.fail_count }}"
+            Degraded: "{{ world.degraded_count }}"
+      - prose: "Recorded this transport check's driver + judge outcome."
+      - prose: "{{ world.current_leg.live_authorization_note }}"
+        when: "world.current_leg.live_authorization_note != ''"
+      - prose: "A dispatch along the way failed and was recorded honestly rather than silently retried: {{ world.last_error }}"
+        when: "world.last_error != ''"
+      - prose: "More transports remain. Use \"next transport\" to drive the next check."
+        when: "world.leg_index + 1 < world.leg_count && world.pause == 'each-leg'"
+      - prose: "More transports remain — draining automatically (pause=auto). This view is only reachable mid-drain if something interrupted the chain; use \"next transport\" to continue by hand."
+        when: "world.leg_index + 1 < world.leg_count && world.pause != 'each-leg'"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "next transport"
+              hint: "drive the next transport check"
+              intent: next_leg
+              when: "world.leg_index + 1 < world.leg_count"
+            - label: "report"
+              hint: "fold every recorded transport check into report.md"
+              intent: report
+            - label: "status"
+              intent: status
+    on_enter:
+      - invoke: host.starlark.run
+        id: record_leg_result
+        with:
+          script: scripts/record_leg_result.star
+          inputs:
+            leg: "{{ world.current_leg }}"
+            drive_result: "{{ world.drive_result }}"
+            judge_result: "{{ world.judge_result }}"
+            live_profile: "{{ world.live_profile }}"
+        bind:
+          leg_results: leg_results
+          pass_count: pass_count
+          fail_count: fail_count
+          degraded_count: degraded_count
+        on_error: report
+      - when: "world.leg_index + 1 >= world.leg_count"
+        set:
+          status: "reporting"
+        emit_intent: legs_drained
+      - when: "world.leg_index + 1 < world.leg_count && world.pause != 'each-leg'"
+        emit_intent: next_leg
+    on:
+      next_leg:
+        - target: execute
+          effects:
+            - set:
+                leg_index: "{{ world.leg_index + 1 }}"
+                drive_result: {}
+                judge_result: {}
+                status: "executing"
+      legs_drained:
+        - target: report
+      report:
+        - target: report
+          effects:
+            - set:
+                status: "reporting"
+      status:
+        - target: .
+      look:
+        - target: .

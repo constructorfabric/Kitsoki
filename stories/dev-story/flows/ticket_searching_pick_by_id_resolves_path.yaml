@@ -1,0 +1,54 @@
+# ticket_searching_pick_by_id_resolves_path — picking by pasted id from search
+# results still resolves through the ticket provider, so local artifact tickets
+# keep their canonical path as world.thread / ticket_source_ref.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world:
+  judge_mode: "human"
+  repo_root: ".artifacts"
+
+host_handlers:
+  host.local_files.ticket:
+    by_op:
+      search:
+        data:
+          ok: true
+          tickets:
+            - id: "TKT-100"
+              title: "Local artifact bug"
+              status: "open"
+              type: "bug"
+              source: "local"
+              url: ".artifacts/issues/bugs/TKT-100.md"
+      get:
+        data:
+          ok: true
+          id: "TKT-100"
+          title: "Local artifact bug"
+          type: "bug"
+          source: "local"
+          url: ".artifacts/issues/bugs/TKT-100.md"
+
+turns:
+  - intent: { name: go_ticket_search, slots: {} }
+    expect_state: ticket_search
+
+  - intent: { name: search_tickets, slots: { query: "artifact" } }
+    expect_state: ticket_searching
+
+  - intent: { name: pick_ticket, slots: { id: "TKT-100" } }
+    expect_state: ticket_search
+    expect_host_calls:
+      - handler: host.local_files.ticket.get
+        args: { root: ".artifacts", id: "TKT-100" }
+    expect_world:
+      ticket_id: "TKT-100"
+      ticket_type: "bug"
+      ticket_title: "Local artifact bug"
+      ticket_source_mode: "local"
+      ticket_source_ref: ".artifacts/issues/bugs/TKT-100.md"
+      thread: ".artifacts/issues/bugs/TKT-100.md"
+
+expect_no_errors: true

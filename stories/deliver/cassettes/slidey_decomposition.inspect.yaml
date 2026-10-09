@@ -1,0 +1,43 @@
+kind: inspect_cassette
+interactions:
+  - op: exists
+    target: .artifacts/deliver/decomposition.yaml
+    out: "false"
+  - op: read
+    target: .artifacts/deliver/decomposition.yaml
+    out: |
+      briefs:
+        - id: notes-model
+          brief: |
+            Add a SceneNotes struct in internal/notes/ (narration + scene title + ordinal) derived from the deck spec. Gate: go test ./internal/notes/...
+          gate_command: go test ./internal/notes/...
+          deps: []
+        - id: notes-renderer
+          brief: |
+            Add RenderHandout in internal/notes/render/ turning []SceneNotes into a printable per-scene handout. Gate: go test ./internal/notes/render/...
+          gate_command: go test ./internal/notes/render/...
+          deps: [notes-model]
+        - id: notes-cli-flag
+          brief: |
+            Register a --notes <path> flag on the slidey CLI that renders the handout over the parsed deck spec. Gate: go test ./cmd/slidey/...
+          gate_command: go test ./cmd/slidey/...
+          deps: [notes-renderer]
+  - op: read
+    target: .artifacts/deliver/decomposition.yaml
+    out: |
+      briefs:
+        - id: notes-model
+          brief: |
+            Add a SceneNotes struct in internal/notes/ (narration + scene title + ordinal) derived from the deck spec. Gate: go test ./internal/notes/...
+          gate_command: go test ./internal/notes/...
+          deps: []
+        - id: notes-renderer
+          brief: |
+            Add RenderHandout in internal/notes/render/ turning []SceneNotes into a printable per-scene handout. Gate: go test ./internal/notes/render/...
+          gate_command: go test ./internal/notes/render/...
+          deps: [notes-model]
+        - id: notes-cli-flag
+          brief: |
+            Register a --notes <path> flag on the slidey CLI that renders the handout over the parsed deck spec. Gate: go test ./cmd/slidey/...
+          gate_command: go test ./cmd/slidey/...
+          deps: [notes-renderer]

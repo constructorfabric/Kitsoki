@@ -20,7 +20,7 @@ states:
         when: "world.cleanup_outcome == 'cleaned'"
       - heading: "Cleanup refused — needs a human"
         when: "world.cleanup_outcome == 'refused'"
-      - prose: "{{ world.last_error }}"
+      - prose: "{{ world.last_error ?? '(pending)' }}"
         when: "world.cleanup_outcome == 'refused'"
       - choice:
           mode: single

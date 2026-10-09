@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -13,25 +15,6 @@ import (
 	"kitsoki/internal/host"
 	"kitsoki/internal/jobs"
 )
-
-type inboxFakeRunner struct {
-	responses map[string]inboxFakeResp
-}
-
-type inboxFakeResp struct {
-	stdout string
-	stderr string
-	code   int
-	err    error
-}
-
-func (f *inboxFakeRunner) run(ctx context.Context, dir, name string, args ...string) (string, string, int, error) {
-	key := name + " " + strings.Join(args, " ")
-	if r, ok := f.responses[key]; ok {
-		return r.stdout, r.stderr, r.code, r.err
-	}
-	return "", "unexpected command: " + key, 1, nil
-}
 
 func TestInboxSyncGitHub_InsertsAndDedupes(t *testing.T) {
 	dir := t.TempDir()
@@ -47,17 +30,44 @@ func TestInboxSyncGitHub_InsertsAndDedupes(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(stdout), &created))
 	sid := app.SessionID(created["session_id"].(string))
 
-	fr := &inboxFakeRunner{responses: map[string]inboxFakeResp{
-		"gh --version": {stdout: "gh version 2.x\n"},
-		"gh issue list --repo acme/repo --state open --assignee @me --limit 10 --json number,title,assignees,url": {
-			stdout: `[{"number":7,"title":"Assigned issue","url":"https://github.com/acme/repo/issues/7","assignees":[{"login":"brad"}]}]`,
-		},
-		"gh pr list --repo acme/repo --state open --search review-requested:@me --limit 10 --json number,title,author,url": {
-			stdout: `[{"number":42,"title":"Review this","url":"https://github.com/acme/repo/pull/42","author":{"login":"alice"}}]`,
-		},
-	}}
-	restore := host.SetExecRunnerForTest(fr.run)
-	defer restore()
+	t.Setenv("GH_TOKEN", "test-token")
+	t.Setenv("PATH", t.TempDir())
+	var seenIssues, seenPRs bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodGet, r.Method)
+		require.Equal(t, "/search/issues", r.URL.Path)
+		require.Equal(t, "10", r.URL.Query().Get("per_page"))
+		q := r.URL.Query().Get("q")
+		switch {
+		case strings.Contains(q, "is:issue"):
+			seenIssues = true
+			for _, want := range []string{"repo:acme/repo", "is:open", "assignee:@me"} {
+				require.Contains(t, q, want)
+			}
+			writeInboxJSON(t, w, map[string]any{"items": []map[string]any{{
+				"number":    7,
+				"title":     "Assigned issue",
+				"html_url":  "https://github.com/acme/repo/issues/7",
+				"assignees": []map[string]any{{"login": "brad"}},
+			}}})
+		case strings.Contains(q, "is:pr"):
+			seenPRs = true
+			for _, want := range []string{"repo:acme/repo", "is:open", "review-requested:@me"} {
+				require.Contains(t, q, want)
+			}
+			writeInboxJSON(t, w, map[string]any{"items": []map[string]any{{
+				"number":   42,
+				"title":    "Review this",
+				"html_url": "https://github.com/acme/repo/pull/42",
+				"user":     map[string]any{"login": "alice"},
+			}}})
+		default:
+			t.Fatalf("unexpected search query: %q", q)
+		}
+	}))
+	defer srv.Close()
+	restoreAPI := host.SetGitHubAPIForTest(srv.URL, srv.Client())
+	defer restoreAPI()
 
 	firstOut, err := runKitsoki(t, "inbox", "sync-github",
 		"--db", dbPath,
@@ -108,6 +118,14 @@ func TestInboxSyncGitHub_InsertsAndDedupes(t *testing.T) {
 	issue := byRef["github:acme/repo/issue/7"]
 	require.Equal(t, "7", issue.TeleportSlots["ticket_id"])
 	require.Equal(t, "https://github.com/acme/repo/issues/7", issue.OriginURL)
+	require.True(t, seenIssues, "inbox sync should use native issue search")
+	require.True(t, seenPRs, "inbox sync should use native PR search")
+}
+
+func writeInboxJSON(t *testing.T, w http.ResponseWriter, v any) {
+	t.Helper()
+	w.Header().Set("Content-Type", "application/json")
+	require.NoError(t, json.NewEncoder(w).Encode(v))
 }
 
 func TestInboxSyncGitHub_RequiresTargetSession(t *testing.T) {

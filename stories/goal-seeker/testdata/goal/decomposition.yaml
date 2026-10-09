@@ -1,0 +1,15 @@
+goal_slug: goal-seeker-test
+# Hermetic single-change decomposition used only by the goal-seeker flow fixtures.
+changes:
+  - id: "C1"
+    wall: WT
+    goal_ref: [G1]
+    title: "First test change"
+    pipeline: implementation
+    scope: ["stories/goal-seeker/**"]
+    depends_on: []
+    acceptance:
+      - "the goal-seeker loop dispatches, integrates, and records this change"
+    gate:
+      class: G-FLOW
+      cmd: "true"

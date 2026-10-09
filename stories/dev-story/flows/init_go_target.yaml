@@ -1,0 +1,60 @@
+# init_go_target -- onboard an EXTERNAL Go repo via the `go_init` quick action
+# with an explicit `target` slot (no free-text routing), and confirm the
+# deterministic profile carries real `go build`/`go test` commands instead of
+# "(not yet inferred)". Host calls are stubbed; no LLM or real checkout mutation.
+#
+# Regressions for two product-journey QA findings:
+#   * onboarding was cwd-only — the `target` slot lets a button point at an
+#     external repo deterministically (init_request carries the path into
+#     parse_target);
+#   * a Go checkout left Dev/Test/Build empty — go build/test are now real.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world:
+  workdir: "/Users/brad/code/Kitsoki"
+  repo_root: "/Users/brad/code/Kitsoki"
+
+host_handlers:
+  host.run:
+    by_call:
+      discover:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            target_path: "/srv/repos/acme-go"
+            project_id: "acme-go"
+            project_title: "Acme Go"
+            stack: "go project"
+            dev_command: ""
+            test_command: "go test ./..."
+            build_command: "go build ./..."
+            conventions: "local defaults"
+            tracker: "none"
+
+turns:
+  # The quick action carries an explicit external target — init_request is the
+  # slot value, which parse_target resolves (the cwd-only limitation is gone).
+  - intent: { name: go_init, slots: { target: "/srv/repos/acme-go" } }
+    expect_state: init_discover
+    expect_world:
+      init_request: "/srv/repos/acme-go"
+      init_target_path: "/srv/repos/acme-go"
+      init_project_id: "acme-go"
+      init_stack: "go project"
+      init_test_command: "go test ./..."
+      init_build_command: "go build ./..."
+      init_profile_status: "discovering"
+
+  # The review room renders the real Go commands — not "(not yet inferred)".
+  - intent: { name: init_discovered, slots: {} }
+    expect_state: init
+    expect_world:
+      init_profile_status: "draft"
+      init_test_command: "go test ./..."
+      init_build_command: "go build ./..."
+    expect_view_matches: "go test ./..."
+
+expect_no_errors: true

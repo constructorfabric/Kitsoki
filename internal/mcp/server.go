@@ -9,7 +9,7 @@
 // slots arrive as arguments; the server resolves the session, validates via the
 // Machine, applies the transition, persists events, and returns TransitionOK or
 // a structured error envelope (see the MCP validator in
-// docs/architecture/developer-guide.md).
+// docs/guide/development/developer-guide.md).
 //
 // # Session identity
 //
@@ -31,6 +31,22 @@ import (
 	"kitsoki/internal/store"
 	"kitsoki/internal/world"
 )
+
+// KitCaller is the narrow seam the generic `kit_call` tool needs from the
+// installed-kit dispatcher (internal/kitendpoint.Dispatcher satisfies this).
+// It is declared here, rather than this package importing kitendpoint
+// directly, because internal/host already imports internal/mcp (for the
+// agent-ask-with-mcp handler) and kitendpoint imports internal/host —
+// importing kitendpoint here would be an import cycle. cmd/kitsoki (which can
+// see every package) adapts a *kitendpoint.Dispatcher to this interface at
+// wiring time; see internal/mcp's package doc.
+type KitCaller interface {
+	// Call invokes kit's iface.op with args and returns the same
+	// (ok, data, errMsg) triple the JSON-RPC kit.<kit>.<iface>.<op> fallback
+	// returns on its wire shape — err is reserved for resolution failures
+	// (unknown kit/iface/op), errMsg for the handler's own reported Result.Error.
+	Call(ctx context.Context, kit, iface, op string, args map[string]any) (ok bool, data map[string]any, errMsg string, err error)
+}
 
 // TransitionArgs is the typed input to the transition tool.
 // The Go SDK auto-generates JSON Schema from struct tags.
@@ -57,7 +73,7 @@ type TransitionOK struct {
 }
 
 // TransitionError is the structured error payload returned when a transition is
-// rejected; see the MCP validator in docs/architecture/developer-guide.md.
+// rejected; see the MCP validator in docs/guide/development/developer-guide.md.
 type TransitionError struct {
 	OK    bool                    `json:"ok"` // always false on this branch
 	Error *intent.ValidationError `json:"error"`
@@ -88,12 +104,37 @@ type Server struct {
 	m      machine.Machine
 	s      store.Store
 	appDef *app.AppDef
+	// kits is the installed-kit dispatcher backing the generic `kit_call`
+	// tool (S3b). Nil (the default) means no kits are installed; kit_call
+	// then returns a structured error rather than being omitted, since the
+	// Go SDK tool list is static for the lifetime of the process (see
+	// NewServer's doc comment on "no dynamic tool lists").
+	kits KitCaller
+}
+
+// Option configures a Server at construction time.
+type Option func(*Server)
+
+// WithKits attaches the installed-kit endpoint dispatcher (S3b — see
+// internal/kitendpoint.Dispatcher, adapted to KitCaller by the caller),
+// enabling the generic `kit_call` tool to actually resolve and invoke kit
+// interface operations. Without it, kit_call reports a structured "no kits
+// installed" error for every call.
+func WithKits(kc KitCaller) Option {
+	return func(s *Server) { s.kits = kc }
 }
 
 // NewServer constructs an MCP Server with the given Machine, Store, and AppDef.
-// The server registers the `transition` tool and is ready to call Serve or Run.
-func NewServer(m machine.Machine, s store.Store, appDef *app.AppDef) *Server {
+// The server registers the `transition` tool and the generic `kit_call` tool
+// (S3b — mirrors the JSON-RPC kit.<kit>.<iface>.<op> fallback so headless
+// agents get the same kit extension surface; there is deliberately no
+// per-kit/per-op tool registered here, only this one generic carrier) and is
+// ready to call Serve or Run.
+func NewServer(m machine.Machine, s store.Store, appDef *app.AppDef, opts ...Option) *Server {
 	srv := &Server{m: m, s: s, appDef: appDef}
+	for _, opt := range opts {
+		opt(srv)
+	}
 	srv.mcpSrv = mcpsdk.NewServer(&mcpsdk.Implementation{
 		Name:    "kitsoki",
 		Version: "0.0.1",
@@ -104,6 +145,14 @@ func NewServer(m machine.Machine, s store.Store, appDef *app.AppDef) *Server {
 		Name:        "transition",
 		Description: "Map the user utterance to one allowed intent with filled slots. Returns ok+next-state on success or a structured error envelope listing missing slots and suggestions.",
 	}, srv.handleTransition)
+
+	// Register the single generic `kit_call` tool (S3b/D2.3). One tool
+	// handles every installed kit/interface/operation — no dynamic tool
+	// lists, matching how `transition` already covers every intent.
+	mcpsdk.AddTool(srv.mcpSrv, &mcpsdk.Tool{
+		Name:        "kit_call",
+		Description: "Invoke an installed kit's endpoint: {kit, iface, op, args}. Resolves the kit's declared host_interfaces and invokes the bound handler (Go host verb or starlark), transparently — the same mechanism the kit.<kit>.<iface>.<op> JSON-RPC fallback uses. Returns {ok, data?} or {ok:false, error}.",
+	}, srv.handleKitCall)
 
 	return srv
 }
@@ -193,6 +242,67 @@ func (srv *Server) handleTransition(
 		World: result.World.Vars,
 	}
 	return nil, ok, nil
+}
+
+// KitCallArgs is the typed input to the generic `kit_call` tool (S3b).
+type KitCallArgs struct {
+	// Kit is the installed kit's short name (e.g. "object-graph").
+	Kit string `json:"kit" jsonschema:"installed kit short name"`
+	// Iface is the host_interface name one of the kit's provided stories declares.
+	Iface string `json:"iface" jsonschema:"kit-declared host_interface name"`
+	// Op is the operation name declared on that interface.
+	Op string `json:"op" jsonschema:"operation name declared on the interface"`
+	// Args holds the operation's invocation arguments.
+	Args map[string]any `json:"args,omitempty" jsonschema:"operation invocation arguments"`
+}
+
+// KitCallResult is the response shape for `kit_call`, mirroring the JSON-RPC
+// kit.<kit>.<iface>.<op> fallback's wire shape (internal/runstatus/server's
+// dispatchKit) so the two carriers read identically to a caller.
+type KitCallResult struct {
+	OK    bool           `json:"ok"`
+	Data  map[string]any `json:"data,omitempty"`
+	Error string         `json:"error,omitempty"`
+}
+
+// handleKitCall is the tool handler for the generic `kit_call` tool. It
+// delegates entirely to the shared kitendpoint.Dispatcher — the same
+// resolution + invocation path the JSON-RPC fallback uses — so a kit
+// interface/operation is invoked and journaled identically regardless of
+// which carrier (web JSON-RPC or MCP) an agent used to reach it.
+func (srv *Server) handleKitCall(
+	ctx context.Context,
+	req *mcpsdk.CallToolRequest,
+	args KitCallArgs,
+) (*mcpsdk.CallToolResult, any, error) {
+	if srv.kits == nil {
+		return buildKitCallError("kit_call: no kits installed on this server"), nil, nil
+	}
+	if args.Kit == "" || args.Iface == "" || args.Op == "" {
+		return buildKitCallError("kit_call: kit, iface, and op are all required"), nil, nil
+	}
+
+	ok, data, errMsg, err := srv.kits.Call(ctx, args.Kit, args.Iface, args.Op, args.Args)
+	if err != nil {
+		return buildKitCallError(err.Error()), nil, nil
+	}
+	if !ok {
+		return buildKitCallError(errMsg), nil, nil
+	}
+	return nil, KitCallResult{OK: true, Data: data}, nil
+}
+
+// buildKitCallError wraps a message into an IsError CallToolResult, mirroring
+// buildErrorResult's shape for the transition tool.
+func buildKitCallError(msg string) *mcpsdk.CallToolResult {
+	payload := KitCallResult{OK: false, Error: msg}
+	b, _ := json.Marshal(payload)
+	return &mcpsdk.CallToolResult{
+		IsError: true,
+		Content: []mcpsdk.Content{
+			&mcpsdk.TextContent{Text: string(b)},
+		},
+	}
 }
 
 // resolveJourney replays the event history for a session and returns the

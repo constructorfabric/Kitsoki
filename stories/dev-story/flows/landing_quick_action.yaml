@@ -10,6 +10,12 @@ test_kind: flow
 app: ../app.yaml
 initial_state: landing
 initial_world:
+  # Opt out of bf's auto_triage pre-flight (default on): this fixture tests
+  # the downstream bugfix walk, not triage. Parent-level key — the import
+  # wrapper re-seeds bf__auto_triage on entry; only the world_in projection
+  # sticks. The pre-flight contract lives in
+  # stories/bugfix/flows/preflight_triage_*.yaml.
+  auto_triage: false
   workdir:        ".worktrees/tkt-001"
   workspace_id:   "ws-001"
   base_branch:    "main"
@@ -24,13 +30,19 @@ host_handlers:
       search:
         data:
           ok: true
-          tickets: "TKT-001: Esc hangs the TUI [bug]"
+          tickets:
+            - id:       "TKT-001"
+              title:    "Esc hangs the TUI"
+              type:     "bug"
+              status:   "open"
+              priority: "P2"
       get:
         data:
           ok: true
           id: "TKT-001"
           title: "Esc hangs the TUI"
           type: "bug"
+          url: "TKT-001"
   host.append_to_file:
     data: { ok: true, message_id: "msg-1" }
   host.git:

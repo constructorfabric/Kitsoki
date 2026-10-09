@@ -60,7 +60,7 @@ export type ConnectionState = "connected" | "reconnecting";
 
 /** One selectable mode in the meta dropdown. */
 export interface MetaModeInfo {
-  key: string; // "story.edit" | "story.ask" | "kitsoki.ask" | …
+  key: string; // "story.edit" | "story.ask" | "story.improve" | "kitsoki.ask" | …
   label: string;
   banner: string;
   agent: string;
@@ -227,6 +227,8 @@ export interface DataSource {
     sessionId: string,
     slots: Record<string, unknown>
   ): Promise<TurnResult>;
+  /** Drive a running autonomous/supervised operation until it stops at a safe checkpoint. */
+  driveOperation(sessionId: string): Promise<TurnResult>;
   /**
    * Read-only off-path question against the default agent. An optional
    * `visual` bundle (spatial-capture) attaches the frame + point + resolved
@@ -260,6 +262,25 @@ export interface DataSource {
     newClass?: string,
     reason?: string
   ): Promise<TurnResult>;
+
+  /**
+   * Record an operator up/down verdict on a routed turn (the web chat's
+   * thumbs-up/down control, WS-C C4) — journals through the same event the
+   * TUI's `/route up|down` command writes
+   * (Orchestrator.RecordRoutingFeedback). Does not advance the turn: no
+   * TurnResult, no server-side state change. Live session only; sources
+   * without an orchestrator omit it (the control stays hidden).
+   */
+  routingFeedback?(
+    sessionId: string,
+    feedback: {
+      state: string;
+      intent: string;
+      phrase: string;
+      tier: string;
+      verdict: "up" | "down";
+    }
+  ): Promise<void>;
 
   // ── Harness profiles (optional; live session only) ───────────────────────
   // Sources without an orchestrator (artifact/snapshot) omit these, so the

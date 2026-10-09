@@ -41,6 +41,13 @@ type JourneyState struct {
 	World world.World
 	// Turn is the highest turn number seen in the history.
 	Turn app.TurnNumber
+	// History is the exact event slice BuildJourney replayed to produce this
+	// JourneyState. Callers that need a post-hoc pass over the same rows
+	// (e.g. deriving RecentTurns for the harness) should read this field
+	// instead of re-querying the store — it is already the identical data
+	// loadJourney read to build State/World/Turn, so a second store round
+	// trip would be redundant work over the same rows.
+	History History
 }
 
 // BuildJourney reconstructs the journey state by replaying events in order.
@@ -98,12 +105,70 @@ func BuildJourney(def *app.AppDef, initialState app.StatePath, initialWorld worl
 				// Without this, fixtures whose initial_world feeds an
 				// int key through the JSON event log would see a
 				// `float64 % int` runtime error when a guard fires.
-				js.World.Vars[k] = coerceWorldVar(def, k, v)
+				if p.OperationLocal {
+					js.World.Set(k, coerceWorldVar(def, k, v))
+				} else {
+					js.World.SetDurable(k, coerceWorldVar(def, k, v))
+				}
 			}
 			for k, delta := range p.Increment {
-				js.World.Vars[k] = toInt64Replay(js.World.Vars[k]) + int64(delta)
+				next := toInt64Replay(js.World.Vars[k]) + int64(delta)
+				if p.OperationLocal {
+					js.World.Set(k, next)
+				} else {
+					js.World.SetDurable(k, next)
+				}
 			}
 			// Say effects don't affect world state; skip.
+
+		case OperationStarted:
+			var p struct {
+				OperationID string `json:"operation_id"`
+				State       string `json:"state"`
+			}
+			if err := json.Unmarshal(ev.Payload, &p); err != nil {
+				return nil, fmt.Errorf("replay: OperationStarted turn=%d seq=%d: %w", ev.Turn, ev.Seq, err)
+			}
+			js.World = js.World.StartOperation(p.OperationID, p.State)
+
+		case OperationCommitted:
+			var p struct {
+				WorldPatch map[string]any `json:"world_patch"`
+			}
+			if err := json.Unmarshal(ev.Payload, &p); err != nil {
+				return nil, fmt.Errorf("replay: OperationCommitted turn=%d seq=%d: %w", ev.Turn, ev.Seq, err)
+			}
+			patch := make(map[string]any, len(p.WorldPatch))
+			for k, v := range p.WorldPatch {
+				patch[k] = coerceWorldVar(def, k, v)
+			}
+			js.World = js.World.CommitOperation(patch, true)
+
+		case OperationDraftPersisted:
+			var p struct {
+				DraftID string         `json:"draft_id"`
+				World   map[string]any `json:"world"`
+			}
+			if err := json.Unmarshal(ev.Payload, &p); err != nil {
+				return nil, fmt.Errorf("replay: OperationDraftPersisted turn=%d seq=%d: %w", ev.Turn, ev.Seq, err)
+			}
+			drafts := map[string]any{}
+			if existing, ok := js.World.DurableVars()["operation_drafts"].(map[string]any); ok {
+				for k, v := range existing {
+					drafts[k] = v
+				}
+			}
+			drafts[p.DraftID] = map[string]any{"id": p.DraftID, "world": p.World}
+			js.World.SetDurable("operation_drafts", drafts)
+			js.World = js.World.DiscardOperation()
+
+		case OperationAbandoned:
+			js.World = js.World.DiscardOperation()
+
+		case OperationRunStarted, OperationRunPhaseStarted, OperationRunPhaseCompleted, OperationRunWaiting, OperationRunCompleted, OperationRunFailed:
+			// Session-level operation-run lifecycle annotations. They describe
+			// how a surface/driver should present the workflow, but they do not
+			// mutate state or world.
 
 		case MachineSay:
 			// Operator narration: annotation only — say does not mutate
@@ -171,6 +236,7 @@ func BuildJourney(def *app.AppDef, initialState app.StatePath, initialWorld worl
 		}
 	}
 
+	js.History = history
 	return js, nil
 }
 
@@ -195,18 +261,16 @@ func BuildJourneyUntil(def *app.AppDef, initialState app.StatePath, initialWorld
 
 // effectPayload is the JSON structure for an EffectApplied event payload.
 type effectPayload struct {
-	Set       map[string]any `json:"set,omitempty"`
-	Increment map[string]int `json:"increment,omitempty"`
-	Say       string         `json:"say,omitempty"`
+	Set            map[string]any `json:"set,omitempty"`
+	Increment      map[string]int `json:"increment,omitempty"`
+	Say            string         `json:"say,omitempty"`
+	OperationID    string         `json:"operation_id,omitempty"`
+	OperationLocal bool           `json:"operation_local,omitempty"`
 }
 
 // cloneWorldVars returns a deep clone of a world.World.
 func cloneWorldVars(w world.World) world.World {
-	nw := world.World{Vars: make(map[string]any, len(w.Vars))}
-	for k, v := range w.Vars {
-		nw.Vars[k] = v
-	}
-	return nw
+	return w.Clone()
 }
 
 // toInt64Replay converts a world variable value to int64 for increment operations.

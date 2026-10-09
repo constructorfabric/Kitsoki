@@ -1,9 +1,9 @@
 You are running the implementation half of ONE punch-list item through Kitsoki
 Studio MCP like a human operator.
 
-This is real live dogfood. Do not use Claude. Use the requested Codex/GPT profile,
-keep work in an isolated `.worktrees/` worktree when a story creates one, and
-return concrete handoff evidence. Independent verification will decide pass/fail.
+This is real live dogfood. Use the requested model policy, keep work in an
+isolated `.worktrees/` worktree when a story creates one, and return concrete
+handoff evidence. Independent verification will decide pass/fail.
 
 ## Item
 
@@ -23,6 +23,7 @@ return concrete handoff evidence. Independent verification will decide pass/fail
    - story: `{{ args.item.implementation_story }}`
    - harness: `{{ args.item.harness }}`
    - profile: `{{ args.item.profile }}`
+   - ladder: `{{ args.item.harness_ladder }}`
    - trace: `{{ args.item.implementation_trace_path }}`
 2. Drive it with natural operator text, using the implementation prompt:
    - `{{ args.item.implementation_prompt }}`

@@ -1,0 +1,28 @@
+{
+  "schema_version": "1.0",
+  "kind": "conversation",
+  "id": "scn-rollout-2026-06-20t12-11-15-019ee370-b72b-78b2-90df-425f1252c365-0000",
+  "source": "mined",
+  "provenance": {
+    "corpus": "codex",
+    "session_id": "rollout-2026-06-20T12-11-15-019ee370-b72b-78b2-90df-425f1252c365",
+    "span_idx": 0
+  },
+  "persona": "core-maintainer",
+  "goal": "this folder is supposed to be pinned to the main branch - it somehow got checked out to a different branch - get me back on main and make sure everything from this branch is merged in",
+  "turns": [
+    {
+      "role": "user",
+      "text": "this folder is supposed to be pinned to the main branch - it somehow got checked out to a different branch - get me back on main and make sure everything from this branch is merged in",
+      "corrected": false
+    }
+  ],
+  "expected_effects": [
+    "exec_command: git log --oneline -n 3 completed",
+    "exec_command: git merge --ff-only fix/vscode-chat-story-picker completed",
+    "exec_command: git rev-parse --short HEAD completed",
+    "exec_command: git status --short --branch completed",
+    "exec_command: git switch main completed"
+  ],
+  "abandoned": false
+}

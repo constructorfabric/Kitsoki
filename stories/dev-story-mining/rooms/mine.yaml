@@ -1,4 +1,4 @@
-# mine — phase 1/5. Run intent-mining over recent transcripts.
+# mine — phase 2/6. Run intent-mining over planned transcript sources.
 #
 # on_enter runs the `miner` persona (agentic: it drives the session-mining
 # kit and reads the emitted reports), binding `mine_artifact`. `once: true`
@@ -10,26 +10,30 @@
 states:
 
   mine:
-    description: "Mine recent transcripts; produce the intent brief for review."
+    description: "Mine planned transcript sources; produce the automation brief for review."
     view:
       - banner:
           text:     "MINE"
-          subtitle: "Phase 1 / 5  ·  intent-mining over recent transcripts"
+          subtitle: "Phase 2 / 6  -  intent/idea mining over prepared sources"
           color:    "#06B6D4"
-      - prose: "{{ world.job }} · cycle {{ world.cycle }} · judge {{ world.judge_mode }}"
+      - prose: "{{ world.job }} - judge {{ world.judge_mode }} - sources {{ world.transcript_sources }}"
       - kv:
           pairs:
-            Brief:    '{{ world.mine_artifact.brief_path|default:"(pending)" }}'
-            Intents:  '{{ world.mine_artifact.intent_count|default:"(pending)" }}'
-            Split:    '🟢 {{ world.mine_artifact.deterministic|default:"–" }} · 🟡 {{ world.mine_artifact.agent_gated|default:"–" }} · 🔴 {{ world.mine_artifact.irreducible|default:"–" }}'
+            Brief: '{{ world.mine_artifact.brief_path|default:"(pending)" }}'
+            "Claude Code": '{{ world.mine_artifact.claude_breakdown_display|default:"(pending)" }}'
+            Codex: '{{ world.mine_artifact.codex_breakdown_display|default:"(pending)" }}'
+            "Total reviewed": '{{ world.mine_artifact.total_reviewed_display|default:"(pending)" }}'
+            "Green - deterministic / defaultable": '{{ world.mine_artifact.green_split_display|default:"(pending)" }}'
+            "Yellow - agent-gated": '{{ world.mine_artifact.yellow_split_display|default:"(pending)" }}'
+            "Red - irreducible": '{{ world.mine_artifact.red_split_display|default:"(pending)" }}'
       - heading: "Brief"
-      - code: '{{ world.mine_artifact.summary_markdown|default:"(pending — miner has not returned yet)" }}'
+      - template: '{{ world.mine_artifact.summary_markdown|default:"(pending - miner has not returned yet)" }}'
       - choice:
           mode: single
           prompt: "Actions"
           items:
             - label:  "continue"
-              hint:   "accept the brief and map it against dev-story"
+              hint:   "accept the brief and map it against Kitsoki"
               intent: accept
             - label:  "refine"
               hint:   "re-mine with feedback (e.g. widen the sample)"
@@ -41,7 +45,7 @@ states:
             - label:  "look"
               hint:   "re-render"
               intent: look
-    relevant_world: [job, project_dir, min_intents, judge_mode, judge_confidence_threshold, mine_artifact, llm_verdict, refine_feedback, cycle]
+    relevant_world: [job, source_plan_artifact, transcript_sources, project_dir, codex_sessions_dir, min_intents, judge_mode, judge_confidence_threshold, mine_artifact, llm_verdict, refine_feedback, cycle]
     on_enter:
       - invoke: host.agent.task
         once: true
@@ -54,6 +58,10 @@ states:
             args:
               job:             "{{ world.job }}"
               project_dir:     "{{ world.project_dir }}"
+              codex_sessions_dir: "{{ world.codex_sessions_dir }}"
+              source_plan:     "{{ world.source_plan_artifact }}"
+              transcript_sources: "{{ world.transcript_sources }}"
+              automation_goal: "{{ world.automation_goal }}"
               refine_feedback: "{{ world.refine_feedback }}"
         bind:
           mine_artifact: submitted
@@ -68,7 +76,7 @@ states:
             phase:          "mine"
             artifact_title: "{{ world.mine_artifact.brief_path }}"
             artifact_body:  "{{ world.mine_artifact.summary_markdown }}"
-            criterion:      "The brief has at least {{ world.min_intents }} intents from a recency-fresh sample; the determinism split looks plausible."
+            criterion:      "The brief has at least {{ world.min_intents }} intents from the prepared Claude/Codex source plan, reports unavailable Codex signals honestly, and highlights missed Kitsoki usage opportunities."
             threshold:      "{{ world.judge_confidence_threshold }}"
         bind:
           llm_verdict: submitted
@@ -82,9 +90,9 @@ states:
           feedback: "{{ world.llm_verdict.reason }}"
     on:
       accept:
-        - target: map
+        - target: mapping
           effects:
-            - say: "Brief accepted ({{ world.mine_artifact.intent_count }} intents) — mapping against {{ world.stories_dir }}."
+            - say: "Brief accepted. Mapping opportunities against story rooms, Starlark scripts, hub routes, skills, and enforcement limits now."
             - set: { refine_feedback: "", cycle: 0 }
       refine:
         - when: "world.mine_cycle >= world.mine_budget"
@@ -99,9 +107,9 @@ states:
                 cycle:           "{{ world.cycle + 1 }}"
                 mine_artifact:   {}
       restart_from:
-        - target: mine
+        - target: prepare
           effects:
-            - set: { refine_feedback: "", mine_cycle: 0, cycle: 0, mine_artifact: {} }
+            - set: { refine_feedback: "", mine_cycle: 0, prepare_cycle: 0, cycle: 0, source_plan_artifact: {}, source_summary_markdown: "", mine_artifact: {} }
       quit:
         - target: "@exit:abandoned"
           effects:

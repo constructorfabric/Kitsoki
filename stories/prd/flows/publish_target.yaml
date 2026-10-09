@@ -1,0 +1,53 @@
+# publish_target — change 0.6: prd-story DEMO runs must not pollute the real
+# docs/prd/ tree. The publish target is configurable (publish_durable_path,
+# default "docs/prd"), so a demo run sets it to a scratch dir and the accepted
+# PRD lands THERE, never in docs/prd/. This fixture pins that redirect: with
+# publish_durable_path=".artifacts/prd-demo", accept publishes to
+# .artifacts/prd-demo/<slug>.md and prd_file reflects the demo path — proving a
+# demo can no longer write into docs/prd/. (Companion to publish_to_durable.yaml,
+# which pins the real-docs/prd durable publish.)
+#
+# Intent-only (no LLM): the author task is stubbed; publish runs the real
+# Starlark helper against the inspect cassette whose write target is the demo
+# scratch path.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: drafting
+initial_world:
+  idea:                 "A CLI for X that helps developers do Y."
+  workdir:              "."
+  judge_mode:           "human"
+  publish_durable_path: ".artifacts/prd-demo"
+  prd_slug:             "example-cli"
+  prd_workspace:        ".artifacts/prd/example-cli"
+
+starlark_inspect_cassette: ../cassettes/publish_demo_target.inspect.yaml
+
+host_handlers:
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        title:               "PRD: Example CLI"
+        summary_markdown:    "## PRD: Example CLI\n\nA sufficiently long summary body to satisfy the schema minimum length for the prd_artifact summary_markdown field, covering problem, users, goals, and metrics."
+        file_path:           ".artifacts/prd/example-cli/004-prd.md"
+        confidence:          0.84
+        needs_clarification: false
+        follow_up_questions: []
+
+turns:
+  # accept → publish redirects the deliverable to the DEMO scratch dir, NOT
+  # docs/prd/. prd_file must be under .artifacts/prd-demo/, proving a demo run
+  # cannot pollute the real docs/prd/ tree.
+  - intent: { name: accept, slots: {} }
+    expect_state: __exit__done
+    expect_world:
+      status:   "done"
+      prd_file: ".artifacts/prd-demo/example-cli.md"
+    expect_host_calls:
+      - handler: host.starlark.run
+        args: { call: "publish" }
+
+expect_terminal: true
+expect_no_errors: true

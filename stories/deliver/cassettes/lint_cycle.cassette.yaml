@@ -1,0 +1,42 @@
+# Cassette for flows/lint_rejects_cycle.yaml — decomposer's mocked structured
+# output is identical on both entries (the manifest CONTENT lint validates
+# comes from the starlark_inspect_cassette instead); review accepts once
+# lint finally passes.
+
+kind: host_cassette
+app_id: deliver
+generated_at: 2026-07-05T00:00:00Z
+match_on: [handler, call]
+
+episodes:
+  - id: decomposer_call
+    match:
+      handler: host.agent.task
+      call: decomposer
+    response:
+      data:
+        ok: true
+        submitted:
+          briefs:
+            - id: slice-a
+              brief: "Implement slice A so that go test ./... passes."
+              gate_command: "go test ./..."
+              deps: []
+            - id: slice-b
+              brief: "Implement slice B so that go test ./... passes."
+              gate_command: "go test ./..."
+              deps: [slice-a]
+    replay: any
+
+  - id: review_accept
+    match:
+      handler: host.agent.decide
+      call: review
+    response:
+      data:
+        ok: true
+        submitted:
+          verdict: accept
+          reason: "Both slices are self-contained and the dependency graph is acyclic."
+          questions: []
+    replay: any

@@ -28,6 +28,13 @@ type AskStructuredOptions struct {
 	Schema       []byte
 	MaxRetries   int
 	SystemPrompt string
+
+	// Tools, when set, names the effective tool surface for this call. Its
+	// only current effect is gating attachStudioMCPServer: a tool named under
+	// the kitsoki studio server's mcp__kitsoki__ namespace auto-attaches that
+	// server to the same --mcp-config the validator uses. Existing callers
+	// leave this empty (no behavior change).
+	Tools []string
 }
 
 // askStructuredFunc is the test seam — swap in tests to feed canned
@@ -79,7 +86,8 @@ func AskStructured(ctx context.Context, opts AskStructuredOptions) (json.RawMess
 		return nil, fmt.Errorf("host.ask_structured: build validator entry: %w", err)
 	}
 
-	cfgPath, cfgCleanup, cfgErr := writeMCPConfigTempfile(map[string]any{"validator": validatorEntry}, "kitsoki-ask-mcp")
+	mcpServers := attachStudioMCPServer(map[string]any{"validator": validatorEntry}, opts.Tools)
+	cfgPath, cfgCleanup, cfgErr := writeMCPConfigTempfile(mcpServers, "kitsoki-ask-mcp")
 	if cfgErr != nil {
 		return nil, fmt.Errorf("host.ask_structured: %w", cfgErr)
 	}

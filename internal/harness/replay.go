@@ -46,6 +46,22 @@ type recordingFile struct {
 //     input: "tell me a joke about quantum physics"
 //     clarify: true
 //     message: "I can route you to a room, but I can't free-associate."
+//
+// # Paraphrase tier (2.5)
+//
+// `paraphrases:` is an optional list of additional free-text strings that
+// resolve identically to `input:` — a pre-recorded pool of rephrasings of
+// the same utterance, pinned at record time (hand-authored or generated
+// once, offline, by a human/agent — never at replay time and never by a
+// live model in CI; see docs/tracing/testing.md#paraphrase-tier-25). Each
+// pool member is indexed exactly like `input:` (exact, then
+// case-insensitive+trimmed) — this is NOT semantic/embedding matching at
+// runtime; it reuses the same exact-match discipline over a wider,
+// pre-recorded set of strings, so an utterance outside the pool still
+// misses (ErrRecordingMiss), same as today. This is what makes free-text
+// realism in flow fixtures/swarm tier 2 not bottlenecked on a single exact
+// string without adding a live-model dependency anywhere in the replay
+// path.
 type recordingEntry struct {
 	State      string          `yaml:"state"`
 	Input      string          `yaml:"input"`
@@ -59,6 +75,10 @@ type recordingEntry struct {
 	// Message is the free-form clarification text surfaced when Clarify is true.
 	// Optional; the orchestrator falls back to a generic hint when empty.
 	Message string `yaml:"message,omitempty"`
+	// Paraphrases is the pre-recorded paraphrase pool (tier 2.5): additional
+	// utterances that resolve to this same entry's outcome. See the type
+	// doc comment above for the matching contract.
+	Paraphrases []string `yaml:"paraphrases,omitempty"`
 }
 
 // recordingIntent holds the intent name and slot map within a recording entry.
@@ -186,15 +206,30 @@ func newReplayFromFile(rf recordingFile) (*ReplayHarness, error) {
 			return nil, fmt.Errorf("entry %d has empty intent name (set intent.name, or clarify:true for a deterministic no-match)", i)
 		}
 
-		exactKey := recordingKey{State: e.State, Input: e.Input}
-		normKey := recordingKey{State: e.State, Input: normalizeInput(e.Input)}
-
-		// First entry wins (preserves YAML source order).
-		if _, dup := h.exact[exactKey]; !dup {
-			h.exact[exactKey] = e
+		for j, p := range e.Paraphrases {
+			if strings.TrimSpace(p) == "" {
+				return nil, fmt.Errorf("entry %d has empty paraphrase at index %d", i, j)
+			}
 		}
-		if _, dup := h.normalized[normKey]; !dup {
-			h.normalized[normKey] = e
+
+		// Index the primary input plus every paraphrase-pool member under the
+		// same entry (tier 2.5): all of them resolve identically. First
+		// registration wins (preserves YAML source order) — same precedent as
+		// the plain-input dedup rule below.
+		inputs := make([]string, 0, 1+len(e.Paraphrases))
+		inputs = append(inputs, e.Input)
+		inputs = append(inputs, e.Paraphrases...)
+		for _, in := range inputs {
+			exactKey := recordingKey{State: e.State, Input: in}
+			normKey := recordingKey{State: e.State, Input: normalizeInput(in)}
+
+			// First entry wins (preserves YAML source order).
+			if _, dup := h.exact[exactKey]; !dup {
+				h.exact[exactKey] = e
+			}
+			if _, dup := h.normalized[normKey]; !dup {
+				h.normalized[normKey] = e
+			}
 		}
 	}
 

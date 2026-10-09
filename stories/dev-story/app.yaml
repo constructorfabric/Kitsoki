@@ -5,8 +5,8 @@
 # pr-refinement sub-stories and routes between them via the
 # day-level rooms (main, inbox, ticket_search, workspace_manager,
 # standup, code_review, agent, …). It does NOT bind providers —
-# concrete bindings happen at the INSTANCE level (kitsoki-dev,
-# cyber-repo/devstory). The `default:` values in `host_interfaces:`
+# concrete bindings happen in a generated `.kitsoki/` wrapper or another
+# importing project instance. The `default:` values in `host_interfaces:`
 # are the fallback for standalone runs.
 #
 # Provider-neutral world: no `jira_*` keys. `ticket_query` /
@@ -73,8 +73,7 @@ app:
     what work is picked up, whether a change is acceptable, and what gets
     reported to a team. Favor precision; cite concrete files, symbols, and
     commands; and prefer the smallest change that satisfies the task. This is
-    also the story kitsoki uses to improve itself, so correctness and clear,
-    auditable reasoning matter more than speed.
+    clear, auditable reasoning matter more than speed.
 
 # Local model for cheap, offline slug naming. Qwen2.5-1.5B-Instruct at Q4_K_M;
 # grammar: true enables constrained decoding so the JSON schema is satisfied on
@@ -101,15 +100,20 @@ hosts:
   - host.agent.task
   - host.agent.search
   - host.artifacts_dir
+  - host.slidey.render
   - host.ide.open_file
   - host.ide.open_diff
+  # design_search.on_enter resolves design_durable_path to a writable location
+  # (falling back to .context/designs) before any workspace folder is minted
+  # or artifact is written — see resolve_durable_path in rooms/design_search.yaml.
+  - host.fs.writable_dir
   # ── PRD discovery (imported `prd`, stories/prd/) ──────────────────
   # The PRD pipeline is a conversational discovery (host.agent.converse +
   # a persistent chat via host.chat.resolve) that decide/task-gates into a
   # published PRD. Its decide/task/search/artifacts_dir/ide.open_file/run
   # needs are already covered above; converse + chat.resolve are unique to
   # it. An instance importing dev-story with `hosts: declared` must list
-  # both in its own allow-list (see .kitsoki/stories/kitsoki-dev/app.yaml).
+  # both in its own allow-list.
   - host.agent.converse
   - host.chat.resolve
   # ── Ad-hoc structured plan (rooms/landing|applying|verifying.yaml) ─────
@@ -118,6 +122,16 @@ hosts:
   # ctx.probe). host.agent.decide (above) doubles as the agent/hybrid verify
   # gate, reusing the gate_reviewer persona + gate_verdict schema.
   - host.starlark.run
+
+# Toolboxes (WS vocabulary — docs/proposals/effect-taxonomy.md). The
+# `landing_agent` below is `workbench:`'s reference consumer
+# (docs/proposals/room-workbench.md Task 3.1): workbench: requires the named
+# agent to declare toolbox: + effect: (not the legacy tools:/bash_profile:/
+# external_side_effect: triplet) with effect in {write, external}.
+toolboxes:
+  landing_toolbox:
+    tools: [Read, Grep, Glob, Edit, Write, Bash]
+    effect: write
 
 # Persona table (agent-split proposal §3.5).
 #
@@ -134,21 +148,24 @@ agents:
 
   # ── Free-form workbench persona (rooms/landing.yaml) ──────────────
   # A general-purpose, Claude-Code-like engineering agent — the resting
-  # surface of dev-story's landing. It carries the FULL toolbox so it can
-  # do real work, but boots READ-ONLY: bash_profile: read-only +
-  # external_side_effect: false set the read-only floor, and the landing
-  # room's write_mode: read_only gates every mutating tool call (Edit /
-  # Write / side-effecting Bash) behind an operator opt-in
-  # (internal/host/write_mode_gate.go). The static (external_side_effect:
-  # false) and runtime (write_mode: read_only) postures must agree — the
-  # loader rejects a contradiction — so this persona generalizes the
-  # read-only posture dev-story's task personas already carry.
+  # surface of dev-story's landing, and the reference `workbench:` agent
+  # (docs/proposals/room-workbench.md Task 3.1). It carries the FULL
+  # toolbox (landing_toolbox above) so it can do real work, but boots
+  # READ-ONLY: the room's `workbench:` block sets write_mode: read_only,
+  # gating every mutating tool call (Edit / Write / side-effecting Bash)
+  # behind an operator opt-in (internal/host/write_mode_gate.go). The
+  # static posture — toolbox: landing_toolbox resolving to effect: write —
+  # and the runtime posture (write_mode: read_only) agree because Write is
+  # not External: resolveAgentEffect mirrors ExternalSideEffect=false onto
+  # this declaration, which is exactly what validateWriteMode requires to
+  # NOT contradict write_mode: read_only. Migrated off the legacy
+  # tools:/bash_profile:/external_side_effect: triplet onto the WS
+  # toolboxes:/effect: vocabulary workbench: requires (effect ∈
+  # {write, external}).
   landing_agent:
     system_prompt: "You are a general-purpose engineering agent working in this repository, like Claude Code. Explore freely with read-only tools (Read/Grep/Glob, read-only Bash); when the work needs a change — an edit, a write, a side-effecting command — attempt it and the runtime will surface the proposed change to the operator for a write-mode grant before it lands. If write mode is declined or you are headless, stay read-only and describe precisely what you would change instead."
     model: claude-sonnet-4-6
-    tools: [Read, Grep, Glob, Edit, Write, Bash]   # full toolbox; gated read-only by the room's write_mode: read_only
-    bash_profile: read-only                         # the read-only floor
-    external_side_effect: false                     # static posture must agree with write_mode: read_only
+    toolbox: landing_toolbox   # full toolbox; gated read-only by the room's workbench: write_mode: read_only
 
   # ── Ad-hoc plan verify gate (rooms/verifying.yaml) ────────────────
   # The agent / hybrid verify mode reuses cherny-loop's adversarial gate
@@ -160,14 +177,12 @@ agents:
     model: claude-sonnet-4-6
     tools: [Read, Grep, Glob]
     bash_profile: read-only
-    external_side_effect: false
 
   profile_drafter:
     system_prompt: "You draft Kitsoki project-profile/v1 JSON for a target repository. Use the deterministic discovery as the floor, improve it only when the repository evidence supports the change, and preserve the architecture: the project owns .kitsoki/project-profile.yaml and .kitsoki/stories/<id>-dev/app.yaml, while the instance imports @kitsoki/dev-story. Return only schema-valid JSON through the submit tool."
     model: claude-sonnet-4-6
     tools: [Read, Grep, Glob]
     bash_profile: read-only
-    external_side_effect: false
 
   # ── Design-pipeline personas (rooms/design*.yaml) ──────────────
   # One persona per pipeline step so the trace attributes model + token
@@ -175,59 +190,52 @@ agents:
   # read-only except the refiner and author, which write into the
   # per-session workspace.
   design_namer:
-    system_prompt: "You name kitsoki proposals. Turn an idea into a short, meaningful 2-5 word kebab-case slug (like an existing docs/proposals/<slug>.md filename) — never a raw sentence. Glance at the existing proposals + in-progress workspace to match the house style and avoid an already-taken name."
+    system_prompt: "You name project proposals. Turn an idea into a short, meaningful 2-5 word kebab-case slug (like an existing proposal filename) — never a raw sentence. Glance at the existing proposals + in-progress workspace to match the house style and avoid an already-taken name."
     model: claude-sonnet-4-6
     tools: [Read, Grep, Glob]
-    external_side_effect: false
 
   design_brief_judge:
     system_prompt: "You are a proposal reviewer sanity-checking a brief an operator has just filled in. Read the brief from disk and decide whether it has enough signal to proceed (a crisp Why, a one-screen What-changes, and a named kind) or whether it needs clarification. When it needs work, return the smallest set of specific clarifying questions."
     model: claude-sonnet-4-6
     tools: [Read, Grep, Glob]
-    external_side_effect: false
 
   design_scout:
-    system_prompt: "You are a kitsoki maintainer checking whether a proposed idea overlaps with work already in flight. Search the proposals workspace (docs/proposals/.workspace/), the accepted proposals (docs/proposals/*.md), and the feature/bug docs for anything the idea duplicates, extends, or conflicts with. When you find an overlap, recommend AMENDING the existing proposal rather than creating a new one. Report where the idea fits on the roadmap."
+    system_prompt: "You are a project maintainer checking whether a proposed idea overlaps with work already in flight. Search the configured proposal workspace, accepted proposals, and feature/bug docs for anything the idea duplicates, extends, or conflicts with. When you find an overlap, recommend AMENDING the existing proposal rather than creating a new one. Report where the idea fits on the roadmap."
     model: claude-sonnet-4-6
     tools: [Read, Grep, Glob]
-    external_side_effect: false
 
   design_refiner:
     # ⛔ This agent MAINTAINS THE BRIEF — it must NEVER implement the idea.
     # working_dir is the per-session workspace, NOT a write jail — the constraint
     # is this instruction. It writes EXACTLY ONE file: the brief at the given path.
-    system_prompt: "You are a kitsoki maintainer maintaining a proposal BRIEF markdown file, using search results (prior-art overlaps and curated references) to fill and sharpen it. You write EXACTLY ONE file — the brief at the given path — and nothing else. You MUST NOT implement the idea or touch any source code, test, config, story YAML, or other repository file; doing so is a hard failure. Read the brief, fold in search context and any operator message, fill the Why / What changes / Impact / Why-kitsoki / How-it's-used spine where you now have signal, and leave honest `<…>` placeholders where you don't. Keep it skim-in-two-minutes."
+    system_prompt: "You are a project maintainer maintaining a proposal BRIEF markdown file, using search results (prior-art overlaps and curated references) to fill and sharpen it. You write EXACTLY ONE file — the brief at the given path — and nothing else. You MUST NOT implement the idea or touch any source code, test, config, story YAML, or other repository file; doing so is a hard failure. Read the brief, fold in search context and any operator message, fill the Why / What changes / Impact / How-it's-used spine where you now have signal, and leave honest `<...>` placeholders where you don't. Keep it skim-in-two-minutes."
     model: claude-sonnet-4-6
     tools: [Read, Grep, Glob, Write, Edit]
-    external_side_effect: false
 
   design_researcher:
-    system_prompt: "You are a kitsoki maintainer curating the reference materials a proposal must build on. Read the idea and the brief, then search the repo's DOCUMENTATION, rules, and guidelines — docs/, READMEs, gold-standard stories, the proposal templates and skill — for prior art, constraints, and conventions the proposal must honour. For each reference give the path, the specific section(s) / line range that matter, and a one-line rationale. Prefer a short, high-signal list."
+    system_prompt: "You are a project maintainer curating the reference materials a proposal must build on. Read the idea and the brief, then search the repo's documentation, rules, guidelines, existing proposals/design docs, and available proposal templates for prior art, constraints, and conventions the proposal must honour. For each reference give the path, the specific section(s) / line range that matter, and a one-line rationale. Prefer a short, high-signal list."
     model: claude-sonnet-4-6
     tools: [Read, Grep, Glob]
-    external_side_effect: false
 
   design_author:
     # ⛔ This agent AUTHORS A PROPOSAL DOCUMENT — it must NEVER implement the
     # idea. The hard rule is repeated in prompts/design_draft.md. It has
     # Write/Edit ONLY to produce the proposal markdown (working_dir is not a
     # write jail — the constraint is the instruction, so it is emphatic).
-    system_prompt: "You are a kitsoki maintainer authoring a PROPOSAL DOCUMENT — a design write-up, NOT an implementation. You write exactly ONE file: the proposal markdown at the given output path (or, when amending, the named existing proposal). You MUST NOT implement the idea: do NOT create, edit, or modify any source code, test, config, story YAML, or any other repository file. Reading the codebase (Read/Grep/Glob) to ground the proposal is expected; writing anything other than the single proposal markdown is a hard failure. Classify the change kind, copy the matching template under docs/proposals/templates/, and fill the Why / What changes / Impact spine, grounding every claim in the cited references."
+    system_prompt: "You are a project maintainer authoring a PROPOSAL DOCUMENT — a design write-up, NOT an implementation. You write exactly ONE file: the proposal markdown at the given output path (or, when amending, the named existing proposal). You MUST NOT implement the idea: do NOT create, edit, or modify any source code, test, config, story YAML, or any other repository file. Reading the codebase (Read/Grep/Glob) to ground the proposal is expected; writing anything other than the single proposal markdown is a hard failure. First find and follow any existing proposal/design format in the repo; if none exists, use the configured template directory, falling back to Kitsoki's docs/proposals template style. Fill the Why / What changes / Impact spine, grounding every claim in the cited references."
     model: claude-sonnet-4-6
     tools: [Read, Grep, Glob, Write, Edit]
-    external_side_effect: false
 
   # ── Ideas reviewer (rooms/ideas.yaml) ─────────────────────────────
   # Reconciles the hand-maintained ideas backlog against shipped work. READ-ONLY:
-  # it only PROPOSES section moves (the deterministic ideas_reconcile.py script
+  # it only PROPOSES section moves (the deterministic ideas_reconcile.star script
   # does the rewrite). Bash under the read-only profile is for `git log` /
   # `git show` (the proven combo used by stories/bugfix + stories/docs-review).
   ideas_reviewer:
-    system_prompt: "You are a kitsoki maintainer reconciling a hand-maintained ideas backlog against work that has actually shipped. Read the backlog file, scan the commit history (git log — read-only Bash), the proposals (docs/proposals/), and the docs (docs/) for concrete evidence that an item has shipped or partially shipped. Be conservative: only propose a section move when you can cite real evidence (a commit, a proposal, a doc); leave ambiguous items alone. Also surface a few high-value items still in the Ideas section worth proposing next. You PROPOSE moves only — you never edit the backlog yourself."
+    system_prompt: "You are a project maintainer reconciling a hand-maintained ideas backlog against work that has actually shipped. Read the backlog file, scan the commit history (git log — read-only Bash), proposals/design docs, and project docs for concrete evidence that an item has shipped or partially shipped. Be conservative: only propose a section move when you can cite real evidence (a commit, a proposal, a doc); leave ambiguous items alone. Also surface a few high-value items still in the Ideas section worth proposing next. You PROPOSE moves only — you never edit the backlog yourself."
     model: claude-sonnet-4-6
     tools: [Read, Grep, Glob, Bash]
     bash_profile: read-only
-    external_side_effect: false
 
 # Six host_interfaces — same provider-neutral surfaces declared by the
 # imported stories. Declaring them here too lets the dev-story hub
@@ -301,7 +309,7 @@ host_interfaces:
     default: host.local
 
   workspace:
-    description: "Working-copy manager. Local: git worktree."
+    description: "Working-copy manager. Local: scripted clone-backed capsule workspace."
     operations:
       list:
         input:  {}
@@ -310,12 +318,9 @@ host_interfaces:
         input:  { id: string }
         output: { id: string, path: string, branch: string, dirty: bool }
       create:
-        # `id` is the workspace identity (pins the on-disk .worktrees/<id>
-        # dir basename); `name` is the branch; `base` is the branch to
-        # root from. Matches host.git_worktree's worktreeCreate, which
-        # reads id/name/base — every caller (bf.idle, impl.idle) passes
-        # `id:` from world.workspace_id. The earlier `ticket_id` label
-        # was stale: no caller passed it and the handler never read it.
+        # `id` is the workspace identity; `name` is the branch; `base` is the
+        # branch/commit to root from. The default host delegates creation to
+        # scripts/dev-workspace.sh and returns the authoritative path.
         input:  { id: string, name: string, base: string }
         output: { ok: bool, path: string }
       sync:
@@ -326,6 +331,15 @@ host_interfaces:
         output: { ok: bool, base: string, exclude: string, candidates: list, recommended_count: int }
       cleanup_apply:
         input:  { candidates: list }
+        output: { ok: bool, deleted: list, skipped: list, errors: list }
+      clone_create:
+        input:  { id: string, name: string, base: string, root: string, session_id: string }
+        output: { ok: bool, id: string, path: string, branch: string, root: string }
+      clone_cleanup_scan:
+        input:  { root: string, min_age_hours: string, exclude: string }
+        output: { ok: bool, root: string, min_age_hours: float, exclude: string, candidates: list, recommended_count: int }
+      clone_cleanup_apply:
+        input:  { root: string, candidates: list }
         output: { ok: bool, deleted: list, skipped: list, errors: list }
     default: host.git_worktree
 
@@ -356,10 +370,19 @@ world:
   #   captured by the `work` intent; fed to the on_enter landing_agent.
   # landing_note: the landing_agent's close-out note (schemas/landing-note.json).
   # landing_started: first-start banner sentinel (on_enter once: guard).
+  # landing_expected_effects: optional S6 usable-kitsoki-gate join input (see
+  #   internal/orchestrator/workbench_gate_signal.go's expectedEffectsFor) —
+  #   a list of deterministic, checkable outcome strings a no-LLM flow
+  #   fixture may seed via initial_world so the engine's own
+  #   candidate_completed join can check them against landing_note's actual
+  #   content, instead of a hardcoded true. Ordinary (non-calibration) use
+  #   never sets this, so it stays empty and the gate signal falls back to
+  #   its original dispatch-only proxy — byte-identical behavior.
   captured:            { type: int,    default: 0 }
   landing_request:     { type: string, default: "" }
   landing_note:        { type: object, default: {} }
   landing_started:     { type: bool,   default: false }
+  landing_expected_effects: { type: array, default: [] }
   # Thread continuity: the prior turn's note, preserved across the `work`
   # arc's landing_note clear so the next agent dispatch can build on what
   # it last reported (so "ok go ahead" continues the thread instead of a
@@ -398,21 +421,23 @@ world:
   # cached. (See rooms/applying.yaml.)
   apply_note:          { type: object, default: {} }
   # issue_source selects WHICH repo the verify gate probes; origin_repo /
-  # upstream_repo are the concrete owner/repo each resolves to (configurable per
-  # instance — kitsoki-dev pins its fork as origin and constructorfabric/Kitsoki
-  # as upstream). combined probes both (v1: the verifying room resolves the
-  # concrete repo and the .star sums/probes; combined falls back to origin_repo
-  # for the single-probe v1 script). Default origin.
+  # upstream_repo are instance-configured owner/repo slugs. combined probes both
+  # (v1: the verifying room resolves the concrete repo and the .star sums/probes;
+  # combined falls back to origin_repo for the single-probe v1 script).
   issue_source:        { type: string, default: "origin" }
-  origin_repo:         { type: string, default: "bsacrobatix/Kitsoki" }
-  upstream_repo:       { type: string, default: "constructorfabric/Kitsoki" }
+  origin_repo:         { type: string, default: "" }
+  upstream_repo:       { type: string, default: "" }
 
   # ── Ticket search / pickup ────────────────────────────────────────
   ticket_query:        { type: string, default: "" }
   ticket_results:      { type: string, default: "" }
+  ticket_provider_errors: { type: list, default: [] }
+  ticket_local_count:  { type: int,    default: 999 }
+  ticket_github_count: { type: int,    default: 999 }
   ticket_id:           { type: string, default: "" }
   ticket_title:        { type: string, default: "" }
   ticket_url:          { type: string, default: "" }
+  ticket_body:         { type: string, default: "" }
   # ticket_type is how `drive` chooses a pipeline (bug → bf,
   # feature → impl, epic → cyp). Set by pick_ticket from its `type:`
   # slot (or carried through from a prior pick when the slot is
@@ -432,10 +457,17 @@ world:
   # operator otherwise has to eyeball-match by title). Both are bound from
   # iface.ticket.get at pick time; host.gh.ticket emits `source: github`
   # on every row and lifts `legacy_id` out of the ```kitsoki metadata block
-  # (see internal/host/github.go). The local-files provider leaves them ""
-  # (its id IS the local id), so the identity line only shows for GitHub.
+  # (see internal/host/github.go). The local-files provider sets source=local
+  # and url/path to the ticket file, so artifact-backed local issues keep their
+  # .artifacts/issues/bugs/... thread across the bugfix import boundary.
   ticket_source:       { type: string, default: "" }
   ticket_legacy_id:    { type: string, default: "" }
+  ticket_source_mode:  { type: string, default: "local" } # local | remote | freeform
+  ticket_source_ref:   { type: string, default: "" }      # local path, GitHub URL, or inline complaint marker
+  bugfix_ref_input:    { type: string, default: "" }      # exact raw ID/URL captured before provider lookup
+  bugfix_link_input:   { type: string, default: "" }      # exact raw issue link captured before provider lookup
+  bugfix_intake_title: { type: string, default: "" }      # fallback title while provider metadata loads
+  bugfix_intake_loaded: { type: string, default: "" }     # provider-returned id once metadata has bound
   # The main room calls iface.ticket.list_mine on enter and stashes
   # the result here so the view can render a "tickets in your queue"
   # block without the operator having to type `tickets`.
@@ -459,14 +491,30 @@ world:
   cleanup_status:      { type: string, default: "" }
 
   # ── Pipeline control (shared with bf / pr imports) ────────────────
+  # User-facing oversight policy for imported work loops. judge_mode remains
+  # the compatibility switch consumed by existing child stories; empty
+  # oversight_mode preserves callers that set judge_mode directly.
+  oversight_mode:             { type: string, default: "" } # "" = infer from judge_mode; gated | llm-review | no-gate
   judge_mode:                  { type: string, default: "human" }
   judge_confidence_threshold:  { type: float,  default: 0.8 }
   bugfix_mode:                 { type: string, default: "full" }
+  # Pass-through for bf's Step-0w isolation guard (stories/bugfix/rooms/idle.yaml):
+  # true declares "this workspace identity is deliberately prepared — keep it"
+  # (flow fixtures walking a demo project, prepared handoffs). Default false so
+  # live runs always re-derive an isolated .capsules/workspaces/bf-* workspace.
+  workspace_prepared:          { type: bool, default: false }
   # bugfix_destination selects the post-fix landing:
   #   open-pr        — hand the finished fix to pr-refinement and open a PR
-  #   leave-worktree — stop after the validated bugfix, preserving the worktree
+  #   leave-worktree — stop after the validated bugfix, preserving the workspace
   #   local-merge    — use bugfix's direct-ship tail to merge into base_branch
   bugfix_destination:          { type: string, default: "open-pr" }
+  # Pass-through for bf's auto_triage pre-flight (see the bf world_in below):
+  # true ⇒ a fresh bf autostart runs one read-only triage verdict before the
+  # maker pipeline and short-circuits at @exit:triaged when ALREADY-FIXED.
+  # Fixtures/callers driving a known-live bug straight into the walk set this
+  # false at the PARENT level (the import wrapper re-seeds bf__auto_triage on
+  # every entry, so seeding the child key directly does not stick).
+  auto_triage:                 { type: bool, default: true }
   merge_strategy:              { type: string, default: "squash" }
   # build_cmd / test_cmd — the project's REAL build + test commands, projected
   # into the bf import so the bugfix testing/validating gates run them instead of
@@ -478,6 +526,9 @@ world:
   # (world.build_cmd / world.test_cmd, consumed by validating.yaml / testing.yaml).
   build_cmd:                   { type: string, default: "" }
   test_cmd:                    { type: string, default: "" }
+  quick_test_cmd:              { type: string, default: "" }
+  quick_test_timeout_seconds:  { type: int,    default: 180 }
+  full_test_timeout_seconds:   { type: int,    default: 1200 }
 
   # ── Standup / agent / code-review scratch ────────────────────────
   standup_summary:     { type: string, default: "" }
@@ -609,6 +660,7 @@ world:
   # profile for review, then apply the config only after explicit accept.
   init_request:          { type: string, default: "" }
   init_discovery:        { type: object, default: {} }
+  init_discovery_error:  { type: string, default: "" }
   init_run_ok:           { type: bool, default: false }
   init_run_output:       { type: string, default: "" }
   init_target_path:      { type: string, default: "" }
@@ -618,8 +670,21 @@ world:
   init_dev_command:      { type: string, default: "" }
   init_test_command:     { type: string, default: "" }
   init_build_command:    { type: string, default: "" }
+  init_repo_vcs:         { type: string, default: "none" }
+  init_repo_default_branch: { type: string, default: "" }
+  init_repo_remote:      { type: string, default: "" }
   init_conventions:      { type: string, default: "hybrid" }
   init_tracker:          { type: string, default: "none" }
+  init_ticket_provider:  { type: string, default: "" }
+  init_ticket_repo:      { type: string, default: "" }
+  init_story_pack:       { type: string, default: "core-engineering" }
+  init_story_pack_title: { type: string, default: "Core engineering starter" }
+  init_story_pack_summary: { type: string, default: "" }
+  init_story_packs:      { type: list, default: [] }
+  init_starter_stories:  { type: list, default: [] }
+  init_transcript_count: { type: int, default: 0 }
+  init_transcript_sources: { type: list, default: [] }
+  init_mining_recommendation: { type: object, default: {} }
   init_profile_status:   { type: string, default: "draft" }
   init_feedback:         { type: string, default: "" }
   init_apply_result:     { type: object, default: {} }
@@ -628,15 +693,41 @@ world:
   init_tools_result:     { type: object, default: {} }
   init_tools_ok:         { type: bool, default: false }
   init_tools_output:     { type: string, default: "" }
+  init_readiness_result: { type: object, default: {} }
+  init_readiness_ok:     { type: bool, default: false }
+  init_readiness_output: { type: string, default: "" }
+  init_customization_result: { type: object, default: {} }
+  init_customization_ok:     { type: bool, default: false }
+  init_customization_output: { type: string, default: "" }
+  init_customization_action: { type: string, default: "promote" }
+  init_customization_feedback: { type: string, default: "" }
   init_profile_mode:     { type: string, default: "deterministic" }
   init_profile_draft:    { type: object, default: {} }
   init_profile_validation: { type: object, default: {} }
   init_profile_json:     { type: string, default: "" }
 
+  # ── First-run local harness/profile setup (rooms/profile_setup.yaml) ─────
+  # Deterministic no-LLM setup for a user's gitignored `.kitsoki.local.yaml`.
+  # Discovery reports profile/backend/env presence only; apply writes env
+  # references such as `${OPENAI_API_KEY}` and never stores raw secrets.
+  profile_setup_target_path: { type: string, default: "" }
+  profile_setup_status: { type: string, default: "idle" }
+  profile_setup_discovery: { type: object, default: {} }
+  profile_setup_effective_profiles: { type: list, default: [] }
+  profile_setup_default_profile: { type: string, default: "" }
+  profile_setup_candidate_action: { type: string, default: "" }
+  profile_setup_candidate_profile: { type: object, default: {} }
+  profile_setup_patch_preview: { type: string, default: "" }
+  profile_setup_warnings: { type: list, default: [] }
+  profile_setup_apply_result: { type: object, default: {} }
+  profile_setup_apply_ok: { type: bool, default: false }
+  profile_setup_apply_output: { type: string, default: "" }
+  profile_setup_error: { type: string, default: "" }
+
   # ── Design pipeline (rooms/design*.yaml) ───────────────────────
   # 4-stage pipeline: intake → search → refine → draft+publish.
   # Per-session scratch dir is `design_workspace` — NOT world.workdir
-  # (that is the bf/pr worktree). See docs/proposals/process-design.md §4.
+  # (that is the bf/pr managed workspace). See docs/proposals/process-design.md §4.
   design_slug:           { type: string, default: "" }   # meaningful slug; seeds the workspace dir + final filename
   design_workspace:      { type: string, default: "" }   # docs/proposals/.workspace/<slug> — gitignored scratch
   design_idea:           { type: string, default: "" }   # raw idea text from intake
@@ -669,6 +760,12 @@ world:
   design_file:           { type: string, default: "" }   # final published path docs/proposals/<slug>.md
   design_ticket_path:    { type: string, default: "" }   # feature ticket minted at publish, links back to design_file
 
+  # ── deliver handoff (lifted from `deliver` import's exits) ────────
+  # decompose-vs-direct alternative to the impl import: go_deliver drives the
+  # just-published proposal (design_file) through deliver's decompose → lint →
+  # review → fleet chain instead of a single ticket's implementation pipeline.
+  delivery_summary:      { type: string, default: "" }   # deliver's @exit:done summary (lifted from deliver__delivery_summary)
+
   # feedback + per-phase cycle budgets
   design_refine_feedback:   { type: string, default: "" }
   design_cycle:             { type: int, default: 0 }    # global audit counter for the proposal flow
@@ -678,22 +775,24 @@ world:
   design_draft_budget:      { type: int, default: 5 }
 
   # ── External-target profile (doc shape + placement) ───────────────
-  # Defaults reproduce kitsoki's own behaviour exactly (flat docs/proposals
+  # Defaults use a local project docs profile (flat docs/proposals
   # + docs/prd, slug-named files, a feature ticket on publish). An importing
   # project instance can retarget the PRD → Design walk by overriding these:
   # publish into <workdir>/<durable>, choose fixed filenames, read the target's
   # own doc templates, and choose local ticket, GitHub ticket, or no-ticket
   # follow-up. See the "doc profile" section of the dev-story README.
-  repo_root:             { type: string, default: "" }                        # external checkout root (forward-compat; ticket passthrough is the deferred gh-adapter slice)
+  repo_root:             { type: string, default: "" }                        # external checkout root; threaded into iface.ticket.* as `root` (honoured by host.local_files.ticket; "" ⇒ cwd)
   publish_durable_path:  { type: string, default: "docs/prd" }                # prd publish home (projected into the prd import)
   prd_doc_filename:      { type: string, default: "" }                        # fixed PRD filename for an external target (e.g. "PRD"); "" ⇒ slug-named
   prd_mockup_path:       { type: string, default: "" }                        # optional feature-mockup HTML (relative to workdir); non-empty ⇒ prd_published emits + embeds it inline as the PRD's mockup. "" ⇒ no mockup (default for every instance).
   mockup_handle:         { type: string, default: "" }                        # runtime bind: the content-addressed handle of the emitted PRD mockup (prd_published on_enter); "" ⇒ no mockup embedded.
   design_template_dir:   { type: string, default: "docs/proposals/templates" } # where the design author reads its doc templates
-  design_durable_path:   { type: string, default: "docs/proposals" }          # design publish home
+  design_durable_path:   { type: string, default: "docs/proposals" }          # design publish home; rebound to a writable fallback (.context/designs) by design_search.on_enter's resolve_durable_path step if this default is not writable (see design_search.yaml)
+  design_workspace_root_resolved: { type: string, default: "" }               # runtime bind: non-empty once resolve_durable_path has run (once: gate; see design_search.yaml)
   design_doc_filename:   { type: string, default: "" }                        # fixed DESIGN filename for an external target (e.g. "DESIGN"); "" ⇒ slug-named
   design_ticket_dir:     { type: string, default: "issues/features" }         # where the linking feature ticket is minted; "" ⇒ skip (external target)
-  ticket_repo:           { type: string, default: "" }                        # owner/repo for GitHub-issue tickets; non-empty ⇒ feature publish mints a GitHub issue instead of a local file (slice #3). kitsoki-dev pins constructorfabric/Kitsoki.
+  ticket_repo:           { type: string, default: "" }                        # selected GitHub issue repo for the active ticket; empty keeps local ticket close-out local.
+  ticket_github_repo:    { type: string, default: "" }                        # optional owner/repo or remote name used by combined ticket search for the GitHub section; falls back to ticket_repo for GitHub-only instances.
 
   # ── Ideas reviewer (rooms/ideas.yaml) ─────────────────────────────
   # The backlog reconciler: reads world.ideas_path, the commit history, and the
@@ -713,6 +812,25 @@ world:
   human_review_reason: { type: string, default: "" }        # concise reason posted when autonomy needs a human
   human_review_issue_comment_id: { type: string, default: "" }
   human_review_pr_comment_ok:    { type: bool,   default: false }
+
+  # ── Test-fix loop (imported `tests`, stories/fix-tests/) ─────────
+  # Self-driving command-green loop for project test suites. The child runs the
+  # bounded quick gate (`quick_test_cmd`, falling back to `test_cmd`) during
+  # repair cycles, then proves the full deterministic command (`test_cmd`,
+  # falling back to make test) before the adversarial read-only review verifies
+  # that no functionality was lost and no tests were weakened.
+  fix_tests_report_path: { type: string, default: "" }
+  fix_tests_review:     { type: object, default: {} }
+
+  # ── Marathon room (imported `dogfood`, stories/dogfood-marathon/) ─────
+  # Generic queue runner: source queue cases, keep a durable journal, stop for
+  # serious exceptions, and emit slidey reports. The child defaults to
+  # backlog_limit=15 and autonomous=true; these parent keys bind only this
+  # instance's default queue/model posture.
+  dogfood_backlog_sources: { type: string, default: "local:.artifacts/issues/bugs" }
+  dogfood_run_id:          { type: string, default: "dogfood-marathon" }
+  dogfood_profile:         { type: string, default: "codex-native" }
+  dogfood_model:           { type: string, default: "gpt-5.5" }
 
   # ── Carry-fields for the bf → pr handoff projection ───────────────
   # bf's @exit:done writes done_artifact via `set:` (per the
@@ -734,7 +852,7 @@ world:
   # The autonomous maker→QA loop that PRODUCES (or refreshes) a tour-driven
   # demo video for a feature and gates it with the kitsoki-ui-qa vision
   # review. Reached from landing via `make_demo`. The loop operates on the
-  # hub's existing worktree (world.workdir → child worktree_path) and diffs
+  # hub's existing workspace (world.workdir -> child worktree_path) and diffs
   # against world.base_branch (→ child base_ref); these keys are reused, not
   # re-declared. The keys below are NEW — the loop's input contract that has
   # no dev-story analogue yet (see stories/demo-video-loop/README.md §input
@@ -775,8 +893,9 @@ intents:
     priority: 20
   go_gitops:
     title: "Git commands"
-    description: "Open the git command hub — rebase, commit, merge, worktrees."
-    examples: [git, "git ops", "git commands", "version control"]
+    description: "Open the git command hub — status, rebase, commit, merge, workspaces."
+    examples: [git, "git ops", "git commands", "version control", "git status", "repo status"]
+    synonyms: ["local main vs origin", "main vs origin", "what's the status of local main vs origin", "what's the state of our local main vs origin", "what is the state of our local main vs origin"]
     priority: 20
   go_agent:
     title: "Ask Agent"
@@ -801,7 +920,21 @@ intents:
   go_idea:
     title: "New Idea"
     description: "Start or amend an ad hoc design/proposal — draft, review, clarify decisions, resolve proposal questions, or make a proposal ready for human review. No ticket required."
-    examples: ["idea", "new idea", "propose", "proposal", "ad hoc", "draft proposal", "i have an idea", "work on a proposal", "new proposal", "write a proposal", "design proposal", "start a design", "use the design workflow", "amend existing proposal", "proposal ready for review", "human review proposal", "resolve proposal questions", "tighten proposal narration", "audit this proposal", "fold decisions back into the design", "make this proposal terse and clear"]
+    # NOTE (dwf3 routing triage): bare "propose" / "proposal" were removed.
+    # Either single-word stem {propos} whole-utterance-matches ANY input
+    # that merely mentions "the proposal" in passing — including requests
+    # that are actually about something else (tests, docs, an investigation)
+    # and correctly belong elsewhere (landing_proposal_routing.yaml
+    # `work-test-not-proposal`: "add tests for the proposal publish script"
+    # was misrouted here at 0.90 confidence via the bare "proposal" hit,
+    # with no competing tier to disambiguate since it's a unique match, not
+    # a tie). The richer multi-word examples below cover every "start/amend/
+    # review a proposal" phrasing already exercised by fixtures; the one
+    # near-miss that legitimately needed the generic word ("what should I
+    # include in a proposal before I hand it to design",
+    # `proposal-boundary-questionnaire`) gets its own literal example
+    # instead of leaning on the over-broad bare form.
+    examples: ["idea", "new idea", "ad hoc", "draft proposal", "i have an idea", "work on a proposal", "new proposal", "write a proposal", "design proposal", "start a design", "use the design workflow", "amend existing proposal", "proposal ready for review", "human review proposal", "resolve proposal questions", "tighten proposal narration", "audit this proposal", "fold decisions back into the design", "make this proposal terse and clear", "what should i include in a proposal"]
     priority: 50
   go_code_review:
     title: "Code Review"
@@ -811,7 +944,20 @@ intents:
   go_ideas:
     title: "Ideas Backlog"
     description: "Open the ideas reviewer — reconcile the backlog and pick something to propose."
-    examples: ["ideas", "review ideas", "idea backlog", "reconcile ideas", "what should I work on", "writer's block"]
+    # NOTE (dwf3 routing triage): bare "ideas" was removed. Porter-stemming
+    # collapses "idea"/"ideas" to the same stem {idea}, so this bare example
+    # and go_idea's bare "idea" example are LITERALLY the same whole-
+    # utterance synonym — any input naming either word ties the two intents
+    # whenever nothing else disambiguates them (e.g. "break this idea into
+    # proposal slices", landing_proposal_routing.yaml `proposal-slices`,
+    # where the leading stem "break" belongs to neither candidate so the
+    # tie never resolves). The richer, multi-stem examples below ("review
+    # ideas", "idea backlog", "reconcile ideas") still route real
+    # ideas-backlog requests — they win outright (or via the leading-verb
+    # tie-break) without the generic single-word form. No fixture exercises
+    # bare "ideas" alone (grepped stories/dev-story/intents/), so this is
+    # not a regression.
+    examples: ["review ideas", "idea backlog", "reconcile ideas", "what should I work on", "writer's block"]
     priority: 31
   go_model_eval:
     title: "Model Harness Eval"
@@ -823,6 +969,35 @@ intents:
     description: "Discover a project profile and review it before onboarding writes happen."
     examples: ["onboard this project", "project onboarding", "init project", "set up kitsoki for this repo"]
     priority: 31
+    slots:
+      target: { type: string, required: false, description: "Path to the repository to onboard. Empty ⇒ the current checkout." }
+  go_profile_setup:
+    title: "Local Harness Profile Setup"
+    description: "Discover installed/logged-in harness backends and review a local .kitsoki.local.yaml profile patch."
+    examples: ["setup local harness profile", "configure provider profile", "first run provider setup", "local llm profile", "create local harness profile"]
+    priority: 32
+    slots:
+      target: { type: string, required: false, description: "Path to the Kitsoki checkout/config root. Empty ⇒ current checkout." }
+  review_story_pack:
+    title: "Story Packs"
+    description: "Choose the first-run story pack for project onboarding."
+    examples: ["story packs", "choose story pack", "starter pack", "change pack"]
+    priority: 31
+  select_story_pack:
+    title: "Select Story Pack"
+    description: "Select one named onboarding story pack."
+    examples: ["select core engineering", "use core setup", "full dev-story pack"]
+    priority: 31
+    slots:
+      pack: { type: string, required: true, description: "Story pack id." }
+  select_ticket_provider:
+    title: "Select Ticket Provider"
+    description: "Select local/copy-paste ticket intake or a configured remote provider for onboarding."
+    examples: ["use local tickets", "use github issues", "configure ticket provider"]
+    priority: 31
+    slots:
+      provider: { type: string, required: false, description: "Ticket provider id: local or github." }
+      repo: { type: string, required: false, description: "Remote owner/repo slug for GitHub Issues." }
   go_deploy:
     title: "Deploy"
     description: "Open the deploy room."
@@ -1049,11 +1224,100 @@ intents:
     description: "(internal) onboarding apply completed — show the result."
     examples: []
     priority: 1
+  profile_setup_discovered:
+    description: "(internal) local harness profile discovery completed — show review."
+    examples: []
+    priority: 1
+  use_existing_profile:
+    title: "Use Existing Profile"
+    description: "Make an existing discovered harness profile the local default."
+    examples: []
+    priority: 50
+    slots:
+      profile: { type: string, required: true, description: "Existing profile name to set as default_profile." }
+  configure_openai_profile:
+    title: "Configure OpenAI-Compatible Profile"
+    description: "Create or update a codex/OpenAI-compatible local profile using env-var references only."
+    examples: []
+    priority: 50
+    slots:
+      profile_name: { type: string, required: true, description: "Local profile name, for example codex-native or synthetic-codex." }
+      env_var: { type: string, required: true, description: "Environment variable name containing the API key; never the raw key." }
+      base_url: { type: string, required: false, description: "Optional OpenAI-compatible base URL." }
+      model: { type: string, required: true, description: "Default model id for the profile." }
+      models_endpoint: { type: string, required: false, description: "Optional /models endpoint URL for the model picker." }
+  configure_local_llm_profile:
+    title: "Configure Local LLM Profile"
+    description: "Create or update a builtin.local_llm profile for a local model id."
+    examples: []
+    priority: 50
+    slots:
+      profile_name: { type: string, required: true, description: "Local profile name, for example llama-local." }
+      model: { type: string, required: true, description: "Local model id exposed by the local_llm plugin." }
+  confirm_profile_setup:
+    title: "Apply Local Harness Profile"
+    description: "Write the reviewed patch to .kitsoki.local.yaml."
+    examples: ["apply profile setup", "confirm provider profile"]
+    priority: 50
+  profile_setup_applied:
+    description: "(internal) local harness profile apply completed — show result."
+    examples: []
+    priority: 1
+  skip_profile_setup:
+    title: "Skip Local Harness Profile Setup"
+    description: "Exit local harness profile setup without writing files."
+    examples: ["skip profile setup"]
+    priority: 20
+  run_readiness:
+    title: "Run Onboarding Readiness"
+    description: "Run the generated post-apply readiness verifier and update the project profile with the result."
+    examples: ["run readiness", "verify onboarding", "check onboarding"]
+    priority: 45
+  readiness_checked:
+    description: "(internal) onboarding readiness verifier completed — show the applied result."
+    examples: []
+    priority: 1
+  review_customizations:
+    title: "Review Mined Customizations"
+    description: "Promote emitted session-mining reports and review pending project customizations."
+    examples: ["review customizations", "review mined customizations", "check session mining proposals"]
+    priority: 44
+  accept_customizations:
+    title: "Accept Mined Customizations"
+    description: "Mark pending session-mined project customizations accepted."
+    examples: ["accept customizations", "accept mined customizations"]
+    priority: 44
+  refine_customizations:
+    title: "Refine Mined Customizations"
+    description: "Record feedback on pending session-mined project customizations."
+    examples: ["refine customizations", "revise mined customizations"]
+    priority: 44
+    slots:
+      feedback:
+        type: string
+        required: true
+        description: "What should change before accepting the mined customizations."
+  customizations_reviewed:
+    description: "(internal) mined customization review completed — show the applied result."
+    examples: []
+    priority: 1
 
   go_docs:
     title: "Docs"
     description: "Open the docs room."
-    examples: [docs, "update docs"]
+    # NOTE (dwf3 routing triage): bare "docs" was removed — its lone stem
+    # {doc} matches (as a whole-utterance subset) any input that merely
+    # mentions docs in passing, e.g. "update the docs after the proposal
+    # shipped" (landing_proposal_routing.yaml `work-docs-not-proposal`).
+    # Worse, because it is declared FIRST, the bare-string matcher records it
+    # (not "update docs") as go_docs's matched entry — which defeats the
+    # leading-verb tie-break (the richer "update docs" entry's stem set
+    # {updat, doc} contains the phrase's leading stem "updat"; the bare
+    # "docs" entry's stem set {doc} does not). Removing the generic bare
+    # form lets "update docs" win the tie outright. No fixture exercises
+    # bare "docs" alone (grepped stories/dev-story/intents/), so this is
+    # not a regression.
+    examples: ["update docs"]
     priority: 25
 
   # Ticket search slots
@@ -1098,6 +1362,42 @@ intents:
         type: string
         required: false
         description: "Optional ticket-type override (bug / feature / epic). Wins over the row-lookup derivation; useful for fixtures + operators who already know the routing target."
+  bugfix_report:
+    title: "Fix Pasted Bug Report"
+    description: "Start bugfix from an inline or pasted bug report when no ticket has been filed. Use this for natural-language complaints like `fix this bug ...`, not for explicit ticket IDs."
+    examples: []
+    synonyms:
+      - "fix this bug {complaint}"
+      - "debug this bug {complaint}"
+      - "investigate this bug {complaint}"
+      - "fix the bug where {complaint}"
+      - "debug the bug where {complaint}"
+      - "fix this bug report {complaint}"
+      - "debug this bug report {complaint}"
+      - "pasted bug report {complaint}"
+      - "bug report {complaint}"
+      - "user complaint {complaint}"
+      - "work complaint {complaint}"
+    priority: 88
+    slots:
+      complaint: { type: string, required: true, description: "The pasted bug report or complaint text." }
+      title: { type: string, required: false, description: "Optional short title for the report." }
+  bugfix_ref:
+    title: "Fix Referenced Bug"
+    description: "Fetch a local or remote bug/ticket by explicit ID, issue number, or issue URL and start bugfix with provider metadata loaded."
+    examples: []
+    priority: 90
+    slots:
+      id: { type: string, required: true, description: "Provider ticket ID, local bug id, issue number, #number, or GitHub issue URL." }
+      title: { type: string, required: false, description: "Optional fallback title while provider metadata loads." }
+  bugfix_link:
+    title: "Fix Bug Link"
+    description: "Start bugfix from a remote issue link and fetch provider metadata when the ticket provider can resolve it."
+    examples: []
+    priority: 89
+    slots:
+      url: { type: string, required: true, description: "Remote issue URL or provider issue reference." }
+      title: { type: string, required: false, description: "Optional short title for the issue." }
 
   # Pipeline-launching navigation (dispatches into bf / pr / impl /
   # rev imports). `go_bugfix` targets the `bf` import compound; the
@@ -1114,15 +1414,38 @@ intents:
     # affirmations ("ok go ahead", "let's go"), so the semantic tier
     # (stem-subset, runs before the default-intent sink) grabbed a
     # continuation as a pipeline-drive. Affirmations now fall through to
-    # landing's `default_intent: work` (the workbench agent). Explicit
+    # landing's default_intent (landing_capture, the workbench agent). Explicit
     # drive verbs ("drive", "drive it", "run the pipeline") still route
     # here. See .context/landing-onpath-offpath-bail.md slice C.
-    examples: ["drive", "push", "start", "drive it", "run the pipeline", "take it through", "drive the ticket"]
+    #
+    # NOTE (dwf3 routing triage): bare "start" was ALSO removed for the same
+    # reason — its lone stem {start} is a subset of any "start a/the …"
+    # utterance, including go_idea's own "start a design (package)" phrasing.
+    # The bare-string tier's leading-verb tie-break needs the two candidates'
+    # MATCHED entries to differ on the leading stem to resolve a tie; with
+    # bare "start" in the mix both candidates' matched entries contained the
+    # stem {start} so the tie never broke and "start a design package for
+    # the new routing eval process" stalled at ok=true/Intent="" (see
+    # landing_proposal_routing.yaml `design-package`).
+    #
+    # NOTE (dwf3 routing triage): bare "drive" was ALSO removed — the word
+    # overloads as a colloquial verb ("drive this through the dev-story
+    # proposal process" = push it along) as well as the command; the
+    # leading-verb tie-break can't tell those apart (it only sees the stem
+    # "drive", not the sense), so it always picked the `drive` intent even
+    # when the request was about the proposal pipeline
+    # (landing_proposal_routing.yaml `proposal-dev-story`, expected
+    # `go_idea`). "drive it" / "run the pipeline" / "take it through" /
+    # "drive the ticket" remain unambiguous multi-word commands; no fixture
+    # exercises bare "drive" (grepped stories/dev-story/{intents,flows}/ —
+    # the one flow hit dispatches the intent by name directly, bypassing
+    # routing).
+    examples: ["push", "drive it", "run the pipeline", "take it through", "drive the ticket"]
     priority: 60
   go_bugfix:
     title: "Fix Bug"
     description: "Start the bugfix path when the operator asks to fix, debug, investigate, or work on bugs. If no ticket is picked yet, the landing room will ask them to pick one first."
-    examples: ["fix bug", "bugfix", "work on bug", "fix bugs", "i want to fix a bug", "i want to work on some bugs"]
+    examples: ["bugfix", "i want to fix a bug", "work on selected bug", "fix selected bug", "fix bugs from the queue", "i want to work on some bugs"]
     priority: 55
   bugfix_open_pr:
     title: "Fix Bug and Open PR"
@@ -1130,15 +1453,30 @@ intents:
     examples: ["fix this and open a pr", "bugfix to pr", "open a pull request after fixing"]
     priority: 56
   bugfix_leave_worktree:
-    title: "Fix Bug and Leave Worktree"
-    description: "Run the bugfix pipeline and leave the completed local worktree for manual review."
-    examples: ["fix this and leave a worktree", "bugfix local worktree", "leave the worktree after fixing"]
+    title: "Fix Bug and Leave Workspace"
+    description: "Run the bugfix pipeline and leave the completed local workspace for manual review."
+    examples: ["fix this and leave a workspace", "bugfix local workspace", "leave the workspace after fixing", "fix this and leave a worktree"]
     priority: 56
   bugfix_merge_local:
     title: "Fix Bug and Merge Locally"
     description: "Run the bugfix pipeline and merge the fix into the local base branch."
     examples: ["fix this and merge locally", "merge to main after fixing", "bugfix to local main"]
     priority: 56
+  oversight_gated:
+    title: "Oversight: Gated"
+    description: "Use human checkpoints for imported work loops."
+    examples: ["use gated oversight", "human gated mode", "make this gated"]
+    priority: 54
+  oversight_llm_review:
+    title: "Oversight: LLM Review"
+    description: "Use LLM checkpoint review and fall back to human review when uncertain."
+    examples: ["use llm review", "llm review mode", "let the llm review gates"]
+    priority: 54
+  oversight_no_gate:
+    title: "Oversight: No Gate"
+    description: "Use autonomous operation driving without LLM checkpoint review."
+    examples: ["use no gate mode", "no-gate mode", "run without review gates"]
+    priority: 54
   go_pr_refinement:
     title: "PR Refinement"
     description: "Hand off to the pr-refinement sub-story for an open PR."
@@ -1154,6 +1492,38 @@ intents:
     description: "Hand off to the cypilot sub-story (SDLC waterfall) for the picked epic."
     examples: ["cypilot", "drive epic", "waterfall"]
     priority: 55
+  go_deliver:
+    title: "Decompose"
+    description: "Hand off to the deliver sub-story: decompose a published proposal into briefs, review them, and fan ship-it over every brief. The decompose-vs-direct alternative to go_implementation for epic-sized work."
+    examples: ["decompose", "decompose the epic", "deliver the proposal", "break this into briefs"]
+    priority: 55
+  go_fix_tests:
+    title: "Fix Tests"
+    description: "Run the configured test command, autonomously fix failures, rerun the deterministic gate, and require a no-regression/no-weakened-tests review before accepting green."
+    examples: ["fix tests", "make test pass", "make test green", "get make test to pass", "repair failing tests"]
+    priority: 54
+    slots:
+      test_cmd:
+        type: string
+        required: false
+        description: "Optional command override; defaults to the project test command or make test."
+      quick_test_cmd:
+        type: string
+        required: false
+        description: "Optional quick repair-loop command; defaults to the project quick gate or the full test command."
+      quick_test_timeout_seconds:
+        type: int
+        required: false
+        description: "Optional timeout for the quick repair-loop command."
+      full_test_timeout_seconds:
+        type: int
+        required: false
+        description: "Optional timeout for the full acceptance command."
+  go_dogfood_marathon:
+    title: "Queue Marathon"
+    description: "Run the generic marathon room over a configured queue, journaling progress and producing slidey reports."
+    examples: ["queue marathon", "run a marathon", "dogfood marathon", "I want to do a dogfood marathon", "work down this queue"]
+    priority: 54
   go_code_review_story:
     title: "Review PR"
     description: "Hand off to the code-review sub-story (teammate PR review)."
@@ -1322,8 +1692,8 @@ intents:
 
   cleanup_workspaces:
     title: "Cleanup Workspaces"
-    description: "Scan for merged worktrees and branches that are safe to delete."
-    examples: ["cleanup worktrees", "clean up workspaces", "delete merged branches", "prune dead worktrees"]
+    description: "Scan for merged legacy worktrees, managed workspaces, and branches that are safe to delete."
+    examples: ["cleanup workspaces", "cleanup worktrees", "delete merged branches", "prune dead worktrees"]
     synonyms: ["scan cleanup using {base} as the base branch", "scan_cleanup {base}"]
     priority: 72
     slots:
@@ -1331,7 +1701,7 @@ intents:
 
   cleanup_workspaces_main:
     title: "Cleanup Workspaces From Main"
-    description: "Scan for merged worktrees and branches that are safe to delete using main as the base branch."
+    description: "Scan for merged legacy worktrees, managed workspaces, and branches that are safe to delete using main as the base branch."
     examples: ["scan cleanup", "scan_cleanup", "scan cleanup using main as the base branch", "scan_cleanup main", "clean up merged worktrees"]
     synonyms: ["clean up merged worktrees"]
     priority: 73
@@ -1360,7 +1730,19 @@ intents:
   # it up (read-only by default; mutating steps hold for a write-mode
   # grant). `request` is required so the semantic router falls through
   # to the LLM router and captures the whole utterance whole.
-  work:
+  #
+  # Named `landing_capture` — not `work` — because `workbench:` (see
+  # rooms/landing.yaml) always synthesizes its catch-all capture intent as
+  # `<room>_capture` (room-workbench.md Open question 1) and sets it as the
+  # room's default_intent; landing hand-authors this intent's `on:` arc
+  # itself (see landing.yaml) instead of taking the macro's plain
+  # synthesized arc, since it carries extra behavior (the onboarding escape
+  # hatch, thread continuity / prior-plan preservation) the macro does not
+  # (and should not) auto-generate. Renamed from `work` in Task 3.1; every
+  # flow/intents fixture that dispatched `work` was updated to
+  # `landing_capture` in the same commit (a pure rename — identical guards,
+  # slots, and effects).
+  landing_capture:
     title: "Describe Work"
     description: "Describe implementation/debugging/investigation work for the free-form workbench agent to pick up — explore code, draft a code change, investigate a failure. Read-only until you approve a change. Do not use for proposal authoring, proposal review, design-workflow, or proposal-decision turns; those go to New Idea."
     examples: ["fix the login crash", "investigate why the build is slow", "look at how imports resolve and sketch a change", "refactor the loader", "add a test for the off-ramp"]
@@ -1383,9 +1765,10 @@ intents:
   # ── Ad-hoc structured plan (rooms/landing|applying|verifying.yaml) ─────
   # accept_plan / apply freeze the proposed plan and enter `applying`. Both are
   # BUTTON-ONLY (examples: [] ⇒ the semantic router never binds them from free
-  # text) — a free-text adjustment instead routes to the work sink, re-dispatching
-  # the planner with the prior plan (that is "refine", reusing default_intent: work,
-  # not a new intent). `apply` is a strict alias of accept_plan, only meaningful
+  # text) — a free-text adjustment instead routes to the landing_capture sink,
+  # re-dispatching the planner with the prior plan (that is "refine", reusing
+  # default_intent: landing_capture, not a new intent). `apply` is a strict
+  # alias of accept_plan, only meaningful
   # when a plan is present (the landing arc guards on the plan being non-empty).
   accept_plan:
     title: "Accept & apply this plan"
@@ -1419,7 +1802,7 @@ intents:
     examples: []
     priority: 1
   bugfix_done_leave_worktree:
-    description: "(internal) completed bugfix should preserve the local worktree."
+    description: "(internal) completed bugfix should preserve the local workspace."
     examples: []
     priority: 1
 
@@ -1428,6 +1811,97 @@ intents:
 # reachable "show me everything" hub (sibling rooms' go_main arcs still resolve
 # to it) but is no longer the root or any pipeline's return target.
 root: landing
+
+# Free-form fallback — explicit, not auto-detected. The loader's own
+# auto-detect (effectiveFreeFormFallback, internal/app/loader.go) hardcodes
+# the bare intent name "work" (and the "__work" import-alias suffix); landing's
+# capture intent is now `landing_capture` (workbench:'s fixed `<room>_capture`
+# naming, room-workbench.md Task 3.1), so the auto-detect would silently find
+# nothing and menu-shaped rooms (ticket_search, workspace_manager, …) would
+# lose their free-text-to-workbench sink. Declaring this block explicitly is
+# exactly what room-workbench.md's model anticipates ("routing.free_form_fallback
+# when the workbench room is the app's canonical floor") — otherwise
+# byte-for-byte the same behavior the auto-detect gave `work`.
+routing:
+  free_form_fallback:
+    state: landing
+    intent: landing_capture
+
+# ── Kit boundary contract (S6 Phase A, kits-implementation-plan.md) ─────
+# dev-story has never before declared a top-level exports:/exits: block —
+# only its own sub-imports (bf/pr/impl/deliver/cyp/…) declare exits, folded
+# INTO dev-story. This is the first time dev-story itself is on the OTHER
+# side of that contract: the boundary an importer would see if something
+# (today: only the synthesized implicit root, see internal/app/synthesis.go
+# ResolveRootKit) imports dev-story as a whole. It has no runtime effect
+# standalone (ExportsBlock/ExitDef doc comments, internal/app/types.go) —
+# it exists for stories/dev-story/kit.yaml's `root:` declaration and for
+# `kitsoki kit verify`'s standalone contract checks (S4) to have something
+# real to check.
+#
+# exports.intents: the "public menu" dev-story's landing hub surfaces to
+# whatever enters it — the free-form capture sink, the on-path bail, and
+# every pipeline launcher (go_*) reachable from landing/main. Chosen by
+# reading which intents are reachable from the root state rather than
+# invented: every name below is declared in intents: above.
+exports:
+  intents:
+    - landing_capture
+    - take_route
+    - go_main
+    - go_inbox
+    - go_gitops
+    - go_agent
+    - go_ticket_search
+    - go_workspace_manager
+    - go_standup
+    - go_idea
+    - go_ideas
+    - go_model_eval
+    - go_init
+    - go_profile_setup
+    - go_deploy
+    - go_observability
+    - go_incident
+    - go_docs
+    - go_bugfix
+    - bugfix_report
+    - bugfix_ref
+    - bugfix_link
+    - go_pr_refinement
+    - go_implementation
+    - go_deliver
+    - go_fix_tests
+    - go_dogfood_marathon
+    - go_code_review_story
+
+# exits: dev-story is a perpetual workbench by design (every sub-import's
+# own exits fold back into `landing`/`human_review_report`, never leaving
+# the loop) — so unlike bf/pr/impl (which exit toward a parent), there is no
+# existing "leave dev-story" transition to name. The two exits below are
+# the honest, faithful projection of the two outcomes its OWN sub-imports
+# already converge on and already set matching world keys for (see the bf/
+# pr/impl `exits:` blocks below): every success path sets world.status to
+# one of merged/local-merged/delivered and lands at `landing`; every
+# human-in-the-loop path sets world.status + world.human_review_reason and
+# lands at `human_review_report`. Declaring them here documents that
+# existing, already-enforced contract at the top level — it does not change
+# dev-story's own runtime (see the ExitDef doc comment above), and nothing
+# maps @exit:work_merged / @exit:needs_human today since dev-story has no
+# parent in Phase A.
+exits:
+  work_merged:
+    description: >-
+      A ticket/PR reached its base branch via the bugfix, PR-refinement,
+      implementation, or deliver pipelines. world.status is one of
+      merged|local-merged|delivered; world.last_pr_url may be set.
+    requires: [status]
+  needs_human:
+    description: >-
+      Work paused pending a human decision (bugfix/PR-refinement abandoned,
+      a non-reproducible repro, or a triage-only verdict) — parked at
+      human_review_report.
+    requires: [status, human_review_reason]
 
 # Imports (proposal §5.1). bf and pr both project from / into the
 # day-level world. The bf → pr chain is one import-exit edge; the
@@ -1444,6 +1918,11 @@ imports:
   gitops:
     source: ../git-ops
     entry: intercept
+    world_in:
+      ticket_repo: "{{ world.ticket_repo }}"
+    exits:
+      main:
+        to: landing
 
   bf:
     source: ../bugfix
@@ -1455,12 +1934,17 @@ imports:
       ticket_id:       "{{ world.ticket_id }}"
       ticket_title:    "{{ world.ticket_title }}"
       ticket_url:      "{{ world.ticket_url }}"
+      ticket_body:     "{{ world.ticket_body }}"
+      ticket_repo:     "{{ world.ticket_repo }}"
       thread:          "{{ world.thread }}"
+      ticket_source_mode: "{{ world.ticket_source_mode }}"
+      ticket_source_ref:  "{{ world.ticket_source_ref }}"
       workspace_id:    "{{ world.workspace_id }}"
       workdir:         "{{ world.workdir }}"
       base_branch:     "{{ world.base_branch }}"
       feature_branch:  "{{ world.feature_branch }}"
       bugfix_mode:     "{{ world.bugfix_mode }}"
+      workspace_prepared: "{{ world.workspace_prepared }}"
       # Project the project's real build/test commands into bf so its
       # testing/validating gates use the right toolchain (empty ⇒ Go defaults).
       build_cmd:       "{{ world.build_cmd }}"
@@ -1473,8 +1957,16 @@ imports:
       #   open-pr        -> bf done -> pr-refinement
       #   leave-worktree -> bf done -> landing, preserving workdir
       bugfix_exit:     "{% if world.bugfix_destination == 'local-merge' %}direct-ship{% else %}open-PR{% endif %}"
+      oversight_mode:  "{{ world.oversight_mode }}"
       judge_mode:      "{{ world.judge_mode }}"
       judge_confidence_threshold: "{{ world.judge_confidence_threshold }}"
+      # Pass through bf's auto_triage pre-flight switch (default true — a
+      # fresh autostart runs a read-only triage verdict before spending the
+      # maker pipeline; ALREADY-FIXED exits at triaged). The import wrapper's
+      # re-entry reset re-seeds unprojected child keys to their defaults on
+      # every entry, so callers/fixtures MUST set the parent-level
+      # world.auto_triage (not bf__auto_triage) to opt out.
+      auto_triage:     "{{ world.auto_triage }}"
 
     # Lift bf-unique intents into the parent's bare intent table.
     # Overlapping names (accept, refine, restart_from, quit, look,
@@ -1488,7 +1980,7 @@ imports:
     # Exit projections. bf's @exit:done writes done_artifact via the
     # `set:` block on done_awaiting_reply.on.accept. The parent chooses the
     # destination: open-pr enters `pr`; leave-worktree lands back at the
-    # workbench with the local worktree preserved.
+    # workbench with the local workspace preserved.
     exits:
       done:
         to: bugfix_done_router
@@ -1496,6 +1988,16 @@ imports:
           pr_title: "{{ world.bf__done_artifact.summary_title }}"
           pr_body:  "{{ world.bf__done_artifact.summary_markdown }}"
           status:   "fixed"
+          # Lift the bugfix child's self-provisioned workspace into the parent's
+          # bare keys. bf.idle.on_enter provisions the workspace into CHILD scope
+          # (bf__workspace_id / bf__feature_branch / bf__workdir) when the
+          # operator doesn't pre-seed one; without this projection the parent's
+          # world.workdir / world.feature_branch / world.workspace_id stay "",
+          # and imports.pr.world_in (which reads them in parent scope) would open
+          # the PR child against no workspace and no branch (bug 51).
+          workdir:        "{{ world.bf__workdir }}"
+          feature_branch: "{{ world.bf__feature_branch }}"
+          workspace_id:   "{{ world.bf__workspace_id }}"
       abandoned:
         to: human_review_report
         set:
@@ -1515,7 +2017,7 @@ imports:
           last_error: "{{ world.bf__last_error }}"
           human_review_reason: "{{ world.bf__last_error }}"
       # bf's repro RED-gate GREEN branch (bugfix-repro-gate slice): the bug's
-      # repro_command passed on the unchanged worktree, so it does not currently
+      # repro_command passed on the unchanged workspace, so it does not currently
       # reproduce. Land back at the workbench carrying the gate output; a human
       # decides wontfix / cannot-reproduce or supplies a sharper repro.
       not-reproducible:
@@ -1524,11 +2026,12 @@ imports:
           status:     "not-reproducible"
           last_error: "{{ world.bf__last_error }}"
           human_review_reason: "{{ world.bf__last_error }}"
-      # bf's triage-only mode (bugfix_mode: triage) ends here: a standardized
-      # verdict was produced without attempting a fix. This hub runs bf in
-      # full/open-PR mode so triaged never fires in practice, but the loader
-      # requires every child exit be mapped. Land back at landing carrying the
-      # verdict; a human picks the next move (fix it for real, or close).
+      # bf ends here WITHOUT attempting a fix in two cases: triage-only mode
+      # (bugfix_mode: triage), and a full/quick autostart whose auto_triage
+      # PRE-FLIGHT (default on — see bf rooms/triaging.yaml) verdicts
+      # ALREADY-FIXED and short-circuits before any maker budget is spent.
+      # Land back at landing carrying world.bf__triage_verdict; a human picks
+      # the next move (close as fixed, or re-drive with bf__auto_triage off).
       triaged:
         to: landing
         set:
@@ -1540,6 +2043,18 @@ imports:
         to: ticket_search
         set:
           prev_state: "landing"
+      # bf's own opt-in CI-watch/merge tail (WS-C C3, bugfix_exit=open-PR-merge
+      # — bugfix's imports.pr composing pr-refinement directly). dev-story's
+      # world_in above only ever projects direct-ship / open-PR, so this exit
+      # is unreachable from THIS hub in practice (same "declared but not
+      # exercised here" shape as `triaged` below) — mapped so the loader's
+      # every-exit-covered check passes, landing exactly where dev-story's
+      # OWN `pr` import's `merged` exit lands.
+      merged:
+        to: landing
+        set:
+          status:      "merged"
+          last_pr_url: "{{ world.bf__pr_url }}"
 
   pr:
     source: ../pr-refinement
@@ -1627,6 +2142,120 @@ imports:
         set:
           status: "abandoned"
 
+  # deliver — epic decomposition + fan-out chain (proposal
+  # deliver-canonical-decomposition.md, task B3). The decompose-vs-direct
+  # ALTERNATIVE to impl: `go_implementation` drives ONE ticket through the
+  # implementation pipeline directly; `go_deliver` decomposes an epic-sized
+  # proposal into independently-shippable briefs (decompose → lint →
+  # adversarial review → fleet fan-out of ship-it, behind a merge lock) and
+  # is offered as a labelled sibling arc, never chosen automatically (proposal
+  # Open Question 3 — operator choice, no size heuristic). Reached from
+  # `design_done` (a freshly-published proposal) and from `landing` (any
+  # already-published proposal picked up later).
+  #
+  # deliver's own root is `configure`, which gates on a non-empty epic_path
+  # and an explicit `start` before decomposition begins — unlike impl.idle
+  # (which self-provisions on entry), landing in deliver.configure still
+  # needs one more `deliver__start` turn to kick off the walk (world_in below
+  # only satisfies the epic_path gate, it does not auto-advance).
+  deliver:
+    source: ../deliver
+    entry: configure
+
+    world_in:
+      epic_path:          "{{ world.design_file }}"
+      base_branch:         "{{ world.base_branch }}"
+      main_worktree_path:  "{{ world.workdir != '' ? world.workdir : '.' }}"
+
+    # `start` collides with bf's already-lifted bare `start` (and `look` with
+    # the parent's bare `look`) — stays prefixed; the operator types
+    # `deliver__start` inside the compound.
+    intents:
+      import: []
+
+    exits:
+      done:
+        to: landing
+        set:
+          status:           "delivered"
+          delivery_summary: "{{ world.deliver__delivery_summary }}"
+          last_error:       ""
+      needs-human:
+        to: landing
+        set:
+          status:     "needs-human"
+          last_error: "{{ world.deliver__last_error }}"
+
+  # fix-tests — autonomous make-test-green loop with deterministic command gate
+  # plus adversarial no-regression/no-weakened-tests review. Reached from
+  # landing via go_fix_tests; entering at starting makes the quick action
+  # one-shot while still resetting child retry/review state before each run.
+  tests:
+    source: ../fix-tests
+    entry: starting
+
+    world_in:
+      test_cmd:                   "{{ world.test_cmd != '' ? world.test_cmd : 'make test' }}"
+      quick_test_cmd:             "{{ world.quick_test_cmd }}"
+      quick_test_timeout_seconds: "{{ world.quick_test_timeout_seconds }}"
+      full_test_timeout_seconds:  "{{ world.full_test_timeout_seconds }}"
+      workdir:                    "{{ world.workdir != '' ? world.workdir : '.' }}"
+      max_cycles:                 3
+
+    intents:
+      import: []
+
+    exits:
+      achieved:
+        to: landing
+        set:
+          status:                "tests-green"
+          fix_tests_report_path: "{{ world.tests__report_path != '' ? world.tests__report_path : '.artifacts/fix-tests/report-' + world.tests__outcome + '.md' }}"
+          fix_tests_review:      "{{ world.tests__review_artifact }}"
+          last_error:            ""
+      exhausted:
+        to: landing
+        set:
+          status:                "tests-exhausted"
+          fix_tests_report_path: "{{ world.tests__report_path != '' ? world.tests__report_path : '.artifacts/fix-tests/report-' + world.tests__outcome + '.md' }}"
+          fix_tests_review:      "{{ world.tests__review_artifact }}"
+          last_error:            "Test-fix loop exhausted: {{ world.tests__report_path != '' ? world.tests__report_path : '.artifacts/fix-tests/report-' + world.tests__outcome + '.md' }}"
+      needs-human:
+        to: human_review_report
+        set:
+          status:                "needs-human"
+          fix_tests_report_path: "{{ world.tests__report_path != '' ? world.tests__report_path : '.artifacts/fix-tests/report-' + world.tests__outcome + '.md' }}"
+          fix_tests_review:      "{{ world.tests__review_artifact }}"
+          human_review_reason:   "Test-fix loop needs human attention: {{ world.tests__report_path != '' ? world.tests__report_path : '.artifacts/fix-tests/report-' + world.tests__outcome + '.md' }}"
+
+  # Marathon room — autonomous queue runner. The operator reaches it from
+  # landing by saying "queue marathon" / "dogfood marathon" or choosing the
+  # quick action. The child room owns the start/resume prompt so the clean
+  # command remains just "start the marathon".
+  dogfood:
+    source: ../dogfood-marathon
+    entry: idle
+
+    world_in:
+      backlog_sources: "{{ world.dogfood_backlog_sources }}"
+      run_id:          "{{ world.dogfood_run_id }}"
+      profile:         "{{ world.dogfood_profile }}"
+      model:           "{{ world.dogfood_model }}"
+      autonomous:      true
+
+    intents:
+      import: [start_marathon, refine_plan, ack_exception, answer_exception]
+
+    exits:
+      done:
+        to: landing
+        set:
+          status: "dogfood-complete"
+      abandoned:
+        to: landing
+        set:
+          status: "abandoned"
+
   # Wave 4 — cypilot SDLC waterfall for epic-track tickets. Routed
   # from main when the picked ticket's type is "epic". cypilot is
   # autonomous-by-default; the parent's day-level judge_mode +
@@ -1708,7 +2337,7 @@ imports:
 
   # PRD discovery — the front of the PRD → Design walk. Reached from main
   # via `go_prd`. prd runs discovery → clarifying → brief → references →
-  # drafting and publishes a PRD to docs/prd/<slug>.md (prd_publish.py
+  # drafting and publishes a PRD to docs/prd/<slug>.md (prd_publish.star
   # returns prd_file). On @exit:done we lift prd_file into the parent and
   # land in `prd_published` (rooms/prd_published.yaml), which tells the
   # operator the PRD shipped and offers `continue` (into the design
@@ -1722,7 +2351,7 @@ imports:
       # Project the hub's workdir, falling back to "." (the cwd — prd's own
       # standalone default) when the hub leaves it empty (its default). The bare
       # hub default is "" because the bf/impl pipelines branch on workdir==''
-      # (impl provisions a worktree only when empty); the imported prd instead
+      # (impl provisions a workspace only when empty); the imported prd instead
       # composes filesystem paths as "{{workdir}}/{{prd_workspace}}", so an empty
       # workdir yields "/.artifacts/<slug>" — an mkdir at the filesystem root.
       # Flow tests masked this by seeding workdir via initial_world; a real or
@@ -1735,7 +2364,7 @@ imports:
       # Doc-profile passthrough: an importing instance overrides these on the
       # hub so the imported prd publishes into that project's target tree and
       # filename convention. Defaults keep prd's own docs/prd/<slug>.md
-      # behaviour for kitsoki-dev.
+      # behaviour for standalone runs.
       publish_durable_path: "{{ world.publish_durable_path }}"
       prd_doc_filename:     "{{ world.prd_doc_filename }}"
 
@@ -1749,7 +2378,7 @@ imports:
 
     exits:
       # No `set:` projection for prd_file: it is a host BIND in prd's
-      # drafting accept arc (prd_publish.py stdout), so it commits
+      # drafting accept arc (prd_publish.star), so it commits
       # post-dispatch — AFTER an exit `set:` (a synchronous effect) would
       # read it. The flat world keeps prd__prd_file once the turn settles,
       # so the prd_published landing room reads world.prd__prd_file
@@ -1758,6 +2387,8 @@ imports:
       # works there.
       done:
         to: prd_published
+      gitops:
+        to: gitops
       abandoned:
         to: landing
         set:
@@ -1778,8 +2409,8 @@ imports:
     source: ../demo-video-loop
     entry: generating
 
-    # Project the hub's worktree + base + the demo input keys into the
-    # loop's private world. worktree_path ← workdir (the hub's working copy;
+    # Project the hub's workspace + base + the demo input keys into the
+    # loop's private world. worktree_path <- workdir (the hub's workspace;
     # the same key the bf/impl pipelines use); base_ref ← base_branch (the
     # parent/base to diff against). The remaining keys are the demo input
     # contract added to the hub's world: block above.

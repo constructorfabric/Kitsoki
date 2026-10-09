@@ -28,10 +28,15 @@
 //   - {paths: [...], base: "HEAD"} — review already-applied working-tree edits
 //     against a base; the difftool shows working-tree-vs-base.
 //
-// The IDE openDiff accept/reject RETURN shape is still TODO(schema)
-// (ide-integration.md #1): it is implemented best-effort against the documented
-// tool and PINNED TO THE STUB SERVER until a single real-socket round-trip
-// captures it. parseDiffVerdict defines that contract; the stub mirrors it.
+// The IDE openDiff accept/reject RETURN shape is CONFIRMED (ide-integration.md
+// #1) against the vscode-kitsoki extension's real DiffController
+// (tools/vscode-kitsoki/src/ide-diff.ts): {ok, verdict: "accepted"|"rejected"}
+// — a real-socket round-trip via tools/vscode-kitsoki/tests/ide-bridge.e2e.test.ts
+// (openDiff args: path/new_text/new_text_path/title) and the newer
+// tools/vscode-kitsoki/tests/vscode-bugfix-walk.e2e.spec.ts (a real VS Code
+// window). parseDiffVerdict also accepts the older text-token acknowledgement
+// (FILE_SAVED/DIFF_ACCEPTED/…) documented for Claude Code's own IDE
+// integration, for editors that never adopt the structured {verdict} shape.
 package host
 
 import (
@@ -84,9 +89,14 @@ func DiffOpenHandler(ctx context.Context, args map[string]any) (Result, error) {
 // turn blocks on the ws response, consistent with the already-awaiting
 // open_diff. On success it records the verdict as a gate decision.
 func diffOpenIDE(ctx context.Context, link IDELink, args map[string]any) (Result, error) {
-	// TODO(schema): openDiff arg keys unverified — pin via manual capture
-	// (ide-integration.md #1); best-effort {path,new_text,title,paths,base}.
-	// The stub mirrors whatever the capture finds. Mirrors IDEOpenDiffHandler.
+	// CONFIRMED arg keys (ide-integration.md #1): {path,new_text,title} for a
+	// single proposed-content diff (Mode B — real DiffController support, see
+	// ide-diff.ts's openModeB()); {paths,base} is the already-applied-edits
+	// Mode A shape reviewing_external sends, now ALSO implemented by the real
+	// extension (DiffController.openModeA(), dwf4-ide-mode-a) — one diff tab
+	// per changed file (left = content at `base` via `git show`, right = the
+	// on-disk file), all sharing ONE collective accept/reject verdict.
+	// Mirrors IDEOpenDiffHandler.
 	toolArgs := map[string]any{}
 	if p, ok := args["path"].(string); ok && p != "" {
 		toolArgs["path"] = p
@@ -138,9 +148,9 @@ func diffOpenIDE(ctx context.Context, link IDELink, args map[string]any) (Result
 // openDiff result. It returns "accept", "reject", or nil (the editor returned
 // neither — e.g. the tab was closed without a decision).
 //
-// TODO(schema) / ide-integration.md #1: the real openDiff RETURN shape is
-// unverified — this is the CONTRACT the stub server is coded to, pinned here
-// until one real-socket round-trip captures it. It accepts, in order:
+// ide-integration.md #1: the real openDiff RETURN shape is CONFIRMED (see
+// diffOpenIDE's doc comment) — this is the contract the stub server is coded
+// to, matching the real vscode-kitsoki DiffController. It accepts, in order:
 //   - a structured payload {"verdict": "accept"|"reject"} (or {"accepted":bool}),
 //   - else a text token: a body containing FILE_SAVED / DIFF_ACCEPTED / ACCEPT →
 //     accept; DIFF_REJECTED / REJECT → reject (Claude Code's documented

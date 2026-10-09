@@ -108,6 +108,29 @@ export class JsonRpcClient {
     let closed = false;
     let unsubStream: (() => void) | null = null;
     let subscriptionId = "";
+    const seenEvents = new Set<string>();
+
+    const traceEventKey = (e: import("../types.js").TraceEvent): string =>
+      JSON.stringify([
+        e.time,
+        e.level,
+        e.msg,
+        e.session_id,
+        e.turn,
+        e.state_path ?? "",
+        e.parent_turn ?? 0,
+        e.attrs ?? {},
+      ]);
+
+    const deliver = (event: import("../types.js").TraceEvent): void => {
+      const key = traceEventKey(event);
+      if (seenEvents.has(key)) return;
+      seenEvents.add(key);
+      if (event.turn > lastTurn) {
+        lastTurn = event.turn;
+      }
+      onEvent(event);
+    };
 
     // Parse a /rpc/events SSE frame and fan a runstatus.event to onEvent. The
     // first frame after a drop also flips the surfaced state back to "connected".
@@ -120,10 +143,7 @@ export class JsonRpcClient {
             subscription_id: string;
             event: import("../types.js").TraceEvent;
           };
-          if (event.turn > lastTurn) {
-            lastTurn = event.turn;
-          }
-          onEvent(event);
+          deliver(event);
         }
       } catch {
         // Malformed frame — ignore.
@@ -133,14 +153,11 @@ export class JsonRpcClient {
     // On reconnect, backfill via getTrace(since_turn) before the stream
     // reopens (the transport drives the reopen).
     const onReconnect = async () => {
-      const sinceТurn = lastTurn >= 0 ? lastTurn + 1 : 0;
+      const sinceТurn = lastTurn >= 0 ? lastTurn : 0;
       const { events, last_turn } = await getTrace(sinceТurn);
       if (closed) return;
       for (const event of events) {
-        if (event.turn > lastTurn) {
-          lastTurn = event.turn;
-          onEvent(event);
-        }
+        deliver(event);
       }
       if (last_turn > lastTurn) {
         lastTurn = last_turn;

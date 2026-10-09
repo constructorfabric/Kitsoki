@@ -1,0 +1,33 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.run:
+    by_call:
+      persona_product_journey_autofix_smoke:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: passed
+            summary: persona replay autonomous issue-to-fix smoke passed
+            exit_code: 0
+            output: "ok: persona replay filed exactly one observed issue\nok: gh-agent drained one completed fix\nok: independent verification artifact is required and present\nPASS"
+
+turns:
+  - intent:
+      name: persona_autofix_smoke
+      slots: {}
+    expect_state: idle
+    expect_world:
+      status: persona_autofix_smoke_checked
+      persona_autofix_smoke_status: passed
+      persona_autofix_smoke_summary: persona replay autonomous issue-to-fix smoke passed
+      persona_autofix_smoke_exit_code: 0
+    expect_host_calls:
+      - handler: host.run
+        args: { call: persona_product_journey_autofix_smoke }
+    expect_view_matches: "PRODUCT JOURNEY QA[\\s\\S]*Persona autofix smoke[\\s\\S]*passed[\\s\\S]*Status[\\s\\S]*persona_autofix_smoke_checked"
+
+expect_no_errors: true

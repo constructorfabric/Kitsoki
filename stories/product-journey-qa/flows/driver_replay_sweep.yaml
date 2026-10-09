@@ -11,6 +11,7 @@ host_handlers:
           exit_code: 0
           stdout_json:
             status: passed
+            readiness_status: needs_evidence
             sweep_id: sweep-123
             sweep_dir: .artifacts/product-journey/dogfood/sweep-123
             report_path: .artifacts/product-journey/dogfood/sweep-123/driver-replay-sweep.json
@@ -21,6 +22,8 @@ host_handlers:
             scenario_count: 6
             passed: 6
             failed: 0
+            review_ready: 0
+            review_needs_evidence: 6
             playback_scenarios: 6
             validation_errors: 0
             validation_warnings: 0
@@ -47,6 +50,9 @@ turns:
       driver_replay_persona: hobbyist-contributor
       driver_replay_scenario_count: 6
       driver_replay_playback_scenarios: 6
+      driver_replay_readiness_status: needs_evidence
+      driver_replay_review_ready_count: 0
+      driver_replay_review_needs_evidence_count: 6
       driver_replay_attached_evidence_count: 30
       validation_status: passed
       validation_errors: 0
@@ -55,6 +61,6 @@ turns:
     expect_host_calls:
       - handler: host.run
         args: { call: driver_replay_product_journey_sweep }
-    expect_view_matches: "DOGFOOD SMOKE CREATED[\\s\\S]*driver-[\\s\\S]*replay-sweep\\.slidey\\.json[\\s\\S]*Driver replay scenario[\\s\\S]*passed[\\s\\S]*Driver replay persona[\\s\\S]*hobbyist-contributor[\\s\\S]*Driver replay evidence[\\s\\S]*30[\\s\\S]*Driver replay coverage[\\s\\S]*6 / 6 playback"
+    expect_view_matches: "DOGFOOD SMOKE CREATED[\\s\\S]*driver-[\\s\\S]*replay-sweep\\.slidey\\.json[\\s\\S]*Driver replay scenario[\\s\\S]*passed[\\s\\S]*Driver replay persona[\\s\\S]*hobbyist-contributor[\\s\\S]*Driver replay evidence[\\s\\S]*30[\\s\\S]*Driver replay coverage[\\s\\S]*6 / 6 playback[\\s\\S]*Driver replay readiness[\\s\\S]*needs_evidence \\(0 ready, 6 need evidence\\)"
 
 expect_no_errors: true

@@ -161,7 +161,7 @@ func (c Choice) Render(width int, env expr.Env, rr ViewRenderer) (string, error)
 		sb.WriteString("\n\n")
 	}
 	sb.WriteString(footer)
-	return sb.String(), nil
+	return clampChoiceRenderLines(sb.String(), width), nil
 }
 
 // renderSingle lays out single-mode items. Cursor gutter + label
@@ -295,6 +295,14 @@ func (c Choice) collectItemRows(env expr.Env, rr ViewRenderer, multi bool) ([]ch
 // When anyHint is false, rows render as `<prefix><label>` with no
 // trailing alignment.
 func layoutChoiceRows(rows []choiceItemRow, prefix string, width int, anyHint bool) string {
+	if width < 1 {
+		width = 1
+	}
+	prefixWidth := visibleLen(prefix)
+	budget := width - prefixWidth
+	if budget <= 0 {
+		return truncateChoiceText(prefix, width)
+	}
 	if !anyHint {
 		var sb strings.Builder
 		for i, r := range rows {
@@ -302,7 +310,7 @@ func layoutChoiceRows(rows []choiceItemRow, prefix string, width int, anyHint bo
 				sb.WriteByte('\n')
 			}
 			sb.WriteString(prefix)
-			sb.WriteString(r.label)
+			sb.WriteString(truncateChoiceText(r.label, budget))
 		}
 		return sb.String()
 	}
@@ -312,35 +320,67 @@ func layoutChoiceRows(rows []choiceItemRow, prefix string, width int, anyHint bo
 			maxLabel = n
 		}
 	}
-	// Note: the leftover width budget (total - prefix - label -
-	// gutter) is intentionally NOT computed here. The static
-	// renderer doesn't reflow hints into multi-line cells (would
-	// mis-align Phase C's cursor overlay); terminals truncate rows
-	// that overflow. A future hint-truncation pass could compute
-	// the remaining budget at this point.
-	_ = width
+	maxLabelBudget := budget - gutterWidth - minHintWidth
+	if maxLabelBudget >= choiceMinLabelColumnWidth && maxLabel > maxLabelBudget {
+		maxLabel = maxLabelBudget
+	}
 	var sb strings.Builder
 	for i, r := range rows {
 		if i > 0 {
 			sb.WriteByte('\n')
 		}
-		labelPadded := r.label + strings.Repeat(" ", maxLabel-visibleLen(r.label))
 		sb.WriteString(prefix)
+		label := truncateChoiceText(r.label, maxLabel)
+		labelWidth := visibleLen(label)
 		if r.hint == "" {
-			sb.WriteString(strings.TrimRight(labelPadded, " "))
+			sb.WriteString(truncateChoiceText(label, budget))
 			continue
 		}
-		sb.WriteString(labelPadded)
-		sb.WriteString(strings.Repeat(" ", gutterWidth))
-		// We don't reflow the hint here — single/multi mode hints are
-		// expected to be short one-liners,
-		// and a wrap would mis-align the cursor overlay in Phase C
-		// (which assumes one visual row per item). If a hint is too
-		// long for the terminal, the terminal truncates rather than
-		// the renderer.
-		sb.WriteString(r.hint)
+		if labelWidth+gutterWidth >= budget {
+			sb.WriteString(truncateChoiceText(label, budget))
+			continue
+		}
+		pad := maxLabel - labelWidth
+		if pad < 0 {
+			pad = 0
+		}
+		hintBudget := budget - labelWidth - pad - gutterWidth
+		if hintBudget <= 0 {
+			sb.WriteString(truncateChoiceText(label, budget))
+			continue
+		}
+		sb.WriteString(label)
+		sb.WriteString(strings.Repeat(" ", pad+gutterWidth))
+		sb.WriteString(truncateChoiceText(r.hint, hintBudget))
 	}
 	return sb.String()
+}
+
+const choiceMinLabelColumnWidth = 8
+
+func clampChoiceRenderLines(s string, width int) string {
+	if width < 1 {
+		width = 1
+	}
+	lines := strings.Split(s, "\n")
+	for i, line := range lines {
+		lines[i] = truncateChoiceText(line, width)
+	}
+	return strings.Join(lines, "\n")
+}
+
+func truncateChoiceText(s string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	if visibleLen(s) <= width {
+		return s
+	}
+	runes := []rune(s)
+	if width == 1 {
+		return string(runes[:1])
+	}
+	return string(runes[:width-1]) + "…"
 }
 
 // renderForm lays out form-mode content. The Template body has its

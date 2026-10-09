@@ -1,0 +1,38 @@
+# The usable-kitsoki-gate no-LLM path over S4's committed 18-scenario
+# calibration set (tools/session-mining/calibration/MANIFEST.md).
+#
+# `targets_from` points at the calibration directory: `arena.model
+# .load_targets_from_corpus`'s directory branch turns every `scn-*.json`
+# scenario IR document into one Target (id = scenario id, meta carries
+# persona/goal/expected_effects/abandoned/provenance verbatim). Crossed with
+# `axes.surface`, this enumerates one cell per scenario x surface -- 18
+# scenarios x 3 surfaces = 54 cells (docs/proposals/usable-kitsoki-release-
+# gate.md Task 3.1; tools/arena/tests/test_usable_kitsoki_gate_corpus.py
+# proves the count with zero docker/LLM spend).
+#
+#   python3 tools/arena/arena.py plan --spec tools/arena/specs/usable-kitsoki-gate-calibration.yaml
+#   python3 tools/arena/arena.py run  --spec tools/arena/specs/usable-kitsoki-gate-calibration.yaml \
+#       --out .artifacts/arena/usable-kitsoki-gate-calibration
+#
+# `run` will fail to find a harness script until Task 3.3 (swarm tier 1/2
+# wiring) lands -- that failure surfaces as an ordinary `infra:*` cell health,
+# never a fabricated verdict.
+
+job_type: usable-kitsoki-gate
+
+targets_from: tools/session-mining/calibration
+
+variants:
+  - id: gate-v1
+    backend: replay
+
+axes:
+  surface: [web, tui, mcp]
+
+placement:
+  hosts: [local]
+  concurrency: 2
+  retry: 0
+
+options:
+  note: "No-LLM parity sweep over S4's calibration set; live workbench dispatch is a separate, gated release-candidate-cadence path (Task 3.3/5.2), not this spec."

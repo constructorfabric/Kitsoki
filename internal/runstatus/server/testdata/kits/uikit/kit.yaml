@@ -1,0 +1,14 @@
+# uikit — an in-tree fixture-only kit for exercising the S3c kit-UI vertical
+# slice: the /kit/<ns>/<kit>/ui/* static asset route + the index.html
+# import-map/registry injection. Not a shipped kit — testdata for
+# internal/runstatus/server's own tests, kept separate from
+# internal/app/testdata/kits/synthetic-kit (S1's loader fixture) so this
+# package's tests don't reach into another package's testdata.
+schema: kit/v1
+kit: uikit
+namespace: kitsoki-test
+version: 0.1.0
+title: UI test kit (S3c vertical slice fixture)
+provides:
+  stories: [uistory]
+  ui: ["panel"]

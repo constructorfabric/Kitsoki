@@ -16,9 +16,10 @@ import { fileURLToPath } from "url";
 import { expandManifest } from "./manifest.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const siteDir = path.resolve(__dirname, "..");
-const repoRoot = path.resolve(siteDir, "../..");
-const srcDir = path.join(siteDir, "src");
+const siteDir = path.resolve(process.env.KITSOKI_SITE_SOURCE_ROOT ?? path.join(__dirname, ".."));
+const repoRoot = path.resolve(process.env.KITSOKI_REPO_ROOT ?? path.join(siteDir, "../.."));
+const runtimeSiteDir = path.resolve(process.env.KITSOKI_SITE_ROOT ?? siteDir);
+const srcDir = path.join(runtimeSiteDir, "src");
 const guideDir = path.join(srcDir, "guide");
 
 const { repoUrl, branch, sections } = expandManifest(siteDir, repoRoot);
@@ -45,6 +46,10 @@ function rewriteTarget(target, repoFile, siteFile, map) {
     if (!rel.startsWith(".")) rel = "./" + rel;
     return rel + anchor;
   }
+
+  const localSiteTarget = localSiteTargetForRepoPath(resolved);
+  if (localSiteTarget) return localSiteTarget + anchor;
+
   // Escapes the allowlist — point at GitHub so the reference stays alive.
   if (!fs.existsSync(path.join(repoRoot, resolved))) {
     // Path doesn't exist in the repo either; keep as-is and let the dead-link
@@ -52,6 +57,20 @@ function rewriteTarget(target, repoFile, siteFile, map) {
     return target;
   }
   return `${repoUrl}/blob/${branch}/${resolved}${anchor}`;
+}
+
+function localSiteTargetForRepoPath(repoPath) {
+  const deckSource = repoPath.match(/^docs\/decks\/([^/]+?)(?:\.slidey)?\.json$/);
+  if (deckSource && fs.existsSync(path.join(repoRoot, repoPath))) {
+    return `/decks/${deckSource[1]}.html`;
+  }
+
+  const deckBundle = repoPath.match(/^docs\/decks\/bundled\/([^/]+)\.html$/);
+  if (deckBundle && fs.existsSync(path.join(repoRoot, repoPath))) {
+    return `/decks/${deckBundle[1]}.html`;
+  }
+
+  return "";
 }
 
 function rewriteLinks(content, repoFile, siteFile, map) {
@@ -110,13 +129,20 @@ function fencedCodeToIndented(content) {
   const lines = content.split("\n");
   const out = [];
   let fenced = false;
+  let preserveFence = false;
   for (const line of lines) {
-    if (/^\s*(```|~~~)/.test(line)) {
+    const fence = line.match(/^\s*(```|~~~)\s*([^\s`]*)/);
+    if (fence) {
+      if (!fenced) {
+        preserveFence = fence[2] === "mermaid";
+      }
+      if (preserveFence) out.push(line);
+      else out.push("");
       fenced = !fenced;
-      out.push("");
+      if (!fenced) preserveFence = false;
       continue;
     }
-    out.push(fenced ? `    ${line}` : line);
+    out.push(fenced && !preserveFence ? `    ${line}` : line);
   }
   return out.join("\n");
 }
@@ -140,29 +166,56 @@ function writeDocsLanding() {
     "",
     "# Kitsoki docs",
     "",
-    "Start with the evaluation path if you are deciding whether Kitsoki is worth the structure. Kitsoki's core claim is control inversion: the workflow is an auditable state machine, and the LLM is a bounded callee at named, traceable decision points.",
+    "Use this page as a reading path, not as a sitemap. If you are new, answer the evaluator questions in order; if you already know what you need, use the collapsed sidebar or search for the full allowlisted docs inventory.",
     "",
-    "## Evaluate the claim",
+    "## Decide if Kitsoki fits",
     "",
-    "- [Evaluate Kitsoki](/guide/evaluate-kitsoki.html): the skeptical-developer case for why this is not just a chat agent, a structured-output wrapper, or a workflow engine with prompts attached.",
-    "- [Concept](/guide/architecture/concept.html): the architecture thesis behind control inversion and progressive determinism.",
-    "- [Proof demos](/features/): videos generated from deterministic feature fixtures, including runtime guardrails, trace introspection, operator handoff, and replayed real runs.",
-    "- [Bug-fix case study](/guide/case-studies/bug-fix.html): the shape of an end-to-end repo workflow: reproduce, patch, test, review, validate.",
-    "- [Bugfix bake-off](/guide/case-studies/bugfix-bakeoff.html): early evidence for the claim that structure can matter more than another unbounded prompt.",
+    "- [Evaluate Kitsoki](/guide/evaluate-kitsoki.html) explains the control-inversion claim and compares it with coding agents, orchestration frameworks, durable workflow engines, and scripts.",
+    "- [Proof path](/proof.html) gives the short demo sequence: runtime guardrails, trace replay, operator handoff, and real repo workflows.",
+    "- [Concept](/guide/architecture/concept.html) is the architecture thesis behind progressive determinism.",
     "",
-    "## Why the docs matter",
+    "## Understand the architecture",
     "",
-    "A Kitsoki story is not hidden in a prompt. The docs below cover the public pieces of that story model: how to author rooms and intents, how host calls and traces work, how replay removes live LLM spend from testing, and how the same story drives web, TUI, MCP, demos, and fixtures.",
+    "- [Architecture](/guide/architecture/) is the organized map of the engine, runtime boundaries, agent surfaces, and integration contracts.",
+    "- [System map](/guide/architecture/overview.html) shows the package layers, turn loop, LLM boundary, persistence model, and trust model.",
+    "- [MCP Studio](/guide/architecture/mcp-studio.html) is the external-agent facade for authoring, driving, testing, and inspecting Kitsoki without live LLM spend by default.",
+    "",
+    "## Try it locally",
+    "",
+    "- [Getting started](/guide/getting-started.html) is the shortest path from a downloaded binary to `onboard .` in an existing repo.",
+    "- [Download Kitsoki](/download.html) lists release artifacts and checksums.",
+    "- [GitHub App setup](/guide/integrations/github-app-setup.html) covers tighter repo-scoped GitHub auth when the local `gh` path is not enough.",
+    "",
+    "## Build or change a story",
+    "",
+    "- [Stories](/guide/stories/) introduces rooms, intents, guards, transitions, and effects.",
+    "- [Authoring Guide](/guide/stories/authoring.html) is the practical story-writing guide.",
+    "- [Recipe: add an intent](/guide/recipes/add-an-intent.html) is the smallest useful edit path.",
+    "- [Recipe: deterministic flow test](/guide/recipes/flow-test-with-cassette.html) shows how to cover a story without live LLM spend.",
+    "",
+    "## Test, replay, and debug",
+    "",
+    "- [Testing](/guide/tracing/testing.html) explains flow fixtures and host cassettes.",
+    "- [Kitsoki JSONL Trace Format](/guide/tracing/trace-format.html) documents the audit trail.",
+    "- [Run-status web UI](/guide/tracing/run-status-ui.html) covers trace inspection and replay surfaces.",
+    "- [MCP studio](/guide/architecture/mcp-studio.html) lets external agents author, drive, test, and inspect Kitsoki through one facade.",
+    "",
+    "## Browse by area",
+    "",
+    "The sidebar contains the full docs inventory, collapsed by section so this page stays readable. These section starts are the useful broad entries:",
+    "",
+    "- [Architecture](/guide/architecture/)",
+    "- [Agent guide](/guide/agents/)",
+    "- [Development guide](/guide/development/)",
+    "- [Integration guide](/guide/integrations/)",
+    "- [Authoring stories](/guide/stories/)",
+    "- [Testing and replay](/guide/tracing/)",
+    "- [Recipes](/guide/recipes/)",
+    "- [User interfaces](/guide/web/)",
+    "- [Case studies](/guide/case-studies/)",
+    "- [Reference](/guide/embedded/app-schema.html)",
     "",
   ];
-
-  for (const section of sections) {
-    lines.push(`## ${section.title}`, "");
-    for (const entry of section.entries) {
-      lines.push(`- [${firstHeading(entry.from)}](${siteHref(entry.to)})`);
-    }
-    lines.push("");
-  }
 
   fs.writeFileSync(path.join(guideDir, "index.md"), lines.join("\n"));
 }

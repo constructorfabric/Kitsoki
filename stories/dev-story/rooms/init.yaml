@@ -2,6 +2,8 @@
 #
 # The flow is deliberately boring and auditable:
 #   landing -> init_discover -> init(review) -> init_apply -> init_done
+#   init_done -> init_readiness -> init_done
+#   init_done -> init_customizations -> init_done
 #
 # Discovery and apply are host.run scripts that emit JSON. Flow fixtures stub
 # both calls, so this remains no-LLM and cost-free in tests. The review room is
@@ -17,6 +19,19 @@ states:
       - init_target_path
       - init_profile_status
       - init_run_output
+      - init_discovery_error
+      - init_transcript_count
+      - init_mining_recommendation
+      - init_repo_vcs
+      - init_repo_default_branch
+      - init_repo_remote
+      - init_ticket_provider
+      - init_ticket_repo
+      - init_story_pack
+      - init_story_pack_title
+      - init_story_pack_summary
+      - init_story_packs
+      - init_starter_stories
       - workdir
       - repo_root
     view:
@@ -31,6 +46,8 @@ states:
             Status:  "{{ world.init_profile_status }}"
       - prose: "Inspecting local project files to infer commands, stack, and the Kitsoki instance shape."
         when: "world.init_project_id == ''"
+      - prose: "{{ world.init_discovery_error|default:'' }}"
+        when: "world.init_discovery_error != ''"
       - kv:
           pairs:
             Project: "{{ world.init_project_title }}"
@@ -62,9 +79,42 @@ states:
         with:
           cmd: bash
           args:
-            - "-lc"
-            - 'python3 "$KITSOKI_APP_DIR/scripts/init_discover.py" "$@"'
-            - "init_discover"
+            - "-c"
+            - |
+              set -eu
+              script_name="$0"
+              find_init_script() {
+                name="$1"
+                for root in \
+                  "${KITSOKI_APP_DIR:-}" \
+                  "${KITSOKI_REPO:+$KITSOKI_REPO/stories/dev-story}" \
+                  "$PWD/stories/dev-story" \
+                  "$PWD/internal/basestories/stories/dev-story"
+                do
+                  [ -n "$root" ] || continue
+                  candidate="$root/scripts/$name"
+                  if [ -f "$candidate" ]; then
+                    printf '%s\n' "$candidate"
+                    return 0
+                  fi
+                done
+                cache_root="${XDG_CACHE_HOME:-${HOME:-}/.cache}/kitsoki/stories"
+                if [ -d "$cache_root" ]; then
+                  for candidate in "$cache_root"/*/dev-story/scripts/"$name"; do
+                    if [ -f "$candidate" ]; then
+                      printf '%s\n' "$candidate"
+                      return 0
+                    fi
+                  done
+                fi
+                return 1
+              }
+              script="$(find_init_script "$script_name")" || {
+                printf '{"schema":"kitsoki-init-script/v1","status":"error","error":"init helper not found: %s"}\n' "$script_name"
+                exit 1
+              }
+              exec python3 "$script" "$@"
+            - "init_discover.py"
             - "{{ world.init_request }}"
             - "{{ world.workdir }}"
             - "{{ world.repo_root }}"
@@ -72,6 +122,7 @@ states:
           init_run_ok:        "ok"
           init_run_output:    "stdout"
           init_discovery:     "stdout_json"
+          init_discovery_error: "stdout_json.error"
           init_target_path:   "stdout_json.target_path"
           init_project_id:    "stdout_json.project_id"
           init_project_title: "stdout_json.project_title"
@@ -79,8 +130,21 @@ states:
           init_dev_command:   "stdout_json.dev_command"
           init_test_command:  "stdout_json.test_command"
           init_build_command: "stdout_json.build_command"
+          init_repo_vcs:      "stdout_json.repo_vcs"
+          init_repo_default_branch: "stdout_json.repo_default_branch"
+          init_repo_remote:   "stdout_json.repo_remote"
           init_conventions:   "stdout_json.conventions"
           init_tracker:       "stdout_json.tracker"
+          init_ticket_provider: "stdout_json.tracker"
+          init_ticket_repo:   "stdout_json.ticket_repo"
+          init_story_pack:    "stdout_json.story_pack"
+          init_story_pack_title: "stdout_json.story_pack_title"
+          init_story_pack_summary: "stdout_json.story_pack_summary"
+          init_story_packs:   "stdout_json.story_packs"
+          init_starter_stories: "stdout_json.starter_stories"
+          init_transcript_count:      "stdout_json.transcript_count"
+          init_transcript_sources:    "stdout_json.transcript_sources"
+          init_mining_recommendation: "stdout_json.mining_recommendation"
         on_error: init_discover_failed
     on:
       init_discovered:
@@ -89,6 +153,7 @@ states:
           effects:
             - set:
                 init_profile_status: "draft"
+                init_discovery_error: ""
                 last_error: ""
         - default: true
           target: init_discover_failed
@@ -112,6 +177,7 @@ states:
       - init_target_path
       - init_profile_status
       - init_run_output
+      - init_discovery_error
       - workdir
       - repo_root
     view:
@@ -129,6 +195,10 @@ states:
         when: "world.init_run_output != ''"
       - code: "{{ world.init_run_output }}"
         when: "world.init_run_output != ''"
+      - heading: "Error"
+        when: "world.init_discovery_error != ''"
+      - prose: "{{ world.init_discovery_error|default:'' }}"
+        when: "world.init_discovery_error != ''"
       - choice:
           mode: single
           prompt: "Actions"
@@ -150,6 +220,20 @@ states:
                 init_discovery: {}
                 init_run_ok: false
                 init_run_output: ""
+                init_discovery_error: ""
+                init_repo_vcs: "none"
+                init_repo_default_branch: ""
+                init_repo_remote: ""
+                init_ticket_provider: "local"
+                init_ticket_repo: ""
+                init_story_pack: "core-engineering"
+                init_story_pack_title: "Core engineering starter"
+                init_story_pack_summary: ""
+                init_story_packs: []
+                init_starter_stories: []
+                init_transcript_count: 0
+                init_transcript_sources: []
+                init_mining_recommendation: {}
                 init_profile_status: "discovering"
                 last_error: ""
       quit:
@@ -167,6 +251,7 @@ states:
     relevant_world:
       - init_request
       - init_discovery
+      - init_discovery_error
       - init_target_path
       - init_project_id
       - init_project_title
@@ -174,8 +259,20 @@ states:
       - init_dev_command
       - init_test_command
       - init_build_command
+      - init_repo_vcs
+      - init_repo_default_branch
+      - init_repo_remote
+      - init_ticket_provider
+      - init_ticket_repo
       - init_conventions
       - init_tracker
+      - init_story_pack
+      - init_story_pack_title
+      - init_story_pack_summary
+      - init_story_packs
+      - init_starter_stories
+      - init_transcript_count
+      - init_mining_recommendation
       - init_profile_status
       - init_feedback
       - workdir
@@ -203,13 +300,46 @@ states:
             Dev server:  "{{ world.init_dev_command|default:'(not yet inferred)' }}"
             Test:        "{{ world.init_test_command|default:'(not yet inferred)' }}"
             Build:       "{{ world.init_build_command|default:'(not yet inferred)' }}"
+      - heading: "Repository"
+      - kv:
+          pairs:
+            VCS:            "{{ world.init_repo_vcs|default:'none' }}"
+            Default branch: "{{ world.init_repo_default_branch|default:'(none)' }}"
+            Remote:         "{{ world.init_repo_remote|default:'(none)' }}"
       - heading: "Setup"
       - kv:
           pairs:
             Conventions: "{{ world.init_conventions }}"
             Tracker:     "{{ world.init_tracker }}"
+            Ticket provider: "{% if world.init_ticket_provider == 'github' %}GitHub Issues ({{ world.init_ticket_repo|default:'repo not detected' }}){% else %}local markdown / pasted reports{% endif %}"
+            Capability: "{% if world.init_ticket_provider == 'github' && world.init_ticket_repo != '' %}full{% else %}good{% endif %}"
+            Transcripts: "{{ world.init_transcript_count|default:0 }}"
             Writes:      ".kitsoki.yaml, .kitsoki/project-profile.yaml, .kitsoki/stories/{{ world.init_project_id }}-dev/app.yaml"
             Mode:        "{{ world.init_profile_mode }}"
+      - heading: "Starter Stories"
+        when: "len(world.init_starter_stories) > 0"
+      - kv:
+          pairs:
+            Pack: "{{ world.init_story_pack_title|default:'Core engineering starter' }} ({{ world.init_story_pack|default:'core-engineering' }})"
+            Normal command: "kitsoki project-profile story-packs add <pack>"
+        when: "len(world.init_starter_stories) > 0"
+      - code: |
+          {% for story in world.init_starter_stories %}- {{ story.id }} ({{ story.source_story }}): {{ story.summary }}
+          {% endfor %}
+        when: "len(world.init_starter_stories) > 0"
+      - heading: "Session Mining"
+        when: "world.init_transcript_count > 0"
+      - prose: "{{ world.init_mining_recommendation.note }}"
+        when: "world.init_transcript_count > 0"
+      - kv:
+          pairs:
+            Sample:   "{{ world.init_mining_recommendation.sample }}"
+            Sessions: "{{ world.init_mining_recommendation.transcript_count }}"
+        when: "world.init_transcript_count > 0"
+      - code: |
+          {% for source in world.init_mining_recommendation.sources %}- {{ source.backend }}: {{ source.sessions }} sessions at {{ source.dir }}
+          {% endfor %}
+        when: "world.init_transcript_count > 0"
       - heading: "Profile Validation"
         when: "world.init_profile_validation.ok"
       - kv:
@@ -234,6 +364,13 @@ states:
             - label:  "LLM draft"
               hint:   "draft a richer project profile, then validate schema + semantics"
               intent: draft_profile
+            - label:  "story packs"
+              hint:   "choose the starter pack for first-run adoption"
+              intent: review_story_pack
+            - label:  "ticket provider"
+              hint:   "choose local/copy-paste ticket intake or GitHub Issues"
+              intent: select_ticket_provider
+              slots:  { provider: "review" }
             - label:  "revise"
               hint:   "record feedback for the next profile draft"
               intent: revise_init
@@ -267,6 +404,24 @@ states:
                 init_apply_result: {}
                 init_apply_ok: false
                 init_apply_output: ""
+                init_readiness_result: {}
+                init_readiness_ok: false
+                init_readiness_output: ""
+                init_customization_result: {}
+                init_customization_ok: false
+                init_customization_output: ""
+                init_customization_action: "promote"
+                init_customization_feedback: ""
+                last_error: ""
+      review_story_pack:
+        - target: init_story_pack
+          effects:
+            - set:
+                last_error: ""
+      select_ticket_provider:
+        - target: init_ticket_provider
+          effects:
+            - set:
                 last_error: ""
       revise_init:
         - target: .
@@ -298,13 +453,27 @@ states:
                 init_discovery: {}
                 init_run_ok: false
                 init_run_output: ""
+                init_discovery_error: ""
                 init_apply_result: {}
                 init_apply_ok: false
                 init_apply_output: ""
+                init_repo_vcs: "none"
+                init_repo_default_branch: ""
+                init_repo_remote: ""
+                init_ticket_provider: "local"
+                init_ticket_repo: ""
+                init_story_pack: "core-engineering"
+                init_story_pack_title: "Core engineering starter"
+                init_story_pack_summary: ""
+                init_story_packs: []
+                init_starter_stories: []
                 init_profile_mode: "deterministic"
                 init_profile_draft: {}
                 init_profile_validation: {}
                 init_profile_json: ""
+                init_transcript_count: 0
+                init_transcript_sources: []
+                init_mining_recommendation: {}
                 init_profile_status: "discovering"
                 last_error: ""
       quit:
@@ -313,6 +482,255 @@ states:
             - set:
                 last_error: "project onboarding closed"
                 prev_state: "init"
+      look:
+        - target: .
+
+  init_story_pack:
+    description: "Choose the named starter story pack before onboarding writes the project profile."
+    relevant_world:
+      - init_target_path
+      - init_project_title
+      - init_story_pack
+      - init_story_pack_title
+      - init_story_pack_summary
+      - init_story_packs
+      - init_starter_stories
+      - init_profile_status
+    view:
+      - banner:
+          text:     "PROJECT ONBOARDING"
+          subtitle: "choose story pack"
+          color:    "#14B8A6"
+      - kv:
+          pairs:
+            Target:   "{{ world.init_target_path|default:world.repo_root|default:world.workdir|default:'.' }}"
+            Project:  "{{ world.init_project_title|default:'(not yet inferred)' }}"
+            Selected: "{{ world.init_story_pack_title|default:'Core engineering starter' }} ({{ world.init_story_pack|default:'core-engineering' }})"
+      - code: |
+          {% for pack in world.init_story_packs %}- {{ pack.id }}: {{ pack.title }} - {{ pack.summary }}
+            stories: {{ pack.stories }}
+          {% endfor %}
+        when: "len(world.init_story_packs) > 0"
+      - choice:
+          mode: single
+          prompt: "Story packs"
+          items:
+            - label:  "core engineering"
+              hint:   "setup, bug fixing, repo-history capsules, PRs, git ops"
+              intent: select_story_pack
+              slots:  { pack: "core-engineering" }
+            - label:  "core setup"
+              hint:   "setup and git ops"
+              intent: select_story_pack
+              slots:  { pack: "core-setup" }
+            - label:  "planning delivery"
+              hint:   "PRD/design, implementation, PRs"
+              intent: select_story_pack
+              slots:  { pack: "planning-delivery" }
+            - label:  "review quality"
+              hint:   "bugs, tests, code/docs review, PRs"
+              intent: select_story_pack
+              slots:  { pack: "review-quality" }
+            - label:  "full dev-story"
+              hint:   "all day-level workflows"
+              intent: select_story_pack
+              slots:  { pack: "full-dev-story" }
+            - label:  "back"
+              hint:   "return to profile review"
+              intent: quit
+            - label:  "look"
+              hint:   "re-render"
+              intent: look
+    on:
+      select_story_pack:
+        - when: "slots.pack == 'core-engineering' || slots.pack == 'focused-engineering'"
+          target: init
+          effects:
+            - set:
+                init_story_pack: "core-engineering"
+                init_story_pack_title: "Core engineering starter"
+                init_story_pack_summary: "Focused first-run set for ordinary software repositories: setup, bug fixing, repo-history capsules, PR refinement, and git operations."
+                init_starter_stories:
+                  - { id: "setup", title: "Project setup", source_story: "dev-story:onboarding", status: "enabled", summary: "Onboard the checkout, install project-local Kitsoki tooling, and run explicit readiness checks.", expansion: "Keep this enabled as the team's bootstrap and refresh path." }
+                  - { id: "bugfix", title: "Bug fixing", source_story: "bugfix", status: "enabled", summary: "Drive a picked bug through reproduce, fix, test, review, and validation gates.", expansion: "Add narrower project bug policies through profile customizations or prompt overlays." }
+                  - { id: "repo-bakeoff", title: "Repo-history capsules", source_story: "repo-bakeoff", status: "enabled", summary: "Turn historical bug fixes into capsule records, prove RED/GREEN arming, and render live-cell commands.", expansion: "Use once the repo has 3-10 isolated historical bugs with regression tests or PR-proven oracles." }
+                  - { id: "pr-refinement", title: "PR refinement", source_story: "pr-refinement", status: "enabled", summary: "Open or attach to a PR, monitor CI/review feedback, respond, and merge when accepted.", expansion: "Add provider-specific PR policy after the base loop is proven on real pull requests." }
+                  - { id: "git-ops", title: "Git operations", source_story: "git-ops", status: "enabled", summary: "Use the guarded git command hub for status, worktrees, commits, rebases, sync, and integration.", expansion: "Extend with project branch and remote-sync policy once the team's git flow is stable." }
+                init_profile_status: "draft"
+                last_error: ""
+            - say: "Selected the core engineering starter pack."
+        - when: "slots.pack == 'core-setup'"
+          target: init
+          effects:
+            - set:
+                init_story_pack: "core-setup"
+                init_story_pack_title: "Core setup"
+                init_story_pack_summary: "Bring a project under project-local Kitsoki tooling with setup and guarded git operations only."
+                init_starter_stories:
+                  - { id: "setup", title: "Project setup", source_story: "dev-story:onboarding", status: "enabled", summary: "Onboard the checkout, install project-local Kitsoki tooling, and run explicit readiness checks.", expansion: "Keep this enabled as the team's bootstrap and refresh path." }
+                  - { id: "git-ops", title: "Git operations", source_story: "git-ops", status: "enabled", summary: "Use the guarded git command hub for status, worktrees, commits, rebases, sync, and integration.", expansion: "Extend with project branch and remote-sync policy once the team's git flow is stable." }
+                init_profile_status: "draft"
+                last_error: ""
+            - say: "Selected the core setup pack."
+        - when: "slots.pack == 'planning-delivery'"
+          target: init
+          effects:
+            - set:
+                init_story_pack: "planning-delivery"
+                init_story_pack_title: "Planning and delivery"
+                init_story_pack_summary: "Add PRD/design and implementation loops on top of setup and git operations."
+                init_starter_stories:
+                  - { id: "setup", title: "Project setup", source_story: "dev-story:onboarding", status: "enabled", summary: "Onboard the checkout, install project-local Kitsoki tooling, and run explicit readiness checks.", expansion: "Keep this enabled as the team's bootstrap and refresh path." }
+                  - { id: "git-ops", title: "Git operations", source_story: "git-ops", status: "enabled", summary: "Use the guarded git command hub for status, worktrees, commits, rebases, sync, and integration.", expansion: "Extend with project branch and remote-sync policy once the team's git flow is stable." }
+                  - { id: "prd", title: "Prd", source_story: "prd", status: "enabled", summary: "Project-selected Kitsoki story. Confirm it loads and has project-ready fixtures before treating it as a default path.", expansion: "Promote this story after adding project readiness evidence." }
+                  - { id: "implementation", title: "Implementation", source_story: "implementation", status: "enabled", summary: "Project-selected Kitsoki story. Confirm it loads and has project-ready fixtures before treating it as a default path.", expansion: "Promote this story after adding project readiness evidence." }
+                  - { id: "pr-refinement", title: "PR refinement", source_story: "pr-refinement", status: "enabled", summary: "Open or attach to a PR, monitor CI/review feedback, respond, and merge when accepted.", expansion: "Add provider-specific PR policy after the base loop is proven on real pull requests." }
+                init_profile_status: "draft"
+                last_error: ""
+            - say: "Selected the planning and delivery pack."
+        - when: "slots.pack == 'review-quality'"
+          target: init
+          effects:
+            - set:
+                init_story_pack: "review-quality"
+                init_story_pack_title: "Review and quality"
+                init_story_pack_summary: "Emphasize bug fixing, test repair, code review, docs review, and git operations."
+                init_starter_stories:
+                  - { id: "setup", title: "Project setup", source_story: "dev-story:onboarding", status: "enabled", summary: "Onboard the checkout, install project-local Kitsoki tooling, and run explicit readiness checks.", expansion: "Keep this enabled as the team's bootstrap and refresh path." }
+                  - { id: "git-ops", title: "Git operations", source_story: "git-ops", status: "enabled", summary: "Use the guarded git command hub for status, worktrees, commits, rebases, sync, and integration.", expansion: "Extend with project branch and remote-sync policy once the team's git flow is stable." }
+                  - { id: "bugfix", title: "Bug fixing", source_story: "bugfix", status: "enabled", summary: "Drive a picked bug through reproduce, fix, test, review, and validation gates.", expansion: "Add narrower project bug policies through profile customizations or prompt overlays." }
+                  - { id: "fix-tests", title: "Fix Tests", source_story: "fix-tests", status: "enabled", summary: "Project-selected Kitsoki story. Confirm it loads and has project-ready fixtures before treating it as a default path.", expansion: "Promote this story after adding project readiness evidence." }
+                  - { id: "code-review", title: "Code Review", source_story: "code-review", status: "enabled", summary: "Project-selected Kitsoki story. Confirm it loads and has project-ready fixtures before treating it as a default path.", expansion: "Promote this story after adding project readiness evidence." }
+                  - { id: "docs-review", title: "Docs Review", source_story: "docs-review", status: "enabled", summary: "Project-selected Kitsoki story. Confirm it loads and has project-ready fixtures before treating it as a default path.", expansion: "Promote this story after adding project readiness evidence." }
+                  - { id: "pr-refinement", title: "PR refinement", source_story: "pr-refinement", status: "enabled", summary: "Open or attach to a PR, monitor CI/review feedback, respond, and merge when accepted.", expansion: "Add provider-specific PR policy after the base loop is proven on real pull requests." }
+                init_profile_status: "draft"
+                last_error: ""
+            - say: "Selected the review and quality pack."
+        - when: "slots.pack == 'full-dev-story'"
+          target: init
+          effects:
+            - set:
+                init_story_pack: "full-dev-story"
+                init_story_pack_title: "Full dev-story"
+                init_story_pack_summary: "Expose the full day-level dev-story catalog after the team is ready for broader adoption."
+                init_starter_stories:
+                  - { id: "setup", title: "Project setup", source_story: "dev-story:onboarding", status: "enabled", summary: "Onboard the checkout, install project-local Kitsoki tooling, and run explicit readiness checks.", expansion: "Keep this enabled as the team's bootstrap and refresh path." }
+                  - { id: "git-ops", title: "Git operations", source_story: "git-ops", status: "enabled", summary: "Use the guarded git command hub for status, worktrees, commits, rebases, sync, and integration.", expansion: "Extend with project branch and remote-sync policy once the team's git flow is stable." }
+                  - { id: "bugfix", title: "Bug fixing", source_story: "bugfix", status: "enabled", summary: "Drive a picked bug through reproduce, fix, test, review, and validation gates.", expansion: "Add narrower project bug policies through profile customizations or prompt overlays." }
+                  - { id: "fix-tests", title: "Fix Tests", source_story: "fix-tests", status: "enabled", summary: "Project-selected Kitsoki story. Confirm it loads and has project-ready fixtures before treating it as a default path.", expansion: "Promote this story after adding project readiness evidence." }
+                  - { id: "pr-refinement", title: "PR refinement", source_story: "pr-refinement", status: "enabled", summary: "Open or attach to a PR, monitor CI/review feedback, respond, and merge when accepted.", expansion: "Add provider-specific PR policy after the base loop is proven on real pull requests." }
+                  - { id: "prd", title: "Prd", source_story: "prd", status: "enabled", summary: "Project-selected Kitsoki story. Confirm it loads and has project-ready fixtures before treating it as a default path.", expansion: "Promote this story after adding project readiness evidence." }
+                  - { id: "implementation", title: "Implementation", source_story: "implementation", status: "enabled", summary: "Project-selected Kitsoki story. Confirm it loads and has project-ready fixtures before treating it as a default path.", expansion: "Promote this story after adding project readiness evidence." }
+                  - { id: "deliver", title: "Deliver", source_story: "deliver", status: "enabled", summary: "Project-selected Kitsoki story. Confirm it loads and has project-ready fixtures before treating it as a default path.", expansion: "Promote this story after adding project readiness evidence." }
+                  - { id: "code-review", title: "Code Review", source_story: "code-review", status: "enabled", summary: "Project-selected Kitsoki story. Confirm it loads and has project-ready fixtures before treating it as a default path.", expansion: "Promote this story after adding project readiness evidence." }
+                  - { id: "docs-review", title: "Docs Review", source_story: "docs-review", status: "enabled", summary: "Project-selected Kitsoki story. Confirm it loads and has project-ready fixtures before treating it as a default path.", expansion: "Promote this story after adding project readiness evidence." }
+                  - { id: "deploy", title: "Deploy", source_story: "deploy", status: "enabled", summary: "Project-selected Kitsoki story. Confirm it loads and has project-ready fixtures before treating it as a default path.", expansion: "Promote this story after adding project readiness evidence." }
+                  - { id: "observability", title: "Observability", source_story: "observability", status: "enabled", summary: "Project-selected Kitsoki story. Confirm it loads and has project-ready fixtures before treating it as a default path.", expansion: "Promote this story after adding project readiness evidence." }
+                  - { id: "incident", title: "Incident", source_story: "incident", status: "enabled", summary: "Project-selected Kitsoki story. Confirm it loads and has project-ready fixtures before treating it as a default path.", expansion: "Promote this story after adding project readiness evidence." }
+                init_profile_status: "draft"
+                last_error: ""
+            - say: "Selected the full dev-story pack."
+        - default: true
+          target: .
+          effects:
+            - set:
+                last_error: "Unknown story pack."
+      quit:
+        - target: init
+          effects:
+            - set:
+                init_profile_status: "draft"
+                last_error: ""
+      look:
+        - target: .
+
+  init_ticket_provider:
+    description: "Choose the ticket provider before onboarding writes the project profile."
+    relevant_world:
+      - init_target_path
+      - init_project_title
+      - init_tracker
+      - init_ticket_provider
+      - init_ticket_repo
+      - init_repo_remote
+      - init_profile_status
+    view:
+      - banner:
+          text:     "PROJECT ONBOARDING"
+          subtitle: "choose ticket provider"
+          color:    "#14B8A6"
+      - kv:
+          pairs:
+            Target:   "{{ world.init_target_path|default:world.repo_root|default:world.workdir|default:'.' }}"
+            Project:  "{{ world.init_project_title|default:'(not yet inferred)' }}"
+            Detected: "{% if world.init_tracker == 'github' %}GitHub Issues{% else %}no remote provider detected{% endif %}"
+            Repository: "{{ world.init_ticket_repo|default:'(none)' }}"
+            Selected: "{% if world.init_ticket_provider == 'github' %}GitHub Issues{% else %}local markdown / pasted reports{% endif %}"
+      - prose: "Good capability is available without a provider: paste bug reports or keep local markdown tickets. Full ticket capability uses a configured provider for search, issue-body fetch, comments, and status transitions."
+      - choice:
+          mode: single
+          prompt: "Ticket provider"
+          items:
+            - label:  "local reports"
+              hint:   "good capability; no remote credentials required"
+              intent: select_ticket_provider
+              slots:  { provider: "local" }
+            - label:  "GitHub detected"
+              hint:   "full capability using the detected owner/repo"
+              intent: select_ticket_provider
+              slots:  { provider: "github" }
+              when:   "world.init_ticket_repo != ''"
+            - label:  "GitHub repo"
+              hint:   "full capability with an owner/repo slug"
+              intent: select_ticket_provider
+              param:
+                slot:        repo
+                type:        string
+                placeholder: "owner/repo"
+                required:    true
+            - label:  "back"
+              hint:   "return to profile review"
+              intent: quit
+            - label:  "look"
+              hint:   "re-render"
+              intent: look
+    on:
+      select_ticket_provider:
+        - when: "slots.provider == 'local'"
+          target: init
+          effects:
+            - set:
+                init_ticket_provider: "local"
+                init_ticket_repo: ""
+                init_profile_status: "draft"
+                last_error: ""
+            - say: "Selected local ticket intake."
+        - when: "slots.provider == 'github' && world.init_ticket_repo != ''"
+          target: init
+          effects:
+            - set:
+                init_ticket_provider: "github"
+                init_profile_status: "draft"
+                last_error: ""
+            - say: "Selected GitHub Issues for {{ world.init_ticket_repo }}."
+        - when: "slots.repo != nil && slots.repo != ''"
+          target: init
+          effects:
+            - set:
+                init_ticket_provider: "github"
+                init_ticket_repo: "{{ slots.repo }}"
+                init_profile_status: "draft"
+                last_error: ""
+            - say: "Selected GitHub Issues for {{ slots.repo }}."
+        - default: true
+          target: .
+          guard_hint: "Choose local reports or provide a GitHub owner/repo slug."
+      quit:
+        - target: init
+          effects:
+            - set:
+                init_profile_status: "draft"
+                last_error: ""
       look:
         - target: .
 
@@ -434,7 +852,7 @@ states:
             Schema:   "{{ world.init_profile_validation.schema|default:'[]' }}"
             Semantic: "{{ world.init_profile_validation.semantic|default:'[]' }}"
             Warnings: "{{ world.init_profile_validation.warnings|default:'[]' }}"
-        when: "world.init_profile_validation != {}"
+        when: "len(world.init_profile_validation) > 0"
       - choice:
           mode: single
           prompt: "Actions"
@@ -457,12 +875,15 @@ states:
         once: true
         id: validate_profile
         with:
-          cmd: bash
+          cmd: kitsoki
           args:
-            - "-lc"
-            - 'python3 "$KITSOKI_APP_DIR/scripts/init_validate_profile.py" "$@"'
-            - "init_validate_profile"
+            - "project-profile"
+            - "validate"
+            - "--json"
+            - "--envelope"
+            - "--repo-root"
             - "{{ world.init_target_path }}"
+            - "--profile-json"
             - "{{ world.init_profile_draft }}"
         bind:
           init_profile_validation: "stdout_json"
@@ -531,8 +952,22 @@ states:
             Profile:  "{{ world.init_apply_result.profile_path|default:'' }}"
             Instance: "{{ world.init_apply_result.instance_path|default:'' }}"
         when: "world.init_apply_result.status == 'applied'"
+      - kv:
+          pairs:
+            Mining seed: "{{ world.init_apply_result.mining_seed_path }}"
+        when: "world.init_apply_result.mining_seed_path != ''"
       - prose: "Installed the kitsoki agent toolkit (skills + subagents) and registered the studio MCP."
         when: "world.init_tools_ok"
+      - kv:
+          pairs:
+            Profile validation: "{{ world.init_apply_result.profile_validation.ok|default:false }}"
+        when: "world.init_apply_result.status == 'applied'"
+      - heading: "Validation Warnings"
+        when: "world.init_apply_result.profile_validation.warnings"
+      - code: |
+          {% for warning in world.init_apply_result.profile_validation.warnings %}- {{ warning }}
+          {% endfor %}
+        when: "world.init_apply_result.profile_validation.warnings"
       - kv:
           pairs:
             MCP: "{{ world.init_tools_result.mcp_path|default:'(pending)' }}"
@@ -562,9 +997,42 @@ states:
         with:
           cmd: bash
           args:
-            - "-lc"
-            - 'python3 "$KITSOKI_APP_DIR/scripts/init_apply.py" "$@"'
-            - "init_apply"
+            - "-c"
+            - |
+              set -eu
+              script_name="$0"
+              find_init_script() {
+                name="$1"
+                for root in \
+                  "${KITSOKI_APP_DIR:-}" \
+                  "${KITSOKI_REPO:+$KITSOKI_REPO/stories/dev-story}" \
+                  "$PWD/stories/dev-story" \
+                  "$PWD/internal/basestories/stories/dev-story"
+                do
+                  [ -n "$root" ] || continue
+                  candidate="$root/scripts/$name"
+                  if [ -f "$candidate" ]; then
+                    printf '%s\n' "$candidate"
+                    return 0
+                  fi
+                done
+                cache_root="${XDG_CACHE_HOME:-${HOME:-}/.cache}/kitsoki/stories"
+                if [ -d "$cache_root" ]; then
+                  for candidate in "$cache_root"/*/dev-story/scripts/"$name"; do
+                    if [ -f "$candidate" ]; then
+                      printf '%s\n' "$candidate"
+                      return 0
+                    fi
+                  done
+                fi
+                return 1
+              }
+              script="$(find_init_script "$script_name")" || {
+                printf '{"schema":"kitsoki-init-script/v1","status":"error","error":"init helper not found: %s"}\n' "$script_name"
+                exit 1
+              }
+              exec python3 "$script" "$@"
+            - "init_apply.py"
             - "{{ world.init_target_path }}"
             - "{{ world.init_project_id }}"
             - "{{ world.init_project_title }}"
@@ -573,8 +1041,13 @@ states:
             - "{{ world.init_test_command }}"
             - "{{ world.init_build_command }}"
             - "{{ world.init_conventions }}"
-            - "{{ world.init_tracker }}"
+            - "{{ world.init_ticket_provider == 'github' ? 'github' : 'none' }}"
             - "{{ world.init_profile_json }}"
+            - "{{ world.init_mining_recommendation }}"
+            - "{{ world.init_starter_stories }}"
+            - "{{ world.init_story_pack }}"
+            - "{{ world.init_ticket_repo }}"
+          fail_on_error: true
         bind:
           init_apply_ok: "ok"
           init_apply_output: "stdout"
@@ -644,7 +1117,13 @@ states:
           text:     "PROJECT ONBOARDING"
           subtitle: "apply failed"
           color:    "#EF4444"
+      - prose: >-
+          Profile validation failed during apply. Return to the profile review
+          before retrying; rerunning apply will repeat the same validation
+          failure until the profile is corrected.
+        when: "world.init_apply_result.status == 'profile-validation-failed'"
       - prose: "Apply did not complete successfully. Review the output, then retry or return to the profile review."
+        when: "world.init_apply_result.status != 'profile-validation-failed'"
       - kv:
           pairs:
             Target:  "{{ world.init_target_path }}"
@@ -658,14 +1137,22 @@ states:
           mode: single
           prompt: "Actions"
           items:
-            - label:  "retry"
-              hint:   "rerun apply"
-              intent: confirm_init
             - label:  "review"
               hint:   "return to the profile review"
               intent: revise_init
               slots:
                 feedback: "review after apply failure"
+              when:   "world.init_apply_result.status == 'profile-validation-failed'"
+            - label:  "retry"
+              hint:   "rerun apply"
+              intent: confirm_init
+              when:   "world.init_apply_result.status != 'profile-validation-failed'"
+            - label:  "review"
+              hint:   "return to the profile review"
+              intent: revise_init
+              slots:
+                feedback: "review after apply failure"
+              when:   "world.init_apply_result.status != 'profile-validation-failed'"
             - label:  "quit"
               hint:   "back to the workbench"
               intent: quit
@@ -755,6 +1242,14 @@ states:
                 init_tools_result: {}
                 init_tools_ok: false
                 init_tools_output: ""
+                init_readiness_result: {}
+                init_readiness_ok: false
+                init_readiness_output: ""
+                init_customization_result: {}
+                init_customization_ok: false
+                init_customization_output: ""
+                init_customization_action: "promote"
+                init_customization_feedback: ""
                 init_profile_status: "applying"
                 last_error: ""
       init_applied:
@@ -780,6 +1275,12 @@ states:
       - init_project_id
       - init_project_title
       - init_profile_status
+      - init_readiness_result
+      - init_readiness_ok
+      - init_readiness_output
+      - init_customization_result
+      - init_customization_ok
+      - init_customization_output
     view:
       - banner:
           text:     "PROJECT ONBOARDING"
@@ -792,19 +1293,45 @@ states:
             Status:        "{{ world.init_profile_status }}"
             Config:        "{{ world.init_apply_result.config_path|default:'' }}"
             Profile:       "{{ world.init_apply_result.profile_path|default:'' }}"
+            Profile valid: "{{ world.init_apply_result.profile_validation.ok|default:false }}"
             Instance:      "{{ world.init_apply_result.instance_path|default:'' }}"
             Gitignore:     "{{ world.init_apply_result.gitignore_path|default:'' }}"
+            Readiness:     "{{ world.init_readiness_result.status|default:'not-run' }}"
+            Customizations: "{{ world.init_customization_result.counts.pending|default:0 }} pending"
       - heading: "Writes"
         when: "world.init_apply_result.writes"
       - template: |
           {% for path in world.init_apply_result.writes %}- {{ path }}
           {% endfor %}
         when: "world.init_apply_result.writes"
+      - heading: "Readiness"
+        when: "world.init_readiness_result.status != ''"
+      - kv:
+          pairs:
+            Status: "{{ world.init_readiness_result.status|default:'unknown' }}"
+            Report: "{{ world.init_readiness_result.out|default:'.artifacts/kitsoki-readiness.json' }}"
+        when: "world.init_readiness_result.status != ''"
+      - template: |
+          {% for check in world.init_readiness_result.checks %}- {{ check.id }}: {{ check.status }} — {{ check.detail }}
+          {% endfor %}
+        when: "world.init_readiness_result.checks"
+      - heading: "Mined Customizations"
+        when: "world.init_customization_result.entries"
+      - template: |
+          {% for entry in world.init_customization_result.entries %}- {{ entry.id }}: {{ entry.status }} — {{ entry.summary }}
+          {% endfor %}
+        when: "world.init_customization_result.entries"
       - heading: "Actions"
       - choice:
           mode: single
           prompt: ""
           items:
+            - label:  "customizations"
+              hint:   "promote and review session-mined project customizations"
+              intent: review_customizations
+            - label:  "readiness"
+              hint:   "run declared post-apply checks and update the profile readiness summary"
+              intent: run_readiness
             - label:  "workbench"
               hint:   "return to the dev-story workbench"
               intent: go_main
@@ -812,11 +1339,279 @@ states:
               hint:   "re-render"
               intent: look
     on:
+      review_customizations:
+        - target: init_customizations
+          effects:
+            - set:
+                init_customization_result: {}
+                init_customization_ok: false
+                init_customization_output: ""
+                init_customization_action: "promote"
+                init_customization_feedback: ""
+                init_profile_status: "reviewing-customizations"
+                last_error: ""
+      run_readiness:
+        - target: init_readiness
+          effects:
+            - set:
+                init_readiness_result: {}
+                init_readiness_ok: false
+                init_readiness_output: ""
+                init_profile_status: "checking-readiness"
+                last_error: ""
       go_main:
         - target: landing
           effects:
             - set:
                 prev_state: "init_done"
                 last_error: "project onboarding complete"
+      look:
+        - target: .
+
+  init_customizations:
+    description: "Review session-mined project customizations after onboarding."
+    relevant_world:
+      - init_target_path
+      - init_project_title
+      - init_profile_status
+      - init_customization_result
+      - init_customization_ok
+      - init_customization_output
+      - init_customization_action
+      - init_customization_feedback
+    view:
+      - banner:
+          text:     "PROJECT ONBOARDING"
+          subtitle: "customization review"
+          color:    "#A855F7"
+      - prose: "Promoting emitted session-mining reports into pending profile customizations for operator review."
+        when: "world.init_customization_result.action == ''"
+      - kv:
+          pairs:
+            Target: "{{ world.init_target_path }}"
+            Project: "{{ world.init_project_title }}"
+            Action: "{{ world.init_customization_result.action|default:world.init_customization_action }}"
+            Pending: "{{ world.init_customization_result.counts.pending|default:0 }}"
+            Accepted: "{{ world.init_customization_result.counts.accepted|default:0 }}"
+            Needs refinement: "{{ world.init_customization_result.counts.needs_refinement|default:0 }}"
+      - heading: "Entries"
+        when: "world.init_customization_result.entries"
+      - template: |
+          {% for entry in world.init_customization_result.entries %}- {{ entry.id }}: {{ entry.status }} — {{ entry.summary }}
+            evidence: {{ entry.evidence }}
+          {% endfor %}
+        when: "world.init_customization_result.entries"
+      - heading: "Changed"
+        when: "world.init_customization_result.changed"
+      - template: |
+          {% for entry in world.init_customization_result.changed %}- {{ entry.id }}: {{ entry.status }} — {{ entry.summary }}
+          {% endfor %}
+        when: "world.init_customization_result.changed"
+      - heading: "Feedback"
+        when: "world.init_customization_feedback != ''"
+      - prose: "{{ world.init_customization_feedback }}"
+        when: "world.init_customization_feedback != ''"
+      - heading: "Output"
+        when: "world.init_customization_output != ''"
+      - code: "{{ world.init_customization_output|default:'' }}"
+        when: "world.init_customization_output != ''"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "accept"
+              hint:   "mark pending customizations accepted in the profile"
+              intent: accept_customizations
+            - label:  "refine"
+              hint:   "record feedback on pending customizations"
+              intent: refine_customizations
+              param:
+                slot: feedback
+                type: string
+                placeholder: "what should change"
+                required: true
+            - label:  "refresh"
+              hint:   "promote newly emitted mining reports"
+              intent: review_customizations
+            - label:  "continue"
+              hint:   "return to the applied onboarding result"
+              intent: customizations_reviewed
+            - label:  "workbench"
+              hint:   "return to the dev-story workbench"
+              intent: go_main
+            - label:  "look"
+              hint:   "re-render"
+              intent: look
+    on_enter:
+      - invoke: host.run
+        once: true
+        id: customizations
+        with:
+          cmd: bash
+          cwd: "{{ world.init_target_path }}"
+          args:
+            - "-c"
+            - |
+              if [ ! -f .kitsoki/promote-session-mining.py ]; then
+                printf '{"action":"missing-helper","entries":[],"changed":[],"counts":{},"updated":false,"error":".kitsoki/promote-session-mining.py was not found"}\n'
+                exit 0
+              fi
+              case "$1" in
+                accept)
+                  python3 .kitsoki/promote-session-mining.py --accept-pending --json
+                  ;;
+                refine)
+                  python3 .kitsoki/promote-session-mining.py --refine-pending "$2" --json
+                  ;;
+                list)
+                  python3 .kitsoki/promote-session-mining.py --list --json
+                  ;;
+                *)
+                  python3 .kitsoki/promote-session-mining.py --json
+                  ;;
+              esac
+            - "customizations"
+            - "{{ world.init_customization_action }}"
+            - "{{ world.init_customization_feedback }}"
+          timeout: "2m"
+        bind:
+          init_customization_ok: "ok"
+          init_customization_output: "stdout"
+          init_customization_result: "stdout_json"
+    on:
+      accept_customizations:
+        - target: .
+          effects:
+            - set:
+                init_customization_result: {}
+                init_customization_ok: false
+                init_customization_output: ""
+                init_customization_action: "accept"
+                init_customization_feedback: ""
+                last_error: ""
+      refine_customizations:
+        - target: .
+          effects:
+            - set:
+                init_customization_result: {}
+                init_customization_ok: false
+                init_customization_output: ""
+                init_customization_action: "refine"
+                init_customization_feedback: "{{ slots.feedback }}"
+                last_error: ""
+      review_customizations:
+        - target: .
+          effects:
+            - set:
+                init_customization_result: {}
+                init_customization_ok: false
+                init_customization_output: ""
+                init_customization_action: "promote"
+                init_customization_feedback: ""
+                last_error: ""
+      customizations_reviewed:
+        - target: init_done
+          effects:
+            - set:
+                init_profile_status: "{{ world.init_apply_result.status ?? 'applied' }}"
+                last_error: ""
+      go_main:
+        - target: landing
+          effects:
+            - set:
+                prev_state: "init_customizations"
+                last_error: "project onboarding customizations reviewed"
+      look:
+        - target: .
+
+  init_readiness:
+    description: "Run the generated post-apply readiness verifier for an onboarded target."
+    relevant_world:
+      - init_target_path
+      - init_project_title
+      - init_profile_status
+      - init_readiness_result
+      - init_readiness_ok
+      - init_readiness_output
+    view:
+      - banner:
+          text:     "PROJECT ONBOARDING"
+          subtitle: "readiness check"
+          color:    "#0EA5E9"
+      - prose: "Running the generated readiness verifier against the target checkout. Project command failures are captured as report data."
+        when: "world.init_readiness_result.status == ''"
+      - kv:
+          pairs:
+            Target: "{{ world.init_target_path }}"
+            Project: "{{ world.init_project_title }}"
+            Status: "{{ world.init_readiness_result.status|default:world.init_profile_status }}"
+            Report: "{{ world.init_readiness_result.out|default:'.artifacts/kitsoki-readiness.json' }}"
+      - heading: "Checks"
+        when: "world.init_readiness_result.checks"
+      - template: |
+          {% for check in world.init_readiness_result.checks %}- {{ check.id }}: {{ check.status }} — {{ check.detail }}
+          {% endfor %}
+        when: "world.init_readiness_result.checks"
+      - heading: "Output"
+        when: "world.init_readiness_output != ''"
+      - code: "{{ world.init_readiness_output|default:'' }}"
+        when: "world.init_readiness_output != ''"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "continue"
+              hint:   "return to the applied onboarding result"
+              intent: readiness_checked
+            - label:  "retry"
+              hint:   "rerun readiness checks"
+              intent: run_readiness
+            - label:  "workbench"
+              hint:   "return to the dev-story workbench"
+              intent: go_main
+            - label:  "look"
+              hint:   "re-render"
+              intent: look
+    on_enter:
+      - invoke: host.run
+        once: true
+        id: readiness
+        with:
+          cmd: bash
+          cwd: "{{ world.init_target_path }}"
+          args:
+            - "-c"
+            - |
+              if [ ! -f .kitsoki/check-readiness.py ]; then
+                printf '{"schema":"kitsoki-readiness/v1","status":"error","out":".artifacts/kitsoki-readiness.json","checks":[{"id":"readiness-script","status":"fail","detail":".kitsoki/check-readiness.py was not found"}]}\n'
+                exit 0
+              fi
+              python3 .kitsoki/check-readiness.py --json --update-profile
+          timeout: "10m"
+        bind:
+          init_readiness_ok: "ok"
+          init_readiness_output: "stdout"
+          init_readiness_result: "stdout_json"
+    on:
+      readiness_checked:
+        - target: init_done
+          effects:
+            - set:
+                init_profile_status: "{{ world.init_apply_result.status ?? 'applied' }}"
+                last_error: ""
+      run_readiness:
+        - target: .
+          effects:
+            - set:
+                init_readiness_result: {}
+                init_readiness_ok: false
+                init_readiness_output: ""
+                last_error: ""
+      go_main:
+        - target: landing
+          effects:
+            - set:
+                prev_state: "init_readiness"
+                last_error: "project onboarding readiness checked"
       look:
         - target: .

@@ -1,0 +1,7 @@
+inputs:
+  state_path: { type: string, required: true }
+  item_id:    { type: string, required: true }
+  item:       { type: object }
+outputs:
+  policy_result: { type: object }
+  error:         { type: string }

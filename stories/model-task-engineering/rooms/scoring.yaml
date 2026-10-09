@@ -21,21 +21,41 @@ states:
             - { label: "quit", intent: quit, hint: "abandon the workflow" }
             - { label: "look", intent: look }
     on_enter:
+      - invoke: host.starlark.run
+        id: model_task_score_paths
+        once: true
+        with:
+          script: scripts/score_paths.star
+          inputs:
+            bench_manifest: "{{ world.bench_manifest }}"
+            case_id: "{{ world.case_id }}"
+            output_dir: "{{ world.output_dir }}"
+        bind:
+          report_json: "report_json"
+          report_markdown: "report_markdown"
+          report_deck: "report_deck"
       - invoke: host.run
         id: model_task_score
         once: true
         with:
-          cmd: python3
+          cmd: go
           args:
-            - "stories/model-task-engineering/scripts/score.py"
-            - "--bench"
+            - "run"
+            - "./cmd/kitsoki"
+            - "agent-bench"
+            - "score"
             - "{{ world.bench_manifest }}"
             - "--case"
             - "{{ world.case_id }}"
             - "--trace"
             - "{{ world.trace_path }}"
-            - "--out-dir"
-            - "{{ world.output_dir }}"
+            - "--json-out"
+            - "{{ world.report_json }}"
+            - "--markdown-out"
+            - "{{ world.report_markdown }}"
+            - "--slidey-out"
+            - "{{ world.report_deck }}"
+            - "--envelope"
         bind:
           score_status: "stdout_json.status"
           score_summary: "stdout_json.summary"

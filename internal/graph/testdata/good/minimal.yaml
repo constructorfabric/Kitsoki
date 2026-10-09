@@ -1,0 +1,57 @@
+schema: project-object-graph/seed-catalog/v0
+catalog:
+  id: minimal-good-fixture
+type_registry:
+  - id: core-node
+    schema: graph-type/v0
+    extends: null
+    required_fields: [id, schema, title, status, visibility]
+    edge_fields:
+      - id: sources
+        target_type: source
+        cardinality: many
+  - id: requirement
+    schema: graph-type/v0
+    extends: core-node
+    edge_fields:
+      - id: required_by
+        target_type: feature
+        cardinality: many
+  - id: feature
+    schema: graph-type/v0
+    extends: core-node
+    edge_fields:
+      - id: requirements
+        target_type: requirement
+        cardinality: many
+  - id: iso9001-clause
+    schema: graph-type/v0
+    extends: requirement
+    required_fields: [clause_ref]
+nodes:
+  - schema: graph/feature/v0
+    id: feature-one
+    title: Feature one
+    status: active
+    visibility: public
+    edges:
+      requirements:
+        - req-one
+  - schema: graph/requirement/v0
+    id: req-one
+    title: Requirement one
+    status: satisfied
+    visibility: public
+    statement: A generic requirement statement.
+    edges:
+      required_by:
+        - feature-one
+  - schema: graph/iso9001-clause/v0
+    id: clause-one
+    title: ISO 9001 clause one
+    status: satisfied
+    visibility: internal
+    clause_ref: "8.2.1"
+    edges:
+      required_by:
+        - feature-one

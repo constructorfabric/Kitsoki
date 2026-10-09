@@ -1,0 +1,24 @@
+app:
+  id: wb-control
+  version: 0.1.0
+hosts:
+  - host.agent.task
+intents:
+  go:
+    title: Go
+root: plain
+states:
+  plain:
+    write_mode: open
+    on:
+      go:
+        - target: plain
+          effects:
+            - invoke: host.agent.task
+              with:
+                agent: builder
+                acceptance: { schema: schemas/out.json }
+agents:
+  builder:
+    system_prompt: "build things"
+    external_side_effect: false

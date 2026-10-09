@@ -1,0 +1,258 @@
+{
+  "driver_agent": ".agents/agents/product-journey-qa-driver.md",
+  "final_gates": [
+    "autonomous_fix ticket_repo=<owner/repo> gh_agent_public_base_url=<public-gh-agent-url>",
+    "review",
+    "validate"
+  ],
+  "persona": {
+    "description": "Maintains a mature repository and is skeptical of bot-generated churn.",
+    "id": "core-maintainer",
+    "label": "Core maintainer",
+    "persona_lens": {
+      "escalation_trigger": "generated churn, hidden broad scope, missing deterministic test proof, or unclear ownership boundary",
+      "evidence_emphasis": "candidate diff, targeted tests, full-suite classification, and trace events for unexpected routing",
+      "finding_bias": "Prefer reviewability, bisectability, and least-surprise findings over cosmetic notes.",
+      "first_question": "Will this produce a minimal, reviewable diff that follows the repository's style?",
+      "starting_surface": "terminal-first; prefer TUI/session state before browser surfaces"
+    },
+    "risk_focus": [
+      "reviewability",
+      "house-style",
+      "minimal diffs"
+    ],
+    "surface_preference": "terminal-first"
+  },
+  "project": {
+    "id": "gears-rust",
+    "label": "constructorfabric/gears-rust",
+    "manifest": "tools/bugfix-bakeoff/external/projects/gears-rust/manifest.yaml",
+    "notes": "Sister project and first production slice. Uses existing external manifest + suite.",
+    "source": "catalog",
+    "stack": "rust",
+    "status": "validated"
+  },
+  "run_id": "20260705T225534Z-gears-rust-core-maintainer-dwf3-a3-onboard",
+  "scenarios": [
+    {
+      "action_sequence": [
+        "session.new or session.attach using the scenario primary_story",
+        "render.tui or render.tui_png before and after meaningful turns",
+        "visual.observe before acting and when capturing evidence",
+        "session.status/session.world first; session.inspect only when targeted reads are insufficient"
+      ],
+      "attach_commands": [
+        "python3 tools/product-journey/run.py --attach-evidence --run-dir .artifacts/product-journey/20260705T225534Z-gears-rust-core-maintainer-dwf3-a3-onboard --scenario project-onboarding --evidence-kind session_trace --evidence-path <path-or-retained-id> --evidence-source <retained|external|local|cassette> --notes \"Save the Kitsoki session trace or trace id.\"",
+        "python3 tools/product-journey/run.py --attach-evidence --run-dir .artifacts/product-journey/20260705T225534Z-gears-rust-core-maintainer-dwf3-a3-onboard --scenario project-onboarding --evidence-kind rendered_tui_frame --evidence-path <path-or-retained-id> --evidence-source <retained|external|local|cassette> --notes \"Save the rendered TUI/web frame for the room under review.\"",
+        "python3 tools/product-journey/run.py --attach-evidence --run-dir .artifacts/product-journey/20260705T225534Z-gears-rust-core-maintainer-dwf3-a3-onboard --scenario project-onboarding --evidence-kind generated_config_diff --evidence-path <path-or-retained-id> --evidence-source <retained|external|local|cassette> --notes \"Save the generated config diff or a no-change note.\"",
+        "python3 tools/product-journey/run.py --attach-evidence --run-dir .artifacts/product-journey/20260705T225534Z-gears-rust-core-maintainer-dwf3-a3-onboard --scenario project-onboarding --evidence-kind onboarding_smoke_result --evidence-path <path-or-retained-id> --evidence-source <retained|external|local|cassette> --notes \"Save the deterministic onboarding smoke result.\"",
+        "python3 tools/product-journey/run.py --attach-evidence --run-dir .artifacts/product-journey/20260705T225534Z-gears-rust-core-maintainer-dwf3-a3-onboard --scenario project-onboarding --evidence-kind key_interaction_video --evidence-path <path-or-retained-id> --evidence-source <retained|external|local|cassette> --notes \"Save an MP4/GIF clip or retained video reference for Slidey playback.\"",
+        "python3 tools/product-journey/run.py --attach-evidence --run-dir .artifacts/product-journey/20260705T225534Z-gears-rust-core-maintainer-dwf3-a3-onboard --scenario project-onboarding --evidence-kind flow-fixture --evidence-path <path-or-retained-id> --evidence-source <retained|external|local|cassette> --notes \"Save a local flow fixture (`kitsoki test flows <app.yaml> --flows ...`) that replays this scenario no-LLM.\""
+      ],
+      "driver_actions": [
+        {
+          "evidence": [],
+          "goal": "Open or attach the Kitsoki/product surface named by the scenario.",
+          "id": "open_surface",
+          "record": "Record the handle, URL, or reason this surface could not be opened.",
+          "resolved_tools": [
+            "mcp__kitsoki__session_new",
+            "mcp__kitsoki__session_attach"
+          ],
+          "tools": [
+            "session.open"
+          ]
+        },
+        {
+          "evidence": [
+            "rendered_tui_frame"
+          ],
+          "goal": "Observe the exact operator-visible state before acting.",
+          "id": "read_current_frame",
+          "record": "Save frame evidence under evidence/gears-rust--core-maintainer/project-onboarding/ before evaluating usability.",
+          "resolved_tools": [
+            "mcp__kitsoki__session_status",
+            "mcp__kitsoki__render_tui",
+            "mcp__kitsoki__render_tui_png",
+            "mcp__kitsoki__visual_observe"
+          ],
+          "tools": [
+            "session.status",
+            "render.tui",
+            "visual.observe"
+          ]
+        },
+        {
+          "evidence": [
+            "session_trace",
+            "key_interaction_video"
+          ],
+          "goal": "Take the next natural persona action and preserve route/interaction evidence.",
+          "id": "act_as_persona",
+          "record": "Prefer natural phrasing when route quality is under test; otherwise use deterministic action handles.",
+          "resolved_tools": [
+            "mcp__kitsoki__session_submit",
+            "mcp__kitsoki__session_drive",
+            "mcp__kitsoki__session_trace"
+          ],
+          "tools": [
+            "session.submit",
+            "session.trace"
+          ]
+        },
+        {
+          "evidence": [
+            "session_trace",
+            "rendered_tui_frame",
+            "generated_config_diff",
+            "onboarding_smoke_result",
+            "key_interaction_video",
+            "flow-fixture"
+          ],
+          "goal": "Attach every minimum-evidence slot or record the matching quality-gate blocker.",
+          "id": "capture_required_evidence",
+          "record": "Use attach commands for captured evidence; use blocker command for honest gaps.",
+          "resolved_tools": [
+            "mcp__kitsoki__visual_observe",
+            "mcp__kitsoki__render_tui",
+            "mcp__kitsoki__render_tui_png",
+            "mcp__kitsoki__session_trace"
+          ],
+          "tools": [
+            "visual.observe",
+            "render.tui",
+            "session.trace"
+          ]
+        },
+        {
+          "evidence": [
+            "driver-journal.md"
+          ],
+          "goal": "Append the driver's actual attempt, tools used, evidence references, and blockers.",
+          "id": "journal_attempt",
+          "record": "Journal the attempt even when the scenario only produced a blocker.",
+          "resolved_tools": [],
+          "tools": [
+            "story.driver_event",
+            "tools/product-journey/run.py --record-driver-event"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "capture_hint": "Save the Kitsoki session trace or trace id.",
+          "kind": "session_trace",
+          "path": ".context/dwf3-a3-recording-notes.md",
+          "playback_candidate": false,
+          "status": "captured"
+        },
+        {
+          "capture_hint": "Save the rendered TUI/web frame for the room under review.",
+          "kind": "rendered_tui_frame",
+          "path": "",
+          "playback_candidate": false,
+          "status": "missing"
+        },
+        {
+          "capture_hint": "Save the generated config diff or a no-change note.",
+          "kind": "generated_config_diff",
+          "path": "",
+          "playback_candidate": false,
+          "status": "missing"
+        },
+        {
+          "capture_hint": "Save the deterministic onboarding smoke result.",
+          "kind": "onboarding_smoke_result",
+          "path": "",
+          "playback_candidate": false,
+          "status": "missing"
+        },
+        {
+          "capture_hint": "Save an MP4/GIF clip or retained video reference for Slidey playback.",
+          "kind": "key_interaction_video",
+          "path": "",
+          "playback_candidate": true,
+          "status": "missing"
+        },
+        {
+          "capture_hint": "Save a local flow fixture (`kitsoki test flows <app.yaml> --flows ...`) that replays this scenario no-LLM.",
+          "kind": "flow-fixture",
+          "path": "stories/dev-story/flows/onboard_gears_rust.yaml",
+          "playback_candidate": false,
+          "status": "captured"
+        }
+      ],
+      "evidence_dir": "evidence/gears-rust--core-maintainer/project-onboarding",
+      "harness": "replay-or-record",
+      "journal_command": "python3 tools/product-journey/run.py --record-driver-event --run-dir .artifacts/product-journey/20260705T225534Z-gears-rust-core-maintainer-dwf3-a3-onboard --scenario project-onboarding --dispatch-mode <replay|record|live> --driver-status <attempted|captured|blocked|validated> --mcp-tools <comma-separated-tools-used> --evidence-refs <comma-separated-paths-or-retained-ids> --blockers <comma-separated-blockers-if-any> --summary <what-the-driver-actually-tried>",
+      "label": "Project onboarding",
+      "live_budget": {
+        "blocker_summary": "The scenario reached its per-scenario live budget before enough proof evidence could be captured. Preserve trace/frame evidence and continue with the next scenario.",
+        "blocker_title": "Live budget exhausted",
+        "max_live_minutes": 20,
+        "remaining_action": "record_blocker",
+        "scenario": "project-onboarding",
+        "summary": "Spend at most 20 live minutes on this scenario. When the budget is reached, stop live exploration, record the blocker or partial evidence, and journal the attempt before moving to the next scenario."
+      },
+      "persona_lens": {
+        "escalation_trigger": "generated churn, hidden broad scope, missing deterministic test proof, or unclear ownership boundary",
+        "evidence_emphasis": "candidate diff, targeted tests, full-suite classification, and trace events for unexpected routing",
+        "finding_bias": "Prefer reviewability, bisectability, and least-surprise findings over cosmetic notes.",
+        "first_question": "Will this produce a minimal, reviewable diff that follows the repository's style?",
+        "starting_surface": "terminal-first; prefer TUI/session state before browser surfaces"
+      },
+      "persona_prompts": [
+        "Act as Core maintainer: Maintains a mature repository and is skeptical of bot-generated churn.",
+        "Risk focus: reviewability, house-style, minimal diffs",
+        "Start from: terminal-first; prefer TUI/session state before browser surfaces",
+        "First skepticism check: Will this produce a minimal, reviewable diff that follows the repository's style?",
+        "Escalate when: generated churn, hidden broad scope, missing deterministic test proof, or unclear ownership boundary",
+        "Evidence emphasis: candidate diff, targeted tests, full-suite classification, and trace events for unexpected routing",
+        "Use natural operator phrasing where route quality or prompt quality is under test."
+      ],
+      "primary_story": "stories/dev-story/app.yaml",
+      "quality_gate": {
+        "block_if": [
+          "The onboarding story cannot be opened or rendered.",
+          "The path requires live LLM authorization and no cassette exists.",
+          "Generated config or smoke output is unavailable for deterministic review."
+        ],
+        "done_when": "The persona can identify the generated project profile, the relevant commands/files, and the next Kitsoki story to launch.",
+        "minimum_evidence": [
+          "session_trace",
+          "rendered_tui_frame",
+          "generated_config_diff",
+          "onboarding_smoke_result",
+          "key_interaction_video"
+        ]
+      },
+      "record_blocker_command": "python3 tools/product-journey/run.py --record-blocker --run-dir .artifacts/product-journey/20260705T225534Z-gears-rust-core-maintainer-dwf3-a3-onboard --scenario project-onboarding --title <blocker-title> --summary <why-this-scenario-could-not-be-captured> --evidence-path <trace-or-frame-path>",
+      "record_finding_command": "python3 tools/product-journey/run.py --record-finding --run-dir .artifacts/product-journey/20260705T225534Z-gears-rust-core-maintainer-dwf3-a3-onboard --finding-kind <strength|weakness|issue|fix> --scenario project-onboarding --title <title> --summary <summary> --evidence-path <path-or-retained-id>",
+      "required_mcp": [
+        "session.open",
+        "session.inspect",
+        "render.tui",
+        "visual.observe"
+      ],
+      "resolved_mcp_tools": [
+        "mcp__kitsoki__session_new",
+        "mcp__kitsoki__session_attach",
+        "mcp__kitsoki__session_inspect",
+        "mcp__kitsoki__session_world",
+        "mcp__kitsoki__session_trace",
+        "mcp__kitsoki__render_tui",
+        "mcp__kitsoki__render_tui_png",
+        "mcp__kitsoki__visual_observe"
+      ],
+      "scenario": "project-onboarding",
+      "stage": "onboard_project",
+      "success_criteria": [
+        "Generated project config names real commands and relevant project files.",
+        "Persona can state the next Kitsoki command or room to use.",
+        "No silent operator-question defaulting occurs."
+      ],
+      "task_prompt": "Onboard constructorfabric/gears-rust using Kitsoki's documented project setup path. Confirm the generated project profile names plausible rust commands, repo files, and the next story to launch.",
+      "visual_surface": "tui"
+    }
+  ]
+}

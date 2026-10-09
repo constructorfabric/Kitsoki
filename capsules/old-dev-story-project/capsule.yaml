@@ -1,0 +1,77 @@
+name: old-dev-story-project
+source:
+  synthetic: true
+  default_branch: main
+  steps:
+    - action: write
+      path: README.md
+      content: |
+        # Old Dev Story Project
+
+        Fixture for Kitsoki project-upgrade checks.
+    - action: write
+      path: .kitsoki.yaml
+      content: |
+        story_dirs:
+          - ./.kitsoki/stories
+
+        project_profile: .kitsoki/project-profile.yaml
+
+        root:
+          import: dev-story
+    - action: write
+      path: .kitsoki/project-profile.yaml
+      content: |
+        schema: project-profile/v1
+        id: old-dev-story-project
+        title: Old Dev Story Project
+        repo:
+          root: "."
+          vcs: git
+          default_branch: main
+        commands:
+          build: "make build"
+          test: "make test"
+        kitsoki:
+          story: dev-story
+          instance:
+            id: old-dev-story-project-dev
+            path: .kitsoki/stories/old-dev-story-project-dev/app.yaml
+            bindings:
+              ticket: host.local_files.ticket
+              vcs: host.git
+              ci: host.local
+              workspace: host.git_worktree
+              transport: host.append_to_file
+          judge_mode: human
+    - action: write
+      path: .kitsoki/stories/old-dev-story-project-dev/app.yaml
+      content: |
+        app:
+          id: old-dev-story-project-dev
+          version: 0.1.0
+          title: Old generated dev-story instance
+
+        imports:
+          core:
+            source: "@kitsoki/dev-story"
+            entry: landing
+            hosts: declared
+
+        root: missing_child_room
+    - action: commit
+      message: old kitsoki project
+network: none
+verify:
+  probes:
+    - name: config-present
+      run: test -f .kitsoki.yaml
+      expect: zero
+    - name: profile-present
+      run: test -f .kitsoki/project-profile.yaml
+      expect: zero
+    - name: stale-instance-present
+      run: test -f .kitsoki/stories/old-dev-story-project-dev/app.yaml
+      expect: zero
+scenario:
+  kind: story-upgrade

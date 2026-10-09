@@ -13,6 +13,11 @@ initial_world:
   refine_budget: 6
 
 host_handlers:
+  host.git_worktree:
+    by_call:
+      prepare_workspace:
+        data: { ok: true, path: ".capsules/workspaces/slidey-edit-flow" }
+
   host.starlark.run:
     by_call:
       resolve_deck:

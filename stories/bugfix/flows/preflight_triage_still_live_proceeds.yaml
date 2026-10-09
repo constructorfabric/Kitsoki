@@ -1,0 +1,69 @@
+# preflight_triage_still_live_proceeds — auto_triage pre-flight verdicts
+# STILL-LIVE, so the pipeline proceeds into reproducing (the verdict is a
+# checkpoint, not a gate that can block live bugs).
+#
+# Fresh full-mode autostart (work_ticket re-entry idiom) → worktree → internal
+# `preflight_triage` → triager binds STILL-LIVE → non-human judge auto-accepts
+# → the accept arc's continue arm targets reproducing (bugfix_mode preserved,
+# world.triage_verdict retained as context). The LLM repro judge is stubbed
+# uncertain so the walk HOLDS at reproducing — isolating exactly the
+# pre-flight → pipeline handoff under test.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  judge_mode: "llm_then_human"
+
+host_handlers:
+  host.append_to_file: { data: { ok: true, message_id: "msg-1" } }
+  host.inbox.add:       { data: { ok: true, id: "ib-1" } }
+  host.git_worktree:    { data: { ok: true, log: "created" } }
+  host.git:             { data: { ok: true, sha: "abc123", diff: "" } }
+  host.local:           { data: { ok: true, log: "PASS", passed: 1, failed: 0 } }
+  host.agent.codeact:
+    data:
+      ok: true
+      terminated: "done"
+      payload:
+        verdict:          "STILL-LIVE"
+        confidence:       0.88
+        summary_title:    "STILL-LIVE — buggy read still present"
+        evidence:         "internal/widget/render.go:42 still indexes past the end; no clamp, no regression test found."
+        summary_markdown: "The reported off-by-one is still in the tree. Drive the fix pipeline."
+        suggested_action: "drive the full bugfix pipeline"
+        fixed_in_ref:     null
+        involved_components:
+          - { name: "internal/widget/render.go", reason: "buggy read still present" }
+      steps: []
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Reproduced"
+        summary_markdown: "Repro artifact body."
+        bug_verified:     true
+        involved_components: []
+  # Uncertain LLM verdict → reproducing holds for the human (same idiom as
+  # llm_uncertain_holds.yaml), keeping this fixture scoped to the handoff.
+  host.agent.decide:
+    data:
+      ok: true
+      submitted:
+        outcome:    "uncertain"
+        confidence: 0.3
+        reasoning:  "stub — hold at reproducing"
+
+turns:
+  - intent:
+      name: work_ticket
+      slots:
+        ticket_id:    "TKT-PREFLIGHT-2"
+        ticket_title: "Off-by-one in widget render (still live)"
+    expect_state: reproducing
+    expect_not_state: __exit__triaged
+    expect_world:
+      bugfix_mode: "full"
+
+expect_terminal: false
+expect_no_errors: true

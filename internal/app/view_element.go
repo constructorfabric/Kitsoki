@@ -103,6 +103,8 @@ type View struct {
 //     MediaKind holds the artifact kind (video/image/pdf/html/slideshow)
 //     used to select the pointer icon; MediaPath holds the optional
 //     resolved .artifacts/ path (pongo2 template, bound from a world slot).
+//     AnnotateURL holds an optional URL for surfaces that cannot inline the
+//     annotation picker but can print/open a web spatial-oracle handoff.
 //     This element is display-only (no input bar, no choices).
 //
 // When is the optional element-level guard expression (expr-lang source).
@@ -147,6 +149,10 @@ type ViewElement struct {
 	// on AnnotateIntent (default "feedback"). The picked anchor always rides as
 	// the turn's visual bundle.
 	AnnotateFeedbackSlot string
+	// AnnotateURL is an optional URL that opens the annotation surface for this
+	// media. Web uses the richer media metadata directly; terminal renderers print
+	// this as a handoff link so the same spatial-oracle flow is reachable from TUI.
+	AnnotateURL string
 
 	// ---- Choice fields.
 	// Populated only when Kind == "choice"; otherwise zero. See
@@ -349,12 +355,13 @@ type rawViewElementYAML struct {
 // may supply it as a pongo2 template expression bound from a world slot
 // that holds the path returned by host.artifacts_dir.
 type rawMediaYAML struct {
-	Handle              string `yaml:"handle"`
-	Caption             string `yaml:"caption,omitempty"`
-	Kind                string `yaml:"kind,omitempty"`
-	Path                string `yaml:"path,omitempty"`
-	AnnotateIntent      string `yaml:"annotate_intent,omitempty"`
+	Handle               string `yaml:"handle"`
+	Caption              string `yaml:"caption,omitempty"`
+	Kind                 string `yaml:"kind,omitempty"`
+	Path                 string `yaml:"path,omitempty"`
+	AnnotateIntent       string `yaml:"annotate_intent,omitempty"`
 	AnnotateFeedbackSlot string `yaml:"annotate_feedback_slot,omitempty"`
+	AnnotateURL          string `yaml:"annotate_url,omitempty"`
 }
 
 // rawBannerYAML decodes the banner element body. Text is the phase name
@@ -529,6 +536,7 @@ func (r rawViewElementYAML) toElement() (ViewElement, error) {
 			MediaPath:            r.Media.Path,
 			AnnotateIntent:       r.Media.AnnotateIntent,
 			AnnotateFeedbackSlot: r.Media.AnnotateFeedbackSlot,
+			AnnotateURL:          r.Media.AnnotateURL,
 			When:                 when,
 		}
 	}

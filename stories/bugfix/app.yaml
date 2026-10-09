@@ -2,7 +2,7 @@
 #
 # Wave 1 / Slice α (see docs/proposals/notes/dev-story-implementation-contract.md):
 # the 7 visible rooms (idle → reproducing → proposing → implementing → testing
-# → reviewing → validating → done) collapse the cyber-repo's 14-phase pipeline
+# → reviewing → validating → done) collapse the focused-engineering's 14-phase pipeline
 # into one state machine. Each room has an `_executing` substate that drives
 # the LLM call producing the artifact, and (for checkpointed rooms) an
 # `_awaiting_reply` substate that posts the artifact, mirrors it to the local
@@ -26,8 +26,11 @@
 # checkpoint — no fork in the state graph.
 #
 # # What is NOT here (Wave 2):
-#   - the pr-refinement tail import (the `@exit:done` hands off to a parent
-#     story that imports pr-refinement; standalone Wave 1 terminates here)
+#   - the pr-refinement tail import is now OPT-IN (bugfix_exit=open-PR-merge,
+#     WS-C C3 — see the `imports.pr` block below): `done`'s accept arc composes
+#     it in-process and can reach @exit:merged standalone. The default
+#     (open-PR) still hands off `@exit:done` to a parent that imports
+#     pr-refinement itself (dev-story's `pr` alias), unchanged.
 #   - cycle budgets, `restart_from_stage` plumbing, `quick_fix` / `skip_to_pr`
 #     shortcut intents
 #   - actual provider implementations for ticket / vcs / ci / workspace —
@@ -53,6 +56,10 @@ hosts:
   - host.agent.ask
   - host.agent.decide
   - host.agent.task
+  # host.agent.codeact — triaging's bounded read-only code-act loop (inspect
+  # tree + git history, emit a schema-gated triage_verdict). See
+  # stories/bugfix/rooms/triaging.yaml.
+  - host.agent.codeact
   # Review-diff: open the committed fix (feature_branch vs base_branch) in the
   # operator's editor (with a captured accept/reject verdict) or a view-only
   # system difftool. The reviewing room's `review_externally` arc drives it; the
@@ -61,6 +68,19 @@ hosts:
   # host.run — the pre-fix regression gate (testing room) + the ship-it tail's
   # integrate/verify/cleanup host.run sites (imported as `tail`).
   - host.run
+  # Editor awareness (WS-C C3, docs/proposals/ide-integration.md follow-up 3):
+  # the validating room pulls REAL diagnostics from an attached `/ide` editor
+  # as extra evidence for the verify gate. "Not-connected is a value" — no
+  # live link (every flow/cassette/headless run) returns a typed
+  # {connected:false, diagnostics:[]}, never an error, so this degrades
+  # honestly rather than needing a fallback host. See rooms/validating.yaml.
+  - host.ide.get_diagnostics
+  # Standalone GitHub ticket close-out: when world.ticket_repo is set the done
+  # room comments/closes the GitHub issue directly instead of falling back to
+  # the local-files default ticket provider.
+  - host.gh.ticket.get
+  - host.gh.ticket.comment
+  - host.gh.ticket.transition
   # The ship-it tail import declares these; unioned at load so the imported
   # integrate/verify/cleanup rooms resolve their host bindings.
   - host.git_worktree
@@ -86,54 +106,138 @@ hosts:
 #   judge_<phase>    decide  every inter-phase gate
 agents:
   reproducer:
-    system_prompt: "You are a bug reproduction analyst. Read the codebase, reproduce the reported bug, identify the affected components, and produce a structured reproduction artifact."
+    system_prompt: "You are a bug reproduction analyst. Read the codebase, reproduce the reported bug, identify the affected components, and produce a structured reproduction artifact. External-write policy: do not create, comment on, close, transition, or otherwise mutate external tickets, GitHub issues, GitHub PRs, or remote services; do not use raw gh or other GitHub CLIs. Return artifacts only; the story done-room owns ticket comments and close-out through native host.gh.ticket/kitsoki gitops orchestration."
     model: claude-sonnet-4-6
     tools: [Read, Grep, Glob, Bash]
     bash_profile: read-only
-    external_side_effect: false
 
   # triager — triage-only mode. Read-only assessment of whether the reported
   # bug STILL EXISTS in the current working tree, emitting a standardized
   # verdict (ALREADY-FIXED | STILL-LIVE | PARTIAL | UNCLEAR) with concrete code
   # evidence. No worktree, no fix, no judge — the verdict IS the deliverable.
   triager:
-    system_prompt: "You are a bug triage analyst. Read the reported bug, then inspect the current codebase (the cited files/functions, the Suggested-fix section, and any regression test) to determine whether the defect still exists in the working tree. Emit a standardized triage verdict citing concrete code evidence (file:line, function name, or a regression test) — never prose alone."
+    system_prompt: "You are a bug triage analyst. Read the reported bug, then inspect the current codebase (the cited files/functions, the Suggested-fix section, and any regression test) to determine whether the defect still exists in the working tree. Emit a standardized triage verdict citing concrete code evidence (file:line, function name, or a regression test) — never prose alone. External-write policy: do not create, comment on, close, transition, or otherwise mutate external tickets, GitHub issues, GitHub PRs, or remote services; do not use raw gh or other GitHub CLIs. Return artifacts only; the story done-room owns ticket comments and close-out through native host.gh.ticket/kitsoki gitops orchestration."
     model: claude-sonnet-4-6
     tools: [Read, Grep, Glob, Bash]
     bash_profile: read-only
-    external_side_effect: false
 
   proposer:
-    system_prompt: "You are a senior engineer performing code analysis. Read the codebase, analyse the reproduction evidence, and produce a structured fix proposal or close-out summary."
+    system_prompt: "You are a senior engineer performing code analysis. Read the codebase, analyse the reproduction evidence, and produce a structured fix proposal or close-out summary. External-write policy: do not create, comment on, close, transition, or otherwise mutate external tickets, GitHub issues, GitHub PRs, or remote services; do not use raw gh or other GitHub CLIs. Return artifacts only; the story done-room owns ticket comments and close-out through native host.gh.ticket/kitsoki gitops orchestration."
     model: claude-sonnet-4-6
     tools: [Read, Grep, Glob, Bash]
     bash_profile: read-only
 
   implementer:
-    system_prompt: "You are a software engineer applying a proposed fix. Read the proposal artifact, locate the affected files, and apply the minimal correct edit to fix the bug."
+    system_prompt: "You are a software engineer applying a proposed fix. Read the proposal artifact, locate the affected files, and apply the minimal correct edit to fix the bug. External-write policy: do not create, comment on, close, transition, or otherwise mutate external tickets, GitHub issues, GitHub PRs, or remote services; do not use raw gh or other GitHub CLIs. Return artifacts only; the story done-room owns ticket comments and close-out through native host.gh.ticket/kitsoki gitops orchestration."
     model: claude-sonnet-4-6
     tools: [Read, Grep, Glob, Edit, Write, Bash]
     bash_profile: read-only
-    external_side_effect: false
 
   test_author:
-    system_prompt: "You are a software engineer reviewing test coverage and authoring regression tests. Read the applied fix, run the tests, and produce a structured test-review artifact."
+    system_prompt: "You are a software engineer reviewing test coverage and authoring regression tests. Read the applied fix, run the tests, and produce a structured test-review artifact. External-write policy: do not create, comment on, close, transition, or otherwise mutate external tickets, GitHub issues, GitHub PRs, or remote services; do not use raw gh or other GitHub CLIs. Return artifacts only; the story done-room owns ticket comments and close-out through native host.gh.ticket/kitsoki gitops orchestration."
     model: claude-sonnet-4-6
     tools: [Read, Grep, Glob, Edit, Write, Bash]
     bash_profile: read-only
-    external_side_effect: false
 
   validator:
-    system_prompt: "You are a validation engineer verifying a fix in a full environment. Build the project, run tests, check the fix applies, and produce a structured validation artifact."
+    system_prompt: "You are a validation engineer verifying a fix in a full environment. Build the project, run tests, check the fix applies, and produce a structured validation artifact. External-write policy: do not create, comment on, close, transition, or otherwise mutate external tickets, GitHub issues, GitHub PRs, or remote services; do not use raw gh or other GitHub CLIs. Return artifacts only; the story done-room owns ticket comments and close-out through native host.gh.ticket/kitsoki gitops orchestration."
     model: claude-sonnet-4-6
     tools: [Read, Grep, Glob, Bash]
     bash_profile: read-only
-    external_side_effect: false
 
   judge:
-    system_prompt: "You are a quality gate. Evaluate the provided artifact against the stated criteria and emit a structured verdict: accept, refine, or uncertain."
+    system_prompt: "You are a quality gate. Evaluate the provided artifact against the stated criteria and emit a structured verdict: accept, refine, or uncertain. External-write policy: do not create, comment on, close, transition, or otherwise mutate external tickets, GitHub issues, GitHub PRs, or remote services; do not use raw gh or other GitHub CLIs. Return artifacts only; the story done-room owns ticket comments and close-out through native host.gh.ticket/kitsoki gitops orchestration."
     model: claude-sonnet-4-6
     tools: []
+
+operations:
+  bugfix_full:
+    title: "Fix bug (gated)"
+    mode: interactive
+    execution_mode: staged
+    stop_on: [needs-human, uncertain, gate-failed, host-error, conflict, budget-exhausted, policy-denied]
+    pause_on: [operator-ask, protected-branch-approval]
+    terminal_artifact: done_artifact
+    phase_summary:
+      from: [reproduction_artifact, proposal_artifact, implement_artifact, testing_artifact, review_artifact, validation_artifact, done_artifact]
+  bugfix_full_llm_review:
+    title: "Fix bug (LLM review)"
+    mode: autonomous
+    execution_mode: one-shot
+    run_in_background: true
+    stop_on: [needs-human, uncertain, gate-failed, host-error, conflict, budget-exhausted, policy-denied]
+    pause_on: [operator-ask, protected-branch-approval]
+    terminal_artifact: done_artifact
+    phase_summary:
+      from: [reproduction_artifact, proposal_artifact, implement_artifact, testing_artifact, review_artifact, validation_artifact, done_artifact]
+  bugfix_full_no_gate:
+    title: "Fix bug (no gate)"
+    mode: autonomous
+    execution_mode: one-shot
+    run_in_background: true
+    stop_on: [needs-human, uncertain, gate-failed, host-error, conflict, budget-exhausted, policy-denied]
+    pause_on: [operator-ask, protected-branch-approval]
+    terminal_artifact: done_artifact
+    phase_summary:
+      from: [reproduction_artifact, proposal_artifact, implement_artifact, testing_artifact, review_artifact, validation_artifact, done_artifact]
+  bugfix_quick:
+    title: "Quick bug fix (gated)"
+    mode: interactive
+    execution_mode: staged
+    stop_on: [needs-human, uncertain, gate-failed, host-error, conflict, budget-exhausted, policy-denied]
+    pause_on: [operator-ask]
+    terminal_artifact: done_artifact
+    phase_summary:
+      from: [reproduction_artifact, proposal_artifact, implement_artifact, testing_artifact, done_artifact]
+  bugfix_quick_llm_review:
+    title: "Quick bug fix (LLM review)"
+    mode: autonomous
+    execution_mode: one-shot
+    run_in_background: true
+    stop_on: [needs-human, uncertain, gate-failed, host-error, conflict, budget-exhausted, policy-denied]
+    pause_on: [operator-ask]
+    terminal_artifact: done_artifact
+    phase_summary:
+      from: [reproduction_artifact, proposal_artifact, implement_artifact, testing_artifact, done_artifact]
+  bugfix_quick_no_gate:
+    title: "Quick bug fix (no gate)"
+    mode: autonomous
+    execution_mode: one-shot
+    run_in_background: true
+    stop_on: [needs-human, uncertain, gate-failed, host-error, conflict, budget-exhausted, policy-denied]
+    pause_on: [operator-ask]
+    terminal_artifact: done_artifact
+    phase_summary:
+      from: [reproduction_artifact, proposal_artifact, implement_artifact, testing_artifact, done_artifact]
+  bugfix_triage:
+    title: "Triage bug (gated)"
+    mode: interactive
+    execution_mode: staged
+    stop_on: [needs-human, uncertain, gate-failed, host-error, budget-exhausted, policy-denied]
+    pause_on: [operator-ask]
+    terminal_artifact: triage_verdict
+    phase_summary:
+      from: [triage_verdict]
+  bugfix_triage_llm_review:
+    title: "Triage bug (LLM review)"
+    mode: autonomous
+    execution_mode: one-shot
+    run_in_background: true
+    stop_on: [needs-human, uncertain, gate-failed, host-error, budget-exhausted, policy-denied]
+    pause_on: [operator-ask]
+    terminal_artifact: triage_verdict
+    phase_summary:
+      from: [triage_verdict]
+  bugfix_triage_no_gate:
+    title: "Triage bug (no gate)"
+    mode: autonomous
+    execution_mode: one-shot
+    run_in_background: true
+    stop_on: [needs-human, uncertain, gate-failed, host-error, budget-exhausted, policy-denied]
+    pause_on: [operator-ask]
+    terminal_artifact: triage_verdict
+    phase_summary:
+      from: [triage_verdict]
 
 # Six host_interfaces — the provider-neutral surfaces every parent story
 # binds to a concrete handler at import time. Operation names + I/O shapes
@@ -210,9 +314,9 @@ host_interfaces:
         output: { state: string, checks: list }
     default: host.local
 
-  # 2.4 workspace — per-task working tree (git worktree by default).
+  # 2.4 workspace — per-task isolated workspace (scripted clone capsule by default).
   workspace:
-    description: "Working-copy manager. Local: git worktree."
+    description: "Working-copy manager. Local: scripted clone-backed capsule workspace."
     operations:
       list:
         input:  {}
@@ -221,12 +325,9 @@ host_interfaces:
         input:  { id: string }
         output: { id: string, path: string, branch: string, dirty: bool }
       create:
-        # `id` is the workspace identity (pins the on-disk .worktrees/<id>
-        # dir basename); `name` is the branch; `base` is the branch to
-        # root from. Matches host.git_worktree's worktreeCreate, which
-        # reads id/name/base — bf.idle passes `id:` from world.workspace_id.
-        # The earlier `ticket_id` label was stale: no caller passed it and
-        # the handler never read it.
+        # `id` is the workspace identity; `name` is the branch; `base` is the
+        # branch/commit to root from. The default host delegates creation to
+        # scripts/dev-workspace.sh and returns the authoritative path.
         input:  { id: string, name: string, base: string }
         output: { ok: bool, path: string }
       sync:
@@ -236,7 +337,7 @@ host_interfaces:
 
   # 2.5 transport — out-of-band channel for checkpoint artifacts. For
   # kitsoki-dev this is `host.append_to_file` (appends a comment block to the
-  # local bug file); cyber-repo's parent story will rebind to
+  # local bug file); focused-engineering's parent story will rebind to
   # `host.jira_comment`. host.stdout (no-op) is available for tests that
   # don't care about the side effect.
   transport:
@@ -256,29 +357,61 @@ world:
   ticket_title:     { type: string, default: "" }
   ticket_status:    { type: string, default: "" }
   ticket_url:       { type: string, default: "" }
+  ticket_repo:      { type: string, default: "" }   # owner/repo for GitHub issue close-out; empty keeps local ticket provider
+  ticket_source_mode: { type: string, default: "local" } # local | remote | freeform; triage prompt contract
+  ticket_source_ref:  { type: string, default: "" }      # local path, remote issue URL/ref, or free-form complaint label
+  ticket_body:        { type: string, default: "" }      # remote issue body, pre-read local issue body, or free-form complaint
   thread:           { type: string, default: "" }
   allowed_authors:  { type: string, default: "" }   # CSV — list not yet a first-class scalar type
+
+  # ── Audit/reporting ──────────────────────────────────────────────────
+  # Optional caller-provided reporting refs. Local and headless remote drivers
+  # can seed these with a trace path/URL and an artifact bundle/report path/URL;
+  # done.accept publishes them in a parseable kitsoki-bugfix-audit issue block.
+  # Empty refs degrade to the engine-owned session_id in the close-out comment.
+  audit_actor:      { type: string, default: "kitsoki" }
+  audit_mode:       { type: string, default: "autonomous" }
+  run_trace_ref:    { type: string, default: "" }
+  run_artifacts_ref: { type: string, default: "" }
 
   # ── Workspace ─────────────────────────────────────────────────────────
   workspace_id:     { type: string, default: "" }
   workdir:          { type: string, default: "" }
   # base_branch defaults to "main" so bf.idle's auto-create has a
-  # sane root for `git worktree add -b <feature_branch> <path> <base>`.
+  # sane root for the workspace provider's create operation.
   # Parent stories that work off a different long-lived branch
   # (release/* etc.) override via world_in or by setting the key
   # explicitly before transitioning into bf.
   base_branch:      { type: string, default: "main" }
-  # base_commit pins the worktree CUT-POINT to a specific committish (any
-  # branch/tag/SHA `git worktree add` accepts). When empty the worktree is cut
-  # from base_branch. Distinct from base_branch on purpose: base_branch is also
-  # the PR target, whereas base_commit is "reproduce/fix AGAINST this exact
-  # commit" — e.g. a bug's pre-fix baseline SHA in a bake-off cell. Set it (not
-  # base_branch) when driving against a detached baseline.
+  # base_commit pins the workspace CUT-POINT to a specific committish. When
+  # empty the workspace is cut from base_branch. Distinct from base_branch on
+  # purpose: base_branch is also the PR target, whereas base_commit is
+  # "reproduce/fix AGAINST this exact commit" — e.g. a bug's pre-fix baseline
+  # SHA in a bake-off cell. Set it (not base_branch) when driving against a
+  # detached baseline.
   base_commit:      { type: string, default: "" }
   feature_branch:   { type: string, default: "" }
 
   # ── Pipeline control ──────────────────────────────────────────────────
   bugfix_mode:      { type: string, default: "full" }            # full | quick
+  # Implementation action surface. agent_task is the existing open coding-agent
+  # path; codeact swaps only the mutating implementing-room step to
+  # host.agent.codeact so benchmark runners can isolate the action surface.
+  implementation_mode: { type: string, default: "agent_task" }    # agent_task | codeact
+  codeact_implement_steps: { type: list, default: [] }
+  # Autostart pre-flight triage (default ON). Before spending the maker
+  # pipeline on an autostarted ticket, run the read-only triager once against
+  # the freshly-cut worktree: ALREADY-FIXED short-circuits to @exit:triaged
+  # (no reproducer/judge/maker budget spent on a bug that no longer exists);
+  # any other verdict (STILL-LIVE | PARTIAL | UNCLEAR) proceeds into
+  # reproducing with the verdict posted as a checkpoint — the deterministic
+  # repro RED-gate remains the authoritative arbiter for UNCLEAR. Applies
+  # only to the idle AUTOSTART path (headless / marathon / parent-story
+  # handoffs); an operator explicitly typing start / full_pipeline /
+  # quick_fix has already chosen to run the pipeline and skips it. Callers
+  # with a known-live bug (e.g. bench cells pinned to a pre-fix baseline)
+  # seed auto_triage: false to skip the redundant spend.
+  auto_triage:      { type: bool, default: true }
 
   # ── Exit slot (slice 4 — bugfix convergence) ───────────────────────────
   # The bug-fix pipeline ends one of two ways:
@@ -291,11 +424,17 @@ world:
   #   open-PR     — today's behaviour: walk reviewing → validating → done and hand
   #                 the close-out artifact to pr-refinement (parent stories lift
   #                 @exit:done). For human-review flows.
+  #   open-PR-merge — opt-in tail (WS-C C3): same as open-PR through `done`, but
+  #                 done's accept arc composes the IMPORTED pr-refinement pipeline
+  #                 in-process (open → CI-watch → merge) instead of firing
+  #                 @exit:done — so a standalone "fix a bug" run can reach
+  #                 @exit:merged with NO parent story required. @exit:done stays
+  #                 the default for every existing caller that doesn't opt in.
   #
   # Default direct-ship for the self-hosting loop. Parent stories that want the
   # PR-handoff tail (dev-story, gears-bugfix) project bugfix_exit: open-PR via
   # world_in. See stories/bugfix/README.md (the exit slot + RED→GREEN gate).
-  bugfix_exit:      { type: string, default: "direct-ship" }     # direct-ship | open-PR
+  bugfix_exit:      { type: string, default: "direct-ship" }     # direct-ship | open-PR | open-PR-merge
 
   # ── RED→GREEN regression gate (slice 4) ────────────────────────────────
   # The bugfix-specific discipline ship-it does NOT cover: the regression test
@@ -385,6 +524,18 @@ world:
   # against a stale workspace (the loop the dogfood walkthrough hit
   # on 2026-05-18 — see rooms/idle.yaml's on_enter comment).
   bf_autostart_attempted: { type: bool, default: false }
+  # Explicit opt-in for a caller-prepared workspace identity: when true, the
+  # Step-0w isolation guard (rooms/idle.yaml) keeps a seeded workspace_id /
+  # feature_branch / workdir instead of clearing them for re-derivation.
+  # Auditable and default-off: a headless caller must SAY it prepared the
+  # checkout; silently seeded identities still get re-derived into
+  # .capsules/workspaces/bf-*. Autostart's other steps (thread derivation, start) run
+  # normally — unlike bf_autostart_attempted, this only affects identity.
+  workspace_prepared:     { type: bool, default: false }
+  # User-facing oversight policy. judge_mode remains the compatibility switch
+  # consumed by existing checkpoint rooms; oversight_mode selects operation
+  # posture at launch.
+  oversight_mode:   { type: string, default: "" }                # "" = infer from judge_mode; gated | llm-review | no-gate
   judge_mode:       { type: string, default: "human" }           # human | llm | llm_then_human
   judge_confidence_threshold: { type: float, default: 0.8 }
 
@@ -409,7 +560,7 @@ world:
 
   # ── L2 cycle budgets — per-checkpoint refine counters + budgets ──────
   #
-  # Wave 3 / Phase 4 — port of the cyber-repo bugfix's L2 cycle-budget
+  # Wave 3 / Phase 4 — port of the focused-engineering bugfix's L2 cycle-budget
   # pattern (HALLY-MIGRATION §2.6). Each checkpointed room maintains its
   # own `<phase>_cycle` counter; when `refine` fires the counter increments
   # and the room re-executes. When the counter hits `<phase>_budget` the
@@ -417,7 +568,7 @@ world:
   # <phase>_cycle_budget_exhausted` — the operator gets one bail-out
   # instead of an infinite loop.
   #
-  # Budgets default to 3 (matches cyber-repo's L2 retry caps); operators
+  # Budgets default to 3 (matches focused-engineering's L2 retry caps); operators
   # can override per-session by setting `<phase>_budget` in initial_world.
   # `cycle_budget` is the documented global default — kept here for parity
   # with the proposal §4.2 vocabulary but not currently used directly by
@@ -468,6 +619,26 @@ world:
   ci_state:         { type: string, default: "" }
   ci_log:           { type: string, default: "" }  # last CI run log; scratch
 
+  # ── CI-watch/merge tail handoff (opt-in — bugfix_exit=open-PR-merge) ────
+  # done's accept arc (when bugfix_exit=open-PR-merge) sets pr_title/pr_body
+  # from the just-produced done_artifact, then enters the imported `pr`
+  # compound (../pr-refinement) at open_pr; its world_in: projects these +
+  # workdir/feature_branch/base_branch/judge_mode into the child. merge_sha
+  # is lifted back from the child's @exit:merged. See rooms/done.yaml.
+  pr_title:         { type: string, default: "" }
+  pr_body:          { type: string, default: "" }
+  merge_strategy:   { type: string, default: "squash" }  # squash | merge | rebase — forwarded to pr-refinement
+  merge_sha:        { type: string, default: "" }        # the merged commit sha, lifted from the pr child on @exit:merged
+
+  # ── Editor awareness (validating room, WS-C C3) ─────────────────────────
+  # host.ide.get_diagnostics's whole Result.Data envelope + a convenience
+  # flattened list, so the validator's prompt AND the room's view can weigh
+  # real editor diagnostics as evidence. connected:false (no `/ide` link —
+  # the default for every flow/cassette/headless run) is a HONEST value, not
+  # an error: the view renders it explicitly rather than hiding the gap.
+  ide_diagnostics_result: { type: object, default: {} }  # {connected, diagnostics}
+  ide_diagnostics:        { type: list,   default: [] }  # world.ide_diagnostics_result.diagnostics, flattened
+
   # ── Review-diff (host.diff.open) — populated by reviewing_external ────────
   review_verdict:       { type: string, default: "" }   # "accept" | "reject" | "" (no verdict)
   review_surface:       { type: string, default: "" }   # "ide" | "difftool:<name>" | "none"
@@ -495,6 +666,45 @@ intents:
     description: "Begin the pipeline from idle."
     examples: [start, "begin", "kick off"]
     priority: 90
+  # NL ticket-id handoff for idle, when world.ticket_id is still empty. A
+  # headless dispatcher (goal-seeker/punch-list) whose maker doesn't reliably
+  # pass `initial_world` to session.new instead drives this as its first
+  # turn text — see stories/goal-seeker/scripts/gs_manifest.star and
+  # stories/punch-list/prompts/drive_item.md. Only "work ticket …" is
+  # declared (not a bare "ticket …" template): idle's own `change_ticket`
+  # intent declares "tickets" as a bare synonym, and a bare-string match
+  # ALWAYS outranks a template match regardless of intent (see
+  # internal/semroute doc.go "confidence bands") — a template on "ticket
+  # {ticket_id}" would lose to change_ticket for any input containing
+  # "ticket(s)" and silently drop the id. "work" collides with nothing
+  # declared on idle. The `titled` anchor is required: {ticket_id} is a
+  # trailing capture and without a literal after it, it would swallow the
+  # rest of the utterance (title + brief) instead of just the id.
+  work_ticket:
+    description: "State which ticket to work when none is loaded yet (NL ticket-id handoff from a headless driver)."
+    synonyms:
+      - "work ticket {ticket_id}"
+      - "work ticket {ticket_id} titled {ticket_title}"
+    priority: 89
+    slots:
+      ticket_id:    { type: string, required: true }
+      ticket_title: { type: string, required: false }
+  # Free-form complaint handoff for standalone/headless bugfix starts where no
+  # filed ticket exists yet. The story synthesizes a session-scoped ticket_id in
+  # idle.on_enter, carries the complaint as ticket_body, and lets the existing
+  # pre-flight triage + reproducer go as far as the evidence allows.
+  work_complaint:
+    description: "Start the bug-fix pipeline from a free-form bug complaint when no filed ticket exists yet."
+    synonyms:
+      - "fix bug {complaint}"
+      - "debug bug {complaint}"
+      - "bug report {complaint}"
+      - "user complaint {complaint}"
+      - "work complaint {complaint}"
+    priority: 88
+    slots:
+      complaint:    { type: string, required: true }
+      ticket_title: { type: string, required: false }
   accept:
     description: "Accept the current room's artifact and advance to the next phase. Posts the artifact to the transport as a side-effect."
     examples: ["continue", "proceed", "accept", "next", "deliver", "approve", "lgtm", "ship it", "ok"]
@@ -543,6 +753,18 @@ intents:
     description: "Default — walk all phases. Set bugfix_mode=full and start from reproducing."
     examples: [full_pipeline, "full", "all phases"]
     priority: 75
+  oversight_gated:
+    description: "Use human checkpoints for bugfix phases."
+    examples: ["use gated oversight", "human gated mode", "make this gated"]
+    priority: 74
+  oversight_llm_review:
+    description: "Use LLM checkpoint review and fall back to human review when uncertain."
+    examples: ["use llm review", "llm review mode", "let the llm review gates"]
+    priority: 74
+  oversight_no_gate:
+    description: "Use autonomous operation driving without LLM checkpoint review."
+    examples: ["use no gate mode", "no-gate mode", "run without review gates"]
+    priority: 74
   # Triage-only: a read-only verdict on whether the bug still exists in the
   # current tree (no worktree, no fix). Cheap pre-flight before committing the
   # full maker pipeline to a ticket. Terminal: @exit:triaged carrying the verdict.
@@ -550,6 +772,15 @@ intents:
     description: "Triage-only: assess whether the bug still exists in the current tree and emit a standardized verdict (ALREADY-FIXED | STILL-LIVE | PARTIAL | UNCLEAR). No fix pipeline."
     examples: [triage, "assess", "is it still a bug", "verdict only", "just triage"]
     priority: 75
+  # ── Autostart pre-flight triage (world.auto_triage). Internal guarded emit
+  # from idle's autostart chain: enters the triaging room WITHOUT pinning
+  # bugfix_mode=triage, so triaging's accept knows to continue into
+  # reproducing (or short-circuit to @exit:triaged on ALREADY-FIXED) instead
+  # of always terminating. Never typed. ──────────────────────────────────────
+  preflight_triage:
+    description: "(internal) autostart pre-flight: run read-only triage before spending the maker pipeline; keeps bugfix_mode so accept routes back into the pipeline."
+    examples: []
+    priority: 1
   change_ticket:
     description: "From idle: hand control back to the parent's ticket picker so the operator can choose a (different) ticket before starting."
     examples: [change_ticket, "pick ticket", "find ticket", "tickets"]
@@ -609,7 +840,7 @@ intents:
 # lifts these into the parent's bare intent table so an operator can
 # drive the imported pipeline without typing the `bf__` prefix.
 exports:
-  intents: [start, accept, refine, restart_from, jump_to, quick_fix, skip_to_pr, full_pipeline, triage, change_ticket, quit, look, escalate_human]
+  intents: [start, work_complaint, accept, refine, restart_from, jump_to, quick_fix, skip_to_pr, full_pipeline, oversight_gated, oversight_llm_review, oversight_no_gate, triage, change_ticket, quit, look, escalate_human]
 
 # Named return points. A parent story (dev-story / kitsoki-dev / cyber-devstory)
 # maps each to one of its own states. Standalone load synthesises
@@ -637,6 +868,10 @@ exits:
   not-reproducible:
     description: "The ticket's repro_command passed (GREEN) on the unchanged worktree — the bug does not currently reproduce. Needs a human to confirm wontfix / cannot-reproduce or supply a sharper repro. Carries the gate's output as last_error."
     requires: [last_error]
+  # ── CI-watch/merge tail exit (opt-in — bugfix_exit=open-PR-merge) ────────
+  merged:
+    description: "open-PR-merge: the imported pr-refinement tail opened the PR, watched CI, and merged it. Carries pr_url + merge_sha."
+    requires: [pr_url]
 
 # ── The shared ship-it tail (slice 4 — compose, don't reinvent) ──────────
 #
@@ -684,6 +919,63 @@ imports:
         set:
           last_error: "{{ world.tail__last_error }}"
           status:     "needs-human"
+
+  # ── The opt-in CI-watch/merge tail (WS-C C3 — compose, don't reinvent) ──
+  #
+  # bugfix_exit=open-PR-merge (default stays open-PR / direct-ship for every
+  # existing caller). `done`'s accept arc, instead of firing @exit:done, sets
+  # pr_title/pr_body from the just-produced done_artifact and enters this
+  # import — the SAME pr-refinement sub-story dev-story imports as `pr`
+  # (stories/pr-refinement/), reused verbatim: open_pr → ci_monitoring →
+  # (diagnose/resolve_comments on red or pushback) → merge → @exit:merged.
+  # This lets a standalone `kitsoki run stories/bugfix/app.yaml` reach a real
+  # MERGED terminal with no parent hub required.
+  pr:
+    source: ../pr-refinement
+    entry: open_pr   # bypass pr-refinement's standalone-only idle state —
+                     # done's accept hands off straight to the open_pr room.
+    world_in:
+      ticket_id:       "{{ world.ticket_id }}"
+      ticket_title:    "{{ world.ticket_title }}"
+      thread:          "{{ world.thread }}"
+      workspace_id:    "{{ world.workspace_id }}"
+      workdir:         "{{ world.workdir }}"
+      base_branch:     "{{ world.base_branch }}"
+      feature_branch:  "{{ world.feature_branch }}"
+      pr_title:        "{{ world.pr_title }}"
+      pr_body:         "{{ world.pr_body }}"
+      judge_mode:      "{{ world.judge_mode }}"
+      judge_confidence_threshold: "{{ world.judge_confidence_threshold }}"
+      merge_strategy:  "{{ world.merge_strategy }}"
+
+    # Lift pr-unique intents into bugfix's bare intent table. Overlapping
+    # names (accept, refine, quit, look, proceed) stay prefixed — they
+    # collide with bugfix's own bare intents of the same name (same
+    # collision dev-story's `pr` import already documents).
+    intents:
+      import: [open, monitor, retry, resolve, merge_now]
+
+    exits:
+      merged:
+        to: "@exit:merged"
+        set:
+          pr_url:    "{{ world.pr__pr_url }}"
+          merge_sha: "{{ world.pr__merge_sha }}"
+          status:    "merged"
+      abandoned:
+        to: "@exit:needs-human"
+        set:
+          status:     "needs-human"
+          last_error: "{{ world.pr__refine_feedback }}"
+      # pr-refinement declares this for a future re-review loop (dev-story's
+      # comment: "Wave 3 may use it"); this opt-in tail has no room to resume
+      # monitoring from, so land honestly at needs-human rather than silently
+      # treating unresolved pushback as merged.
+      pushback_resolved:
+        to: "@exit:needs-human"
+        set:
+          status:     "needs-human"
+          last_error: "PR review pushback addressed but the opt-in CI-watch/merge tail has no room to resume monitoring — drive stories/pr-refinement directly (or dev-story's `pr` import) to finish the merge."
 
 # Root state — the operator-controlled entry point. Children fold this into
 # `bf` (or similar alias) and `entry: idle` enters here.

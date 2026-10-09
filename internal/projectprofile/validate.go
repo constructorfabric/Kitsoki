@@ -12,7 +12,17 @@ import (
 
 	goyaml "github.com/goccy/go-yaml"
 	jsonschema "github.com/santhosh-tekuri/jsonschema/v6"
+
+	"kitsoki/internal/app"
 )
+
+// defaultRootBindingKeys is the fallback set of required kitsoki.instance.
+// bindings.<key> entries used when the declared kitsoki.story cannot be
+// resolved to a kit manifest at all (no on-disk checkout, or an unknown
+// story name — see validateSemantic). It mirrors dev-story's own declared
+// root.host_interfaces (stories/dev-story/kit.yaml) — the v1 default before
+// D6 (root generalization) made this manifest-driven rather than hardcoded.
+var defaultRootBindingKeys = []string{"ticket", "vcs", "ci", "workspace", "transport"}
 
 //go:embed schema.json
 var schemaBytes []byte
@@ -159,11 +169,42 @@ func validateSemantic(doc map[string]any, repoRoot string) ([]string, []string) 
 			errs = append(errs, fmt.Sprintf("kitsoki.instance.path = %q, want %q", instancePath, wantPath))
 		}
 	}
-	if story := stringAt(kitsoki, "story"); story != "" && story != "dev-story" {
-		errs = append(errs, fmt.Sprintf("kitsoki.story = %q, want dev-story", story))
+	// D6 (root generalization): kitsoki.story is no longer required to be
+	// the literal string "dev-story" — any installed kit whose kit.yaml
+	// declares a root: block naming it qualifies (app.ResolveRootKit). An
+	// empty story defaults to app.DefaultRootKitName, same as
+	// webconfig/synthesis. The resolved manifest's root.host_interfaces
+	// becomes the required kitsoki.instance.bindings.<key> set, replacing
+	// the formerly hardcoded ticket/vcs/ci/workspace/transport list —
+	// falling back to that same list (defaultRootBindingKeys) only when the
+	// story can't be resolved at all (no on-disk checkout, or truly unknown
+	// story name), so the bindings check still fires something useful.
+	story := stringAt(kitsoki, "story")
+	resolveName := story
+	if resolveName == "" {
+		resolveName = app.DefaultRootKitName
+	}
+	bindingKeys := defaultRootBindingKeys
+	if manifest, mErr := app.ResolveRootKit(resolveName, repoRoot, nil); mErr != nil {
+		if story != "" && story != app.DefaultRootKitName {
+			// An explicit, non-default kitsoki.story that fails to resolve is
+			// always a profile error — surface it. The default name resolving
+			// to nothing just means no on-disk/repoRoot context was given to
+			// check against (e.g. a bare --profile-json call with an
+			// arbitrary --repo-root); skip rather than fail, mirroring
+			// webconfig.resolveRoot's identical default-unresolvable case.
+			errs = append(errs, fmt.Sprintf("kitsoki.story = %q is not a known root kit: %v", story, mErr))
+		}
+	} else if ifaces := manifest.RootHostInterfaces(); len(ifaces) > 0 {
+		keys := make([]string, 0, len(ifaces))
+		for k := range ifaces {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		bindingKeys = keys
 	}
 	bindings := mapAt(instance, "bindings")
-	for _, key := range []string{"ticket", "vcs", "ci", "workspace", "transport"} {
+	for _, key := range bindingKeys {
 		if strings.TrimSpace(stringAt(bindings, key)) == "" {
 			errs = append(errs, "kitsoki.instance.bindings."+key+" is required")
 		}

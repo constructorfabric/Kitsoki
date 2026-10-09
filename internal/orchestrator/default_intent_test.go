@@ -386,6 +386,71 @@ imports:
 	assertRoutedBy(t, history, "fallback")
 }
 
+// TestDevStoryPRDIntake_UnmatchedIdeaRoutesToDiscuss is the product-journey
+// #110 regression: when PRD is imported through dev-story, the operator's first
+// free-text product idea must be captured by prd.idle's default_intent instead
+// of falling through to the main-turn router and accidentally starting search.
+func TestDevStoryPRDIntake_UnmatchedIdeaRoutesToDiscuss(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	def, err := app.Load(filepath.Join("..", "..", "stories", "dev-story", "app.yaml"))
+	require.NoError(t, err)
+
+	m, err := machine.New(def)
+	require.NoError(t, err)
+	s, err := store.OpenMemory()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	reg := host.NewRegistry()
+	reg.Register("host.chat.resolve", func(context.Context, map[string]any) (host.Result, error) {
+		return host.Result{Data: map[string]any{
+			"ok":      true,
+			"chat_id": "chat-1",
+			"title":   "PRD idea discovery",
+			"is_new":  true,
+		}}, nil
+	})
+	reg.Register("host.agent.converse", func(_ context.Context, args map[string]any) (host.Result, error) {
+		question, _ := args["question"].(string)
+		return host.Result{Data: map[string]any{
+			"ok":                true,
+			"answer":            "Captured: " + question,
+			"chat_id":           "chat-1",
+			"claude_session_id": "sess-1",
+		}}, nil
+	})
+
+	h := &countingHarness{fall: staticHarness{intentName: "prd__start"}}
+	orch := orchestrator.New(def, m, s, h,
+		orchestrator.WithHostRegistry(reg),
+		orchestrator.WithSemanticRouting(false),
+	)
+	sid, err := orch.NewSession(ctx)
+	require.NoError(t, err)
+
+	_, err = orch.SubmitDirect(ctx, sid, "go_prd", nil)
+	require.NoError(t, err)
+
+	const msg = "a TypeScript CLI that lints import ordering in a monorepo and auto-fixes it"
+	out, err := orch.Turn(ctx, sid, msg)
+	require.NoError(t, err)
+	require.Equal(t, app.StatePath("prd.idle"), out.NewState)
+	require.EqualValues(t, 0, h.calls.Load(), "PRD intake prose must route through default_intent without the main-turn LLM")
+
+	journey, err := orch.LoadJourney(sid)
+	require.NoError(t, err)
+	require.Equal(t, msg, journey.World.Vars["prd__idea_message"])
+	require.Equal(t, "Captured: "+msg, journey.World.Vars["prd__idea_answer"])
+	require.EqualValues(t, 1, journey.World.Vars["prd__idea_turns"])
+	require.Equal(t, "", journey.World.Vars["prd__idea"], "the search/start gate must not run before the operator says ready")
+
+	history, err := s.LoadHistory(sid)
+	require.NoError(t, err)
+	assertRoutedBy(t, history, "default")
+}
+
 func assertRoutedBy(t *testing.T, history []store.Event, want string) {
 	t.Helper()
 	var found bool

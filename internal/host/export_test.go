@@ -13,6 +13,26 @@ func SetAskStructuredForTest(fn func(ctx context.Context, opts AskStructuredOpti
 	return func() { askStructuredFunc = prev }
 }
 
+// ── budget gate exports ───────────────────────────────────
+
+// DefaultVerbBudgetsExport is the test-visible copy of defaultVerbBudgets
+// plus defaultBudgetFallback (keyed "" for the fallback), for asserting the
+// shipped defaults are all valid() without duplicating that map in the test.
+func DefaultVerbBudgetsExport() map[string]BudgetThresholds {
+	out := make(map[string]BudgetThresholds, len(defaultVerbBudgets)+1)
+	for k, v := range defaultVerbBudgets {
+		out[k] = v
+	}
+	out[""] = defaultBudgetFallback
+	return out
+}
+
+// BudgetThresholdsValidExport is the test-visible wrapper for
+// BudgetThresholds.valid().
+func BudgetThresholdsValidExport(b BudgetThresholds) bool {
+	return b.valid()
+}
+
 // ── agent.task exports ────────────────────────────────────
 
 // InferReplayModeExport is the test-visible wrapper for inferReplayMode.

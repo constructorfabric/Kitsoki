@@ -21,12 +21,12 @@
     },
     "route": {
       "type": "object",
-      "description": "Optional on-path bail. Set ONLY when the request clearly belongs in a named pipeline reachable from the workbench (bugfix / implementation / cypilot / PR refinement / code review / PRD / design) rather than ad-hoc work the agent should just do here. When set, the workbench offers the operator a one-click jump onto that path — it is OFFERED, never forced. Leave unset for work the agent can carry out in place.",
+      "description": "Optional on-path bail. Set ONLY when the request clearly belongs in a named pipeline reachable from the workbench (bugfix / implementation / cypilot / git-ops / PR refinement / code review / PRD / design) rather than ad-hoc work the agent should just do here. When set, the workbench offers the operator a one-click jump onto that path — it is OFFERED, never forced. Leave unset for work the agent can carry out in place.",
       "required": ["intent", "label", "reason"],
       "properties": {
         "intent": {
           "type": "string",
-          "enum": ["go_bugfix", "go_implementation", "go_cypilot", "go_pr_refinement", "go_code_review_story", "go_prd", "go_idea", "drive"],
+          "enum": ["go_bugfix", "go_implementation", "go_cypilot", "go_gitops", "go_pr_refinement", "go_code_review_story", "go_prd", "go_idea", "drive"],
           "description": "The workbench navigation intent that enters the pipeline."
         },
         "ticket_id": {

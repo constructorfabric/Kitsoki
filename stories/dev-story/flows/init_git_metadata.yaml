@@ -1,0 +1,62 @@
+# init_git_metadata -- project onboarding should preserve local git metadata
+# instead of assuming every normal repo uses main and no remote. Host calls are
+# stubbed; no LLM or checkout mutation happens.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world:
+  workdir: "/tmp/kitsoki-init-fixtures/branchy"
+  repo_root: "/tmp/kitsoki-init-fixtures/branchy"
+
+host_handlers:
+  host.run:
+    by_call:
+      discover:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: '{"target_path":"/tmp/kitsoki-init-fixtures/branchy","project_id":"branchy","project_title":"Branchy","stack":"go project","dev_command":"","test_command":"go test ./...","build_command":"go build ./...","repo_vcs":"git","repo_default_branch":"trunk","repo_remote":"git@github.com:example/branchy.git","conventions":"local defaults","tracker":"none","transcript_count":0,"transcript_sources":[],"mining_recommendation":{"status":"no-transcripts-found","sample":"recency","first_pass_sample":0,"transcript_count":0,"sources":[],"note":"No associated Claude/Codex transcripts were found during deterministic discovery."}}'
+          stdout_json:
+            target_path: "/tmp/kitsoki-init-fixtures/branchy"
+            project_id: "branchy"
+            project_title: "Branchy"
+            stack: "go project"
+            dev_command: ""
+            test_command: "go test ./..."
+            build_command: "go build ./..."
+            repo_vcs: "git"
+            repo_default_branch: "trunk"
+            repo_remote: "git@github.com:example/branchy.git"
+            conventions: "local defaults"
+            tracker: "none"
+            transcript_count: 0
+            transcript_sources: []
+            mining_recommendation:
+              status: "no-transcripts-found"
+              sample: "recency"
+              first_pass_sample: 0
+              transcript_count: 0
+              sources: []
+              note: "No associated Claude/Codex transcripts were found during deterministic discovery."
+
+turns:
+  - intent: { name: landing_capture, slots: { request: "onboard /tmp/kitsoki-init-fixtures/branchy" } }
+    expect_state: init_discover
+    expect_world:
+      init_target_path: "/tmp/kitsoki-init-fixtures/branchy"
+      init_project_id: "branchy"
+      init_repo_vcs: "git"
+      init_repo_default_branch: "trunk"
+      init_repo_remote: "git@github.com:example/branchy.git"
+
+  - intent: { name: init_discovered, slots: {} }
+    expect_state: init
+    expect_world:
+      init_profile_status: "draft"
+      init_repo_vcs: "git"
+      init_repo_default_branch: "trunk"
+      init_repo_remote: "git@github.com:example/branchy.git"
+    expect_view_matches: "trunk"
+
+expect_no_errors: true

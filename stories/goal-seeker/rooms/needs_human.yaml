@@ -1,0 +1,48 @@
+states:
+  # needs_human — the parked room every failure arc routes to. It NEVER renders blank:
+  # on_enter guarantees a non-empty last_error (a blank diagnostic would silently
+  # satisfy @exit:needs-human's requires:[last_error]). retry re-folds + re-evaluates;
+  # quit exits needs-human with the real error.
+  needs_human:
+    description: "Needs human — the loop parked."
+    relevant_world: [last_error, next_change_id]
+    on_enter:
+      - set:
+          last_error: "{{ world.last_error != '' ? world.last_error : 'goal-seeker parked without a specific error' }}"
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Parked"
+          - prose: "{{ world.last_error }}"
+          - kv:
+              pairs:
+                Change: '{{ world.next_change_id|default:"(none)" }}'
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - { label: "retry", hint: "re-fold + re-evaluate" }
+                - { label: "quit", hint: "exit needs-human with the error" }
+                - { label: "look" }
+    on:
+      retry:
+        - target: evaluate
+          effects:
+            - set:
+                verdict: ""
+                summary: ""
+                next_change_id: ""
+                next_pipeline: ""
+                next_action: ""
+                next_gate_cmd: ""
+                last_error: ""
+      quit:
+        - target: "@exit:needs-human"
+      look:
+        - target: .
+      "*":
+        - default: true
+          target: .
+          effects:
+            - say: "Parked — retry or quit."

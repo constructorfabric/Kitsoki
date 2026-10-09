@@ -25,10 +25,24 @@ app:
 routing:
   embedding:
     model: "nomic-embed-text-v1.5"
+  # Explicit — the loader's own free-form-fallback auto-detect
+  # (effectiveFreeFormFallback, internal/app/loader.go) hardcodes the bare
+  # intent name "work" (and the "__work" import-alias suffix); dev-story's
+  # landing room now names its capture intent `landing_capture` (workbench:'s
+  # fixed `<room>_capture` naming, docs/proposals/room-workbench.md Task 3.1),
+  # so after folding under the `core` alias the auto-detect would find nothing
+  # and menu-shaped rooms in this instance would lose their free-text sink.
+  free_form_fallback:
+    state: core.landing
+    intent: core__landing_capture
 
 hosts:
   - host.local_files.ticket
+  - host.local_github.ticket
   - host.gh.ticket
+  - host.gh.ticket.comment
+  - host.gh.ticket.get
+  - host.gh.ticket.transition
   - host.git
   - host.local
   - host.git_worktree
@@ -37,10 +51,15 @@ hosts:
   - host.agent.ask
   - host.agent.decide
   - host.agent.task
+  - host.agent.codeact
   - host.agent.search
   - host.agent.converse
   - host.chat.resolve
+  - host.chat.transcript
   - host.artifacts_dir
+  - host.slidey.render
+  - host.fs.writable_dir
+  - host.ide.get_diagnostics
   - host.ide.open_file
   - host.ide.open_diff
   - host.diff.open
@@ -71,11 +90,20 @@ imports:
       design_doc_filename:        "{{ world.design_doc_filename }}"
       design_ticket_dir:          "{{ world.design_ticket_dir }}"
       ticket_repo:                "{{ world.ticket_repo }}"
+      ticket_github_repo:         "{{ world.ticket_github_repo }}"
+      bugfix_destination:         "{{ world.bugfix_destination }}"
+      build_cmd:                  "{{ world.build_cmd }}"
+      test_cmd:                   "{{ world.test_cmd }}"
+      quick_test_cmd:             "{{ world.quick_test_cmd }}"
+      quick_test_timeout_seconds: "{{ world.quick_test_timeout_seconds }}"
+      full_test_timeout_seconds:  "{{ world.full_test_timeout_seconds }}"
 
 world:
   workdir:                    { type: string, default: "." }
   repo_root:                  { type: string, default: "." }
   ticket_repo:                { type: string, default: "" }
+  ticket_github_repo:         { type: string, default: "" }
+  bugfix_destination:         { type: string, default: "open-pr" }
   judge_mode:                 { type: string, default: "human" }
   judge_confidence_threshold: { type: float, default: 0.8 }
 
@@ -90,5 +118,10 @@ world:
   design_durable_path:        { type: string, default: "docs/proposals" }
   design_doc_filename:        { type: string, default: "" }
   design_ticket_dir:          { type: string, default: "issues/features" }
+  build_cmd:                  { type: string, default: "" }
+  test_cmd:                   { type: string, default: "" }
+  quick_test_cmd:             { type: string, default: "" }
+  quick_test_timeout_seconds: { type: int,    default: 180 }
+  full_test_timeout_seconds:  { type: int,    default: 1200 }
 
 root: core

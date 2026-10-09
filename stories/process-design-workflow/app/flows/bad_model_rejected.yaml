@@ -43,6 +43,49 @@ host_handlers:
             policy_result: { status: fail, message: "live work must use profile codex-native; live work must use model gpt-5.5" }
             error: "live work must use profile codex-native; live work must use model gpt-5.5"
 
+  host.starlark.run:
+    by_call:
+      punch_load:
+        data:
+          manifest_path: "stories/punch-list/testdata/bad_model.yaml"
+          state_path: ".artifacts/punch-list/bad_model.state.json"
+          item_count: "1"
+          error: ""
+          items:
+            - { id: wrong-model, title: "This live item must be rejected", story: "stories/punch-list/app.yaml", mode: drive, profile: claude-native, model: claude-opus-4-8, implementation_story: "", status: pending, verify: [ { kind: command, cmd: "true" } ], trace_path: ".artifacts/punch-list/traces/wrong-model.jsonl" }
+      punch_board-0-:
+        data:
+          items: []
+          results:
+            items: []
+          next_item:
+            id: wrong-model
+            title: This live item must be rejected
+            story: stories/punch-list/app.yaml
+            mode: drive
+            profile: claude-native
+            model: claude-opus-4-8
+            implementation_story: ''
+            verify:
+            - kind: command
+              cmd: 'true'
+            trace_path: ".artifacts/punch-list/traces/wrong-model.jsonl"
+          next_item_id: wrong-model
+          route: dispatch
+          has_pending: true
+          processed_count: 0
+          passed_count: 0
+          partial_count: 0
+          failed_count: 0
+          skipped_count: 0
+          pending_count: 1
+          count_summary: Processed 0 | Passed 0 | Partial 0 | Failed 0 | Skipped 0 | Pending
+            1
+      punch_policy-wrong-model:
+        data:
+          policy_result: { status: fail, message: "live work must use profile codex-native; live work must use model gpt-5.5" }
+          error: "live work must use profile codex-native; live work must use model gpt-5.5"
+
 turns:
   - intent: { name: start, slots: {} }
     expect_state: load

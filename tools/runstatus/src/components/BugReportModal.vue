@@ -15,7 +15,9 @@ import type { HarEntry } from "../data/live-source.js";
 
 const store = useBugReportStore();
 
-const open = computed(() => store.status === "reviewing");
+const open = computed(
+  () => store.status === "reviewing" || store.status === "submitting"
+);
 
 const harEntries = computed<HarEntry[]>(
   () => store.har?.log?.entries ?? []
@@ -36,6 +38,10 @@ const errorCount = computed(() => {
 function statusOf(e: HarEntry): string {
   const s = e.response?.status;
   return s === undefined ? "—" : String(s);
+}
+
+function labelOf(e: HarEntry): string {
+  return e.comment || e.request?.url || "";
 }
 
 // --- replay (rrweb Replayer, lazy) ---
@@ -209,7 +215,7 @@ function onCancel(): void {
         <header class="br-header">
           <span class="br-glyph">🐞</span>
           <span class="br-title">Review bug report</span>
-          <span class="br-depth">{{ harEntries.length }} RPC exchange(s)</span>
+          <span class="br-depth">{{ harEntries.length }} network exchange(s)</span>
         </header>
 
         <div class="br-body">
@@ -257,7 +263,7 @@ function onCancel(): void {
                 data-testid="bug-modal-har-row"
               >
                 <span class="br-method">{{ e.request?.method ?? "?" }}</span>
-                <span class="br-url">{{ e.request?.url ?? "" }}</span>
+                <span class="br-url">{{ labelOf(e) }}</span>
                 <span class="br-status">{{ statusOf(e) }}</span>
               </li>
               <li v-if="harEntries.length === 0" class="br-muted">
@@ -367,6 +373,7 @@ function onCancel(): void {
             type="button"
             class="br-cancel"
             data-testid="bug-modal-cancel"
+            :disabled="store.status === 'submitting'"
             @click="onCancel"
           >
             Cancel
@@ -378,8 +385,16 @@ function onCancel(): void {
             :disabled="store.status === 'submitting'"
             @click="onSubmit"
           >
-            {{ store.status === "submitting" ? "Filing…" : "File bug" }}
+            {{ store.status === "submitting" ? "Checking privacy…" : "File bug" }}
           </button>
+          <span
+            v-if="store.status === 'submitting'"
+            class="br-submit-status"
+            data-testid="bug-modal-submit-status"
+            role="status"
+          >
+            Checking privacy before filing…
+          </span>
         </footer>
       </div>
     </div>
@@ -615,6 +630,10 @@ function onCancel(): void {
 .br-cancel:hover {
   border-color: #475569;
 }
+.br-cancel:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
 .br-submit {
   background: var(--k-button-bg, #2563eb);
   border: none;
@@ -631,6 +650,10 @@ function onCancel(): void {
 }
 .br-submit:disabled {
   opacity: 0.5;
-  cursor: not-allowed;
+  cursor: wait;
+}
+.br-submit-status {
+  color: var(--k-fg-muted, #94a3b8);
+  font-size: 0.72rem;
 }
 </style>

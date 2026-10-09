@@ -1,0 +1,34 @@
+# reviewer_only_green — DETERMINISM GUARANTEE 2: "green" means independently verified.
+# A worker's self-reported gate.status=green is IGNORED by the fold; only a reviewer/
+# integrator entry flips a change green. The committed log has a worker-green C1 and a
+# reviewer-green C2; gs_ledger folds C1 gate=red (worker can't self-verify) and C2
+# gate=green. Asserted on the written ledger.json.
+
+test_kind: flow
+app: ../app.yaml
+initial_world:
+  goal_slug: reviewer-test
+  goal_dir:  stories/goal-seeker/testdata/reviewer
+  work_dir:  .artifacts/goal/flow-reviewer
+  reset_log: true
+initial_state: start
+host_handlers:
+  host.run: { by_call: {} }
+  host.agent.decide: { by_call: { evaluate: { data: { ok: true, submitted: { verdict: not_done, summary: x, next_instruction: null } } } } }
+
+turns:
+  - intent: { name: look, slots: {} }
+    expect_state: start
+  - intent: { name: advance, slots: {} }        # start → bootstrap
+    expect_state: bootstrap
+  - intent: { name: advance, slots: {} }        # bootstrap → lint_check
+    expect_state: lint_check
+  - intent: { name: advance, slots: {} }        # lint ok → evaluate (gs_ledger folds)
+    expect_state: evaluate
+    expect_world: { remaining: 2 }
+
+expect_files:
+  - path: ../../../.artifacts/goal/flow-reviewer/ledger.json
+    content_matches: '"change_id":"C1".*?"gate_status":"red".*"change_id":"C2".*?"gate_status":"green"'
+
+expect_no_errors: true

@@ -25,10 +25,13 @@ import (
 )
 
 const sidecarFixture = `{
-  "plugin": "slidey",
+  "plugin": "html-data",
   "schema_version": 1,
+  "viewport": {"width": 900, "height": 500},
   "elements": [
-    {"ref": "scene-3.title", "label": "Title", "selector": "[data-slidey-el=scene-3.title]",
+    {"ref": "scene-3.title", "kind": "field", "label": "Title", "description": "Title field",
+     "selector": "[data-slidey-el=scene-3.title]", "text": "Quarterly Results",
+     "value": "Quarterly Results", "data": {"path": "scene.title"},
      "bbox": [120, 80, 640, 90], "t_ms": 4200},
     {"ref": "scene-3.cta", "label": "Call to action"}
   ]
@@ -52,13 +55,21 @@ func TestDiskSemanticSidecarReader_Present(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, found, "a present sidecar must be found")
 
-	assert.Equal(t, "slidey", sc.Plugin)
+	assert.Equal(t, "html-data", sc.Plugin)
 	assert.Equal(t, 1, sc.SchemaVersion)
+	require.NotNil(t, sc.Viewport)
+	assert.Equal(t, 900, sc.Viewport.Width)
+	assert.Equal(t, 500, sc.Viewport.Height)
 	require.Len(t, sc.Elements, 2)
 
 	assert.Equal(t, "scene-3.title", sc.Elements[0].Ref, "ref round-trips verbatim")
+	assert.Equal(t, "field", sc.Elements[0].Kind)
 	assert.Equal(t, "Title", sc.Elements[0].Label)
+	assert.Equal(t, "Title field", sc.Elements[0].Description)
 	assert.Equal(t, "[data-slidey-el=scene-3.title]", sc.Elements[0].Selector)
+	assert.Equal(t, "Quarterly Results", sc.Elements[0].Text)
+	assert.Equal(t, "Quarterly Results", sc.Elements[0].Value)
+	assert.Equal(t, map[string]any{"path": "scene.title"}, sc.Elements[0].Data)
 	assert.Equal(t, [4]int{120, 80, 640, 90}, sc.Elements[0].Bbox)
 	assert.Equal(t, 4200, sc.Elements[0].TMs)
 
@@ -70,6 +81,8 @@ func TestDiskSemanticSidecarReader_Present(t *testing.T) {
 	m := sc.AsMap()
 	els := m["elements"].([]map[string]any)
 	assert.Equal(t, "scene-3.title", els[0]["ref"])
+	assert.Equal(t, map[string]any{"width": 900, "height": 500}, m["viewport"])
+	assert.Equal(t, map[string]any{"path": "scene.title"}, els[0]["data"])
 	_, hasBbox := els[1]["bbox"]
 	assert.False(t, hasBbox, "an element with no bbox must omit it in the projection")
 }

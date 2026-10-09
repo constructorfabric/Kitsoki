@@ -104,8 +104,10 @@ func (s sgrState) snapshot(r rune) Cell {
 // emulator: it tracks SGR attributes (Parse handles only the m-terminated CSI),
 // splits on newlines into rows, and snapshots the running attributes onto each
 // printable rune. Carriage returns are dropped (the composer emits \n line
-// ends). Any CSI that is not an SGR (m) run is consumed and ignored so its
-// bytes never leak into the grid as visible glyphs; a lone ESC is dropped.
+// ends). Any CSI that is not an SGR (m) run is consumed and ignored, and OSC
+// runs (notably OSC 8 terminal hyperlinks) are consumed as zero-width control
+// sequences, so their bytes never leak into the grid as visible glyphs; a lone
+// ESC is dropped.
 //
 // reverse (SGR 7) is resolved against the theme defaults by the rasteriser, so
 // Parse stays palette-agnostic — it never needs to know the theme's fg/bg.
@@ -126,8 +128,8 @@ func Parse(s string) Grid {
 		case r == '\r':
 			i++ // drop
 		case r == 0x1b: // ESC
-			// Only CSI (ESC [ … final) is understood. Consume the whole CSI;
-			// apply it iff it is an SGR (final byte 'm').
+			// CSI (ESC [ … final): consume the whole CSI; apply it iff it is
+			// an SGR (final byte 'm').
 			if i+1 < len(runes) && runes[i+1] == '[' {
 				j := i + 2
 				for j < len(runes) && !isCSIFinal(runes[j]) {
@@ -143,6 +145,13 @@ func Parse(s string) Grid {
 				}
 				// Unterminated CSI: drop the rest.
 				i = len(runes)
+				continue
+			}
+			// OSC (ESC ] … BEL | ESC ] … ESC \): terminal hyperlinks are OSC 8.
+			// They carry zero visible width; only the linked label between the
+			// opening and closing OSC runs should paint.
+			if i+1 < len(runes) && runes[i+1] == ']' {
+				i = consumeOSC(runes, i+2)
 				continue
 			}
 			// Lone ESC or two-char escape: drop the ESC and (if present) one byte.
@@ -166,3 +175,21 @@ func Parse(s string) Grid {
 // isCSIFinal reports whether r is a CSI final byte (0x40–0x7e), which ends a
 // CSI sequence.
 func isCSIFinal(r rune) bool { return r >= 0x40 && r <= 0x7e }
+
+// consumeOSC returns the index just after an OSC sequence body that started at
+// start, where the ESC ] introducer has already been consumed. OSC terminates
+// with BEL or the ST two-rune sequence ESC \. If the sequence is unterminated,
+// consume the rest so partial control bytes never paint as visible text.
+func consumeOSC(runes []rune, start int) int {
+	for j := start; j < len(runes); j++ {
+		switch runes[j] {
+		case 0x07: // BEL
+			return j + 1
+		case 0x1b:
+			if j+1 < len(runes) && runes[j+1] == '\\' {
+				return j + 2
+			}
+		}
+	}
+	return len(runes)
+}

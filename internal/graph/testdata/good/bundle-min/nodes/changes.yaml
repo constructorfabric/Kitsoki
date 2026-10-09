@@ -1,0 +1,18 @@
+- schema: graph/change/v1
+  id: change-wm-0
+  title: Bootstrap the ledger
+  status: shipped
+  visibility: internal
+  goal: A progress ledger exists and every later change appends evidence.
+  scope: [".context/project-object-graph-progress.md"]
+  acceptance: ["ledger exists with per-change status table + append-only journal"]
+  depends_on: []
+- schema: graph/change/v1
+  id: change-w1-0
+  title: internal/graph loader + envelope + type registry
+  status: in_progress
+  visibility: internal
+  goal: Loader validates the seed catalog and a bundle catalog against the type registry.
+  scope: ["internal/graph/**"]
+  acceptance: ["go test ./internal/graph/... green incl. seed corpus load"]
+  depends_on: ["change-wm-0"]

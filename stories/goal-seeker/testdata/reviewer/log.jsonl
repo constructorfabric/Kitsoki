@@ -1,0 +1,2 @@
+{"seq":1,"kind":"gate","change_id":"C1","actor":"worker","gate":{"status":"green"}}
+{"seq":2,"kind":"gate","change_id":"C2","actor":"reviewer","gate":{"status":"green"}}

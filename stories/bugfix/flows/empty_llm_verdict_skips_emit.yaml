@@ -1,0 +1,72 @@
+# empty_llm_verdict_skips_emit — skipped judge leaves llm_verdict empty.
+#
+# When the deterministic GREEN→RED repro gate fails, reproducing emits `refine`
+# before spending the LLM judge. In llm/llm_then_human mode that means
+# world.llm_verdict remains {}, so the confident-auto-fire guard must short
+# circuit before reading `.confidence`.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  ticket_id:        "TKT-EMPTY-LLM"
+  ticket_title:     "Repro judge skipped leaves empty verdict"
+  thread:           "TKT-EMPTY-LLM"
+  workspace_id:     "empty-llm-fix"
+  workdir:          ".worktrees/empty-llm-fix"
+  feature_branch:   "empty-llm-fix"
+  base_branch:      "main"
+  bugfix_mode:      "full"
+  judge_mode:       "llm_then_human"
+  bf_autostart_attempted: true
+  gate_command:     ""
+  test_cmd:         "go test ./..."
+  reproducing_budget: 0
+
+host_handlers:
+  host.append_to_file: { data: { ok: true } }
+  host.inbox.add:      { data: { ok: true } }
+  host.git_worktree:   { data: { ok: true, log: "", path: ".worktrees/empty-llm-fix" } }
+  host.git:            { data: { ok: true, sha: "abc", diff: "" } }
+  host.local:          { data: { ok: true, log: "PASS", passed: 1, failed: 0 } }
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Reproducer authored a mis-scoped test"
+        summary_markdown: "The reproducer authored a regression test, but the deterministic GREEN to RED gate determines the baseline is already failing. This intentionally exercises the skipped LLM judge path where llm_verdict remains empty."
+        bug_verified:     true
+        involved_components: [{ name: "bugfix", reason: "guard ordering" }]
+        repro_command:    "go test ./..."
+        repro_test_paths: ["internal/example/repro_test.go"]
+        status:           "passed"
+        outcome:          "pass"
+        applied:          true
+        files_changed:    []
+  host.run:
+    by_call:
+      repro_det_gate:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            ran:            true
+            baseline_green: false
+            test_red:       true
+            ok:             false
+            summary:        "baseline not green — judge skipped"
+            log:            "baseline exit 2, reproducer exit 1"
+
+turns:
+  - intent: { name: start, slots: {} }
+    expect_state: __exit__abandoned
+    expect_world:
+      abandon_reason: "reproducing_cycle_budget_exhausted"
+      status: "abandoned"
+      repro_gate_ok: false
+      repro_baseline_green: false
+      repro_test_red: true
+      llm_verdict: {}
+
+expect_terminal: true
+expect_no_errors: true

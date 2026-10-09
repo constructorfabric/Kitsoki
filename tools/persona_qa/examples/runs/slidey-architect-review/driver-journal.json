@@ -1,0 +1,20 @@
+{
+  "run_id": "persona-qa-slidey-architect-review",
+  "items": [
+    {
+      "event_id": "slidey-001",
+      "scenario": "compose-architecture-deck",
+      "summary": "Opened the architect-design playback and verified it could anchor a technical presentation."
+    },
+    {
+      "event_id": "slidey-002",
+      "scenario": "reuse-recorded-demo",
+      "summary": "Confirmed the playback clip is referenced as deck-local evidence."
+    },
+    {
+      "event_id": "slidey-003",
+      "scenario": "maintain-deck-as-code",
+      "summary": "Reviewed the deck-as-code workflow against repeat presentation needs."
+    }
+  ]
+}

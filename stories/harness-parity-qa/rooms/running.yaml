@@ -32,25 +32,84 @@ states:
               intent: look
     on_enter:
       - invoke: host.run
-        id: run_parity
+        id: parity_provider_stream
         once: true
         with:
-          cmd: python3
-          args:
-            - stories/harness-parity-qa/scripts/harness_parity_report.py
-            - "--surfaces"
-            - "{{ world.surfaces }}"
-            - "--output-root"
-            - "{{ world.output_root }}"
-            - "--markdown"
-            - "{{ world.markdown_path }}"
-            - "--visual-policy"
-            - "{{ world.visual_policy }}"
+          cmd: "GOCACHE=${KITSOKI_GOCACHE:-/private/tmp/kitsoki-gocache} go test ./internal/host -run TestAgentStream_HarnessParityThinkingAndToolUse"
           cwd: "{{ world.workdir }}"
-          timeout: "60s"
-          fail_on_error: true
+          timeout: "120s"
         bind:
-          parity_result: stdout_json
+          provider_stdout: "stdout"
+          provider_exit_code: "exit_code"
+          provider_ok: "ok"
+        on_error: idle
+      - invoke: host.run
+        id: parity_tui_activity
+        once: true
+        with:
+          cmd: "GOCACHE=${KITSOKI_GOCACHE:-/private/tmp/kitsoki-gocache} go test ./internal/tui -run TestMetaStream_FullThoughtReachesScrollback"
+          cwd: "{{ world.workdir }}"
+          timeout: "120s"
+        bind:
+          tui_stdout: "stdout"
+          tui_exit_code: "exit_code"
+          tui_ok: "ok"
+        on_error: idle
+      - invoke: host.run
+        id: parity_web_activity
+        once: true
+        with:
+          cmd: "pnpm -C tools/runstatus exec vitest run tests/unit/run-store.test.ts"
+          cwd: "{{ world.workdir }}"
+          timeout: "120s"
+        bind:
+          web_stdout: "stdout"
+          web_exit_code: "exit_code"
+          web_ok: "ok"
+        on_error: idle
+      - invoke: host.run
+        id: parity_vscode_surface
+        once: true
+        with:
+          cmd: "pnpm -C tools/vscode-kitsoki exec node --test --import tsx tests/spa-visual.unit.test.ts"
+          cwd: "{{ world.workdir }}"
+          timeout: "120s"
+        bind:
+          vscode_stdout: "stdout"
+          vscode_exit_code: "exit_code"
+          vscode_ok: "ok"
+        on_error: idle
+      - invoke: host.starlark.run
+        id: parity_report
+        once: true
+        with:
+          script: scripts/parity_report.star
+          capabilities:
+            fs:
+              write: ["**"]
+          inputs:
+            surfaces: "{{ world.surfaces }}"
+            output_root: "{{ world.output_root }}"
+            markdown_path: "{{ world.markdown_path }}"
+            visual_policy: "{{ world.visual_policy }}"
+            provider_result:
+              stdout: "{{ world.provider_stdout }}"
+              exit_code: "{{ world.provider_exit_code }}"
+              ok: "{{ world.provider_ok }}"
+            tui_result:
+              stdout: "{{ world.tui_stdout }}"
+              exit_code: "{{ world.tui_exit_code }}"
+              ok: "{{ world.tui_ok }}"
+            web_result:
+              stdout: "{{ world.web_stdout }}"
+              exit_code: "{{ world.web_exit_code }}"
+              ok: "{{ world.web_ok }}"
+            vscode_result:
+              stdout: "{{ world.vscode_stdout }}"
+              exit_code: "{{ world.vscode_exit_code }}"
+              ok: "{{ world.vscode_ok }}"
+        bind:
+          parity_result: "parity_result"
         on_error: idle
       - set: { status: "ready" }
     on:
@@ -64,6 +123,18 @@ states:
           effects:
             - set:
                 parity_result: {}
+                provider_stdout: ""
+                provider_exit_code: 0
+                provider_ok: false
+                tui_stdout: ""
+                tui_exit_code: 0
+                tui_ok: false
+                web_stdout: ""
+                web_exit_code: 0
+                web_ok: false
+                vscode_stdout: ""
+                vscode_exit_code: 0
+                vscode_ok: false
                 status: "running"
       quit:
         - target: done

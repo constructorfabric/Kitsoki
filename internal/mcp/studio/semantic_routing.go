@@ -9,17 +9,12 @@ import (
 )
 
 // semanticRoutingEnvOption resolves the deterministic semantic-routing toggle
-// from KITSOKI_SEMANTIC_ROUTING. It returns (option, true) only when the env var
-// is explicitly set; when absent it returns ok=false so the caller leaves the
-// orchestrator to defer to the per-app routing.enabled config. The `kitsoki mcp`
-// command exports this env var from the global --semantic-routing flag (default
-// false → free-text routing is an isolated main-model decision); flow/cassette
-// tests that open the studio directly leave it unset and keep their deterministic
-// routing fixtures. See docs/architecture/semantic-routing.md.
+// from KITSOKI_SEMANTIC_ROUTING. When the env var is absent it defaults to
+// false, matching the CLI's deterministic-then-harness posture.
 func semanticRoutingEnvOption() (orchestrator.Option, bool) {
 	v, ok := os.LookupEnv("KITSOKI_SEMANTIC_ROUTING")
 	if !ok {
-		return nil, false
+		return orchestrator.WithSemanticRouting(false), true
 	}
 	enabled, err := parseSemanticRoutingBool(v)
 	if err != nil {

@@ -23,6 +23,8 @@ host_handlers:
     data: { ok: true, message_id: "msg-1" }
   host.inbox.add:
     data: { ok: true, id: "ib-1" }
+  host.artifacts_dir:
+    data: { ok: true, path: ".artifacts/implementation-flow-artifact.md", message_id: "artifact-1" }
   host.git_worktree:
     data: { ok: true, log: "" }
   host.git:
@@ -60,52 +62,42 @@ host_handlers:
 
 turns:
   - intent: { name: start, slots: {} }
-    expect_state: review_task_executing
-  - intent: { name: proceed, slots: {} }
     expect_state: review_task_awaiting_reply
   - intent: { name: accept, slots: {} }
-    expect_state: write_code_executing
-  - intent: { name: proceed, slots: {} }
     expect_state: write_code_awaiting_reply
   - intent: { name: accept, slots: {} }
-    expect_state: test_executing
+    expect_state: test_awaiting_reply
     expect_world:
       cycle: 0
-  - intent: { name: proceed, slots: {} }
-    expect_state: test_awaiting_reply
 
   # Operator refines with the failing-test feedback. The arc:
-  #   target: write_code_executing
+  #   target: write_code_executing, which auto-settles to write_code_awaiting_reply
   #   effects: set refine_feedback, cycle++
   - intent:
       name: refine
       slots: { feedback: "TestHealthz fails — handler isn't registered. Add server.RegisterHealthz()." }
-    expect_state: write_code_executing
+    expect_state: write_code_awaiting_reply
     expect_world:
       cycle:           1
       refine_feedback: "TestHealthz fails — handler isn't registered. Add server.RegisterHealthz()."
 
-  # Re-execute write_code → test → accept. (The stub still returns the
+  # Re-execute test → accept from the refreshed write-code checkpoint. (The stub still returns the
   # failing run; in a real flow the second call would return clean.
   # For this test we exercise the arc plumbing, not the CI outcome.)
-  - intent: { name: proceed, slots: {} }
-    expect_state: write_code_awaiting_reply
   - intent: { name: accept, slots: {} }
-    expect_state: test_executing
+    expect_state: test_awaiting_reply
     expect_world:
       cycle:           0
       refine_feedback: ""
-  - intent: { name: proceed, slots: {} }
-    expect_state: test_awaiting_reply
 
   # Status-aware accept (lost-work guard, secondary port): the stub's
   # test_artifact.status is still "failed", so accept now BOUNCES back to
-  # write_code_executing with the failure feedback instead of advancing to
-  # review. This is the corrected behaviour — a failed test run can no
+  # write_code_executing, then auto-settles to write_code_awaiting_reply
+  # with the failure feedback instead of advancing to review. This is the corrected behaviour — a failed test run can no
   # longer be broadcast as success by an unconditional accept. The accept
   # arc sets refine_feedback from the artifact's summary and bumps cycle.
   - intent: { name: accept, slots: {} }
-    expect_state: write_code_executing
+    expect_state: write_code_awaiting_reply
     expect_world:
       cycle:           1
       refine_feedback: "Adds the /healthz route + a handler that returns 200."

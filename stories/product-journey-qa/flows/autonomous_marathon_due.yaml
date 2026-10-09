@@ -1,0 +1,80 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.run:
+    by_call:
+      autonomous_product_journey_marathon_due:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            schema: kitsoki/product-journey-autonomous-marathon-due/v1
+            status: autonomous_marathon_due_checked
+            checked_at: "2026-07-02T01:00:00+00:00"
+            root: .artifacts/product-journey
+            summary: "1 due, 1 upcoming, 1 blocked, 0 ignored; next run-due overdue 60m"
+            due_count: 1
+            upcoming_count: 1
+            blocked_count: 1
+            ignored_count: 0
+            total_count: 3
+            next_due_run_id: run-due
+            next_due_run_dir: .artifacts/product-journey/run-due
+            next_due_command: "python3 tools/product-journey/run.py --autonomous-marathon --json-output --report-invalid-autonomous-marathon --project vscode --persona core-maintainer --seed due-seed-cycle-20260702T010000Z --scenarios bugfix --live-budget-minutes 6 --autonomous-driver-mode replay --autonomous-cadence-hours 24 --autonomous-heartbeat-minutes 15 --autonomous-watchdog-minutes 45 --ticket-repo owner/repo --gh-agent-public-base-url https://agent.example"
+            next_due_story_intent: "autonomous_marathon project=vscode persona=core-maintainer seed=due-seed-cycle-20260702T010000Z scenarios=bugfix live_budget_minutes=6 autonomous_driver_mode=replay ticket_repo=owner/repo gh_agent_public_base_url=https://agent.example"
+            next_due_minutes_overdue: 60
+            due_runs:
+              - run_id: run-due
+                run_dir: .artifacts/product-journey/run-due
+                minutes_overdue: 60
+            upcoming_runs:
+              - run_id: run-upcoming
+                run_dir: .artifacts/product-journey/run-upcoming
+                minutes_until_due: 1380
+            blocked_runs:
+              - run_id: run-pending
+                run_dir: .artifacts/product-journey/run-pending
+                blocked_reason: "pending driver mode still requires operator handoff; use replay, record, or live for unattended cadence"
+
+turns:
+  - intent:
+      name: autonomous_marathon_due
+      slots:
+        stats_root: .artifacts/product-journey
+        due_now: "2026-07-02T01:00:00+00:00"
+        due_limit: 3
+    expect_state: idle
+    expect_world:
+      status: autonomous_marathon_due_checked
+      autonomous_due_status: autonomous_marathon_due_checked
+      autonomous_due_summary: "1 due, 1 upcoming, 1 blocked, 0 ignored; next run-due overdue 60m"
+      autonomous_due_root: .artifacts/product-journey
+      autonomous_due_count: 1
+      autonomous_due_upcoming_count: 1
+      autonomous_due_blocked_count: 1
+      autonomous_due_ignored_count: 0
+      autonomous_due_total_count: 3
+      autonomous_due_next_run_id: run-due
+      autonomous_due_next_run_dir: .artifacts/product-journey/run-due
+      autonomous_due_next_minutes_overdue: 60
+      autonomous_due_next_story_intent: "autonomous_marathon project=vscode persona=core-maintainer seed=due-seed-cycle-20260702T010000Z scenarios=bugfix live_budget_minutes=6 autonomous_driver_mode=replay ticket_repo=owner/repo gh_agent_public_base_url=https://agent.example"
+    expect_view_matches: "PRODUCT JOURNEY QA[\\s\\S]*Marathon due[\\s\\S]*autonomous_marathon_due_checked: 1 due, 1 upcoming,[\\s\\S]*1 blocked, 0 ignored; next run-due overdue 60m[\\s\\S]*Next due intent[\\s\\S]*autonomous_marathon project=vscode persona=core-[\\s\\S]*maintainer seed=due-seed-cycle-20260702T010000Z"
+    expect_host_calls:
+      - handler: host.run
+        args:
+          call: autonomous_product_journey_marathon_due
+          cmd: python3
+          args:
+            - tools/product-journey/run.py
+            - --autonomous-marathon-due
+            - --json-output
+            - --stats-root
+            - .artifacts/product-journey
+            - --due-now
+            - "2026-07-02T01:00:00+00:00"
+            - --due-limit
+            - 3
+
+expect_no_errors: true

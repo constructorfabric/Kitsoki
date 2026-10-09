@@ -4,7 +4,21 @@ layout: doc
 
 # Download Kitsoki
 
-Prebuilt `kitsoki` binaries are published on GitHub Releases for the normal local-use platforms.
+Prebuilt `kitsoki` binaries are published on GitHub Releases for the normal
+local-use platforms. Download the archive for your platform, extract it, put
+`kitsoki` on your `PATH`, then run it from an existing repo.
+
+```sh
+kitsoki version
+cd ~/code/my-project
+kitsoki run
+# type: onboard .
+```
+
+[Run Kitsoki in an existing repo](/guide/getting-started.html) has the full
+first-run path.
+
+## Binaries
 
 | Platform | Architecture | Download |
 |---|---:|---|
@@ -15,14 +29,6 @@ Prebuilt `kitsoki` binaries are published on GitHub Releases for the normal loca
 | Windows | x86_64 | [Download `kitsoki_windows_amd64.zip`](https://github.com/bsacrobatix/Kitsoki/releases/latest/download/kitsoki_windows_amd64.zip) |
 
 [Checksums](https://github.com/bsacrobatix/Kitsoki/releases/latest/download/checksums.txt) · [Open the latest release](https://github.com/bsacrobatix/Kitsoki/releases/latest)
-
-## Install
-
-Download the archive for your platform, extract it, then put `kitsoki` on your `PATH`.
-
-```sh
-kitsoki version
-```
 
 Verify the archive before installing when possible:
 
@@ -39,4 +45,5 @@ make setup
 make install
 ```
 
-See [Getting Started](./guide/getting-started.html) for the full local setup path.
+Use [contributor setup](https://github.com/bsacrobatix/Kitsoki/blob/main/docs/contributor-setup.md)
+when you are working on Kitsoki itself.

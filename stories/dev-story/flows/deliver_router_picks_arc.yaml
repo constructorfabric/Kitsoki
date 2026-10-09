@@ -1,0 +1,149 @@
+# deliver_router_picks_arc — four sub-fixtures proving decompose-vs-direct
+# is an OPERATOR CHOICE (proposal deliver-canonical-decomposition.md, task
+# B3, Open Question 3) on both rooms that offer it: `design_done` (right
+# after publish) and `landing` (picking up a proposal published earlier).
+# There is deliberately no ticket-size / ticket-type heuristic here — the
+# SAME published proposal (design_file set) routes to impl.idle when the
+# operator picks `go_implementation` and to deliver.configure when they pick
+# `go_deliver`; nothing about the world state itself decides it.
+
+# ── design_done: go_implementation → impl (direct) ──────────────────
+test_kind: flow
+app: ../app.yaml
+initial_state: design_done
+initial_world:
+  design_file:        "docs/proposals/per-session-working-folder.md"
+  design_ticket_path: "issues/features/F-2026-06-11T120000Z-per-session-working-folder.md"
+  ticket_id:      "F-2026-06-11T120000Z-per-session-working-folder"
+  ticket_title:   "Per-session working folder"
+  ticket_type:    "feature"
+  ticket_url:     "docs/proposals/per-session-working-folder.md"
+  thread:         "F-2026-06-11T120000Z-per-session-working-folder"
+  base_branch:    "main"
+  judge_mode:     "human"
+
+host_handlers:
+  host.append_to_file:
+    data: { ok: true, message_id: "msg-1" }
+  host.inbox.add:
+    data: { ok: true, id: "ib-1" }
+  host.artifacts_dir:
+    data: { ok: true, path: ".artifacts/implementation-flow-artifact.md", message_id: "artifact-1" }
+  host.git_worktree:
+    data: { ok: true, log: "" }
+  host.git:
+    data: { ok: true, sha: "abc123", diff: "" }
+  host.local:
+    data: { ok: true, log: "PASS", state: "success", passed: 1, failed: 0 }
+  host.local_files.ticket:
+    data:
+      ok:    true
+      id:    "F-2026-06-11T120000Z-per-session-working-folder"
+      title: "Per-session working folder"
+      body:  "Implement the accepted proposal."
+      url:   "docs/proposals/per-session-working-folder.md"
+  host.agent.decide:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Per-session working folder"
+        summary_markdown: "Stub implementation artifact long enough for schemas."
+        scope:            "single primitive."
+        acceptance_criteria: ["folder is created per session."]
+        affected_files:   ["internal/runtime/workdir.go"]
+        confidence:       0.85
+        reasoning:        "Mechanical."
+        status:           "passed"
+        tests_run:        { passed: 1, failed: 0, log: "PASS" }
+        nits:             []
+        blockers:         []
+        verdict:          "pass"
+        intent:           "accept"
+        reason:           "Stub."
+
+turns:
+  # impl.idle.on_enter auto-starts once ticket_id is provisioned (its own
+  # Step 3 — a headless dispatcher may only get one turn), so this lands
+  # past idle at review_task_awaiting_reply in the same turn (a pre-existing
+  # impl.idle auto-advance behavior — see design_to_implementation.yaml's
+  # header note; not this fixture's concern, only the arc choice is).
+  - intent: { name: go_implementation, slots: {} }
+    expect_state: impl.review_task_awaiting_reply
+    expect_world:
+      impl__ticket_id: "F-2026-06-11T120000Z-per-session-working-folder"
+
+expect_no_errors: true
+
+---
+
+# ── design_done: go_deliver → deliver (decompose), SAME published proposal ──
+test_kind: flow
+app: ../app.yaml
+initial_state: design_done
+initial_world:
+  design_file:        "docs/proposals/per-session-working-folder.md"
+  design_ticket_path: "issues/features/F-2026-06-11T120000Z-per-session-working-folder.md"
+  ticket_id:      "F-2026-06-11T120000Z-per-session-working-folder"
+  ticket_title:   "Per-session working folder"
+  ticket_type:    "feature"
+  ticket_url:     "docs/proposals/per-session-working-folder.md"
+  thread:         "F-2026-06-11T120000Z-per-session-working-folder"
+  base_branch:    "main"
+
+turns:
+  - intent: { name: go_deliver, slots: {} }
+    expect_state: deliver.configure
+    expect_world:
+      deliver__epic_path: "docs/proposals/per-session-working-folder.md"
+
+expect_no_errors: true
+
+---
+
+# ── landing: go_deliver → deliver, a proposal published earlier (no ticket) ──
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world:
+  design_file: "docs/proposals/per-session-working-folder.md"
+  ticket_id:   ""
+  judge_mode:  "human"
+
+host_handlers:
+  host.local_files.ticket:
+    data: { tickets: [] }
+
+turns:
+  - intent: { name: go_deliver, slots: {} }
+    expect_state: deliver.configure
+    expect_world:
+      deliver__epic_path: "docs/proposals/per-session-working-folder.md"
+
+expect_no_errors: true
+
+---
+
+# ── landing: go_deliver guarded off — no published proposal yet ────
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world:
+  design_file: ""
+  ticket_id:   ""
+  judge_mode:  "human"
+
+host_handlers:
+  host.local_files.ticket:
+    data: { tickets: [] }
+
+turns:
+  - intent: { name: go_deliver, slots: {} }
+    expect_state: landing
+    expect_world:
+      last_error: |
+        No published proposal to decompose.
+
+        Suggestions:
+        - `idea` — draft and publish a proposal, then decompose it
+
+expect_no_errors: true

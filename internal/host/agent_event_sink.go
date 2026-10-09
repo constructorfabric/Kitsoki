@@ -184,7 +184,8 @@ func AgentUsageFrom(ctx context.Context) map[string]any {
 
 // agentUsageMeta builds the AgentReturned.Meta map from the usage box in ctx,
 // or returns nil when no usage was recorded (so Meta stays omitempty). The
-// shape is {"usage": {…claude usage object…}, "cost_usd": <float>}.
+// shape is {"usage": {…claude usage object…}, "cache": {…CacheUsage…},
+// "cost_usd": <float>}.
 func agentUsageMeta(ctx context.Context) map[string]any {
 	b := agentUsageBoxFrom(ctx)
 	if b == nil {
@@ -198,11 +199,66 @@ func agentUsageMeta(ctx context.Context) map[string]any {
 	meta := map[string]any{}
 	if b.usage != nil {
 		meta["usage"] = b.usage
+		if cache := cacheUsageFromMap(b.usage); cache != nil {
+			meta["cache"] = cache
+		}
 	}
 	if b.cost != 0 {
 		meta["cost_usd"] = b.cost
 	}
 	return meta
+}
+
+// ── Cache-usage surfacing (dispatch-context-floor task 1.2) ─────────────────
+//
+// The claude CLI's stream-json `result` event already reports
+// cache_read_input_tokens / cache_creation_input_tokens (parsed in
+// agent_runner.go and stashed into the usage box above), so the raw numbers
+// already reach agent.call.complete inside Meta.usage. What was missing —
+// per the dispatch-context-floor spike (.context/2026-07-05-s3-spike-cache-fields.md)
+// — was a named, typed surface mirroring internal/harness/live.go's
+// UsageInfo (CacheReadTokens / CacheCreateTokens / CacheHit), the same shape
+// LiveHarness already logs for routing calls, so a trace consumer doesn't
+// have to know the claude-CLI-specific snake_case key names to compute
+// cache-hit visibility for host.agent.* dispatch.
+
+// CacheUsage is the named cache-usage surface for a single agent host-call,
+// derived from the claude CLI's reported usage object. Hit is true only when
+// this call actually read from the cache; a call that merely wrote a new
+// cache-eligible prefix (CreationTokens > 0, ReadTokens == 0 — e.g. the very
+// first call after a prompt-shape change) is a cache miss, not a hit.
+type CacheUsage struct {
+	ReadTokens     int64 `json:"read_tokens"`
+	CreationTokens int64 `json:"creation_tokens"`
+	Hit            bool  `json:"hit"`
+}
+
+// cacheUsageFromMap derives a CacheUsage from the raw usage map the claude CLI
+// transport recorded (recordAgentUsage), or nil when the map carries neither
+// cache key — e.g. a transport that reports no cache accounting at all (the
+// copilot path, per mergeOutputTokens above) — so Meta.cache stays omitted
+// rather than falsely reporting an all-zero cache result for a transport that
+// never measured caching in the first place.
+func cacheUsageFromMap(usage map[string]any) *CacheUsage {
+	if usage == nil {
+		return nil
+	}
+	_, hasRead := usage["cache_read_input_tokens"]
+	_, hasCreate := usage["cache_creation_input_tokens"]
+	if !hasRead && !hasCreate {
+		return nil
+	}
+	// usageInt64 (quota_control.go) already extracts an integer usage field
+	// from a raw usage map, tolerating both the float64 shape json.Unmarshal
+	// produces and a plain int/int64 a test or in-process caller might
+	// construct directly — reused here rather than duplicated.
+	read := usageInt64(usage, "cache_read_input_tokens")
+	create := usageInt64(usage, "cache_creation_input_tokens")
+	return &CacheUsage{
+		ReadTokens:     read,
+		CreationTokens: create,
+		Hit:            read > 0,
+	}
 }
 
 // ── EventSink context plumbing ────────────────────────────────────────────────
@@ -243,9 +299,17 @@ func EventSinkFromAgentCtx(ctx context.Context) store.EventSink {
 // This ensures deterministic replay while staying under atomic write limits.
 // See agent_dispatch.go appendAgentCalledEventWithEpisode for details.
 type AgentCalledPayload struct {
-	Verb  string `json:"verb"`
-	Agent string `json:"agent,omitempty"`
-	Model string `json:"model,omitempty"`
+	Verb         string   `json:"verb"`
+	Agent        string   `json:"agent,omitempty"`
+	Model        string   `json:"model,omitempty"`
+	Toolbox      string   `json:"toolbox,omitempty"`
+	AllowedTools []string `json:"allowed_tools,omitempty"`
+	DeniedTools  []string `json:"denied_tools,omitempty"`
+	Effect       string   `json:"effect,omitempty"`
+	// Backend is the selected coding-agent backend for this call. It is stamped
+	// centrally from the context so live, plugin, and cassette traces expose the
+	// same provenance field.
+	Backend string `json:"backend,omitempty"`
 	// Profile is the active harness profile name in effect for this call, when a
 	// session selected one (TUI /provider, web picker). It records which
 	// operator-selected backend/endpoint answered — never the env secrets behind
@@ -324,6 +388,12 @@ type AgentErrorPayload struct {
 	Agent      string `json:"agent,omitempty"`
 	DurationMS int64  `json:"duration_ms"`
 	Error      string `json:"error"`
+	// Meta mirrors AgentReturnedPayload.Meta for a failed call — today used
+	// only to carry the active harness-ladder rung (ladder_rung /
+	// ladder_failure_kind, see ladderMetaFields in ladder.go) so a rung's
+	// failing attempts are visible in the trace, not just its eventual
+	// winner. Omitted (nil) on every call with no ladder installed.
+	Meta map[string]any `json:"meta,omitempty"`
 	// Substitution mirrors AgentReturnedPayload.Substitution: when the
 	// local-model → agent.claude validation-reject fallback (step 4) was
 	// attempted but the fallback ALSO failed, the closing AgentError carries
@@ -366,6 +436,9 @@ func appendAgentCalledEvent(ctx context.Context, ts time.Time, callID string, pr
 		if payload.Effort == "" {
 			payload.Effort = ap.Provider.Effort
 		}
+	}
+	if payload.Backend == "" {
+		payload.Backend = AgentBackendFromContext(ctx).Name()
 	}
 
 	// Guarantee a prompt reference: offload large prompts to a sidecar file,
@@ -499,6 +572,9 @@ func appendAgentStreamEvent(ctx context.Context, ts time.Time, callID string, ev
 		"type":    ev.Type,
 		"subtype": ev.Subtype,
 	}
+	if ev.Severity != "" {
+		payload["severity"] = ev.Severity
+	}
 	if ev.Tool != "" {
 		payload["tool"] = ev.Tool
 	}
@@ -531,6 +607,56 @@ func appendAgentStreamEvent(ctx context.Context, ts time.Time, callID string, ev
 		Kind:      store.AgentStreamEvent,
 		StatePath: oc.StatePath,
 		CallID:    callID,
+		Payload:   raw,
+	})
+}
+
+type storeAgentNotice struct {
+	Type     string `json:"type"`
+	Subtype  string `json:"subtype,omitempty"`
+	Severity string `json:"severity,omitempty"`
+	Text     string `json:"text"`
+	Backend  string `json:"backend,omitempty"`
+	Provider string `json:"provider,omitempty"`
+	Model    string `json:"model,omitempty"`
+	Effort   string `json:"effort,omitempty"`
+	Error    string `json:"error,omitempty"`
+}
+
+// appendAgentNoticeEvent records an operator-facing agent breadcrumb that is
+// not tied to a provider stream event. It is deliberately stored as
+// agent.stream so existing timeline surfaces show the notice without a new
+// trace vocabulary.
+func appendAgentNoticeEvent(ctx context.Context, ts time.Time, notice storeAgentNotice) {
+	if sink := StreamSinkFrom(ctx); sink != nil && notice.Text != "" {
+		sink.OnStreamEvent(ctx, StreamEvent{
+			Type:     notice.Type,
+			Subtype:  notice.Subtype,
+			Severity: notice.Severity,
+			Preview:  onelinePreview(notice.Text, 120),
+			Text:     notice.Text,
+			Backend:  notice.Backend,
+			Provider: notice.Provider,
+			Model:    notice.Model,
+			Effort:   notice.Effort,
+			Error:    notice.Error,
+		})
+	}
+	sink := EventSinkFromAgentCtx(ctx)
+	if sink == nil || notice.Text == "" {
+		return
+	}
+	oc := AgentCallCtxFrom(ctx)
+	raw, err := json.Marshal(notice)
+	if err != nil {
+		return
+	}
+	_ = sink.Append(store.Event{
+		Turn:      oc.Turn,
+		Ts:        ts,
+		Kind:      store.AgentStreamEvent,
+		StatePath: oc.StatePath,
+		CallID:    CallIDFrom(ctx),
 		Payload:   raw,
 	})
 }

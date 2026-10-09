@@ -13,19 +13,42 @@ states:
   # — the cherny-loop decision-emit discipline.
   qa:
     description: "Loop step — kitsoki-ui-qa vision gate"
-    relevant_world: [feature_slug, iteration, iteration_budget, qa_ok, qa_exit_code, qa_report, session_cost_usd, cost_budget_usd]
+    relevant_world: [feature_slug, iteration, iteration_budget, qa_ok, qa_exit_code, qa_report, qa_completion_artifact_handle, session_cost_usd, cost_budget_usd]
     on_enter:
       # 1. The QA gate. fail_on_error:false so a blocking/pipeline exit binds
       #    qa_ok:false (not an error bounce); qa_exit_code carries 0/1/2.
       - invoke: host.run
         id: "qa-{{ world.iteration }}"
+        once: true
         with:
-          cmd: "bash .agents/skills/kitsoki-ui-qa/scripts/qa.sh \"{{ world.video_path }}\" --frames \"{{ world.frames_dir }}\" --feature \"{{ world.feature_md_path }}\" --scenarios \"{{ world.scenarios_path }}\" --strict"
+          cmd: |
+            set +e
+            bash .agents/skills/kitsoki-ui-qa/scripts/qa.sh "{{ world.video_path }}" --frames "{{ world.frames_dir }}" --feature "{{ world.feature_md_path }}" --scenarios "{{ world.scenarios_path }}" --strict
+            rc=$?
+            out=""
+            verdict="$(ls -t "$PWD"/.artifacts/ui-qa/*/verdict.json 2>/dev/null | head -n 1)"
+            if [ -n "$verdict" ]; then
+              out="$PWD/.artifacts/ui-qa/completion-state.json"
+              if ! python3 -m tools.persona_qa --kind ui-qa --input "$verdict" --out "$out" >/dev/null; then
+                out=""
+              fi
+            fi
+            python3 - "$rc" "$out" <<'PY'
+            import json, sys
+            rc = int(sys.argv[1])
+            print(json.dumps({
+                "qa_ok": rc == 0,
+                "qa_exit_code": rc,
+                "qa_completion_state_path": sys.argv[2],
+            }))
+            PY
+            exit "$rc"
           cwd: "{{ world.worktree_path }}"
           fail_on_error: false
         bind:
           qa_ok:        ok
           qa_exit_code: exit_code
+          qa_completion_state_path: stdout_json.qa_completion_state_path
       # 2. Read the report so a loop-back maker turn gets concrete feedback. This is
       #    UNGUARDED on purpose: an on_enter invoke's `when:` is evaluated against the
       #    PRE-bind world (machine-build time), so `when: qa_ok == false` would never
@@ -52,13 +75,15 @@ states:
       - say: "QA gate ran for iteration {{ world.iteration }} (exit code bound for routing below)…"
       # 4. Guarded routing — each reads qa_ok, so all are false pre-bind and exactly
       #    one fires post-bind (the decision-emit discipline).
-      - when: "world.qa_ok == true"
+      - when: "world.qa_completion_state_path != '' && world.qa_completion_artifact_handle == ''"
+        emit_intent: record_qa_completion
+      - when: "world.qa_ok == true && world.qa_completion_state_path == ''"
         emit_intent: mark_achieved
-      - when: "world.qa_ok == false && world.cost_budget_usd > 0 && world.session_cost_usd >= world.cost_budget_usd"
+      - when: "world.qa_ok == false && world.qa_completion_state_path == '' && world.cost_budget_usd > 0 && world.session_cost_usd >= world.cost_budget_usd"
         emit_intent: mark_cost_exhausted
-      - when: "world.qa_ok == false && !(world.cost_budget_usd > 0 && world.session_cost_usd >= world.cost_budget_usd) && world.iteration >= world.iteration_budget"
+      - when: "world.qa_ok == false && world.qa_completion_state_path == '' && !(world.cost_budget_usd > 0 && world.session_cost_usd >= world.cost_budget_usd) && world.iteration >= world.iteration_budget"
         emit_intent: mark_iter_exhausted
-      - when: "world.qa_ok == false && !(world.cost_budget_usd > 0 && world.session_cost_usd >= world.cost_budget_usd) && world.iteration < world.iteration_budget"
+      - when: "world.qa_ok == false && world.qa_completion_state_path == '' && !(world.cost_budget_usd > 0 && world.session_cost_usd >= world.cost_budget_usd) && world.iteration < world.iteration_budget"
         emit_intent: loop_again
         slots:
           feedback: "{{ world.qa_report }}"
@@ -117,6 +142,8 @@ states:
         - target: "@exit:abandoned"
           effects:
             - set: { terminal_reason: "aborted", abandon_reason: "operator aborted" }
+      record_qa_completion:
+        - target: qa_artifact
       look:
         - target: .
       "*":
@@ -124,3 +151,82 @@ states:
           target: .
           effects:
             - say: "QA is running — `abort` to stop, or `look`."
+
+  qa_artifact:
+    description: "Journal the QA completion-state artifact"
+    relevant_world: [feature_slug, iteration, qa_ok, qa_exit_code, qa_completion_state_path, qa_completion_artifact_handle]
+    on_enter:
+      - invoke: host.artifacts_dir
+        id: "emit-qa-completion-state-{{ world.iteration }}"
+        once: true
+        when: "world.qa_completion_state_path != ''"
+        with:
+          thread: "ui-qa-{{ world.feature_slug }}-completion-state"
+          src_path: "{{ world.qa_completion_state_path }}"
+          kind: data
+          mime: application/json
+          label: "UI QA completion state"
+        bind:
+          qa_completion_artifact_handle: handle.id
+      - when: "world.qa_ok == true && world.qa_completion_artifact_handle != ''"
+        emit_intent: mark_achieved
+      - when: "world.qa_ok == false && world.qa_completion_artifact_handle != '' && world.cost_budget_usd > 0 && world.session_cost_usd >= world.cost_budget_usd"
+        emit_intent: mark_cost_exhausted
+      - when: "world.qa_ok == false && world.qa_completion_artifact_handle != '' && !(world.cost_budget_usd > 0 && world.session_cost_usd >= world.cost_budget_usd) && world.iteration >= world.iteration_budget"
+        emit_intent: mark_iter_exhausted
+      - when: "world.qa_ok == false && world.qa_completion_artifact_handle != '' && !(world.cost_budget_usd > 0 && world.session_cost_usd >= world.cost_budget_usd) && world.iteration < world.iteration_budget"
+        emit_intent: loop_again
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - banner:
+              text:     "QA ARTIFACT"
+              subtitle: "journaling completion-state JSON"
+              color:    "#0EA5E9"
+          - kv:
+              pairs:
+                Feature: "{{ world.feature_slug }}"
+                Iteration: "{{ world.iteration }} of {{ world.iteration_budget }}"
+                Completion: '{{ world.qa_completion_artifact_handle|default:"(pending)" }}'
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "abort"
+                  hint:  "abandon the loop"
+                - label: "look"
+    on:
+      mark_achieved:
+        - target: "@exit:achieved"
+          effects:
+            - say: "QA iteration {{ world.iteration }} → PASS ✓ (exit {{ world.qa_exit_code }})"
+            - set: { terminal_reason: "achieved" }
+      mark_cost_exhausted:
+        - target: "@exit:exhausted"
+          effects:
+            - say: "QA iteration {{ world.iteration }} → FAIL ✗ (exit {{ world.qa_exit_code }}) — cost budget exhausted"
+            - set: { terminal_reason: "cost_budget" }
+      mark_iter_exhausted:
+        - target: "@exit:exhausted"
+          effects:
+            - say: "QA iteration {{ world.iteration }} → FAIL ✗ (exit {{ world.qa_exit_code }}) — iteration budget exhausted"
+            - set: { terminal_reason: "iteration_budget" }
+      loop_again:
+        - target: generating
+          effects:
+            - say: "QA iteration {{ world.iteration }} → FAIL ✗ (exit {{ world.qa_exit_code }}) — looping back to the maker with the report as feedback"
+            - set:
+                video_valid: ""
+                qa_ok: ""
+      abort:
+        - target: "@exit:abandoned"
+          effects:
+            - set: { terminal_reason: "aborted", abandon_reason: "operator aborted" }
+      look:
+        - target: .
+      "*":
+        - default: true
+          target: .
+          effects:
+            - say: "QA artifact recording is running — `abort` to stop, or `look`."

@@ -1,0 +1,6 @@
+# yaml-language-server: $schema=feature.schema.json
+id: kitsoki-doctor
+kind: feature
+title: kitsoki doctor — provider, toolkit, and MCP readiness at a glance
+tagline: One command reports whether your provider, agent toolkit, and MCP registration are actually ready.
+summary: '`kitsoki doctor` runs a preflight over the things that make onboarding silently fail elsewhere: provider/API-key presence, agent toolkit installation, and MCP server registration. It reports readiness instead of leaving a stranger to discover a broken setup mid-session. A top-level `init` alias and tiered `--help` output round out a CLI that used to present 46 flat commands with no on-ramp.'

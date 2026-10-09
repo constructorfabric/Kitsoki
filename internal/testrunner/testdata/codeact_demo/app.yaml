@@ -1,0 +1,65 @@
+app:
+  id: codeact-demo
+  version: 0.1.0
+
+# Fixture app for goal docs/goals/codeact/GOAL.md G2 ("Verb wiring"). One
+# room whose typed turn invokes host.agent.codeact with a bounded capability
+# allowlist. host.agent.codeact does not exist as a registered host handler
+# yet (internal/host/codeact is executor-only, s1; nothing wires it into
+# internal/host's Registry or internal/agent's invoke schema yet).
+#
+# This app DOES load cleanly today, even so: internal/app/loader.go's
+# `hosts:` allow-list is purely self-declared (built straight from this
+# file's `hosts:` list, no global registry cross-check), so declaring
+# `hosts: [host.agent.codeact]` is sufficient. Real (non-flow) execution
+# would still fail at dispatch since no production handler is registered —
+# but internal/testrunner/testdata/codeact_demo/flows/happy_path.yaml stubs
+# the call directly, so the flow test never reaches that gap. See that
+# fixture's header comment for the full trace. The actual RED gate for this
+# slice is internal/app/loader_codeact_test.go's capability/sandbox
+# validation tests, which this app.yaml is deliberately compatible with
+# (`world: read` only, no sandbox: block).
+hosts:
+  - host.agent.codeact
+
+world:
+  result_payload: { type: object, default: {} }
+  result_terminated: { type: string, default: "" }
+
+root: work
+
+intents:
+  go:
+    title: "Go"
+    description: "Kick off the codeact loop."
+
+agents:
+  coder:
+    system_prompt: "act via scoped starlark to accomplish the stated goal"
+
+states:
+  work:
+    description: "Drives one host.agent.codeact call over a stubbed agent."
+    view:
+      - prose: "Ready to codeact."
+    on:
+      go:
+        - target: done
+          effects:
+            - invoke: host.agent.codeact
+              with:
+                agent: coder
+                goal: "sum the two numbers in world and return the total"
+                capabilities:
+                  world: read
+                budget: 3
+                schema: schemas/codeact_out.json
+              bind:
+                result_payload: payload
+                result_terminated: terminated
+              on_error: work
+
+  done:
+    terminal: true
+    view:
+      - prose: "codeact loop finished: {{ world.result_terminated }}"

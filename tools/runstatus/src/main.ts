@@ -10,6 +10,7 @@ import SurfaceHost from "./surfaces/SurfaceHost.vue";
 import { resolveSurface } from "./surfaces/select.js";
 import { installConsoleCapture } from "./data/console-capture.js";
 import { installErrorCapture, vueErrorHandler } from "./data/error-capture.js";
+import { installNetworkCapture } from "./data/network-capture.js";
 import { startSessionCapture } from "./data/session-capture.js";
 import { isEmbedded } from "./lib/embed.js";
 import { installKitsokiVisualHelper } from "./lib/visualHelper.js";
@@ -44,6 +45,7 @@ if (snapshotEl) {
 // guarded internally and never throws into the app.
 installConsoleCapture();
 installErrorCapture();
+installNetworkCapture();
 startSessionCapture();
 installKitsokiVisualHelper();
 

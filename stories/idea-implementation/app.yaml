@@ -1,0 +1,165 @@
+app:
+  id: idea-implementation
+  version: 0.1.0
+  title: "Idea to Implementation"
+  author: "Kitsoki"
+  license: "CC0"
+
+# This story is the autonomous intake lane:
+#   free-form idea -> LLM classification -> bugfix or ship-it
+#
+# It deliberately does not create its own long-lived operation_run. The selected
+# child story starts the imported operation handle (bf__bugfix_full or
+# ship__ship_it), which keeps the operation UI on the concrete implementation
+# pipeline instead of overwriting nested handles.
+
+hosts:
+  - host.agent.decide
+
+agents:
+  classifier:
+    system_prompt: "You classify free-form engineering ideas into an autonomous implementation route. You do not ask for approval. You only return clarification questions when the work cannot be safely routed or a feature lacks a credible deterministic completion gate."
+    model: claude-sonnet-4-6
+    tools: [Read, Grep, Glob]
+
+world:
+  idea:                         { type: string, default: "" }
+  route_decision:               { type: object, default: {} }
+  route_confidence_threshold:   { type: float,  default: 0.8 }
+  status:                       { type: string, default: "idle" }
+  final_summary:                { type: string, default: "" }
+  final_artifact:               { type: object, default: {} }
+  shipped_sha:                  { type: string, default: "" }
+  last_error:                   { type: string, default: "" }
+
+  # Shared child pipeline knobs.
+  base_branch:                  { type: string, default: "main" }
+  main_worktree_path:           { type: string, default: "." }
+  judge_mode:                   { type: string, default: "llm" }
+  judge_confidence_threshold:   { type: float,  default: 0.8 }
+  auto_triage:                  { type: bool,   default: false }
+
+intents:
+  implement:
+    description: "Classify the idea and start the selected autonomous implementation pipeline."
+    examples: ["implement", "build this", "fix this", "ship this", "make it happen"]
+    priority: 95
+    slots:
+      idea: { type: string, required: false }
+  route_bug:
+    description: "(internal) classifier chose the bugfix route."
+    examples: []
+    priority: 1
+  route_feature:
+    description: "(internal) classifier chose the feature route."
+    examples: []
+    priority: 1
+  route_needs_human:
+    description: "(internal) classifier raised required clarification questions."
+    examples: []
+    priority: 1
+  look:
+    description: "Re-render the current room."
+    examples: ["look", "status"]
+    priority: 5
+  quit:
+    description: "Abandon the intake."
+    examples: ["quit", "abandon", "stop"]
+    priority: 50
+
+exits:
+  implemented:
+    requires: [status]
+  needs-human:
+    requires: [last_error]
+
+root: intake
+
+imports:
+  bf:
+    source: ../bugfix
+    entry: idle
+    world_in:
+      ticket_id:        "{{ world.route_decision.ticket_id ?? '' }}"
+      ticket_title:     "{{ world.route_decision.title ?? 'Free-form bug report' }}"
+      ticket_body:      "{{ world.route_decision.body ?? world.idea }}"
+      ticket_source_mode: "freeform"
+      ticket_source_ref:  "idea-implementation intake"
+      thread:           "{{ (world.route_decision.ticket_id ?? '') != '' ? 'issues/bugs/' + world.route_decision.ticket_id + '.md' : '' }}"
+      base_branch:      "{{ world.base_branch }}"
+      bugfix_exit:      "direct-ship"
+      bugfix_mode:      "full"
+      judge_mode:       "{{ world.judge_mode }}"
+      judge_confidence_threshold: "{{ world.judge_confidence_threshold }}"
+      auto_triage:      "{{ world.auto_triage }}"
+      gate_command:     "{{ world.route_decision.gate_command ?? '' }}"
+    exits:
+      shipped:
+        to: done
+        set:
+          status:        "implemented"
+          shipped_sha:   "{{ world.bf__shipped_sha }}"
+          final_summary: "Bug fixed and shipped at {{ world.bf__shipped_sha }}"
+      done:
+        to: done
+        set:
+          status:         "implemented"
+          final_summary:  "{{ world.bf__done_artifact.summary_title }}"
+          final_artifact: "{{ world.bf__done_artifact }}"
+      merged:
+        to: done
+        set:
+          status:        "implemented"
+          final_summary: "Bug fixed and merged"
+      triaged:
+        to: needs_human
+        set:
+          status:     "needs-human"
+          last_error: "bugfix triage stopped before implementation: {{ world.bf__triage_verdict.summary ?? world.bf__triage_verdict.verdict ?? 'triage complete' }}"
+      not-reproducible:
+        to: needs_human
+        set:
+          status:     "needs-human"
+          last_error: "{{ world.bf__last_error }}"
+      needs-human:
+        to: needs_human
+        set:
+          status:     "needs-human"
+          last_error: "{{ world.bf__last_error }}"
+      abandoned:
+        to: needs_human
+        set:
+          status:     "needs-human"
+          last_error: "{{ world.bf__abandon_reason != '' ? world.bf__abandon_reason : 'bugfix abandoned' }}"
+      pick_ticket:
+        to: needs_human
+        set:
+          status:     "needs-human"
+          last_error: "bugfix requested a filed ticket; add enough bug detail to the idea and restart."
+
+  ship:
+    source: ../ship-it
+    entry: configure
+    world_in:
+      brief:              "{{ world.route_decision.brief ?? world.idea }}"
+      gate_command:       "{{ world.route_decision.gate_command ?? '' }}"
+      base_branch:        "{{ world.base_branch }}"
+      main_worktree_path: "{{ world.main_worktree_path }}"
+      workspace_id:       "idea-{{ world.session_id != '' ? world.session_id : 'manual' }}"
+      workspace_branch:   "idea/{{ world.session_id != '' ? world.session_id : 'manual' }}"
+      auto_start:         true
+    exits:
+      shipped:
+        to: done
+        set:
+          status:        "implemented"
+          shipped_sha:   "{{ world.ship__shipped_sha }}"
+          final_summary: "Feature shipped at {{ world.ship__shipped_sha }}"
+      needs-human:
+        to: needs_human
+        set:
+          status:     "needs-human"
+          last_error: "{{ world.ship__last_error }}"
+
+include:
+  - rooms/*.yaml

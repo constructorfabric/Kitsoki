@@ -131,9 +131,9 @@ func advance(ctx context.Context, exec *executor, step TourStep) error {
 		}
 		return exec.dwell(700)
 	}
-	// action: DOM-dispatch the click on the target so it fires through the
-	// overlay backdrop (spec pattern), then settle. route-match steps wait for
-	// the URL to change.
+	// action: DOM-dispatch the click on the target so it avoids tour popover
+	// hit-test flake (spec pattern), then settle. route-match steps wait for the
+	// URL to change.
 	if step.Target != "" {
 		js := fmt.Sprintf(`(() => { const t = document.querySelector(%q); if (!t) return false; t.scrollIntoView({block:'center'}); t.click(); return true; })()`, targetSelector(step.Target))
 		var ok bool

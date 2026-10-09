@@ -254,6 +254,9 @@ describe("InboxPanel", () => {
     expect(row).not.toBeNull();
     expect(document.body.textContent).toContain("question");
     expect(document.body.textContent).toContain("Which environment?");
+    expect(
+      Array.from(document.body.querySelectorAll('[data-testid="work-item-choice"]')).map((el) => el.textContent)
+    ).toEqual(["staging", "prod"]);
     expect(document.body.textContent).toContain("answer");
 
     row.click();
@@ -288,6 +291,9 @@ describe("InboxPanel", () => {
     expect(document.body.textContent).toContain("approval");
     expect(document.body.textContent).toContain("Edit docs proposal");
     expect(document.body.textContent).toContain("Allow the agent to patch docs/proposals/example.md");
+    expect(document.body.textContent).toContain("accept");
+    expect(document.body.textContent).toContain("refine");
+    expect(document.body.textContent).toContain("dismiss");
     expect(document.body.textContent).toContain("review");
 
     row.click();

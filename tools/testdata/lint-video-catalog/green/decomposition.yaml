@@ -1,0 +1,8 @@
+goal_slug: fixture
+changes:
+  - id: "X.1"
+    title: Widget X ships a demo
+    demo_video: "tour widget X"
+  - id: "X.2"
+    title: Widget Y ships a demo
+    demo_video: "tour widget Y"

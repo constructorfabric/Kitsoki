@@ -4,12 +4,66 @@ package host
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"strings"
+	"syscall"
 	"time"
+
+	"kitsoki/internal/effect"
 )
+
+// hostRunForkRetries bounds how many times RunHandler re-attempts a child
+// process that failed to even START with a TRANSIENT OS resource error
+// (EAGAIN / ENOMEM — "resource temporarily unavailable" / "cannot allocate
+// memory"). Under a heavily-loaded host — e.g. `go test ./...` forking many
+// subprocesses across packages on a small CI runner — fork/clone can transiently
+// fail; that is NOT a command failure and must not surface as an on_error: arc.
+// A non-zero EXIT (the command ran and failed) is never retried — only a
+// failure to spawn. See isTransientSpawnError.
+const hostRunForkRetries = 4
+
+// isTransientSpawnError reports whether err is a transient failure to SPAWN a
+// child (as opposed to a non-zero exit, which is *exec.ExitError, or a context
+// cancellation). These are the kernel's back-pressure signals under fork/memory
+// load and are safe to retry.
+func isTransientSpawnError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return false // the command ran; a non-zero exit is a real result, not a spawn failure
+	}
+	if errors.Is(err, syscall.EAGAIN) || errors.Is(err, syscall.ENOMEM) {
+		return true
+	}
+	// Fallback string match for wrapped errors that lose the errno identity.
+	msg := err.Error()
+	return strings.Contains(msg, "resource temporarily unavailable") ||
+		strings.Contains(msg, "cannot allocate memory")
+}
+
+// ClassifyDispatchedCall returns the default (effect, deterministic) pair
+// for a dispatched host verb — the builtin classification table
+// (internal/effect.ClassifyVerb), consulted with the call's args so
+// multi-op verbs (host.git, host.gh.ticket, host.local, and the other
+// prefix-fallback handlers registered below) resolve per-op.
+//
+// This is the SAME table internal/machine uses to stamp the HostInvoked
+// event before a handler is ever looked up; exporting it here (rather than
+// duplicating a second lookup) keeps namespace -> classification a single
+// definition, per the effect package's own leaf-package rationale. Callers
+// that need the effect class for recording on HostDispatched/HostReturned
+// (internal/orchestrator/host_dispatch.go) use this rather than reaching into
+// internal/effect directly, so the "consult args for an op" convention lives
+// in one place.
+func ClassifyDispatchedCall(namespace string, args map[string]any) (effect.Effect, bool) {
+	return effect.ClassifyVerb(namespace, args)
+}
 
 // WorkspaceManagerGetHandler implements host.workspace_manager.get.
 // It shells out to the workspace-manager CLI binary and parses JSON output.
@@ -112,30 +166,72 @@ func RunHandler(ctx context.Context, args map[string]any) (Result, error) {
 		defer cancel()
 	}
 
-	var execCmd *exec.Cmd
+	// Coerce argv once; the same vector is reused across spawn retries.
+	var argv []string
 	if rawArgs, hasArgs := args["args"]; hasArgs && rawArgs != nil {
-		argv, err := coerceArgs(rawArgs)
+		var err error
+		argv, err = coerceArgs(rawArgs)
 		if err != nil {
 			return Result{Error: fmt.Sprintf("host.run: %v", err)}, nil
 		}
-		execCmd = exec.CommandContext(ctx, cmd, argv...)
-	} else {
-		execCmd = exec.CommandContext(ctx, "bash", "-c", cmd)
+	}
+	cwd, _ := args["cwd"].(string)
+
+	// buildCmd constructs a FRESH exec.Cmd for each spawn attempt — a Cmd's pipes
+	// can only be wired once, so a retry needs a new Cmd, not a re-run of the old.
+	buildCmd := func() *exec.Cmd {
+		var c *exec.Cmd
+		if argv != nil {
+			c = exec.CommandContext(ctx, cmd, argv...)
+		} else {
+			c = exec.CommandContext(ctx, "bash", "-c", cmd)
+		}
+		if cwd != "" {
+			c.Dir = cwd
+		}
+		// Prepend the kitsoki binary's own directory to PATH so a host.run that
+		// shells out to `kitsoki <subcommand>` (e.g. project onboarding's
+		// `kitsoki project-tools install`) resolves the SAME binary that is
+		// running this session — independent of the operator's login-shell PATH.
+		// Same treatment the agent runner already applies; a no-op when the dir is
+		// already on PATH.
+		c.Env = envWithKitsokiBinOnPath(os.Environ())
+		return c
 	}
 
-	if cwd, ok := args["cwd"].(string); ok && cwd != "" {
-		execCmd.Dir = cwd
+	// Run with bounded retry on a TRANSIENT failure to spawn the child. A flaky
+	// fork/clone under host load (EAGAIN/ENOMEM) would otherwise bubble up as a
+	// host.run infra error and trip the calling room's on_error: arc — the root
+	// cause behind the punch-list studio test flake (host.run → needs_human on a
+	// loaded CI runner). A real command result (non-zero exit) is NOT retried.
+	var out []byte
+	var err error
+	for attempt := 0; ; attempt++ {
+		out, err = buildCmd().CombinedOutput()
+		if err == nil || ctx.Err() != nil || !isTransientSpawnError(err) || attempt >= hostRunForkRetries {
+			if isTransientSpawnError(err) {
+				// Exhausted retries on a transient spawn failure — log loudly so the
+				// trace shows WHY a host.run that should have run never did. The
+				// error is also returned (below) and folded into host_error.
+				slog.ErrorContext(ctx, "host.run.spawn_failed",
+					slog.String("cmd", cmd),
+					slog.Int("attempts", attempt+1),
+					slog.String("err", err.Error()),
+				)
+			}
+			break
+		}
+		slog.WarnContext(ctx, "host.run.spawn_retry",
+			slog.String("cmd", cmd),
+			slog.Int("attempt", attempt+1),
+			slog.String("err", err.Error()),
+		)
+		// Linear backoff; the contention window is short. Honor ctx cancellation.
+		select {
+		case <-ctx.Done():
+		case <-time.After(time.Duration(attempt+1) * 20 * time.Millisecond):
+		}
 	}
-
-	// Prepend the kitsoki binary's own directory to PATH so a host.run that
-	// shells out to `kitsoki <subcommand>` (e.g. project onboarding's
-	// `kitsoki project-tools install`) resolves the SAME binary that is
-	// running this session — independent of the operator's login-shell PATH.
-	// Same treatment the agent runner already applies; a no-op when the dir is
-	// already on PATH.
-	execCmd.Env = envWithKitsokiBinOnPath(os.Environ())
-
-	out, err := execCmd.CombinedOutput()
 	exitCode := 0
 	if err != nil {
 		// A hit timeout cancels ctx, which kills the child and surfaces here
@@ -388,17 +484,20 @@ func RegisterBuiltins(r *Registry) {
 	// host.<name>.<op> call to the longest registered prefix).  See
 	// docs/architecture/hosts.md.
 	r.Register("host.local_files.ticket", LocalFilesTicketHandler)
+	r.Register("host.local_github.ticket", LocalGitHubTicketHandler)
 	r.Register("host.git", GitVCSHandler)
 	r.Register("host.local", LocalCIHandler)
 	r.Register("host.git_worktree", GitWorktreeHandler)
 	r.Register("host.append_to_file", AppendFileTransportHandler)
 	r.Register("host.artifacts_dir", ArtifactsDirTransportHandler)
 	r.Register("host.inbox.add", InboxAddHandler)
+	r.Register("host.fs.writable_dir", FSWritableDirHandler)
 
 	// Wave 3 / Phase 5 — GitHub Issues + cypilot artifact providers.
-	// `host.gh.ticket` backs the `ticket` iface against the gh CLI; the
-	// existing `host.git` already routes PR ops through gh.  `host.cypilot_artifacts`
-	// shells out to cpt for the SDLC artifact iface.
+	// `host.gh.ticket` backs the `ticket` iface with native GitHub Issues API
+	// calls; `host.git` routes PR operations through local git plus native
+	// GitHub API calls. `host.cypilot_artifacts` shells out to cpt for the SDLC
+	// artifact iface.
 	r.Register("host.gh.ticket", GitHubTicketHandler)
 	r.Register("host.cypilot_artifacts", CypilotArtifactsHandler)
 
@@ -408,6 +507,7 @@ func RegisterBuiltins(r *Registry) {
 	r.Register("host.agent.decide", AgentDecideHandler)
 	r.Register("host.agent.task", AgentTaskHandler)
 	r.Register("host.agent.converse", AgentConverseHandler)
+	r.Register("host.agent.codeact", AgentCodeactHandler)
 
 	// IDE link (host.ide.*) — editor awareness over the MCP-over-ws Link.
 	// Resolve the link from ctx; a nil/disconnected link returns the typed
@@ -429,7 +529,10 @@ func RegisterBuiltins(r *Registry) {
 	// Deterministic Starlark glue (host.starlark.run). Registered at the full
 	// name so the registry's longest-prefix fallback resolves it exactly. The
 	// handler is a thin adapter over internal/host/starlark; see starlark_run.go.
-	r.Register("host.starlark.run", StarlarkRunHandler)
+	// Registered as a closure over r (rather than the bare func value) so the
+	// handler can inject a ctx.host caller that invokes back into THIS SAME
+	// registry (S3d narrow allow-listed ctx.host) — see NewStarlarkRunHandler.
+	r.Register("host.starlark.run", NewStarlarkRunHandler(r))
 
 	// Visual output producers (visual-outputs epic, Slice 2).
 	// host.slidey.render — validate + render a JSON scene spec via slidey.
@@ -446,6 +549,12 @@ func RegisterBuiltins(r *Registry) {
 	// The sentinel handler returns a configuration-required error; apps that
 	// want a working embedder call NewAgentSearchHandler and re-register.
 	r.Register("host.agent.search", AgentSearchHandler)
+
+	// Kits epic, S5 — host.graph.* (project object graph engine substrate,
+	// see graph_handlers.go). Registered bare so the registry's longest-
+	// prefix fallback resolves every host.graph.<op> call here with <op>
+	// injected into args["op"].
+	r.Register("host.graph", GraphHandler)
 }
 
 // AgentExtractHandler is implemented in agent_extract.go.

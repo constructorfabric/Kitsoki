@@ -50,6 +50,12 @@ jobs:
 
       # github.ref_name is the tag (vX.Y.Z) on a tag push; for a manual
       # workflow_dispatch dry-run it's the branch name.
+      # Stage the agent toolkit (skills/agents) and the story library into the
+      # //go:embed dirs so every released binary can onboard a fresh clone
+      # (kitsoki project-tools install) with no kitsoki checkout present.
+      - name: Embed toolkit + stories
+        run: make embed-stories embed-skills
+
       - name: Cross-compile binaries
         env:
           VERSION: ${{ github.ref_name }}
@@ -83,7 +89,9 @@ jobs:
       - name: Smoke release artifacts
         run: |
           set -euo pipefail
-          sha256sum -c dist/checksums.txt
+          # checksums.txt lists bare filenames (it's generated inside dist/),
+          # so the verification has to run from inside dist/ too.
+          (cd dist && sha256sum -c checksums.txt)
 
           rm -rf smoke
           mkdir -p smoke
@@ -153,7 +161,7 @@ jobs:
               ./smoke/kitsoki version
               ./smoke/kitsoki --help >/dev/null
           - target: darwin-amd64
-            runs-on: macos-13
+            runs-on: macos-15-intel
             archive: kitsoki_darwin_amd64.tar.gz
             command: |
               set -euo pipefail
@@ -178,10 +186,21 @@ jobs:
           name: kitsoki-binaries
           path: dist
 
-      - name: Smoke packaged binary
+      # `shell:` cannot reference the matrix context — GitHub rejects the whole
+      # workflow file at parse time (every run showed "workflow file issue" at
+      # 0s) — so the unix/windows split is two guarded steps instead.
+      - name: Smoke packaged binary (unix)
+        if: ${{ !startsWith(matrix.target, 'windows') }}
         env:
           ARCHIVE: ${{ matrix.archive }}
-        shell: ${{ startsWith(matrix.target, 'windows') && 'pwsh' || 'bash' }}
+        shell: bash
+        run: ${{ matrix.command }}
+
+      - name: Smoke packaged binary (windows)
+        if: ${{ startsWith(matrix.target, 'windows') }}
+        env:
+          ARCHIVE: ${{ matrix.archive }}
+        shell: pwsh
         run: ${{ matrix.command }}
 
   publish:

@@ -1,0 +1,110 @@
+# check_live_authorization_warning_no_profile — issue group B / bug #105
+# (silent live-authorization fallback) task 1: when a `check` requests
+# transports for a scenario whose legs need interpretive/live drive
+# (natural_utterances present) and no `profile=` was supplied, the plan
+# room must name that explicitly per leg, up front, before any leg is
+# driven — not a silent replay-only fallback discovered only after a
+# mysterious degraded-evidence verdict.
+#
+# Mirrors plan_legs_reads_real_run_bundle.yaml's technique: host.starlark.run
+# is left UNSTUBBED (no by_call entry at all) so scripts/plan_legs.star runs
+# for REAL against a driver-plan.json fixture served by
+# starlark_inspect_cassette, exercising the actual
+# _needs_live/_live_authorization_note computation rather than a stubbed
+# stand-in. transport=all (2 legs, both carrying natural_utterances) with
+# pause=each-leg so the loop pauses at `recording` after leg 0 without
+# reaching build_report/the deck step, matching the reference fixture's
+# scope boundary. (pause=each-leg is an explicit opt-out here, not the
+# default — see stories/scenario-qa/rooms/recording.yaml's header comment;
+# this fixture only wants to prove the live-authorization note, not
+# exercise the auto-drive loop.)
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+starlark_inspect_cassette: ../cassettes/check_live_authorization_warning_no_profile.inspect.yaml
+
+host_handlers:
+  host.run:
+    by_call:
+      emit_scenario_qa_run:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            run_id: scenario-qa-noauth-run
+            run_dir: /repo/.artifacts/product-journey/scenario-qa-noauth-run
+            driver_plan_path: /repo/.artifacts/product-journey/scenario-qa-noauth-run/driver-plan.md
+            execution_plan_path: /repo/.artifacts/product-journey/scenario-qa-noauth-run/execution-plan.md
+            agent_brief_path: /repo/.artifacts/product-journey/scenario-qa-noauth-run/agent-brief.md
+
+  host.agent.task:
+    by_call:
+      drive_leg:
+        data:
+          ok: true
+          submitted:
+            status: "captured"
+            evidence_refs: ["render_tui_png:frame-1"]
+            frames_dir: "evidence/gears-rust--core-maintainer/bugfix"
+            harness_used: "replay"
+            blockers: []
+            summary: "Captured a render.tui_png frame showing the fixed state."
+      judge_leg:
+        data:
+          ok: true
+          submitted:
+            verdict: "pass"
+            summary: "TUI frame confirms the fix state."
+            cited_frames: ["frame-1.png"]
+            frames_dir: "evidence/gears-rust--core-maintainer/bugfix"
+
+turns:
+  - intent:
+      name: check
+      slots:
+        scenario: bugfix
+        transport: all
+        persona: core-maintainer
+        target: gears-rust
+        seed: story-flow
+        pause: each-leg
+        # profile intentionally omitted: this is the "no profile=" case.
+    expect_state: recording
+    expect_world:
+      mode: catalog
+      run_id: scenario-qa-noauth-run
+      leg_count: 2
+      leg_index: 0
+      live_profile: ""
+      pause: each-leg
+      live_authorization_summary:
+        - "leg tui: needs `profile=<name>` for live drive — will run replay-only; missing cassettes will be reported as degraded-evidence with cause."
+        - "leg web: needs `profile=<name>` for live drive — will run replay-only; missing cassettes will be reported as degraded-evidence with cause."
+      last_error: ""
+    expect_host_calls:
+      - handler: host.run
+        args: { call: emit_scenario_qa_run }
+      - handler: host.starlark.run
+        args: { call: plan_legs }
+      - handler: host.starlark.run
+        args: { call: pick_leg }
+      - handler: host.agent.task
+        args: { call: drive_leg }
+      - handler: host.agent.task
+        args: { call: judge_leg }
+      - handler: host.starlark.run
+        args: { call: record_leg_result }
+    # The terminal frame here is `recording` (paused after leg 0/tui, per
+    # this story's one-leg-per-turn pacing), so only leg 0's own note is
+    # visible in THIS frame (rooms/recording.yaml renders
+    # world.current_leg.live_authorization_note) -- the aggregate
+    # `live_authorization_summary` covering BOTH legs (asserted above) is
+    # rendered up front in the `plan`/`execute` rooms, which cascade past in
+    # the same turn once the driver dispatch is fully stubbed, so the
+    # durable, testable proof for the second leg's warning is the world
+    # assertion, not this frame.
+    expect_view_matches: "leg tui: needs `profile=<name>` for live drive"
+
+expect_no_errors: true

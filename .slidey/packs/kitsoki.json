@@ -1,0 +1,81 @@
+{
+  "id": "kitsoki",
+  "name": "Kitsoki Slidey Pack",
+  "themes": {
+    "kitsoki": {
+      "label": "Kitsoki",
+      "background": "#1c140d",
+      "fontFamily": "'Inter', 'Avenir Next', 'Segoe UI', sans-serif",
+      "colors": {
+        "base": "#1c140d",
+        "surface": "#2a1a10",
+        "overlay": "#3d2419",
+        "muted": "#7b5f4d",
+        "subtle": "#c1a188",
+        "text": "#f3ead8",
+        "love": "#e0a23a",
+        "gold": "#f4cf95",
+        "rose": "#a8492b",
+        "pine": "#c97b4a",
+        "foam": "#e8d6b3",
+        "iris": "#3aa3a0",
+        "accent": "#f4cf95",
+        "accent2": "#a8492b",
+        "accent3": "#3aa3a0",
+        "danger": "#a8492b",
+        "highlightLow": "#2f1f16",
+        "highlightMuted": "#412518",
+        "highlightHigh": "#7d2e1c"
+      },
+      "css": "#root.theme-kitsoki #title-card{gap:24px !important;}#root.theme-kitsoki #title-card-subtitle{display:flex;flex-direction:column;align-items:center;gap:16px;color:var(--slidey-text);}#root.theme-kitsoki #title-card-subtitle div.deck-subtitle{max-width:1500px;line-height:1.45;font-size:36px;color:#d9c9ad;}#root.theme-kitsoki #title-card-subtitle .deck-subtitle-note{display:block;max-width:1300px;line-height:1.35;font-size:28px;color:#b29b7a;}#root.theme-kitsoki #title-card-rule,#root.theme-kitsoki #narrative-rule,#root.theme-kitsoki .slidey-bar-fill,#root.theme-kitsoki .spinner-bar,#root.theme-kitsoki #stat-value{background:linear-gradient(90deg,var(--slidey-gold),var(--slidey-rose));}#root.theme-kitsoki #table-title,#root.theme-kitsoki [id$=\"-title\"],#root.theme-kitsoki #cta-wordmark,#root.theme-kitsoki #cta-tagline,#root.theme-kitsoki #cta-url,#root.theme-kitsoki a{color:var(--slidey-gold);}#root.theme-kitsoki #cta-wordmark{background:linear-gradient(180deg,var(--slidey-gold),var(--slidey-rose));-webkit-background-clip:text;background-clip:text;color:transparent !important;}#root.theme-kitsoki .dsvg-edge line:not(.dsvg-gate-bar),#root.theme-kitsoki .dsvg-edge path,#root.theme-kitsoki .dsvg-arrow path{stroke:var(--slidey-gold);fill:var(--slidey-gold);}#root.theme-kitsoki .dsvg-node rect{stroke:var(--slidey-rose);}#root.theme-kitsoki .dsvg-node.dsvg-style-primary rect{fill:var(--slidey-highlight-muted);}#root.theme-kitsoki .dsvg-node.dsvg-style-secondary rect{fill:var(--slidey-highlight-low);}"
+    }
+  },
+  "layouts": [
+    {
+      "id": "kitsoki-evidence-loop",
+      "label": "Kitsoki Evidence Loop",
+      "type": "diagram-svg",
+      "scene": {
+        "type": "diagram-svg",
+        "title": "Evidence-first loop",
+        "caption": "Runtime evidence routes the next step instead of trusting a prompt transcript.",
+        "panels": [
+          {
+            "label": "Loop",
+            "layout": "cycle",
+            "nodes": [
+              { "id": "plan", "label": "Plan", "slot": "top", "style": "primary" },
+              { "id": "drive", "label": "Drive", "slot": "right" },
+              { "id": "observe", "label": "Observe", "slot": "bottom", "style": "secondary" },
+              { "id": "route", "label": "Route", "slot": "left" }
+            ],
+            "edges": [
+              { "from": "plan", "to": "drive" },
+              { "from": "drive", "to": "observe" },
+              { "from": "observe", "to": "route" },
+              { "from": "route", "to": "plan", "style": "recycle" }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "kitsoki-proof-cards",
+      "label": "Kitsoki Proof Cards",
+      "type": "cards",
+      "variant": "grid",
+      "scene": {
+        "type": "cards",
+        "variant": "grid",
+        "title": "Proof surface",
+        "columns": 3,
+        "cards": [
+          { "label": "Trace", "sub": "Every turn and host effect is replayable." },
+          { "label": "Gate", "sub": "Checks route work back when evidence fails." },
+          { "label": "Artifact", "sub": "Handoff is a durable file, not a chat claim." }
+        ],
+        "caption": "Use this for Kitsoki pitch or dogfood decks that need evidence-first framing."
+      }
+    }
+  ]
+}

@@ -21,9 +21,9 @@
 # search is the prior-art gate (the dev-story design_search analogue): a
 # read-only scout runs BEFORE any artifact is written, so a duplicate idea
 # is caught early. Committing (confirm / change_existing / override_new)
-# runs scripts/prd_slug.py to mint a unique per-PRD slug + workspace
+# runs scripts/prd_slug.star to mint a unique per-PRD slug + workspace
 # (.artifacts/prd/<slug>); every numbered artifact writes under it, and
-# accept publishes the draft out via scripts/prd_publish.py to
+# accept publishes the draft out via scripts/prd_publish.star to
 # docs/prd/<slug>.md. brief + references are confirm-gated review rooms
 # inserted before the PRD is written. brief composes world.idea (idle) and
 # world.clarification_log (clarifying) into <workspace>/001-brief.md
@@ -37,7 +37,7 @@
 # rooms/clarifying.yaml). clarifying_budget caps the number of rounds.
 #
 # No engine / widget changes — everything composes existing mechanisms
-# (choice forms, host.agent.*, host.artifacts_dir, host.run for the
+# (choice forms, host.agent.*, host.artifacts_dir, host.starlark.run for the
 # deterministic slug/publish glue, the cycle-budget refine loop, named
 # agents, tracing). See README.md for the full
 # contract + design.
@@ -62,7 +62,7 @@ hosts:
   - host.artifacts_dir    # write the brief + reference-list artifacts into the per-PRD workspace under {{ workdir }}/.artifacts/prd/<slug> — see rooms/brief.yaml, rooms/references.yaml.
   - host.ide.open_file    # open the editable brief in the operator's editor on brief-room entry — see rooms/brief.yaml.
   - host.ide.open_diff    # show a refine as a native diff with an in-editor accept/reject verdict gate — see rooms/drafting.yaml.
-  - host.run              # deterministic glue scripts: mint the per-PRD workspace slug (scripts/prd_slug.py, search room) and publish the accepted PRD to its durable home (scripts/prd_publish.py, drafting room).
+  - host.starlark.run     # deterministic glue: mint the per-PRD workspace slug and publish the accepted PRD (scripts/prd_slug.star / prd_publish.star).
   - host.agent.search    # OPTIONAL semantic pre-seed for the references room: embeds the idea and retrieves close docs chunks to pre-rank the researcher (see rooms/references.yaml). Fails cleanly (on_error stays in references) when no embedding endpoint is configured.
 
 # Persona table — names a model + tool surface per step so the trace
@@ -78,13 +78,11 @@ agents:
     system_prompt: "You are a product analyst running a discovery conversation to develop a raw idea into something a PRD can be written from. Default to reflecting back what you heard, NOT to interrogating — ask a question ONLY when an answer is genuinely necessary to write the PRD (an unresolved gap in the problem, the users, or the scope that would actually change the document). If the idea is already clear enough to draft from, say so and invite the user to say 'ready' instead of inventing another question. Never ask for detail that is nice-to-have, already answered, or that the drafting/research steps can reasonably assume. Ask at most one question per reply, and prefer zero. When the user points at existing docs or code, read them. Keep each reply short — a sentence or two."
     model: claude-sonnet-4-6
     tools: [Read, Grep, Glob]
-    external_side_effect: false
 
   analyst:
     system_prompt: "You are a product analyst. Read the user's idea and any upstream requirement docs, then surface the smallest set of genuinely-new clarifying questions needed to write a solid PRD."
     model: claude-sonnet-4-6
     tools: [Read, Grep, Glob]
-    external_side_effect: false
 
   # scout — decide; read-only; the prior-art gate (search room). Reads the
   # distilled idea (and any upstream docs) and scans the docs tree for an
@@ -94,19 +92,16 @@ agents:
     system_prompt: "You are a product analyst scouting for prior art. Read the idea and any upstream docs, then search the working directory's DOCUMENTATION — PRDs, requirement docs, design notes, READMEs, feature docs — for work the idea duplicates, extends, or conflicts with. Recommend amending an existing doc whenever the overlap is substantial. A genuinely new idea returns an empty overlap list."
     model: claude-sonnet-4-6
     tools: [Read, Grep, Glob]
-    external_side_effect: false
 
   researcher:
     system_prompt: "You are a product analyst curating the reference materials for a PRD. Read the idea and the clarification transcript, then search the working directory's DOCUMENTATION — requirement docs, specs, design notes, READMEs, ADRs — for prior art, constraints, and standards the PRD must honour. This is a PRD, not an implementation: do NOT cite source code. For each reference give the path, the specific section(s) that matter, and a one-line rationale. Prefer a short, high-signal list over an exhaustive dump."
     model: claude-sonnet-4-6
     tools: [Read, Grep, Glob]
-    external_side_effect: false
 
   author:
     system_prompt: "You are a product manager authoring a PRD. Read the idea, the upstream docs, the clarification transcript, and the curated reference list, then write a complete, well-structured PRD markdown document to disk."
     model: claude-sonnet-4-6
     tools: [Read, Grep, Glob, Write, Edit]
-    external_side_effect: false
 
   judge:
     system_prompt: "You are a quality gate for PRDs. Evaluate the draft against the stated criteria and emit a structured verdict: accept, refine, clarify, or uncertain."
@@ -120,7 +115,6 @@ agents:
     system_prompt: "You are a brief reviewer sanity-checking a PRD brief an operator has just filled in. Read the brief from disk and decide whether it has enough signal to proceed (a crisp Why, a one-screen What-changes, and obvious users/scope/success criteria) or whether it needs clarification. When it needs work, return the smallest set of specific clarifying questions."
     model: claude-sonnet-4-6
     tools: [Read, Grep, Glob]
-    external_side_effect: false
 
   # answer_matcher — decide; no tools; the clarifying room's free-text answer
   # router. Reads the question list + the operator's latest reply and reports
@@ -132,7 +126,6 @@ agents:
     system_prompt: "You map an operator's free-text reply to the clarifying question(s) it answers. Match on meaning, not position; a reply may answer several questions or none. Return only the questions this reply newly resolves."
     model: claude-sonnet-4-6
     tools: []
-    external_side_effect: false
 
 # World — every key read in a view, effect, or guard is declared here.
 world:
@@ -147,16 +140,16 @@ world:
   # flow that seeds initial_state=drafting directly). Relative to workdir.
   output_path:     { type: string, default: ".artifacts/prd.md" }
 
-  # ── per-PRD workspace + publish (see scripts/prd_slug.py, prd_publish.py) ─
-  # The search gate mints a slug from the distilled idea (prd_slug.py — a
+  # ── per-PRD workspace + publish (see scripts/prd_slug.star, prd_publish.star) ─
+  # The search gate mints a slug from the distilled idea (prd_slug.star — a
   # deterministic kebab reduction, uniquified) so two PRDs authored in the
   # same tree never collide. Every artifact then lands under the per-PRD
   # workspace with a numbered spine (001-brief, 003-references, 004-prd.md),
   # and accept PUBLISHES the draft out of the gitignored workspace into a
-  # durable docs home (prd_publish.py).
-  prd_slug:             { type: string, default: "" }   # kebab slug minted at the search gate (prd_slug.py)
+  # durable docs home (prd_publish.star).
+  prd_slug:             { type: string, default: "" }   # kebab slug minted at the search gate (prd_slug.star)
   prd_workspace:        { type: string, default: "" }   # per-PRD workspace, relative to workdir: .artifacts/prd/<slug> (empty until the gate mints it)
-  prd_file:             { type: string, default: "" }   # durable published path bound on accept (prd_publish.py) — the real deliverable, out of .artifacts/
+  prd_file:             { type: string, default: "" }   # durable published path bound on accept (prd_publish.star) — the real deliverable, out of .artifacts/
   publish_durable_path: { type: string, default: "docs/prd" }  # configurable durable home the accepted PRD is published into (relative to workdir)
   prd_doc_filename:     { type: string, default: "" }   # external-target override: a FIXED published filename (e.g. "PRD" -> <durable>/PRD.md) instead of <slug>.md; "" keeps the slug-named default. Set by an importing instance via the dev-story prd import world_in.
 
@@ -171,6 +164,7 @@ world:
   # ── prior-art gate (search room — see rooms/search.yaml) ─────────────
   prd_existing_state:   { type: object, default: {} }   # scout result: { overlaps: [{ path, kind, summary, recommendation }], roadmap_fit } — empty overlaps ⇒ no prior art, confirm proceeds cleanly.
   prd_overlap_decision: { type: string, default: "" }   # "" | new | change_existing — what the operator chose at the gate (audit trail).
+  prd_overlap_feedback: { type: string, default: "" }   # Visible guidance when confirm is attempted while overlaps are still active.
   prd_change_target:    { type: string, default: "" }   # path of the existing PRD to amend when prd_overlap_decision == change_existing (captured for the downstream workspace work — Gap #4).
 
   # ── clarification (accumulates across rounds — see rooms/clarifying.yaml) ─
@@ -346,6 +340,14 @@ intents:
     priority: 60
     slots:
       stage: { type: string, required: false }
+  go_gitops:
+    title: "Git commands"
+    description: "Leave PRD discovery for the git command hub: repository status, main-vs-origin checks, commits, merges, rebases, and worktrees."
+    # Button-only locally. When PRD is imported into dev-story, the parent
+    # go_gitops alias carries the free-text examples; duplicating them here
+    # makes semantic routing ambiguous between go_gitops and prd__go_gitops.
+    examples: []
+    priority: 90
   quit:
     description: "Abandon PRD authoring."
     examples: [quit, abort, bail, cancel]
@@ -357,7 +359,7 @@ intents:
 
 # Intents lifted into a parent story's table when prd is imported.
 exports:
-  intents: [discuss, capture_existing, start, change_existing, override_new, answer, submit_answers, skip, ready, advance_brief, seeded, confirm, regenerate, accept, refine, clarify, restart_from, quit, look]
+  intents: [discuss, capture_existing, start, change_existing, override_new, answer, submit_answers, skip, ready, advance_brief, seeded, confirm, regenerate, accept, refine, clarify, restart_from, go_gitops, quit, look]
 
 # Named return points. Standalone load synthesises __exit__done /
 # __exit__abandoned terminals.
@@ -365,6 +367,8 @@ exits:
   done:
     description: "PRD accepted; prd_artifact is final."
     requires: [prd_artifact]
+  gitops:
+    description: "Operator left PRD discovery for the git command hub."
   abandoned:
     description: "Operator or LLM bailed."
 

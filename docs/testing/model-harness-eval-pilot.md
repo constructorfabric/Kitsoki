@@ -89,7 +89,7 @@ tokens:
 ```sh
 mkdir -p .artifacts/eval-pilot/intent-reports
 
-GOCACHE="$PWD/.cache/go-build" \
+GOCACHE="${KITSOKI_GOCACHE:-/private/tmp/kitsoki-gocache}" \
   go run ./cmd/kitsoki test intents stories/oregon-trail/app.yaml \
     --harness static \
     --json .artifacts/eval-pilot/intent-reports/oregon-trail.json

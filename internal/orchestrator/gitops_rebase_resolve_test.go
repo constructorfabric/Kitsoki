@@ -98,45 +98,32 @@ func TestGitOps_RebaseConflict_ResolvesAndLandsBranchOps(t *testing.T) {
 	t.Chdir(repoRoot)
 
 	ctx := context.Background()
-	sid, err := orch.NewSession(ctx)
-	require.NoError(t, err)
-
-	// Boot route: idle → branch_ops (feature branch).
-	{
-		c, cancel := context.WithTimeout(ctx, 30*time.Second)
-		require.NoError(t, orch.RunInitialOnEnter(c, sid))
-		cancel()
-	}
-
-	// Seed build_check_disabled=true so the post-rebase build gate is skipped
-	// (the temp repo has no Go module; the build check is not what this test
-	// exercises). A side-channel EffectApplied at journey.Turn+1 mirrors the
-	// off-path override appender — the next SubmitDirect recomputes its turn
-	// from a fresh loadJourney, so no PK collision.
-	preJ, err := orch.LoadJourney(sid)
-	require.NoError(t, err)
-	seed := store.NewStoreSinkAdapter(s, sid)
-	require.NoError(t, seed.AppendBatch([]store.Event{{
-		Kind:    store.EffectApplied,
-		Turn:    preJ.Turn + 1,
-		Payload: mustJSONBytes(map[string]any{"set": map[string]any{"build_check_disabled": true}}),
-	}}))
-
-	// Drive the rebase. It conflicts, the resolver resolves, and the loop
-	// settles to branch_ops — all inside this one call.
 	c, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
-	out, err := orch.SubmitDirect(c, sid, "rebase", nil)
-	require.NoError(t, err, "rebase intent must complete")
-	require.NotNil(t, out)
-	require.Equal(t, app.StatePath("branch_ops"), out.NewState,
+
+	// Drive the rebase to rest. It conflicts, the resolver resolves, and the
+	// intercept drive carries the conflict room THROUGH resolve → rebase_continue
+	// → conflict_resolved → branch_ops in one call. The drive-through is owned by
+	// DriveToRest specifically: a normal operator SubmitDirect rests AT the
+	// conflict room by design (intercept_drive: rest — see the git-ops conflict
+	// flow fixtures), and only the synchronous intercept drive walks it to a real
+	// rest. DriveToRest also boots the session and seeds InitialWorld itself, so
+	// build_check_disabled (the temp repo has no Go module) rides in there.
+	out, err := orch.DriveToRest(c, "rebase", nil, orchestrator.DriveOptions{
+		Input:        "rebase onto main and resolve conflicts",
+		InitialWorld: map[string]any{"build_check_disabled": true},
+	})
+	require.NoError(t, err, "rebase drive must complete")
+	require.True(t, out.Resolved,
+		"a resolved rebase conflict must report Resolved; outcome=%q final=%q", out.Outcome, out.FinalState)
+	require.Equal(t, app.StatePath("branch_ops"), out.FinalState,
 		"a resolved rebase conflict must settle to branch_ops; got %q (view: %q)",
-		out.NewState, out.View)
+		out.FinalState, out.View)
 
 	// The tree must be clean — not mid-rebase — after a resolved continue.
 	require.False(t, midRebase(t, repoRoot), "working tree must not be mid-rebase after resolution")
 
-	j1, err := orch.LoadJourney(sid)
+	j1, err := orch.LoadJourney(out.SessionID)
 	require.NoError(t, err)
 	require.Equal(t, true, j1.World.Vars["rebase_done"],
 		"rebase_done must be true after a resolved conflict")

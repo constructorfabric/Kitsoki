@@ -3,7 +3,7 @@
   "title":   "record_artifact",
   "description": "Determinism-ladder review: whether any existing gate's recorded decisions are dominated enough to drop a rung.",
   "type":    "object",
-  "required": ["ladder_moves", "summary_markdown"],
+  "required": ["final_report_path", "ladder_moves", "ladder_summary_markdown", "summary_markdown"],
   "properties": {
     "ladder_moves": {
       "type": "array",
@@ -20,6 +20,8 @@
         "additionalProperties": true
       }
     },
+    "final_report_path": { "type": "string", "description": "Path to the final markdown report summarizing what was found and what was done." },
+    "ladder_summary_markdown": { "type": "string", "description": "Focused markdown summary of determinism-ladder moves separate from the final close-out summary." },
     "summary_markdown": { "type": "string", "minLength": 40, "description": "Human-readable summary delivered to the transport." }
   },
   "additionalProperties": true

@@ -1,0 +1,63 @@
+# checker — conformant-kit's sole provided story (S4 fixture). Exercises,
+# all passing:
+#   - exit `requires:` satisfied by the exit-firing transition's own effects
+#     (kitverify.CheckExitRequires)
+#   - exports.intents naming a real intent (kitverify.CheckExportsIntents)
+#   - a host_interfaces default whose declared op shapes match
+#     opschema.Builtins()'s registered schema for host.local_files.ticket
+#     (kitverify.CheckInterfaceOpShapes)
+# See ../../nonconformant-kit/stories/checker/app.yaml for the same story
+# shape with each of these broken on purpose.
+app:
+  id: kit-conformant-checker
+  version: 0.1.0
+
+host_interfaces:
+  ticket:
+    description: "Issue tracker abstraction — shapes here must match host.local_files.ticket's registered opschema."
+    operations:
+      search:
+        input: { query: string, limit: int }
+        output: { tickets: list }
+    default: host.local_files.ticket
+
+world:
+  pr_url: { type: string, default: "" }
+
+intents:
+  start:
+    description: "Begin."
+    examples: ["start", "go"]
+  finish:
+    description: "Finish, recording the PR url."
+    slots:
+      pr_url: { type: string, required: true }
+    examples: ["finish at {pr_url}"]
+
+exports:
+  intents: [start]
+
+exits:
+  done:
+    description: "Finished; pr_url is set."
+    requires: [pr_url]
+
+root: idle
+
+states:
+  idle:
+    description: "Ready."
+    view: "Ready."
+    on:
+      start:
+        - target: working
+
+  working:
+    description: "Working."
+    view: "Working."
+    on:
+      finish:
+        - target: "@exit:done"
+          effects:
+            - set:
+                pr_url: "{{ slots.pr_url }}"

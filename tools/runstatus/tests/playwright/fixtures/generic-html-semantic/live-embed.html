@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+      :root { font-family: Inter, ui-sans-serif, system-ui, sans-serif; color: #f8fafc; }
+      body { margin: 0; background: #121826; }
+      .scene { position: relative; width: 100vw; height: 100vh; box-sizing: border-box; padding: 54px 64px; background: linear-gradient(135deg, #121826 0%, #173b42 58%, #5f3f1b 100%); overflow: hidden; }
+      .eyebrow { color: #fbbf24; font-weight: 800; font-size: 13px; text-transform: uppercase; letter-spacing: .08em; }
+      h1 { margin: 20px 0 18px; max-width: 680px; font-size: 56px; line-height: 1; letter-spacing: 0; }
+      p { max-width: 580px; color: #cbd5e1; font-size: 18px; line-height: 1.5; margin: 0 0 30px; }
+      .metrics { display: flex; gap: 16px; margin-top: 26px; }
+      .metric { min-width: 150px; padding: 18px; border: 1px solid rgba(226,232,240,.26); border-radius: 8px; background: rgba(15,23,42,.58); }
+      .metric strong { display: block; font-size: 30px; }
+      .pick { position: absolute; border: 2px solid #60a5fa; background: rgba(96,165,250,.12); border-radius: 6px; color: transparent; cursor: pointer; opacity: 0; transition: opacity .18s ease; }
+      .annotating .pick { opacity: 1; }
+      .pick::after { content: attr(data-label); position: absolute; left: 0; bottom: 100%; background: #1e3a5f; color: #dbeafe; font-size: 12px; padding: 3px 7px; border-radius: 4px 4px 4px 0; white-space: nowrap; }
+      [data-pick-ref="scene-7.title"] { left: 58px; top: 92px; width: 720px; height: 136px; }
+      [data-pick-ref="scene-7.metrics"] { left: 58px; top: 312px; width: 520px; height: 114px; }
+    </style>
+  </head>
+  <body>
+    <main class="scene">
+      <div class="eyebrow">Scene 7</div>
+      <h1>Revenue quality moved before volume</h1>
+      <p>The producer owns the live surface. Kitsoki asks it to enter annotation mode, then the producer posts opaque element picks back.</p>
+      <div class="metrics">
+        <div class="metric"><strong>31%</strong><span>fewer refunds</span></div>
+        <div class="metric"><strong>18</strong><span>days faster</span></div>
+        <div class="metric"><strong>4.8</strong><span>CSAT delta</span></div>
+      </div>
+      <button class="pick" type="button" data-pick-ref="scene-7.title" data-label="headline">headline</button>
+      <button class="pick" type="button" data-pick-ref="scene-7.metrics" data-label="metrics row">metrics row</button>
+    </main>
+    <script>
+      const scene = document.querySelector(".scene");
+      function postView() {
+        parent.postMessage({ type: "embed:view", producer: "slidey", scope: "scene-7", label: "Scene 7", count: 2 }, "*");
+      }
+      window.addEventListener("message", (event) => {
+        if (!event.data || event.data.type !== "embed:annotate") return;
+        scene.classList.toggle("annotating", Boolean(event.data.enabled));
+        postView();
+      });
+      document.querySelectorAll("[data-pick-ref]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const rect = button.getBoundingClientRect();
+          parent.postMessage({
+            type: "embed:pick",
+            producer: "slidey",
+            scope: "scene-7",
+            ref: button.dataset.pickRef,
+            label: button.dataset.label,
+            bbox: [Math.round(rect.left), Math.round(rect.top), Math.round(rect.width), Math.round(rect.height)]
+          }, "*");
+        });
+      });
+      postView();
+    </script>
+  </body>
+</html>

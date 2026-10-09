@@ -1,0 +1,45 @@
+# baseline_green_needs_human — ship-it must not auto-accept an already-green
+# maker baseline. A gate that passes before the maker changes anything is a risk
+# signal: the goal may already be met, or the gate is too weak. ship-it projects
+# cherny-loop's baseline_green_policy=needs-human so the run parks instead of
+# spending maker budget or falsely shipping.
+test_kind: flow
+app: ../app.yaml
+initial_state: configure
+initial_world:
+  base_branch:        main
+  main_worktree_path: "."
+  workspace_id:       already-green
+  workspace_branch:   already-green
+
+host_handlers:
+  host.git_worktree: { data: { ok: true, path: ".worktrees/already-green" } }
+  host.run: { data: { ok: true, exit_code: 0, stdout: "ok  ./..." } }
+
+turns:
+  - intent:
+      name: ship
+      slots:
+        brief:        "Fix the thing that is already green"
+        gate_command: "go test ./..."
+    expect_state: maker.configuring
+    expect_world:
+      maker__baseline_green_policy: "needs-human"
+
+  - intent: { name: maker__launch, slots: {} }
+    expect_state: __exit__needs-human
+    expect_world:
+      status: "needs-human"
+      maker__terminal_reason: "baseline_green"
+      maker__last_gate_failure: "baseline gate already passes before maker changes; the goal may already be met or the gate is too weak. Strengthen the gate or explicitly accept the already-met result."
+      last_error: "maker abandoned (baseline_green): baseline gate already passes before maker changes; the goal may already be met or the gate is too weak. Strengthen the gate or explicitly accept the already-met result."
+    expect_host_calls:
+      - handler: host.run
+        args: { call: gate-0 }
+        times: 1
+    expect_no_host_calls: [host.agent.task, host.artifacts_dir]
+
+expect_terminal: true
+expect_operation_policy: ship_it
+expect_operation_status: waiting
+expect_no_errors: true

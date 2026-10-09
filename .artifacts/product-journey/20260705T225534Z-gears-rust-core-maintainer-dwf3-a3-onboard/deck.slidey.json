@@ -1,0 +1,140 @@
+{
+  "meta": {
+    "mode": "report",
+    "phase": "dry-run",
+    "resolution": {
+      "height": 1080,
+      "width": 1920
+    },
+    "title": "Product Journey QA"
+  },
+  "scenes": [
+    {
+      "narration": "A deterministic dry run of the product journey QA pipeline.",
+      "subtitle": "constructorfabric/gears-rust \u00b7 Core maintainer",
+      "title": "Product Journey QA",
+      "type": "title"
+    },
+    {
+      "body": "discover_product: planned\nfollow_tutorial: planned\nonboard_project: captured\nplan_project_work: cached_validated\nfix_bug: cached_validated\nfile_product_issue: planned\nscore_and_report: cached_validated",
+      "eyebrow": "Run shape",
+      "narration": "The run records every expected stage before live or cassette evidence is attached.",
+      "title": "20260705T225534Z-gears-rust-core-maintainer-dwf3-a3-onboard",
+      "type": "narrative"
+    },
+    {
+      "body": "Starting surface: terminal-first; prefer TUI/session state before browser surfaces\nFirst question: Will this produce a minimal, reviewable diff that follows the repository's style?\nEvidence emphasis: candidate diff, targeted tests, full-suite classification, and trace events for unexpected routing\nEscalation trigger: generated churn, hidden broad scope, missing deterministic test proof, or unclear ownership boundary\nFinding bias: Prefer reviewability, bisectability, and least-surprise findings over cosmetic notes.",
+      "eyebrow": "Persona lens",
+      "narration": "The persona lens explains how this reviewer should start, what they should question first, and which evidence matters most.",
+      "title": "Core maintainer",
+      "type": "narrative"
+    },
+    {
+      "body": "Project onboarding: onboard_project (session.open, session.inspect, render.tui, visual.observe)",
+      "eyebrow": "Scenarios",
+      "narration": "Each scenario names the story, MCP tools, evidence, and success criteria expected from a real run.",
+      "title": "Repeatable tasks",
+      "type": "narrative"
+    },
+    {
+      "body": "project-onboarding: session.open, session.inspect, render.tui, visual.observe",
+      "eyebrow": "Execution plan",
+      "narration": "The execution plan turns each scenario into concrete MCP capture steps and attach commands.",
+      "title": "MCP capture steps",
+      "type": "narrative"
+    },
+    {
+      "body": "project-onboarding: replay-or-record / tui",
+      "eyebrow": "Driver plan",
+      "narration": "The driver plan gives the product-journey QA agent machine-readable harness, visual surface, and evidence instructions.",
+      "title": "Harness and visual surfaces",
+      "type": "narrative"
+    },
+    {
+      "body": "project-onboarding: ok - 5/5 actions, journal yes",
+      "eyebrow": "Driver contract",
+      "narration": "The driver contract shows whether each scenario still follows the standard open, observe, act, capture, and journal loop.",
+      "title": "Reusable action loop",
+      "type": "narrative"
+    },
+    {
+      "body": "Validated stages: 0 / 7\nCaptured stages: 1\nScenarios: 1\nEvidence present: 2 / 6\nProof evidence: 1 \u00b7 Demo evidence: 0\nDriver events: 0\nFindings: 0\nStrengths: 0 \u00b7 Weaknesses: 0 \u00b7 Fixes: 0 \u00b7 Blocked: 0\nProduct bugs found: 0",
+      "eyebrow": "Metrics",
+      "narration": "This report distinguishes validated evidence from planned stages.",
+      "title": "Current evidence",
+      "type": "narrative"
+    },
+    {
+      "body": "No strengths, weaknesses, issues, or fixes recorded yet.",
+      "eyebrow": "Findings",
+      "narration": "The journey report records what worked, what failed, what was found, and what was fixed.",
+      "title": "Strengths, weaknesses, issues, fixes",
+      "type": "narrative"
+    },
+    {
+      "body": "Filing: 0 issue URL(s)\nQueue: not requested \u00b7 enqueued 0, skipped 0\nClaims: not claimed \u00b7 claimed 0\nDrain: not requested \u00b7 drained 0, done 0, failed 0, active 0\nNo gh-agent fix runs have been recorded yet.",
+      "eyebrow": "GH-agent fixes",
+      "narration": "Filed product-journey issues and gh-agent fix runs are kept together so reviewers can inspect both the original evidence and the autonomous repair evidence.",
+      "title": "Filed issues and autonomous fix runs",
+      "type": "narrative"
+    },
+    {
+      "body": "project-onboarding: strength 0, weakness 0, issue 0, fix 0, blocked 0",
+      "eyebrow": "Finding matrix",
+      "narration": "This matrix shows which scenarios produced strengths, weaknesses, issues, fixes, or blockers.",
+      "title": "Findings by scenario",
+      "type": "narrative"
+    },
+    {
+      "body": "No open observed weakness findings need PRD/design routing.",
+      "eyebrow": "PRD/design routes",
+      "narration": "Open weakness findings are routed to the PRD/design pipeline instead of being filed as bugfix work.",
+      "title": "Weaknesses routed to design",
+      "type": "narrative"
+    },
+    {
+      "body": "project-onboarding: evidence_captured - evidence 2/6 - findings 0",
+      "eyebrow": "Scenario outcomes",
+      "narration": "Each scenario is summarized separately so natural-use gaps remain visible after the bundle-level review passes.",
+      "title": "Per-scenario status",
+      "type": "narrative"
+    },
+    {
+      "body": "project-onboarding: proof 1/5 minimum evidence (captured 1), outcome evidence_captured - The persona can identify the generated project profile, the relevant commands/files, and the next Kitsoki story to launch.",
+      "eyebrow": "Proof gates",
+      "narration": "Quality gates show whether each scenario has the minimum evidence needed before a live or cassette-backed journey is considered complete.",
+      "title": "Minimum scenario proof",
+      "type": "narrative"
+    },
+    {
+      "body": "needs_evidence: 22/30 checks passed, 3 warnings, 5 failures\nfail: driver-journal-coverage - Every non-blocked scenario has a driver journal event.\nfail: playback-or-blocker - The review deck has playback media or an explicit blocked-scenario reason for missing playback.\nfail: findings-summary - Strengths, weaknesses, issues, or fixes are recorded.\nfail: observed-findings - Runs with real proof evidence record at least one observed (non-seeded) finding.\nfail: quality-gates - Every scenario satisfies its minimum proof gate or records an explicit blocker.\nwarn: key-video - At least one key interaction video is attached for Slidey playback.\nwarn: media-manifest - Captured visual media is listed in the playback manifest.\nwarn: balanced-findings - Findings include positive evidence and at least one gap or fix.\npass: required-files - All required bundle files exist.\npass: scenario-contract - Scenario and evidence contracts are present.",
+      "eyebrow": "Review readiness",
+      "narration": "The review gate checks whether the bundle has enough evidence and findings to discuss.",
+      "title": "needs_evidence",
+      "type": "narrative"
+    },
+    {
+      "body": "No playback media attached yet. Expected media: product discovery screenshots, onboarding frames, bugfix video, PRD/design captures, feature implementation captures, and product bug filing evidence.",
+      "eyebrow": "Video playback",
+      "media": [],
+      "narration": "Slidey scenes carry structured playback media for key visual interactions.",
+      "playback_scene_count": 0,
+      "title": "Key interactions",
+      "type": "narrative"
+    },
+    {
+      "body": "project-onboarding / session_trace [local]: .context/dwf3-a3-recording-notes.md\nproject-onboarding / flow-fixture [local]: stories/dev-story/flows/onboard_gears_rust.yaml",
+      "eyebrow": "Captured evidence",
+      "narration": "Captured artifacts are linked back to the scenarios that produced them.",
+      "title": "Attached artifacts",
+      "type": "narrative"
+    },
+    {
+      "body": "Visual MCP frames, Kitsoki traces, oracle results, and video clips will turn this dry run into a reviewable journey deck.",
+      "eyebrow": "Next",
+      "narration": "The next iteration attaches real visual and trace evidence to these scenes.",
+      "title": "Evidence to attach",
+      "type": "narrative"
+    }
+  ]
+}

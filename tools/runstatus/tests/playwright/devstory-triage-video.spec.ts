@@ -9,11 +9,16 @@
  * .artifacts/devstory-triage/.
  *
  * Runs ONLY the DEVSTORY_TRIAGE_TOUR_STEPS from
- * src/tour/generated/devstory-triage.ts via window.__startTourWithSteps. The
+ * _fixtures/devstory-triage-tour-steps.ts via window.__startTourWithSteps. The
  * tour drives the whole video: it opens on the home story library, its
  * route-match action step navigates home → new session → the drive view, then
  * the explain beats narrate the triage + handoff while the spec drives the
  * matching intents between beats.
+ *
+ * NOTE: devstory-triage was de-listed from features/*.yaml (an external stub,
+ * never recordable in this repo — see features/AGENTS.md's completeness
+ * rules), so this manifest is no longer code-generated; it's a frozen copy
+ * kept alongside this spec (see _fixtures/devstory-triage-tour-steps.ts).
  *
  * Driving mechanics:
  *   - Slotless intents (go_triage, triage__scan, triage__accept,
@@ -49,18 +54,20 @@ import {
   type WebServer,
 } from "./_helpers/server.js";
 import { cameraContext } from "./_helpers/camera.js";
-import { DEVSTORY_TRIAGE_TOUR_STEPS } from "../../src/tour/generated/devstory-triage.js";
+import { DEVSTORY_TRIAGE_TOUR_STEPS } from "./_fixtures/devstory-triage-tour-steps.js";
 
 // The feature-catalog source of truth for this spec's tour steps: each step
 // becomes a chapter (source_ref kind=tour) in the MP4's sidecar.
-const CHAPTER_SOURCE = "features/devstory-triage.yaml";
+// Was "features/devstory-triage.yaml" before the feature was de-listed from
+// the catalog; the frozen fixture is now the source of truth for these steps.
+const CHAPTER_SOURCE = "tools/runstatus/tests/playwright/_fixtures/devstory-triage-tour-steps.ts";
 
 // 7762 — the stage-1 port (matches the cassette-validation server). Distinct
 // from every other spec's port so parallel runs never race on the same bind.
 const ADDR = demoAddr(7762);
-// The devstory app lives in the cyber-repo worktree, not this kitsoki repo.
-const CYBER_STORIES = "/home/cloud-user/code/cyber-repo/.worktrees/pr-refinement/stories";
-const STORY_DIR = path.join(CYBER_STORIES, "devstory");
+// The devstory app lives in an external worktree, not this kitsoki repo.
+const EXTERNAL_STORIES = process.env.DEVSTORY_TRIAGE_STORIES ?? "/path/to/external-devstory/stories";
+const STORY_DIR = path.join(EXTERNAL_STORIES, "devstory");
 const FLOW = path.join(STORY_DIR, "flows", "tour_triage_to_bugfix.yaml");
 const HOST_CASSETTE = path.join(STORY_DIR, "cassettes", "triage-handoff.yaml");
 const ARTIFACT_DIR = path.join(repoRoot, ".artifacts", "devstory-triage");
@@ -117,7 +124,7 @@ async function driveButton(page: Page, intent: string, expectStateName: string):
 /**
  * Drive a slotted (text-slot) intent through the legacy composer: an optional
  * composer-select (present only when >1 text intent), a composer-input textarea,
- * and the composer form. DOM-level so the tour overlay backdrop never intercepts.
+ * and the composer form. DOM-level so the tour popover never intercepts.
  */
 async function driveComposer(
   page: Page,

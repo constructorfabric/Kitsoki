@@ -77,6 +77,13 @@ type IntentFixture struct {
 	MinPassRate       float64        `yaml:"min_pass_rate,omitempty"`
 	ExpectFailure     *ExpectFailure `yaml:"expect_failure,omitempty"`
 	ExpectFallthrough bool           `yaml:"expect_fallthrough,omitempty"`
+	// DefersToInterpreter, when true, asserts the OPPOSITE of a resolved
+	// intent for `test routing` (routing.go): the no-LLM tiers (deterministic
+	// + semantic + embedding) must NOT resolve this phrase — it is
+	// content-bearing free text that should fall through to the LLM
+	// interpreter. Ignored by `test intents` (Mode 1), which is
+	// harness/recording-driven, not semroute-driven.
+	DefersToInterpreter bool `yaml:"defers_to_interpreter,omitempty"`
 }
 
 // IntentExpect holds the expected intent name and slots.
@@ -202,11 +209,11 @@ type Baseline struct {
 func RunIntents(ctx context.Context, appPath string, opts IntentOptions) (*IntentReport, error) {
 	// Publish KITSOKI_APP_DIR before Load so env-expanded fields in
 	// the app yaml validate against the live var (bug 2 ordering fix
-	// — see flows.go for the canonical comment).
-	publishAppDirForTestrunner(appPath)
-
-	// Load app.
-	def, err := app.LoadWithResolver(appPath, nil, opts.ImportResolver)
+	// — see flows.go for the canonical comment). loadAppForRun holds
+	// appDirLoadMu across the setenv+Load span so a concurrent
+	// RunFlows/RunIntents/RunFlowCoverage call in the same process can't
+	// clobber the var mid-Load.
+	def, err := loadAppForRun(appPath, opts.ImportResolver)
 	if err != nil {
 		return nil, fmt.Errorf("load app %q: %w", appPath, err)
 	}

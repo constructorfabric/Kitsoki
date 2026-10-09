@@ -1,0 +1,19 @@
+# start_without_ticket_picks_ticket — #108 no-ticket guard.
+#
+# A replay-opened Studio session with no ticket used to accept `start`, enter
+# reproducing, and dispatch a live maker agent just to discover there was no
+# concrete bug. Empty-ticket idle entrypoints now exit through the existing
+# parent ticket-picker path before any maker room can run.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  judge_mode: human
+
+turns:
+  - intent: { name: start, slots: {} }
+    expect_state: __exit__pick_ticket
+
+expect_terminal: true
+expect_no_errors: true

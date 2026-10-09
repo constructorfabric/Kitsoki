@@ -17,7 +17,6 @@ export const SLIDEY_ARCHITECT_DESIGN_TOUR_STEPS: readonly TourStep[] = [
     advance: "next",
     waitForTarget: "home-view",
     dwellMs: 5500,
-    drive: [],
   },
   {
     id: "sad-story-card",
@@ -30,7 +29,6 @@ export const SLIDEY_ARCHITECT_DESIGN_TOUR_STEPS: readonly TourStep[] = [
     advance: "next",
     waitForTarget: "story-card",
     dwellMs: 5000,
-    drive: [],
   },
   {
     id: "sad-new-session",
@@ -44,7 +42,6 @@ export const SLIDEY_ARCHITECT_DESIGN_TOUR_STEPS: readonly TourStep[] = [
     advanceRoute: "interactive",
     waitForTarget: "new-session-btn",
     dwellMs: 3500,
-    drive: [],
   },
   {
     id: "sad-prd-published",

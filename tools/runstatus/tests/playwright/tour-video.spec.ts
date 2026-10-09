@@ -32,6 +32,7 @@ import {
   writeChapters,
   PACE,
   demoAddr,
+  maybeInstallAutoRrwebCapture,
   type WebServer,
 } from "./_helpers/server.js";
 import { cameraContext } from "./_helpers/camera.js";
@@ -99,6 +100,7 @@ test("onboarding tour video (no-LLM)", async () => {
   try {
     await page.goto(`${server.base}/#/`);
     await expect(page.getByTestId("home-view")).toBeVisible({ timeout: 15000 });
+    await maybeInstallAutoRrwebCapture(page);
 
     // Force-start for determinism (idempotent with the first-login auto-start).
     await page.evaluate(() => {

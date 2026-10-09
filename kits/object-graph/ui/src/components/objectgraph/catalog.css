@@ -1,0 +1,839 @@
+/* catalog.css — styles for CatalogPanel.vue, the list/detail catalog
+ * projection restored from the deleted W5.0-prototype
+ * docs/proposals/project-object-graph/viewer/src/style.css. Every rule is
+ * scoped under .catalog-panel (the prototype's styles were global; this
+ * page now lives inside the larger runstatus SPA, so unscoped tag
+ * selectors like `button`/`h1`/`code` would leak into other routes).
+ */
+
+.catalog-panel {
+  color: #202327;
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  line-height: 1.45;
+  padding: 20px;
+}
+
+.catalog-panel * {
+  box-sizing: border-box;
+}
+
+.catalog-panel button,
+.catalog-panel input,
+.catalog-panel textarea {
+  font: inherit;
+}
+
+.catalog-panel button {
+  cursor: pointer;
+}
+
+.catalog-panel .kicker {
+  color: #5d6e68;
+  font-size: 12px;
+  font-weight: 850;
+  margin: 0 0 6px;
+  text-transform: uppercase;
+}
+
+.catalog-panel h2,
+.catalog-panel h3,
+.catalog-panel p {
+  margin-top: 0;
+}
+
+.catalog-panel h2 {
+  font-size: 22px;
+  line-height: 1.14;
+  margin-bottom: 0;
+}
+
+.catalog-panel h3 {
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.catalog-panel .status-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 14px;
+}
+
+/* One compact line per layer (Actors/Site/Capabilities/Delta/Proof — a
+ * small fixed set, not open-ended) instead of the old per-layer card that
+ * repeated the type-count breakdown already shown just below in the object
+ * picker's type-filter row once a layer is selected. flex-wrap (not
+ * overflow-x scroll) since five short pills fit one row at desktop width;
+ * they only wrap at narrow viewports, which is still fully visible rather
+ * than hidden behind a scroll track. */
+.catalog-panel .layer-map {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.catalog-panel .layer-card {
+  align-items: center;
+  background: #fff;
+  border: 1px solid #d5ddd8;
+  border-radius: 999px;
+  color: #253037;
+  display: flex;
+  gap: 8px;
+  padding: 7px 12px;
+  text-align: left;
+}
+
+.catalog-panel .layer-card.active {
+  border-color: #1f5f55;
+  box-shadow: inset 0 0 0 1px #1f5f55;
+}
+
+.catalog-panel .layer-card.contains:not(.active) {
+  border-color: #8aa69d;
+}
+
+.catalog-panel .layer-map .step {
+  color: #1f5f55;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.catalog-panel .layer-map strong {
+  font-size: 14px;
+}
+
+.catalog-panel .layer-count {
+  background: #eef3ef;
+  border-radius: 999px;
+  color: #31413b;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 2px 7px;
+}
+
+.catalog-panel .layer-statuses {
+  display: flex;
+  gap: 5px;
+}
+
+.catalog-panel .status-dot {
+  align-items: center;
+  border-radius: 999px;
+  color: #fff;
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 900;
+  height: 20px;
+  justify-content: center;
+  min-width: 24px;
+  padding: 0 7px;
+}
+
+.catalog-panel .type-filter button,
+.catalog-panel .type-chain button {
+  background: #eef3ef;
+  border: 1px solid #d4ddd6;
+  border-radius: 999px;
+  color: #31413b;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 5px 8px;
+}
+
+.catalog-panel .status-badge,
+.catalog-panel .visibility-badge {
+  border: 1px solid transparent;
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1;
+  padding: 6px 8px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.catalog-panel .life-available {
+  background: #1f7a55;
+  border-color: #176443;
+  color: #fff;
+}
+
+.catalog-panel .status-badge.life-available {
+  background: #dff4e9;
+  color: #11583a;
+}
+
+.catalog-panel .life-active {
+  background: #2868b7;
+  border-color: #1d5394;
+  color: #fff;
+}
+
+.catalog-panel .status-badge.life-active {
+  background: #e2efff;
+  color: #174c88;
+}
+
+.catalog-panel .life-proof {
+  background: #7856b8;
+  border-color: #61429d;
+  color: #fff;
+}
+
+.catalog-panel .status-badge.life-proof {
+  background: #eee7fb;
+  color: #57398e;
+}
+
+.catalog-panel .life-roadmap {
+  background: #b96515;
+  border-color: #95500f;
+  color: #fff;
+}
+
+.catalog-panel .status-badge.life-roadmap {
+  background: #fff0dc;
+  color: #81420a;
+}
+
+.catalog-panel .life-candidate {
+  background: #6b7280;
+  border-color: #555c68;
+  color: #fff;
+}
+
+.catalog-panel .status-badge.life-candidate {
+  background: #eef0f3;
+  color: #4b5563;
+}
+
+.catalog-panel .visibility-public {
+  background: #e0f2fe;
+  border-color: #99d7f6;
+  color: #075985;
+}
+
+.catalog-panel .visibility-internal {
+  background: #f4e8d8;
+  border-color: #dfc29d;
+  color: #794b19;
+}
+
+/* Diff mode (runstatus.objectgraph.diff) — same added/modified/removed
+   color language as WorldDiffViewer.vue's world-state diff, reused here so
+   "what changed" reads the same everywhere in the viewer. */
+.catalog-panel .diff-badge {
+  border: 1px solid transparent;
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1;
+  padding: 6px 8px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.catalog-panel .diff-added {
+  background: #dcfce7;
+  border-color: #86efac;
+  color: #166534;
+}
+
+.catalog-panel .diff-modified {
+  background: #fef3c7;
+  border-color: #fcd34d;
+  color: #92400e;
+}
+
+.catalog-panel .diff-removed {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #991b1b;
+}
+
+.catalog-panel .workspace {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: 370px minmax(0, 1fr);
+}
+
+.catalog-panel .object-picker,
+.catalog-panel .focus-card,
+.catalog-panel .site-workbench article,
+.catalog-panel .relationship-graph,
+.catalog-panel .relationship-board section,
+.catalog-panel .sources {
+  background: #fff;
+  border: 1px solid #d5ddd8;
+  border-radius: 8px;
+}
+
+.catalog-panel .relationship-graph {
+  padding: 14px;
+}
+
+.catalog-panel .relationship-graph__head {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin: 0 0 8px;
+  /* The global inbox/meta launcher chrome floats fixed in the bottom-right
+   * corner of the viewport; this card's header can land at that same
+   * screen position depending on scroll/viewport height. Reserve enough
+   * right clearance that Expand never renders under it. */
+  padding-right: 56px;
+}
+
+.catalog-panel .relationship-graph h3 {
+  color: #1f5f55;
+  font-size: 12px;
+  font-weight: 900;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.catalog-panel .relationship-graph__expand {
+  background: transparent;
+  border: 1px solid #d4ddd6;
+  border-radius: 999px;
+  color: #1f5f55;
+  font-size: 11px;
+  font-weight: 850;
+  padding: 4px 9px;
+}
+
+.catalog-panel .relationship-graph__view {
+  border: 1px solid #e3e9e5;
+  border-radius: 7px;
+  height: 320px;
+}
+
+/* Relationship graph modal — a "mostly" full-screen pop-out (not edge to
+ * edge like the full-graph overlay in ObjectGraphPage): a backdrop with
+ * generous margin so it reads as a focused enlargement of the inline
+ * neighborhood graph, not a takeover of the whole app. */
+.relationship-graph-modal__backdrop {
+  align-items: center;
+  background: rgb(20 26 23 / 55%);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 4vh 4vw;
+  position: fixed;
+  z-index: 30;
+}
+
+.relationship-graph-modal {
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 20px 60px rgb(0 0 0 / 35%);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-width: 1400px;
+  width: 100%;
+}
+
+.relationship-graph-modal__bar {
+  align-items: center;
+  border-bottom: 1px solid #e3e9e5;
+  display: flex;
+  font-size: 13px;
+  font-weight: 850;
+  justify-content: space-between;
+  padding: 10px 16px;
+}
+
+.relationship-graph-modal__bar button {
+  background: #1d2a24;
+  border: none;
+  border-radius: 6px;
+  color: #f4f7f3;
+  cursor: pointer;
+  font-weight: 700;
+  padding: 6px 14px;
+}
+
+.relationship-graph-modal__view {
+  flex: 1;
+  min-height: 0;
+}
+
+.catalog-panel .object-picker {
+  align-self: start;
+  display: grid;
+  gap: 12px;
+  grid-template-rows: auto auto auto auto minmax(0, 1fr);
+  max-height: calc(100vh - 120px);
+  overflow: hidden;
+  padding: 14px;
+  position: sticky;
+  top: 18px;
+}
+
+.catalog-panel .picker-head {
+  align-items: start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.catalog-panel .picker-head button {
+  background: transparent;
+  border: 0;
+  color: #1f5f55;
+  font-weight: 850;
+  padding: 4px 0;
+}
+
+.catalog-panel .picker-context {
+  color: #596460;
+  font-size: 13px;
+  margin-bottom: 0;
+}
+
+.catalog-panel .type-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.catalog-panel .type-filter button {
+  background: #fff;
+}
+
+.catalog-panel .type-filter button.active {
+  background: #1f5f55;
+  border-color: #1f5f55;
+  color: #fff;
+}
+
+.catalog-panel input,
+.catalog-panel textarea {
+  border: 1px solid #ccd5d0;
+  border-radius: 7px;
+  min-height: 40px;
+  padding: 8px 10px;
+  width: 100%;
+}
+
+.catalog-panel textarea {
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.catalog-panel .object-list {
+  border-top: 1px solid #e3e9e5;
+  display: grid;
+  gap: 12px;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 10px 4px 0 0;
+}
+
+.catalog-panel .object-group {
+  display: grid;
+  gap: 7px;
+}
+
+.catalog-panel .object-group h3 {
+  color: #66716d;
+  font-size: 12px;
+  font-weight: 900;
+  margin: 2px 0 0;
+  text-transform: uppercase;
+}
+
+.catalog-panel .object-list button {
+  background: #fbfbf8;
+  border: 1px solid #dce3df;
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  text-align: left;
+}
+
+.catalog-panel .object-list button:has(.life-available) {
+  border-left: 5px solid #1f7a55;
+}
+
+.catalog-panel .object-list button:has(.life-active) {
+  border-left: 5px solid #2868b7;
+}
+
+.catalog-panel .object-list button:has(.life-proof) {
+  border-left: 5px solid #7856b8;
+}
+
+.catalog-panel .object-list button:has(.life-roadmap) {
+  border-left: 5px solid #b96515;
+}
+
+.catalog-panel .object-list button:has(.life-candidate) {
+  border-left: 5px solid #6b7280;
+}
+
+.catalog-panel .node-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.catalog-panel .object-list button.selected {
+  border-color: #1f5f55;
+  box-shadow: inset 4px 0 0 #1f5f55;
+}
+
+.catalog-panel small,
+.catalog-panel code {
+  color: #636b68;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+}
+
+.catalog-panel .focus {
+  display: grid;
+  gap: 16px;
+}
+
+.catalog-panel .focus-card {
+  padding: 18px;
+}
+
+.catalog-panel .focus-top {
+  align-items: start;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.catalog-panel .chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.catalog-panel .body-text {
+  color: #333c38;
+  font-size: 17px;
+  margin: 16px 0;
+  max-width: 980px;
+}
+
+.catalog-panel .type-chain {
+  align-items: center;
+  border-top: 1px solid #e3e9e5;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 14px;
+}
+
+.catalog-panel .type-chain > span,
+.catalog-panel .relationship-group span,
+.catalog-panel .source-row span {
+  color: #66716d;
+  font-size: 12px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.catalog-panel .site-workbench {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+}
+
+.catalog-panel .site-workbench article {
+  padding: 14px;
+}
+
+.catalog-panel .site-preview {
+  display: grid;
+  gap: 14px;
+}
+
+.catalog-panel .site-preview h3 {
+  color: #173f3a;
+  font-size: 24px;
+  line-height: 1.1;
+  margin-bottom: 8px;
+}
+
+.catalog-panel .site-preview strong {
+  color: #2868b7;
+  display: block;
+  font-size: 16px;
+  margin-bottom: 10px;
+}
+
+.catalog-panel .site-preview p {
+  color: #3b4541;
+  margin-bottom: 0;
+}
+
+.catalog-panel .media-box {
+  background: #101820;
+  border-radius: 8px;
+  color: #d7e7f3;
+  display: grid;
+  gap: 7px;
+  min-height: 142px;
+  padding: 14px;
+}
+
+.catalog-panel .media-box span,
+.catalog-panel .change-editor label span,
+.catalog-panel .evaluation-check span {
+  color: #8da3b4;
+  font-size: 12px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.catalog-panel .media-box strong {
+  color: #f4fafc;
+  font-size: 20px;
+  margin: 0;
+}
+
+.catalog-panel .media-box code {
+  color: #a8d8ff;
+}
+
+.catalog-panel .change-editor {
+  display: grid;
+  gap: 10px;
+}
+
+.catalog-panel .editor-head {
+  align-items: start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.catalog-panel .change-editor h3 {
+  font-size: 18px;
+  margin-bottom: 0;
+}
+
+.catalog-panel .change-editor label {
+  display: grid;
+  gap: 5px;
+}
+
+.catalog-panel .change-editor label span {
+  color: #66716d;
+}
+
+.catalog-panel .request-route {
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1;
+  padding: 7px 9px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.catalog-panel .route-active {
+  background: #fff0dc;
+  color: #81420a;
+}
+
+.catalog-panel .route-idle {
+  background: #eef0f3;
+  color: #4b5563;
+}
+
+.catalog-panel .evaluation-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 2px;
+}
+
+.catalog-panel .evaluation-check {
+  border: 1px solid #dce3df;
+  border-left-width: 5px;
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  padding: 9px;
+}
+
+.catalog-panel .evaluation-check strong {
+  font-size: 14px;
+  text-transform: uppercase;
+}
+
+.catalog-panel .evaluation-check p {
+  color: #596460;
+  font-size: 12px;
+  margin: 0;
+}
+
+.catalog-panel .check-clear {
+  border-left-color: #1f7a55;
+}
+
+.catalog-panel .check-changed,
+.catalog-panel .check-review {
+  border-left-color: #b96515;
+}
+
+.catalog-panel .check-unchanged {
+  border-left-color: #6b7280;
+}
+
+.catalog-panel .request-actions {
+  border-top: 1px solid #e3e9e5;
+  display: grid;
+  gap: 8px;
+  padding-top: 10px;
+}
+
+.catalog-panel .request-actions button {
+  background: #1f5f55;
+  border: 1px solid #1f5f55;
+  border-radius: 7px;
+  color: #fff;
+  font-weight: 850;
+  justify-self: start;
+  padding: 8px 11px;
+}
+
+.catalog-panel .request-actions button:disabled {
+  background: #eef0f3;
+  border-color: #d5ddd8;
+  color: #7a837f;
+  cursor: default;
+}
+
+.catalog-panel .request-actions code {
+  background: #f6f7f4;
+  border: 1px solid #dce3df;
+  border-radius: 7px;
+  color: #31413b;
+  display: block;
+  max-height: 96px;
+  overflow: auto;
+  padding: 8px;
+}
+
+.catalog-panel .request-actions small {
+  color: #69716e;
+}
+
+.catalog-panel .relationship-board {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.catalog-panel .relationship-board section,
+.catalog-panel .sources {
+  padding: 14px;
+}
+
+.catalog-panel .relationship-group {
+  border-top: 1px solid #e3e9e5;
+  padding: 12px 0 4px;
+}
+
+.catalog-panel .relationship-group p {
+  color: #1f5f55;
+  font-size: 12px;
+  font-weight: 900;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+}
+
+.catalog-panel .relationship-group.incoming p {
+  color: #895b28;
+}
+
+.catalog-panel .relationship-group button {
+  background: #fbfbf8;
+  border: 1px solid #dce3df;
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  margin-bottom: 8px;
+  padding: 10px;
+  text-align: left;
+  width: 100%;
+}
+
+.catalog-panel .relationship-state {
+  border-radius: 999px;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 900;
+  justify-self: start;
+  line-height: 1;
+  padding: 5px 7px;
+  text-transform: uppercase;
+}
+
+.catalog-panel .sources {
+  display: grid;
+  gap: 8px;
+}
+
+.catalog-panel .source-row {
+  align-items: center;
+  border-top: 1px solid #e3e9e5;
+  display: grid;
+  gap: 10px;
+  padding-top: 8px;
+}
+
+.catalog-panel code {
+  overflow-wrap: anywhere;
+}
+
+.catalog-panel .empty {
+  color: #69716e;
+  padding: 8px 0;
+}
+
+.catalog-panel .object-list button.object-child {
+  border-left: 3px solid #0284c7;
+  margin-left: 18px;
+  width: calc(100% - 18px);
+}
+
+.catalog-panel .node-badges .type-badge {
+  background: #e0f2fe;
+  border-radius: 999px;
+  color: #075985;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  text-transform: uppercase;
+}
+
+@media (max-width: 1180px) {
+  .catalog-panel .workspace,
+  .catalog-panel .site-workbench,
+  .catalog-panel .relationship-board {
+    grid-template-columns: 1fr;
+  }
+
+  .catalog-panel .object-picker {
+    max-height: none;
+    position: static;
+  }
+}

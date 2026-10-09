@@ -94,6 +94,159 @@ func TestAppendFileTransport_BootstrapsNewFile(t *testing.T) {
 	}
 }
 
+func TestAppendFileTransport_BareThreadUsesTempMirror(t *testing.T) {
+	t.Chdir(t.TempDir())
+	tmpPath := filepath.Join(os.TempDir(), "kitsoki-append-to-file", "47.md")
+	_ = os.Remove(tmpPath)
+	t.Cleanup(func() { _ = os.Remove(tmpPath) })
+
+	res, err := host.AppendFileTransportHandler(context.Background(), map[string]any{
+		"thread": "47",
+		"body":   "Comment for a GitHub issue-number thread.",
+	})
+	if err != nil {
+		t.Fatalf("infra: %v", err)
+	}
+	if res.Error != "" {
+		t.Fatalf("domain: %s", res.Error)
+	}
+	if _, err := os.Stat("47"); !os.IsNotExist(err) {
+		t.Fatalf("bare thread should not create a repo-root file, stat err=%v", err)
+	}
+	raw, err := os.ReadFile(tmpPath)
+	if err != nil {
+		t.Fatalf("temp mirror not written: %v", err)
+	}
+	if !strings.Contains(string(raw), "Comment for a GitHub issue-number thread.") {
+		t.Fatalf("temp mirror missing body: %s", raw)
+	}
+}
+
+func TestAppendFileTransport_RelativeBugThreadUsesWorkdir(t *testing.T) {
+	t.Chdir(t.TempDir())
+	workdir := t.TempDir()
+	thread := "issues/bugs/BUG-47.md"
+	target := filepath.Join(workdir, thread)
+
+	res, err := host.AppendFileTransportHandler(context.Background(), map[string]any{
+		"thread":  thread,
+		"body":    "Comment for the run worktree.",
+		"workdir": workdir,
+	})
+	if err != nil {
+		t.Fatalf("infra: %v", err)
+	}
+	if res.Error != "" {
+		t.Fatalf("domain: %s", res.Error)
+	}
+	if _, err := os.Stat(filepath.Join("issues", "bugs", "BUG-47.md")); !os.IsNotExist(err) {
+		t.Fatalf("relative bug thread should not create a process-cwd file, stat err=%v", err)
+	}
+	raw, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatalf("workdir thread not written: %v", err)
+	}
+	if !strings.Contains(string(raw), "Comment for the run worktree.") {
+		t.Fatalf("workdir thread missing body: %s", raw)
+	}
+}
+
+func TestAppendFileTransport_RelativeArtifactBugThreadUsesArtifactRoot(t *testing.T) {
+	t.Chdir(t.TempDir())
+	workdir := t.TempDir()
+	thread := ".artifacts/issues/bugs/BUG-50.md"
+	target := filepath.Join(".artifacts", "issues", "bugs", "BUG-50.md")
+
+	res, err := host.AppendFileTransportHandler(context.Background(), map[string]any{
+		"thread":  thread,
+		"body":    "Comment for the local artifact ticket.",
+		"workdir": workdir,
+	})
+	if err != nil {
+		t.Fatalf("infra: %v", err)
+	}
+	if res.Error != "" {
+		t.Fatalf("domain: %s", res.Error)
+	}
+	if _, err := os.Stat(filepath.Join(workdir, thread)); !os.IsNotExist(err) {
+		t.Fatalf("relative artifact thread should not write into workdir, stat err=%v", err)
+	}
+	raw, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatalf("artifact thread not written: %v", err)
+	}
+	if !strings.Contains(string(raw), "Comment for the local artifact ticket.") {
+		t.Fatalf("artifact thread missing body: %s", raw)
+	}
+}
+
+func TestAppendFileTransport_RelativeBugThreadMirrorsWhenWorkdirNotWritable(t *testing.T) {
+	t.Chdir(t.TempDir())
+	workdir := t.TempDir()
+	thread := "issues/bugs/BUG-49.md"
+	target := filepath.Join(workdir, thread)
+	tmpPath := filepath.Join(os.TempDir(), "kitsoki-append-to-file", "issues-bugs-BUG-49.md.md")
+	_ = os.Remove(tmpPath)
+	t.Cleanup(func() {
+		_ = os.Chmod(workdir, 0o755)
+		_ = os.Remove(tmpPath)
+	})
+	if err := os.Chmod(workdir, 0o555); err != nil {
+		t.Fatalf("chmod workdir read-only: %v", err)
+	}
+
+	res, err := host.AppendFileTransportHandler(context.Background(), map[string]any{
+		"thread":  thread,
+		"body":    "Comment mirrored away from a protected checkout.",
+		"workdir": workdir,
+	})
+	if err != nil {
+		t.Fatalf("infra: %v", err)
+	}
+	if res.Error != "" {
+		t.Fatalf("domain: %s", res.Error)
+	}
+	if _, err := os.Stat(target); !os.IsNotExist(err) {
+		t.Fatalf("protected workdir target should not be written, stat err=%v", err)
+	}
+	raw, err := os.ReadFile(tmpPath)
+	if err != nil {
+		t.Fatalf("temp mirror not written: %v", err)
+	}
+	if !strings.Contains(string(raw), "Comment mirrored away from a protected checkout.") {
+		t.Fatalf("temp mirror missing body: %s", raw)
+	}
+}
+
+func TestAppendFileTransport_RelativeBugThreadWithoutWorkdirUsesTempMirror(t *testing.T) {
+	t.Chdir(t.TempDir())
+	thread := "issues/bugs/BUG-48.md"
+	tmpPath := filepath.Join(os.TempDir(), "kitsoki-append-to-file", "issues-bugs-BUG-48.md.md")
+	_ = os.Remove(tmpPath)
+	t.Cleanup(func() { _ = os.Remove(tmpPath) })
+
+	res, err := host.AppendFileTransportHandler(context.Background(), map[string]any{
+		"thread": thread,
+		"body":   "Comment for a read-only checkout run.",
+	})
+	if err != nil {
+		t.Fatalf("infra: %v", err)
+	}
+	if res.Error != "" {
+		t.Fatalf("domain: %s", res.Error)
+	}
+	if _, err := os.Stat(filepath.Join("issues", "bugs", "BUG-48.md")); !os.IsNotExist(err) {
+		t.Fatalf("relative bug thread without workdir should not create a process-cwd file, stat err=%v", err)
+	}
+	raw, err := os.ReadFile(tmpPath)
+	if err != nil {
+		t.Fatalf("temp mirror not written: %v", err)
+	}
+	if !strings.Contains(string(raw), "Comment for a read-only checkout run.") {
+		t.Fatalf("temp mirror missing body: %s", raw)
+	}
+}
+
 func TestAppendFileTransport_RequiresThread(t *testing.T) {
 	res, err := host.AppendFileTransportHandler(context.Background(), map[string]any{
 		"body": "x",

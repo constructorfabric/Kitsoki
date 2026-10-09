@@ -1,0 +1,53 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.run:
+    by_call:
+      load_product_journey_run:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: run_loaded
+            run_id: run-marathon-missing-url
+            run_dir: .artifacts/product-journey/run-marathon-missing-url
+            project: vscode
+            persona: core-maintainer
+            seed: marathon-missing-url
+            issue_count: 1
+            finding_total_count: 1
+            proof_evidence_count: 5
+            missing_proof_evidence_count: 0
+
+turns:
+  - intent:
+      name: load
+      slots:
+        run_dir: .artifacts/product-journey/run-marathon-missing-url
+    expect_state: run_created
+    expect_host_calls:
+      - handler: host.run
+        args: { call: load_product_journey_run }
+
+  - intent:
+      name: autonomous_marathon
+      slots:
+        ticket_repo: bsacrobatix/Kitsoki
+    expect_state: run_created
+    expect_world:
+      status: autonomous_marathon_invalid
+      autonomous_marathon_status: autonomous_marathon_invalid
+      autonomous_fix_status: not_run
+      autonomous_gate_summary: "filing=not_run, gh_agent=fail, independent_verify=fail, review=not_run, validation=fail"
+      independent_verify_status: fail
+      independent_verify_summary: "gh_agent_public_base_url is required"
+      validation_status: invalid
+      validation_errors: 1
+      validation_issue_summary: gh-agent-public-base-url
+      gh_agent_missing_evidence_summary: "gh_agent_public_base_url is required"
+    expect_view_matches: "RUN CREATED[\\s\\S]*Autonomous gates[\\s\\S]*filing=not_run, gh_agent=fail, independent_verify=fail,[\\s\\S]*review=not_run, validation=fail[\\s\\S]*Independent verify[\\s\\S]*fail: gh_agent_public_base_url is required[\\s\\S]*Autonomous marathon[\\s\\S]*autonomous_marathon_invalid[\\s\\S]*Validation[\\s\\S]*invalid[\\s\\S]*Validation issues[\\s\\S]*gh-agent-public-base-url"
+    expect_host_calls: []
+
+expect_no_errors: true

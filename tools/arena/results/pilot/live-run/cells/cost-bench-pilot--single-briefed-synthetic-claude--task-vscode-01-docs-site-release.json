@@ -1,0 +1,23 @@
+{
+  "axis": {
+    "task": "vscode-01-docs-site-release"
+  },
+  "cell_id": "cost-bench-pilot--single-briefed-synthetic-claude--task:vscode-01-docs-site-release",
+  "evidence_refs": [
+    "/Users/brad/code/Kitsoki/.worktrees/generalized-usage-rebase/tools/arena/corpus/cost-bench.manifest.yaml#vscode-01-docs-site-release",
+    "/Users/brad/code/Kitsoki/.worktrees/generalized-usage-rebase/.artifacts/arena/paired-task-work/vscode-01-docs-site-release--single-briefed--synthetic--claude-synthetic/src/vs/sessions/LAYOUT_CONTROLLER.md"
+  ],
+  "health": "model:result",
+  "job_type": "paired-task",
+  "metrics": {
+    "cost_usd": 0.0,
+    "host": "local",
+    "tokens": 0,
+    "wall_s": 36.821
+  },
+  "notes": "synthetic backend: no live model call; baseline scored directly; github_content oracle green=False",
+  "target_id": "cost-bench-pilot",
+  "trace_ref": "",
+  "variant_id": "single-briefed-synthetic-claude",
+  "verdict": "failed"
+}

@@ -1,0 +1,152 @@
+# init_transcript_seed -- first-run onboarding should turn associated
+# Claude/Codex history into a durable seed-mining handoff. Host calls are stubbed;
+# no mining pipeline, LLM, or real checkout mutation runs in this fixture.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world:
+  workdir: "/tmp/kitsoki-init-fixtures/acme-go"
+  repo_root: "/tmp/kitsoki-init-fixtures/acme-go"
+
+host_handlers:
+  host.run:
+    by_call:
+      discover:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: '{"target_path":"/tmp/kitsoki-init-fixtures/acme-go","project_id":"acme-go","project_title":"Acme Go","stack":"go project","dev_command":"","test_command":"go test ./...","build_command":"go build ./...","conventions":"local defaults","tracker":"none","transcript_slug":"-tmp-kitsoki-init-fixtures-acme-go","transcript_count":2,"transcript_sources":[{"backend":"claude-code","dir":"/home/u/.claude/projects/-tmp-kitsoki-init-fixtures-acme-go","sessions":1,"latest_mtime":1783000000,"include":"human"},{"backend":"codex","dir":"/home/u/.codex/sessions","sessions":1,"latest_mtime":1783000001,"include":"human"}],"mining_recommendation":{"status":"transcripts-found","sample":"recency","first_pass_sample":2,"transcript_count":2,"sources":[{"backend":"claude-code","dir":"/home/u/.claude/projects/-tmp-kitsoki-init-fixtures-acme-go","sessions":1,"latest_mtime":1783000000,"include":"human"},{"backend":"codex","dir":"/home/u/.codex/sessions","sessions":1,"latest_mtime":1783000001,"include":"human"}],"note":"Seed project customization from recent associated transcripts after operator consent."}}'
+          stdout_json:
+            target_path: "/tmp/kitsoki-init-fixtures/acme-go"
+            project_id: "acme-go"
+            project_title: "Acme Go"
+            stack: "go project"
+            dev_command: ""
+            test_command: "go test ./..."
+            build_command: "go build ./..."
+            conventions: "local defaults"
+            tracker: "none"
+            transcript_slug: "-tmp-kitsoki-init-fixtures-acme-go"
+            transcript_count: 2
+            transcript_sources:
+              - backend: claude-code
+                dir: "/home/u/.claude/projects/-tmp-kitsoki-init-fixtures-acme-go"
+                sessions: 1
+                latest_mtime: 1783000000
+                include: human
+              - backend: codex
+                dir: "/home/u/.codex/sessions"
+                sessions: 1
+                latest_mtime: 1783000001
+                include: human
+            mining_recommendation:
+              status: "transcripts-found"
+              sample: "recency"
+              first_pass_sample: 2
+              transcript_count: 2
+              sources:
+                - backend: claude-code
+                  dir: "/home/u/.claude/projects/-tmp-kitsoki-init-fixtures-acme-go"
+                  sessions: 1
+                  latest_mtime: 1783000000
+                  include: human
+                - backend: codex
+                  dir: "/home/u/.codex/sessions"
+                  sessions: 1
+                  latest_mtime: 1783000001
+                  include: human
+              note: "Seed project customization from recent associated transcripts after operator consent."
+      apply:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: '{"status":"applied","config_path":"/tmp/kitsoki-init-fixtures/acme-go/.kitsoki.yaml","profile_path":"/tmp/kitsoki-init-fixtures/acme-go/.kitsoki/project-profile.yaml","instance_path":"/tmp/kitsoki-init-fixtures/acme-go/.kitsoki/stories/acme-go-dev/app.yaml","gitignore_path":"/tmp/kitsoki-init-fixtures/acme-go/.gitignore","mining_seed_path":"/tmp/kitsoki-init-fixtures/acme-go/.context/kitsoki-session-mining-seed.md","profile_validation":{"ok":true,"warnings":[]},"writes":["/tmp/kitsoki-init-fixtures/acme-go/.kitsoki.yaml","/tmp/kitsoki-init-fixtures/acme-go/.kitsoki/project-profile.yaml","/tmp/kitsoki-init-fixtures/acme-go/.kitsoki/stories/acme-go-dev/app.yaml","/tmp/kitsoki-init-fixtures/acme-go/.kitsoki/stories/acme-go-dev/README.md","/tmp/kitsoki-init-fixtures/acme-go/.context/kitsoki-session-mining-seed.md"]}'
+          stdout_json:
+            status: "applied"
+            config_path: "/tmp/kitsoki-init-fixtures/acme-go/.kitsoki.yaml"
+            profile_path: "/tmp/kitsoki-init-fixtures/acme-go/.kitsoki/project-profile.yaml"
+            instance_path: "/tmp/kitsoki-init-fixtures/acme-go/.kitsoki/stories/acme-go-dev/app.yaml"
+            gitignore_path: "/tmp/kitsoki-init-fixtures/acme-go/.gitignore"
+            mining_seed_path: "/tmp/kitsoki-init-fixtures/acme-go/.context/kitsoki-session-mining-seed.md"
+            profile_validation:
+              ok: true
+              warnings: []
+            writes:
+              - "/tmp/kitsoki-init-fixtures/acme-go/.kitsoki.yaml"
+              - "/tmp/kitsoki-init-fixtures/acme-go/.kitsoki/project-profile.yaml"
+              - "/tmp/kitsoki-init-fixtures/acme-go/.kitsoki/stories/acme-go-dev/app.yaml"
+              - "/tmp/kitsoki-init-fixtures/acme-go/.kitsoki/stories/acme-go-dev/README.md"
+              - "/tmp/kitsoki-init-fixtures/acme-go/.context/kitsoki-session-mining-seed.md"
+      install_tools:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: '{"target":"/tmp/kitsoki-init-fixtures/acme-go","skills":["kitsoki-story-authoring"],"agents":["kitsoki-mcp-driver.md"],"mcp_path":"/tmp/kitsoki-init-fixtures/acme-go/.mcp.json","mcp_written":true}'
+          stdout_json:
+            target: "/tmp/kitsoki-init-fixtures/acme-go"
+            skills: ["kitsoki-story-authoring"]
+            agents: ["kitsoki-mcp-driver.md"]
+            mcp_path: "/tmp/kitsoki-init-fixtures/acme-go/.mcp.json"
+            mcp_written: true
+
+turns:
+  - intent: { name: landing_capture, slots: { request: "onboard /tmp/kitsoki-init-fixtures/acme-go" } }
+    expect_state: init_discover
+    expect_world:
+      init_target_path: "/tmp/kitsoki-init-fixtures/acme-go"
+      init_project_id: "acme-go"
+      init_transcript_count: 2
+
+  - intent: { name: init_discovered, slots: {} }
+    expect_state: init
+    expect_world:
+      init_profile_status: "draft"
+      init_mining_recommendation:
+        status: "transcripts-found"
+        sample: "recency"
+        first_pass_sample: 2
+        transcript_count: 2
+        sources:
+          - backend: claude-code
+            dir: "/home/u/.claude/projects/-tmp-kitsoki-init-fixtures-acme-go"
+            sessions: 1
+            latest_mtime: 1783000000
+            include: human
+          - backend: codex
+            dir: "/home/u/.codex/sessions"
+            sessions: 1
+            latest_mtime: 1783000001
+            include: human
+        note: "Seed project customization from recent associated transcripts after operator consent."
+    expect_view_matches: "/home/u/.codex/sessions"
+
+  - intent: { name: confirm_init, slots: {} }
+    expect_state: init_apply
+    expect_world:
+      init_profile_status: "applying"
+      init_apply_result:
+        status: "applied"
+        config_path: "/tmp/kitsoki-init-fixtures/acme-go/.kitsoki.yaml"
+        profile_path: "/tmp/kitsoki-init-fixtures/acme-go/.kitsoki/project-profile.yaml"
+        instance_path: "/tmp/kitsoki-init-fixtures/acme-go/.kitsoki/stories/acme-go-dev/app.yaml"
+        gitignore_path: "/tmp/kitsoki-init-fixtures/acme-go/.gitignore"
+        mining_seed_path: "/tmp/kitsoki-init-fixtures/acme-go/.context/kitsoki-session-mining-seed.md"
+        profile_validation:
+          ok: true
+          warnings: []
+        writes:
+          - "/tmp/kitsoki-init-fixtures/acme-go/.kitsoki.yaml"
+          - "/tmp/kitsoki-init-fixtures/acme-go/.kitsoki/project-profile.yaml"
+          - "/tmp/kitsoki-init-fixtures/acme-go/.kitsoki/stories/acme-go-dev/app.yaml"
+          - "/tmp/kitsoki-init-fixtures/acme-go/.kitsoki/stories/acme-go-dev/README.md"
+          - "/tmp/kitsoki-init-fixtures/acme-go/.context/kitsoki-session-mining-seed.md"
+    expect_view_matches: "Mining seed"
+
+  - intent: { name: init_applied, slots: {} }
+    expect_state: init_done
+    expect_world:
+      init_profile_status: "applied"
+    expect_view_matches: "kitsoki-session-mining-seed.md"
+
+expect_no_errors: true

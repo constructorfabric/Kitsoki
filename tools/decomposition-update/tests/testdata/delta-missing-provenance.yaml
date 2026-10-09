@@ -1,0 +1,19 @@
+trigger: missing-provenance
+operations:
+  - op: add_change
+    change:
+      id: "NOPE"
+      wall: WS
+      goal_ref: [G3]
+      title: "No provenance"
+      kind: runtime
+      pipeline: implementation
+      depends_on: []
+      scope: ["nope/**"]
+      acceptance: ["x"]
+      gate:
+        class: G-GOTEST
+        red_now: "x"
+        green_when: "y"
+        cmd: "true"
+      agent_brief: "Should not apply."

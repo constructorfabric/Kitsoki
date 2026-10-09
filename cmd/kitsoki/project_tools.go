@@ -31,6 +31,7 @@ The toolkit is embedded in the binary (run 'make embed-skills' before building),
 so this works in a freshly onboarded project with no kitsoki checkout present.`,
 	}
 	cmd.AddCommand(projectToolsInstallCmd())
+	cmd.AddCommand(projectToolsUpgradeCmd())
 	return cmd
 }
 

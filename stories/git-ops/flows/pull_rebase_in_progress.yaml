@@ -1,0 +1,75 @@
+# pull_rebase_in_progress — git pull --rebase reports an existing rebase-merge
+# directory. The room must route to conflict recovery, not the success path, even
+# though last_op_ok defaults true before host binds land.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: main_ops
+initial_world:
+  integration_branch:       main
+  current_branch:           main
+  on_integration:           true
+  working_dir:              "."
+  upstream_tracking:        true
+  build_check_disabled:     true
+  last_op_ok:               true
+  route:                    look
+
+host_handlers:
+  host.run:
+    by_call:
+      refresh_main:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            branch:             main
+            main_worktree_path: "."
+            worktree_list:      { raw: "" }
+            commits_ahead:      0
+            commits_behind:     0
+            has_uncommitted:    true
+            merge_in_progress:  true
+            no_common_ancestor: false
+            upstream_tracking:  true
+      check_tracking:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            has_tracking: true
+      git_pull:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            output: "fatal: It seems that there is already a rebase-merge directory"
+            ok:     false
+            conflict: false
+            route:  pull_conflict
+            conflict_origin: pull
+            conflict_files: ""
+            conflict_scan_done: false
+            conflict_agent_ready: false
+            conflict_verdict: {}
+            conflict_intent_guidance: ""
+      gather_conflict_files:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            conflict_files: ""
+            gosum_only:     false
+            conflict_scan_done: true
+
+turns:
+  - intent: { name: pull, slots: {} }
+    expect_state: conflict
+    expect_world:
+      route: pull_conflict
+      last_op_ok: false
+      conflict_origin: pull
+      last_op_outcome: no_conflict_files
+      conflict_files: ""
+
+expect_no_errors: true

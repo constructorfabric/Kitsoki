@@ -1,0 +1,38 @@
+# worktree_list_refuses_unmerged_remove_all — the legacy worktree-list cleanup
+# path must not remove a worktree before proving its branch is merged.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: worktree_list
+initial_world:
+  integration_branch: main
+  on_integration:     true
+  working_dir:        "."
+
+host_handlers:
+  host.run:
+    by_call:
+      list_worktrees:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            report: ".worktrees/feature-x [feature/x] has-unique-commits (2)\n"
+      remove_wt_and_branch:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            ok:      false
+            outcome: unmerged_branch
+            output:  "branch feature/x is not merged into main; worktree was not removed"
+
+turns:
+  - intent: { name: remove_all, slots: { path: ".worktrees/feature-x" } }
+    expect_state: worktree_list
+    expect_world:
+      last_op_ok:      false
+      last_op_outcome: unmerged_branch
+      last_op_output:  "branch feature/x is not merged into main; worktree was not removed"
+
+expect_no_errors: true

@@ -38,7 +38,7 @@
 //	decompose →  cpt plan --task <id>                    (writes
 //	                                                     .plans/<slug>/phase-NN-*.md)
 //
-// Today's real cpt CLI (per cyber-repo/cypilot/.core/workflows/) uses
+// Today's real cpt CLI (per focused-engineering/cypilot/.core/workflows/) uses
 // `--json` as a top-level flag (e.g. `cpt --json validate --artifact <path>`)
 // and slightly different subcommand verbs (`validate`, `list-ids`,
 // `chunk-input`, `info`, `update`).  This drift is known

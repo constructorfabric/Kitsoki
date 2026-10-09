@@ -231,10 +231,18 @@ This is what concept.md means by "the LLM's return arrow is what
 matters." The judge contributes a named intent into the state
 machine; it does not get to choose where the conversation goes next.
 
-### The judge polymorphism
+### Oversight and judge polymorphism
 
-A single world flag, `judge_mode`, switches between three policies
-at *every* checkpoint:
+The user-facing dev-story and bugfix controls use `oversight_mode`:
+
+- `gated` — human checkpoint decisions (`judge_mode=human`).
+- `llm-review` — LLM checkpoint decisions with human fallback
+  (`judge_mode=llm_then_human`).
+- `no-gate` — autonomous operation driving without LLM checkpoint review
+  (`judge_mode=human`, operation policy remains drivable).
+
+The older compatibility flag, `judge_mode`, still switches the checkpoint
+judge itself:
 
 - `human` — wait for the operator. No LLM call.
 - `llm` — run the judge; auto-fire its intent if confident enough.

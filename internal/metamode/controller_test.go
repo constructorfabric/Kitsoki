@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -235,8 +236,11 @@ func (c *fakeChat) AppendMessage(role, text string) error {
 type fakeAgent struct {
 	mu       sync.Mutex
 	gotInput AskInput
+	inputs   []AskInput
 	out      AskOutput
+	outs     []AskOutput
 	err      error
+	errs     []error
 	calls    int
 }
 
@@ -245,8 +249,20 @@ func (o *fakeAgent) Ask(_ context.Context, in AskInput) (AskOutput, error) {
 	defer o.mu.Unlock()
 	o.calls++
 	o.gotInput = in
-	if o.err != nil {
+	o.inputs = append(o.inputs, in)
+	if len(o.errs) > 0 {
+		err := o.errs[0]
+		o.errs = o.errs[1:]
+		if err != nil {
+			return AskOutput{}, err
+		}
+	} else if o.err != nil {
 		return AskOutput{}, o.err
+	}
+	if len(o.outs) > 0 {
+		out := o.outs[0]
+		o.outs = o.outs[1:]
+		return out, nil
 	}
 	return o.out, nil
 }
@@ -448,6 +464,61 @@ func TestController_Send_ResumesClaudeSession(t *testing.T) {
 	}
 	if fc.claudeSessionID != "new-session-abc" {
 		t.Errorf("chat.claudeSessionID = %q, want %q", fc.claudeSessionID, "new-session-abc")
+	}
+}
+
+func TestController_Send_StaleClaudeSessionRetriesFresh(t *testing.T) {
+	c, store, agent := newTestController(t)
+	store.chat = &fakeChat{
+		id:              "chat-1",
+		appID:           "test-app",
+		room:            "meta:story",
+		scopeKey:        "main",
+		claudeSessionID: "6768ed59-74b5-4c22-a8e1-03314844897b",
+	}
+	agent.errs = []error{
+		fmt.Errorf("metamode.AgentAdapter: handler: claude exited with code 1: Error: threadresume: threadresume failed: no rollout found for thread id 6768ed59-74b5-4c22-a8e1-03314844897b (code -32600)"),
+		nil,
+	}
+	agent.outs = []AskOutput{
+		{Reply: "filed https://github.com/example/repo/issues/122", NewClaudeSessionID: "fresh-session-abc"},
+	}
+
+	s, err := c.Enter(context.Background(), makeSnapshot("main"), "story")
+	if err != nil {
+		t.Fatalf("Enter: %v", err)
+	}
+	res, err := c.Send(context.Background(), s, "i want to file the bug on github", TurnContext{})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if res.Assistant != "filed https://github.com/example/repo/issues/122" {
+		t.Fatalf("Assistant = %q", res.Assistant)
+	}
+	if agent.calls != 2 {
+		t.Fatalf("agent calls = %d, want 2", agent.calls)
+	}
+	if got := agent.inputs[0].ClaudeSessionID; got != "6768ed59-74b5-4c22-a8e1-03314844897b" {
+		t.Errorf("first Ask ClaudeSessionID = %q", got)
+	}
+	if got := agent.inputs[1].ClaudeSessionID; got != "" {
+		t.Errorf("retry Ask ClaudeSessionID = %q, want fresh empty session", got)
+	}
+	fc := s.Chat.(*fakeChat)
+	if got, want := fc.sessionIDSets, []string{"", "fresh-session-abc"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("sessionIDSets = %v, want %v", got, want)
+	}
+	if fc.claudeSessionID != "fresh-session-abc" {
+		t.Errorf("chat.claudeSessionID = %q, want fresh-session-abc", fc.claudeSessionID)
+	}
+	if got := len(fc.appends); got != 2 {
+		t.Fatalf("appends = %d, want one user and one assistant", got)
+	}
+	if fc.appends[0].Role != "user" || fc.appends[0].Text != "i want to file the bug on github" {
+		t.Errorf("appends[0] = %+v", fc.appends[0])
+	}
+	if fc.appends[1].Role != "assistant" {
+		t.Errorf("appends[1] = %+v", fc.appends[1])
 	}
 }
 

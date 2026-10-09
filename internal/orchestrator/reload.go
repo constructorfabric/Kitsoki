@@ -247,11 +247,7 @@ func (o *Orchestrator) RerunOnEnterWithOptions(ctx context.Context, sid app.Sess
 		slog.String("outcome", "reloaded"),
 	)
 
-	allowed := o.machine.AllowedIntents(currentState, currentWorld)
-	allowedNames := make([]string, len(allowed))
-	for i, a := range allowed {
-		allowedNames[i] = a.Name
-	}
+	allowedNames := allowedNamesFromMachine(o.machine, currentState, currentWorld)
 
 	mode := ModeTransitioned
 	if def := lookupStateByPath(o.def, currentState); def != nil && def.Terminal {

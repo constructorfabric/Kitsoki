@@ -1,18 +1,30 @@
 # Bug reports
 
-> **kitsoki's own bugs now file to GitHub Issues.** `kitsoki bug create --github
-> <owner/repo>` (and the web Report-bug modal under `kitsoki web --ticket-repo
-> <owner/repo>`, which saves browser evidence under `.artifacts/bug-reports/`
-> for developer-local review) open a real GitHub issue instead of a local file —
-> see [hosts.md → host.gh.ticket](../architecture/hosts.md#hostghticket--github-issues-backed-tracker).
-> The local-file format below is the **default** (and what a *story's* own bugs
-> still use); kitsoki's in-repo `issues/` pile is a frozen archive
-> ([`issues/DEPRECATED.md`](../../issues/DEPRECATED.md)).
+> Kitsoki developer bug loops are local by default: web/TUI/Studio and
+> `kitsoki bug create --sink local-artifact` write the same markdown ticket
+> format under `.artifacts/issues/bugs/`, with evidence beside it under
+> `.artifacts`. Remote handoffs can still file GitHub issues via
+> `kitsoki bug create --github <owner/repo>` or `kitsoki web --ticket-repo
+> <owner/repo>`; see
+> [hosts.md → host.gh.ticket](../architecture/hosts.md#hostghticket--github-issues-backed-tracker).
+> Kitsoki's committed in-repo `issues/` pile is a frozen archive
+> ([`issues/DEPRECATED.md`](../../issues/DEPRECATED.md)); story-owned fixtures
+> may still use committed `issues/bugs/` files deliberately.
 
 A bug filed from inside a running app lands as a single markdown file
 on disk. There is no service, no database, and no schema beyond what
 this doc describes — the pile is grep-friendly, hand-editable, and
 survives a `git mv` without losing meaning.
+
+Programmatic/batch filers use the same local-artifact sink and file format
+without a human in the loop: `kitsoki bug file-findings` files a
+product-journey run bundle's credible findings to GitHub, and
+`tools/product-journey/run.py --file-local-findings` (driven by the
+`stories/product-journey-qa` `campaign_issue_fix` intent, default
+`finding_sink=local-artifact`) files the same findings as local tickets under
+`.artifacts/issues/bugs/` instead — see
+[`agentic-qa-campaigns.md`](../guide/development/agentic-qa-campaigns.md) for
+the campaign finding-sink policy this doc's format backs.
 
 Two filing targets exist:
 
@@ -58,6 +70,7 @@ symmetric on both sides.
 kitsoki bug create --target story|kitsoki \
   --title "one-line summary" \
   --body  "expected vs actual vs why it matters" \
+  [--sink local-project|local-artifact|github] \
   [--repro "step 1" --repro "step 2" ...] \
   [--state-path main.foyer]      # story-target only
   [--app-id    cloak]            # story-target only
@@ -66,8 +79,8 @@ kitsoki bug create --target story|kitsoki \
   [--trace-ref traces/2026-…jsonl] \
   [--target-dir <path>]          # escape hatch (overrides resolution)
 
-kitsoki bug list --target story|kitsoki [--target-dir <path>]
-kitsoki bug show <id>           --target story|kitsoki [--target-dir <path>]
+kitsoki bug list --target story|kitsoki [--sink local-project|local-artifact] [--target-dir <path>]
+kitsoki bug show <id>           --target story|kitsoki [--sink local-project|local-artifact] [--target-dir <path>]
 ```
 
 `--target` is **required** on every subcommand — the CLI never guesses
@@ -80,6 +93,14 @@ Target-root resolution:
   Bugs land at `<root>/issues/bugs/`.
 - `--target kitsoki`: root is `--target-dir` if set, else
   `$KITSOKI_REPO`. Errors when neither is set.
+- `--sink local-project` (default): use the target root above directly.
+- `--sink local-artifact`: write/read the same ticket format under
+  `<root>/.artifacts/issues/bugs/`. This is the preferred Kitsoki developer
+  loop for high-churn local findings and evidence that should not become
+  committed project tickets or GitHub issues.
+- `--sink github`: create a GitHub issue; `--github <owner/repo>` is required.
+  The local `list` / `show` commands inspect only `local-project` and
+  `local-artifact`.
 
 `--component` is a free-form string. The bug-reporter prompts suggest
 the canonical kitsoki package names (`tui`, `host`, `transport`,
@@ -90,11 +111,12 @@ Story-only flags passed to a kitsoki bug (and vice versa) produce a
 one-line stderr warning but don't fail the filing — the unrelated
 flag is silently dropped from the frontmatter.
 
-`kitsoki bug list` prints one row per bug under
-`<target-root>/issues/bugs/`, columns: `id`, `severity`, `status`,
-`title`. Sort is newest first (filenames lead with the UTC timestamp,
-so lex order is chrono order). An empty or missing directory prints
-nothing; not an error.
+`kitsoki bug list` prints one row per bug under the selected local sink:
+`<target-root>/issues/bugs/` for `local-project`, or
+`<target-root>/.artifacts/issues/bugs/` for `local-artifact`. Columns are
+`id`, `severity`, `status`, `title`. Sort is newest first (filenames lead
+with the UTC timestamp, so lex order is chrono order). An empty or missing
+directory prints nothing; not an error.
 
 `kitsoki bug show <id>` writes the bug's markdown verbatim to stdout.
 The `<id>` is the filename without `.md`. Missing file exits 1.
@@ -109,6 +131,10 @@ The `<id>` is the filename without `.md`. Missing file exits 1.
     bugs/
       2026-05-14T103205Z-tui-hangs-on-esc.md
       2026-05-14T112011Z-foyer-banner-truncated.md
+  .artifacts/
+    issues/
+      bugs/
+        2026-07-08T091500Z-local-dogfood-finding.md
 ```
 
 The extra `issues/` prefix reserves room for sibling categories
@@ -161,7 +187,7 @@ kitsoki_rev: "7331630"                         # kitsoki-target only, short SHA 
 # --- classification ------------------------------------------
 severity: "med"                                # free-form; agent prompts use low|med|high
 status: "open"                                 # open | resolved (default open)
-labels: []                                     # free-form strings
+labels: []                                     # free-form strings; [] when none
 
 # --- evidence ------------------------------------------------
 trace_ref: "traces/2026-05-14T103200Z-cloak.jsonl"   # relative path or session id
@@ -198,9 +224,10 @@ github.com/.../tui.(*Model).Update(...)
 
 - **Required everywhere.** `id`, `title`, `target`, `filed_at`,
   `status`. Everything else is optional. The CLI always emits the
-  required set; the optional fields are emitted only when populated
-  (with two exceptions: `labels: []` and `related: []` are always
-  emitted so a hand-editor doesn't have to re-add the key).
+  required set; the optional fields are emitted only when populated.
+  `labels` and `related` are always emitted as YAML lists so a hand-editor
+  doesn't have to re-add the key; `labels` is `[]` when the filing path did not
+  provide labels.
 - **Story-target required.** `app_id`. `state_path` is strongly
   encouraged. (The CLI does not hard-fail on omission; the agent
   prompts ensure both are passed.)
@@ -222,9 +249,9 @@ github.com/.../tui.(*Model).Update(...)
 - **Long-form repro steps.** They live in the markdown body under
   `## Steps to reproduce`. YAML lists do not handle multi-line steps
   with code fences gracefully.
-- **Comments / discussion.** A bug file is a single author's
-  artifact. Discussion happens in the eventual GitHub / Jira issue;
-  local files do not grow a comment thread.
+- **Comments / discussion in frontmatter.** Discussion is not stored in YAML.
+  When a local bug file is used as a transport thread, comments are appended as
+  markdown `## Comment <timestamp> by <author>` blocks after the report body.
 - **Attachments.** Drop next to the markdown (e.g.
   `2026-05-14T103205Z-tui-hangs-on-esc.png`) and reference from the
   body.

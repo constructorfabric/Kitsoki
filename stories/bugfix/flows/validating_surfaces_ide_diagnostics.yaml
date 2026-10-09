@@ -1,0 +1,98 @@
+# validating_surfaces_ide_diagnostics — WS-C C3: editor awareness.
+#
+# The validating room pulls host.ide.get_diagnostics as extra evidence for
+# the verify gate (docs/proposals/ide-integration.md follow-up 3). This flow
+# proves the "editor attached, diagnostics surfaced" leg: a stub simulates a
+# connected `/ide` link reporting two problems, and asserts the room binds
+# them into the world AND threads them into the validator agent's prompt
+# args.
+#
+# The complementary "no editor attached" leg needs NO dedicated fixture: every
+# OTHER flow that walks through validating (e.g. refine_at_each_stage.yaml,
+# skip_to_pr_from_idle.yaml) declares no host.ide.get_diagnostics stub at
+# all, so the REAL handler runs — no live `/ide` link in a flow test means
+# "not-connected is a value" (never a Go error) — and they all pass with
+# world.ide_diagnostics_result == {connected:false, diagnostics:[]}. That
+# honest default is exercised, and asserted not to break anything, on every
+# green run of the suite.
+#
+# Entered via a REAL transition (reviewing → validating, not
+# `initial_state: validating`) because flow fixtures that seed the initial
+# state directly bypass its on_enter entirely — see rooms/validating.yaml's
+# `once:` binds and the "flow harness bypasses initial-state on_enter"
+# convention used throughout this story's other fixtures.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: reviewing
+initial_world:
+  ticket_id:      "TKT-IDE-1"
+  ticket_title:   "Off-by-one in the retry backoff"
+  thread:         "TKT-IDE-1"
+  workdir:        ".worktrees/tkt-ide-1"
+  base_branch:    "main"
+  judge_mode:     "human"
+  implement_review_artifact:
+    summary_title:    "Test review passed"
+    summary_markdown: "Regression test added; fix applied."
+
+host_handlers:
+  host.append_to_file: { data: { ok: true } }
+  host.inbox.add:      { data: { ok: true } }
+  host.local:           { data: { ok: true, log: "PASS", passed: 1, failed: 0 } }
+  host.ide.get_diagnostics:
+    data:
+      ok: true
+      connected: true
+      diagnostics:
+        - { severity: "error",   message: "unused variable `retries`", file: "internal/retry/backoff.go", line: 42 }
+        - { severity: "warning", message: "possible off-by-one in loop bound", file: "internal/retry/backoff.go", line: 58 }
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Validation passed"
+        summary_markdown: "Build green; fix verified."
+        outcome:          "pass"
+  # done's on_enter (the second turn advances validating → done).
+  host.run:
+    by_call:
+      done_clean_tree_check:
+        data: { ok: true, exit_code: 0, stdout_json: { dirty: false, files: "" } }
+      done_fixed_in_commit:
+        data: { ok: true, exit_code: 0, stdout_json: { commit: "a1b2c3d4e5f6" } }
+  host.local_files.ticket.comment:
+    data: { ok: true, comment_id: "comment-1" }
+  host.local_files.ticket.transition:
+    data: { ok: true }
+  host.agent.decide:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Retry backoff off-by-one fixed"
+        summary_markdown: "Close-out body."
+
+turns:
+  # reviewing → validating (a real transition; on_enter fires). The
+  # diagnostics pull happens BEFORE the validator agent runs, so the same
+  # turn's host.agent.task call already carries them in its prompt args.
+  - intent: { name: accept, slots: {} }
+    expect_state: validating
+    expect_world:
+      ide_diagnostics_result:
+        ok:        true
+        connected: true
+        diagnostics:
+          - { severity: "error",   message: "unused variable `retries`", file: "internal/retry/backoff.go", line: 42 }
+          - { severity: "warning", message: "possible off-by-one in loop bound", file: "internal/retry/backoff.go", line: 58 }
+      ide_diagnostics:
+        - { severity: "error",   message: "unused variable `retries`", file: "internal/retry/backoff.go", line: 42 }
+        - { severity: "warning", message: "possible off-by-one in loop bound", file: "internal/retry/backoff.go", line: 58 }
+    expect_host_calls:
+      - handler: host.ide.get_diagnostics
+        args: { path: ".worktrees/tkt-ide-1" }
+
+  - intent: { name: accept, slots: {} }
+    expect_state: done
+
+expect_no_errors: true

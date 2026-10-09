@@ -1,0 +1,14 @@
+kind: inspect_cassette
+interactions:
+  - op: exists
+    target: .context/designs/.workspace/local-yaml-probe-machine-which
+    out: "false"
+  - op: exists
+    target: .context/designs/local-yaml-probe-machine-which.md
+    out: "false"
+  - op: exists
+    target: .context/designs/.workspace/local-yaml-probe-machine-which
+    out: "false"
+  - op: exists
+    target: .context/designs/local-yaml-probe-machine-which.md
+    out: "false"

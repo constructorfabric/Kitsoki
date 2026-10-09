@@ -18,6 +18,11 @@ initial_world:
   refine_budget: 6
 
 host_handlers:
+  host.git_worktree:
+    by_call:
+      prepare_workspace:
+        data: { ok: true, path: ".capsules/workspaces/slidey-edit-flow" }
+
   host.slidey.render:
     by_call:
       render_deck:
@@ -27,6 +32,15 @@ host_handlers:
 
   host.starlark.run:
     by_call:
+      resolve_deck:
+        data:
+          source_deck:
+            spec_path: "docs/decks/kitsoki-pitch.slidey.json"
+            summary: "Existing slidey deck"
+          deck:
+            spec_path: "docs/decks/kitsoki-pitch.slidey.json"
+            summary: "Existing slidey deck"
+          workspace: "docs/decks"
       seed_annotation:
         data:
           annotation:
@@ -53,6 +67,9 @@ turns:
       semantic_path: ""
       semantic_handle: ""
       last_error: ""
+    expect_host_calls:
+      - handler: host.slidey.render
+        args: { call: "render_deck", spec_path: ".capsules/workspaces/slidey-edit-flow/docs/decks/kitsoki-pitch.slidey.json" }
 
 expect_terminal: false
 expect_no_errors: true

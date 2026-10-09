@@ -111,7 +111,12 @@ func fakeExtractSubmitPath(args []string) string {
 func ParseMCPConfigSubmitOutput(args []string) string {
 	for i, a := range args {
 		if a == "--mcp-config" && i+1 < len(args) {
-			return parseMCPConfigFile(args[i+1])
+			// Scan every config flag: dispatches can carry several
+			// (contract/bash/operator-ask + validator) and only the
+			// validator's declares an --output.
+			if out := parseMCPConfigFile(args[i+1]); out != "" {
+				return out
+			}
 		}
 	}
 	return ""

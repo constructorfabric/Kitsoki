@@ -48,7 +48,7 @@
       "additionalProperties": false,
       "required": ["kind"],
       "properties": {
-        "kind": { "enum": ["frontend", "backend", "fullstack", "service", "cli", "library", "monorepo", "rust", "go", "node", "generic", "other"] },
+        "kind": { "enum": ["frontend", "backend", "fullstack", "service", "cli", "library", "monorepo", "rust", "go", "node", "python", "generic", "other"] },
         "languages": { "type": "array", "items": { "type": "string" } },
         "frameworks": { "type": "array", "items": { "type": "string" } },
         "package_managers": { "type": "array", "items": { "type": "string" } }
@@ -263,7 +263,18 @@
       "additionalProperties": false,
       "required": ["story", "instance"],
       "properties": {
-        "story": { "type": "string", "default": "dev-story", "description": "The hub story the instance imports (dev-story today)." },
+        "story": { "type": "string", "default": "dev-story", "description": "The root kit story the instance imports (dev-story by default; any installed kit that declares a kit.yaml root: block naming it also qualifies -- see D6 root generalization, .context/kits-implementation-plan.md)." },
+        "story_pack": {
+          "type": "string",
+          "description": "Named first-run story pack selected during onboarding. This records the install-like starter group; it is not a runtime fence.",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "enabled_stories": {
+          "type": "array",
+          "description": "Adoption-scope list for teams starting with a focused subset of the dev-story catalog. This records what to emphasize first; it is not a runtime fence.",
+          "items": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+          "uniqueItems": true
+        },
         "instance": {
           "type": "object",
           "additionalProperties": false,
@@ -273,16 +284,8 @@
             "path": { "type": "string", "description": "Where the generated instance app.yaml is written, e.g. .kitsoki/stories/<id>-dev/app.yaml." },
             "bindings": {
               "type": "object",
-              "description": "Concrete host bindings for dev-story's five host_interfaces (ticket/vcs/ci/workspace/transport). Each value is a host id, e.g. host.git, host.local_files.ticket.",
-              "additionalProperties": false,
-              "required": ["ticket", "vcs", "ci", "workspace", "transport"],
-              "properties": {
-                "ticket": { "type": "string" },
-                "vcs": { "type": "string" },
-                "ci": { "type": "string" },
-                "workspace": { "type": "string" },
-                "transport": { "type": "string" }
-              }
+              "description": "Concrete host bindings for the root story's declared host_interfaces (dev-story's default set: ticket/vcs/ci/workspace/transport -- see kitsoki.story). Each value is a host id, e.g. host.git or host.local_files.ticket, or a .star script path resolved from the project root. Which keys are actually required is root-kit-dependent and checked semantically (internal/projectprofile.validateSemantic), not fixed here, since a non-default root kit may declare different interface names.",
+              "additionalProperties": { "type": "string" }
             }
           }
         },
@@ -343,7 +346,27 @@
       "additionalProperties": false,
       "properties": {
         "job": { "type": "string" },
+        "status": { "enum": ["no-transcripts-found", "transcripts-found", "mined"] },
         "sample": { "enum": ["recency", "all", "tagged", "none"] },
+        "first_pass_sample": { "type": "integer", "minimum": 0 },
+        "transcript_count": { "type": "integer", "minimum": 0 },
+        "sources": {
+          "type": "array",
+          "description": "Associated transcript sources found during deterministic discovery. Evidence only; mining still requires explicit consent/config.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["backend", "sessions"],
+            "properties": {
+              "backend": { "enum": ["claude-code", "codex", "kitsoki-trace", "other"] },
+              "dir": { "type": "string" },
+              "sessions": { "type": "integer", "minimum": 0 },
+              "latest_mtime": { "type": "integer", "minimum": 0 },
+              "include": { "enum": ["human", "agent", "both"] }
+            }
+          }
+        },
+        "note": { "type": "string", "contentMediaType": "text/markdown" },
         "intent_count": { "type": "integer", "minimum": 0 },
         "themes": {
           "type": "array",
@@ -364,9 +387,88 @@
 
     "onboarding": {
       "type": "object",
-      "description": "Reusable onboarding-test anchors. Baseline commits let deterministic flow/cassette tests and gated live recordings replay init from a known pre-init state.",
+      "description": "Reusable onboarding anchors: which starter story was selected, what repo evidence drove adaptation, and the replay-test commits/fixtures.",
       "additionalProperties": false,
       "properties": {
+        "base_story": {
+          "type": "string",
+          "description": "Reusable starter story selected during onboarding, e.g. dev-story."
+        },
+        "base_story_title": {
+          "type": "string",
+          "description": "Human title for the selected starter story."
+        },
+        "base_story_reason": {
+          "type": "string",
+          "contentMediaType": "text/markdown",
+          "description": "Why this starter story was selected for the repo."
+        },
+        "story_pack": {
+          "type": "string",
+          "description": "Named starter pack chosen in the first-run menu.",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "story_pack_title": {
+          "type": "string",
+          "description": "Human title for the selected starter pack."
+        },
+        "story_pack_summary": {
+          "type": "string",
+          "contentMediaType": "text/markdown",
+          "description": "Short explanation of the selected starter pack."
+        },
+        "starter_stories": {
+          "type": "array",
+          "description": "Focused story set the team should start with before expanding to more of dev-story.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "status", "summary"],
+            "properties": {
+              "id": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+              "title": { "type": "string" },
+              "source_story": { "type": "string" },
+              "status": { "enum": ["enabled", "available", "deferred"] },
+              "summary": { "type": "string", "contentMediaType": "text/markdown" },
+              "expansion": { "type": "string", "contentMediaType": "text/markdown" }
+            }
+          }
+        },
+        "expansion_policy": {
+          "type": "string",
+          "contentMediaType": "text/markdown",
+          "description": "How to expand from the focused starter story set."
+        },
+        "repo_patterns": {
+          "type": "array",
+          "description": "Deterministic repo evidence used to adapt the starter story.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "source", "evidence"],
+            "properties": {
+              "id": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+              "source": { "type": "string" },
+              "evidence": { "type": "string", "contentMediaType": "text/markdown" },
+              "recommendation": { "type": "string", "contentMediaType": "text/markdown" }
+            }
+          }
+        },
+        "story_customizations": {
+          "type": "array",
+          "description": "Starter-story adaptations applied or proposed for this project-local instance.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "status", "summary"],
+            "properties": {
+              "id": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+              "status": { "enum": ["applied", "proposed", "pending", "deferred"] },
+              "summary": { "type": "string", "contentMediaType": "text/markdown" },
+              "evidence": { "type": "string", "contentMediaType": "text/markdown" }
+            }
+          }
+        },
         "baseline_commit": {
           "type": "string",
           "pattern": "^[0-9a-f]{7,40}$",

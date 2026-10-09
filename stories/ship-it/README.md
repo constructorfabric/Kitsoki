@@ -41,7 +41,9 @@ configure{brief,gate_command} ─▶ maker[cherny-loop] ─▶ integrate ─▶ 
    `brief → goal_text`, `gate_command`, `gate_mode: script`, `workspace_*`. Its
    `@exit:achieved` leaves `worktree_path` + `workspace_branch` in world (the
    handoff seam) and projects to `integrate`; `@exit:exhausted`/`abandoned`
-   project to `@exit:needs-human` with `last_error`.
+   project to `@exit:needs-human` with `last_error`. ship-it sets
+   `baseline_green_policy: needs-human` so a maker gate that already passes
+   before any change stops for human review instead of being auto-accepted.
 2. **integrate — reuses the slice-1 git-ops lost-work-safe mechanism**: rebase
    `workspace_branch` onto **current** main (re-read at entry — a concurrent
    moved-main is absorbed), build-check, merge `--no-ff`. No swallowed failures;

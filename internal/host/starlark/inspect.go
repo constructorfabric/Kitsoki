@@ -11,19 +11,19 @@ import (
 	"sync"
 )
 
-// Inspector is the sandbox's read-only filesystem + process I/O boundary, the
+// Inspector is the sandbox's filesystem + process I/O boundary, the
 // sibling of HTTPClient for ctx.fs and ctx.probe. Every ctx.fs.* and ctx.probe
-// call from a script funnels through exactly one of its four methods. Keeping
+// call from a script funnels through exactly one of its methods. Keeping
 // the surface this narrow means the whole inspection capability can be made
 // deterministic (for replay) or audited (for production) by swapping a single
 // implementation — there is no other way for a script to read a file or run a
 // process.
 //
-// Every method is read-only by contract: Read/Exists/Glob never mutate, and
-// Probe runs ONLY programs on a global allow-list (it is not a shell). A real
-// implementation roots paths at a working directory and rejects escape; the
-// deny-all default refuses every call so a misconfigured run fails loud rather
-// than silently reaching the disk.
+// Filesystem methods are explicit and rooted: Read/Exists/Glob inspect, Write
+// replaces one repo-relative file, and Probe runs ONLY programs on a global
+// allow-list (it is not a shell). A real implementation roots paths at a
+// working directory and rejects escape; the deny-all default refuses every call
+// so a misconfigured run fails loud rather than silently reaching the disk.
 //
 // An err is reserved for refusal (no inspector injected), an out-of-bounds path
 // (".." escape, oversize read), an unknown probe name, or a transport failure
@@ -40,6 +40,10 @@ type Inspector interface {
 	// Glob returns the repo-relative paths matching a glob pattern, sorted. An
 	// out-of-bounds pattern is an error.
 	Glob(ctx context.Context, pattern string) ([]string, error)
+	// Write replaces a repo-relative file with content, creating parent
+	// directories as needed. An out-of-bounds path or oversized write is an
+	// error. The returned path is normalized repo-relative slash form.
+	Write(ctx context.Context, path string, content []byte) (string, error)
 	// Probe runs an allow-listed read-only program and returns its exit code and
 	// combined output. An unknown name is an error; a non-zero exit is not.
 	Probe(ctx context.Context, name string, args []string) (ProbeResult, error)
@@ -60,7 +64,7 @@ type ProbeResult struct {
 // in-process (and, in replay, in cassettes). Run surfaces a slice of these the
 // same way it surfaces HTTPExchange (see ExchangesFromContext).
 //
-// Op is the call kind ("read", "exists", "glob", "probe"); Target is the path,
+// Op is the call kind ("read", "exists", "glob", "write", "probe"); Target is the path,
 // pattern, or probe name; Status is a short outcome ("ok", "missing",
 // "exit:0", "exit:1", or an error class) so the trace shows what happened
 // without leaking the payload.
@@ -74,6 +78,10 @@ type InspectExchange struct {
 // reads small metadata files (manifests, configs); this turns an accidental read
 // of a huge artifact into a clean error rather than ballooning memory.
 const maxInspectReadBytes = 1 << 20 // 1 MiB
+
+// maxInspectWriteBytes caps a single ctx.fs.write. Starlark is for small glue
+// artifacts, not bulk file generation.
+const maxInspectWriteBytes = 1 << 20 // 1 MiB
 
 // inspectorKey is the unexported context key for an injected Inspector.
 type inspectorKey struct{}
@@ -128,16 +136,21 @@ func (deniedInspector) Glob(_ context.Context, pattern string) ([]string, error)
 	return nil, fmt.Errorf("starlark: no inspector injected for this run (attempted fs.glob %q); inject one with WithInspector", pattern)
 }
 
+func (deniedInspector) Write(_ context.Context, path string, _ []byte) (string, error) {
+	return "", fmt.Errorf("starlark: no inspector injected for this run (attempted fs.write %q); inject one with WithInspector", path)
+}
+
 func (deniedInspector) Probe(_ context.Context, name string, _ []string) (ProbeResult, error) {
 	return ProbeResult{}, fmt.Errorf("starlark: no inspector injected for this run (attempted probe %q); inject one with WithInspector", name)
 }
 
 // ─── production inspector ────────────────────────────────────────────────────
 
-// probeSpec is one entry in the global probe allow-list: a fixed argv template
-// whose {0},{1}… placeholders are filled positionally from the script-supplied
-// args. The program is exec'd directly (no shell), so there is no word-splitting,
-// globbing, or injection surface — an arg can only ever land in one argv slot.
+// probeSpec is one entry in the global process probe allow-list: a fixed argv
+// template whose {0},{1}… placeholders are filled positionally from the
+// script-supplied args. The program is exec'd directly (no shell), so there is
+// no word-splitting, globbing, or injection surface — an arg can only ever land
+// in one argv slot.
 type probeSpec struct {
 	// argv is the command and its template arguments. argv[0] is the program;
 	// "{n}" tokens in later slots are replaced by args[n].
@@ -145,18 +158,17 @@ type probeSpec struct {
 }
 
 // probeAllowList is the GLOBAL read-only probe vocabulary. It is intentionally
-// tiny and audited: each entry is a read-only inspection of repo/issue state, no
-// program that can mutate the working tree or reach arbitrary hosts. Per-story
-// extension of this list is a documented v1 follow-up; this global base is the
-// security boundary now.
+// tiny and audited: each entry is a read-only inspection of repo state, no
+// program that can mutate the working tree or reach arbitrary hosts. Native
+// network probes such as gh.issue.list are handled explicitly in Probe, not by
+// this process allow-list. Per-story extension of this list is a documented v1
+// follow-up; this global base is the security boundary now.
 //
-//	gh.issue.list -> gh issue list --repo {0} --json number,title,state --limit 200
-//	git.status    -> git status --porcelain
-//	git.ls_files  -> git ls-files {0}
+//	git.status   -> git status --porcelain
+//	git.ls_files -> git ls-files {0}
 var probeAllowList = map[string]probeSpec{
-	"gh.issue.list": {argv: []string{"gh", "issue", "list", "--repo", "{0}", "--json", "number,title,state", "--limit", "200"}},
-	"git.status":    {argv: []string{"git", "status", "--porcelain"}},
-	"git.ls_files":  {argv: []string{"git", "ls-files", "{0}"}},
+	"git.status":   {argv: []string{"git", "status", "--porcelain"}},
+	"git.ls_files": {argv: []string{"git", "ls-files", "{0}"}},
 }
 
 // productionInspector is the real Inspector: filesystem reads rooted at a working
@@ -204,11 +216,17 @@ func NewProductionInspector(root string) Inspector {
 }
 
 // resolve cleans a repo-relative path and confines it to root, rejecting any
-// path that escapes via ".." or an absolute prefix. It is the single chokepoint
-// every fs method passes through.
+// path that escapes via "..". Absolute paths are rejected except for temp-dir
+// paths, which flow fixtures use for durable outputs that should stay out of
+// the checkout and review artifact tree. It is the single chokepoint every fs
+// method passes through.
 func (p *productionInspector) resolve(rel string) (string, error) {
 	if filepath.IsAbs(rel) {
-		return "", fmt.Errorf("starlark fs: path %q must be repo-relative, not absolute", rel)
+		clean := filepath.Clean(rel)
+		if isTempPath(clean) {
+			return clean, nil
+		}
+		return "", fmt.Errorf("starlark fs: path %q must be repo-relative or under /tmp", rel)
 	}
 	full := filepath.Join(p.root, rel)
 	// The joined+cleaned path must still be within root; filepath.Join collapses
@@ -219,6 +237,15 @@ func (p *productionInspector) resolve(rel string) (string, error) {
 		return "", fmt.Errorf("starlark fs: path %q escapes the working directory", rel)
 	}
 	return full, nil
+}
+
+func isTempPath(path string) bool {
+	clean := filepath.Clean(path)
+	if clean == "/tmp" || strings.HasPrefix(clean, "/tmp"+string(filepath.Separator)) {
+		return true
+	}
+	tmp := filepath.Clean(os.TempDir())
+	return clean == tmp || strings.HasPrefix(clean, tmp+string(filepath.Separator))
 }
 
 // Read returns the bytes of a rooted file, capped at maxInspectReadBytes.
@@ -282,10 +309,44 @@ func (p *productionInspector) Glob(_ context.Context, pattern string) ([]string,
 	return out, nil
 }
 
+// Write replaces a rooted file, creating parent directories as needed.
+func (p *productionInspector) Write(_ context.Context, path string, content []byte) (string, error) {
+	if len(content) > maxInspectWriteBytes {
+		return "", fmt.Errorf("starlark fs.write %q: content exceeds %d-byte cap", path, maxInspectWriteBytes)
+	}
+	full, err := p.resolve(path)
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		return "", fmt.Errorf("starlark fs.write %q: mkdir parent: %w", path, err)
+	}
+	if err := os.WriteFile(full, content, 0o644); err != nil {
+		return "", fmt.Errorf("starlark fs.write %q: %w", path, err)
+	}
+	rel, err := filepath.Rel(p.root, full)
+	if err != nil {
+		rel = path
+	} else if strings.HasPrefix(rel, ".."+string(filepath.Separator)) || rel == ".." {
+		rel = path
+	}
+	rel = filepath.ToSlash(rel)
+	p.record("write", rel, "ok")
+	return rel, nil
+}
+
 // Probe runs an allow-listed program with positional args substituted into its
 // argv template and exec'd directly (no shell). An unknown name is an error; a
 // non-zero exit is returned in ProbeResult.Exit, not as an error.
 func (p *productionInspector) Probe(ctx context.Context, name string, args []string) (ProbeResult, error) {
+	if name == "gh.issue.list" {
+		res, err := probeGitHubIssueList(ctx, args)
+		if err != nil {
+			return ProbeResult{}, err
+		}
+		p.record("probe", name, fmt.Sprintf("exit:%d", res.Exit))
+		return res, nil
+	}
 	spec, ok := probeAllowList[name]
 	if !ok {
 		return ProbeResult{}, fmt.Errorf("starlark probe %q: not on the allow-list", name)

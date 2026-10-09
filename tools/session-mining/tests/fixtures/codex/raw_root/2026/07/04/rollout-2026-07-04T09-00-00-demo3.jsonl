@@ -1,0 +1,4 @@
+{"timestamp": "2026-07-04T09:00:00Z", "type": "session_meta", "payload": {"session_id": "demo3", "originator": "cli", "source": "cli", "cwd": "/Users/inventeduser/code/other-project", "cli_version": "0.999.0"}}
+{"timestamp": "2026-07-04T09:00:01Z", "type": "event_msg", "payload": {"type": "user_message", "message": "add a changelog entry for the release", "images": [], "local_images": [], "text_elements": []}}
+{"timestamp": "2026-07-04T09:00:02Z", "type": "response_item", "payload": {"type": "function_call", "id": "fc_9", "name": "exec_command", "arguments": "{\"cmd\": \"echo done\"}", "call_id": "call_9"}}
+{"timestamp": "2026-07-04T09:00:03Z", "type": "response_item", "payload": {"type": "function_call_output", "call_id": "call_9", "output": "Process exited with code 0\nOutput:\ndone\n"}}

@@ -139,6 +139,7 @@ func setupTraceSession(ctx context.Context, appPath, tracePath string, h harness
 
 	hostReg := host.NewRegistry()
 	host.RegisterBuiltins(hostReg)
+	host.RegisterStarlarkBindings(hostReg, def.StarlarkHostBindings)
 	if err := hostReg.ValidateAllowList(def.Hosts); err != nil {
 		ts.Close()
 		return nil, infraError("validate hosts: %v", err)

@@ -1,0 +1,117 @@
+# design_to_implementation_visual_replay — deterministic no-LLM visual replay
+# for the design → implementation path.
+#
+# This fixture is intentionally short: it starts where an accepted idea/proposal
+# has already minted a feature ticket, then drives through task summary, code,
+# and test checkpoints. All host work is stubbed, including host.artifacts_dir,
+# so TUI/web visual tests can replay the flow without LLM calls or filesystem
+# artifact writes. A capsule-backed Go test opens a synthetic repo and runs this
+# flow from inside that repo to pin the workspace shape.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: design_done
+initial_world:
+  session_id:         "visualreplay"
+  design_file:        "docs/proposals/replay-implementation.md"
+  design_ticket_path: "issues/features/F-REPLAY-001.md"
+  design_workspace:   "docs/proposals/.workspace/replay-implementation"
+  ticket_id:          "F-REPLAY-001"
+  ticket_title:       "Replay implementation flow"
+  ticket_type:        "feature"
+  ticket_url:         "issues/features/F-REPLAY-001.md"
+  thread:             "F-REPLAY-001"
+  base_branch:        "main"
+  judge_mode:         "human"
+  judge_confidence_threshold: 0.8
+  merge_strategy:     "squash"
+
+host_handlers:
+  host.append_to_file:
+    data: { ok: true, message_id: "msg-1" }
+  host.inbox.add:
+    data: { ok: true, id: "ib-1" }
+  host.artifacts_dir:
+    data: { ok: true, path: ".artifacts/replay/fallback.md", message_id: "fallback#1" }
+    by_call:
+      task_summary_artifact_file:
+        data: { ok: true, path: ".artifacts/replay/01-task-summary.md", message_id: "task-summary#1" }
+      code_artifact_file:
+        data: { ok: true, path: ".artifacts/replay/02-code.md", message_id: "code#1" }
+      test_artifact_file:
+        data: { ok: true, path: ".artifacts/replay/03-tests.md", message_id: "tests#1" }
+      review_artifact_file:
+        data: { ok: true, path: ".artifacts/replay/04-review.md", message_id: "review#1" }
+      implementation_progress_file:
+        data: { ok: true, path: ".artifacts/replay/progress.yaml", message_id: "progress#1" }
+  host.git_worktree:
+    data: { ok: true, log: "stub worktree provisioned", path: ".worktrees/impl-F-REPLAY-001-visualreplay" }
+  host.git:
+    data:
+      ok:       true
+      sha:      "abc123"
+      diff:     "diff --git a/internal/server/server.go b/internal/server/server.go"
+      url:      "https://example/pr/F-REPLAY-001"
+      pr_id:    "F-REPLAY-001"
+      state:    "success"
+      checks:   ""
+      comments: ""
+  host.local:
+    data: { ok: true, log: "FAIL: visual replay intentionally pins warning affordance", state: "failure", passed: 4, failed: 1 }
+  host.local_files.ticket:
+    data:
+      ok:    true
+      id:    "F-REPLAY-001"
+      title: "Replay implementation flow"
+      body:  "Add a minimal endpoint and make implementation checkpoints concise."
+      url:   "issues/features/F-REPLAY-001.md"
+      status: "open"
+  host.agent.decide:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Replay concise implementation checkpoints"
+        summary_markdown: |
+          ## Replay concise implementation checkpoints
+
+          The full markdown artifact is intentionally longer than the inline
+          checkpoint. The UI should show only a short summary and link to this
+          artifact instead of rendering the whole body in the room.
+
+          ## Evidence
+
+          Deterministic replay uses a capsule workspace and stubbed host
+          handlers, so no LLM or real artifact writes are required.
+        scope:            "Implementation checkpoint presentation and replay affordances."
+        acceptance_criteria:
+          - "Inline checkpoints stay concise."
+          - "Full markdown is reachable through an artifact link."
+          - "Progress is tracked through a YAML artifact link."
+        affected_files:   ["stories/implementation/rooms/test.yaml"]
+        confidence:       0.9
+        reasoning:        "The fixture pins the visual presentation, not the code change."
+        status:           "failed"
+        tests_run:        { passed: 4, failed: 1, log: "FAIL: visual replay intentionally pins warning affordance" }
+        nits:             []
+        blockers:         []
+        verdict:          "fail"
+        intent:           "refine"
+        reason:           "Fixture pins the warning affordance at the test checkpoint."
+
+turns:
+  - intent: { name: go_implementation, slots: {} }
+    expect_state: impl.review_task_awaiting_reply
+    expect_view_matches: "TASK SUMMARY READY[\\s\\S]*Replay concise implementation checkpoints[\\s\\S]*Artifact[\\s\\S]*01-task-summary\\.md[\\s\\S]*Progress[\\s\\S]*progress\\.yaml"
+
+  - intent: { name: impl__accept, slots: {} }
+    expect_state: impl.write_code_awaiting_reply
+    expect_view_matches: "CODE CHANGE READY[\\s\\S]*Replay concise implementation checkpoints[\\s\\S]*Artifact[\\s\\S]*02-code\\.md[\\s\\S]*Progress[\\s\\S]*progress\\.yaml"
+
+  - intent: { name: impl__accept, slots: {} }
+    expect_state: impl.test_awaiting_reply
+    expect_view_matches: "TESTS NEED WORK[\\s\\S]*Status[\\s\\S]*failed[\\s\\S]*Artifact[\\s\\S]*03-tests\\.md[\\s\\S]*Progress[\\s\\S]*progress\\.yaml[\\s\\S]*Action needed"
+
+expect_no_errors: true
+expect_no_host_calls:
+  - host.agent.task
+  - host.agent.ask

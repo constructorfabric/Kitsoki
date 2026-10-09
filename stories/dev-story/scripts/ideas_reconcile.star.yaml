@@ -1,0 +1,5 @@
+inputs:
+  ideas_path:  { type: string, required: true }
+  review_path: { type: string, required: true }
+outputs:
+  result: { type: object }

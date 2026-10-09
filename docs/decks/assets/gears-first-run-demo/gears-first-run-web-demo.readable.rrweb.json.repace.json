@@ -1,0 +1,23 @@
+{
+  "input": "docs/decks/assets/gears-first-run-demo/gears-first-run-web-demo.rrweb.json",
+  "output": "docs/decks/assets/gears-first-run-demo/gears-first-run-web-demo.readable.rrweb.json",
+  "source_event_count": 144,
+  "output_event_count": 188,
+  "inserted_scroll_events": 44,
+  "dwell_extensions": 15,
+  "scroll_extensions": 5,
+  "original_duration_ms": 38026,
+  "repaced_duration_ms": 77160,
+  "options": {
+    "minDwell": 1200,
+    "maxDwell": 3200,
+    "msPerChar": 18,
+    "coalesce": 150,
+    "sigMinAdds": 4,
+    "sigMinText": 24,
+    "scrollMsPerPx": 3.6,
+    "minScrollMs": 750,
+    "maxScrollMs": 5200,
+    "scrollStepPx": 140
+  }
+}

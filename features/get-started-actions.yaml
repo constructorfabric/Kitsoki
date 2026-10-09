@@ -1,0 +1,6 @@
+# yaml-language-server: $schema=feature.schema.json
+id: get-started-actions
+kind: feature
+title: A first screen that only offers actions that work
+tagline: The get-started screen advertises exactly the intents the running story can resolve.
+summary: The dev-story first screen used to advertise `onboard` and `look` quick actions that didn't resolve to a real intent — a stranger's very first click could dead-end. A flow fixture now asserts every advertised action resolves to an existing intent, so the first screen a new user sees never lies about what kitsoki can do.

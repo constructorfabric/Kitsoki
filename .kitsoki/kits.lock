@@ -1,0 +1,6 @@
+version: 1
+kits:
+  dev-story:
+    source: "@kitsoki/dev-story"
+    version: 0.1.0
+    tree_hash: bdc2df4f68d616d4ab56897645ddda687d166ab65b744e5a68cb8cf2f29a3bcf

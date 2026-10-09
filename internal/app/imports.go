@@ -30,11 +30,18 @@
 package app
 
 import (
+	"context"
+	"crypto/sha1"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	starlarkhost "kitsoki/internal/host/starlark"
+	"kitsoki/internal/kitgit"
+	"kitsoki/internal/kitver"
 )
 
 // importAliasRE constrains an import alias to characters safe to use as a
@@ -64,11 +71,16 @@ var importAliasRE = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 //     derived from the ticket alone, so two concurrent sessions on one ticket
 //     resolve to the SAME checkout and a destructive git op in one clobbers
 //     the other's WIP (bug9glm2). Engine-owned: a story must not `set:` it.
+//   - operation_run: map — the active/completed session-level operation handle.
+//     Engine-owned: a story must not `set:` it.
+//   - operation_drafts: map — explicit handles created by persist_draft.
 var ReservedWorldKeys = map[string]struct{}{
 	"last_error":           {},
 	"host_error":           {},
 	WriteModeScopeWorldKey: {},
 	"session_id":           {},
+	OperationRunWorldKey:   {},
+	"operation_drafts":     {},
 }
 
 // ImportResolver is an injected hook that resolves an `@kitsoki/<name>`
@@ -103,6 +115,13 @@ type ImportResolver func(name, importerDir string, override bool) (string, error
 // sets/clears it on grant and at the turn/session boundary. A story may not
 // `set:` it (load-time invariant). See docs/proposals/agent-write-mode-opt-in.md.
 const WriteModeScopeWorldKey = "write_mode_scope"
+
+// OperationRunWorldKey is the engine-reserved world variable holding the
+// current session-level operation run handle. Transitions start it via their
+// `operation:` policy reference; the runtime updates it to running/completed so
+// replay, UI, and harness assertions can observe progress without special
+// side-channels. A story may not `set:` it.
+const OperationRunWorldKey = "operation_run"
 
 // WriteMode posture values for State.WriteMode (validated at load time).
 const (
@@ -146,6 +165,16 @@ func resolveImports(def *AppDef, file, baseDir string, parents []string, resolve
 			continue
 		}
 
+		// Resolve any script-form host_bindings entries (S3a/D2.1) BEFORE
+		// folding: synthesizes a handler name for each, records it on
+		// def.StarlarkHostBindings, and rewrites the entry in place to a
+		// plain Handler spec so foldChild's binding-application logic
+		// (9/9a/9b below) never needs to know about scripts at all.
+		if hbErrs := resolveHostBindingScripts(def, imp, baseDir, file, alias); len(hbErrs) > 0 {
+			errs = append(errs, hbErrs...)
+			continue
+		}
+
 		childPath, resolveErr := resolveImportSource(imp.Source, baseDir, resolver)
 		if resolveErr != nil {
 			errs = append(errs, &ValidationError{File: file, Message: fmt.Sprintf("imports.%s: %v", alias, resolveErr)})
@@ -172,6 +201,29 @@ func resolveImports(def *AppDef, file, baseDir string, parents []string, resolve
 		if len(childErrs) > 0 {
 			errs = append(errs, childErrs...)
 			continue
+		}
+
+		// Constraint matching (S2): imp.Version, previously parsed and
+		// inert (see ImportDef.Version's doc comment), is checked against
+		// the resolved child's own `app.version:`. A declared constraint
+		// that the resolved candidate fails to satisfy is a load-time
+		// error — the same "fail fast, never silently substitute" posture
+		// resolveImportSource's override tier uses. No constraint
+		// declared (imp.Version == "") skips the check entirely, matching
+		// pre-S2 behaviour for every import that doesn't opt in.
+		if imp.Version != "" {
+			ok, vErr := kitver.Satisfies(childDef.App.Version, imp.Version)
+			if vErr != nil {
+				errs = append(errs, &ValidationError{File: file, Message: fmt.Sprintf(
+					"imports.%s: version constraint %q: %v", alias, imp.Version, vErr)})
+				continue
+			}
+			if !ok {
+				errs = append(errs, &ValidationError{File: file, Message: fmt.Sprintf(
+					"imports.%s: resolved %s app.version %q does not satisfy version constraint %q",
+					alias, childPath, childDef.App.Version, imp.Version)})
+				continue
+			}
 		}
 
 		// Apply overrides BEFORE namespace flattening so override.states
@@ -235,6 +287,83 @@ func resolveImports(def *AppDef, file, baseDir string, parents []string, resolve
 	return errs
 }
 
+// starlarkBindingHandlerPrefix names every synthetic host handler
+// resolveHostBindingScripts introduces for a script-form host_bindings entry
+// (S3a/D2.1). Kept distinct from ordinary host.* names purely for
+// readability in traces/errors; dispatch treats it like any other handler
+// name.
+const starlarkBindingHandlerPrefix = "host.starlark_binding."
+
+// resolveHostBindingScripts resolves every script-form entry in imp.HostBindings
+// (a bare `.star`-suffixed string or a `{script: ...}` mapping — see
+// HostBindingSpec) against baseDir (the directory of the app.yaml declaring
+// this imports.<alias>.host_bindings block, NOT the child being imported),
+// verifies the script and its sidecar exist, synthesizes a deterministic
+// handler name, records the (handler name -> absolute script path) pair on
+// def.StarlarkHostBindings, and rewrites the entry in place to a plain
+// Handler spec. This runs BEFORE foldChild so every later consumer of
+// imp.HostBindings (foldChild's binding-application logic, synthesis.go) only
+// ever sees plain handler names — script resolution is fully contained here.
+//
+// The handler name is derived from a hash of the absolute script path so:
+//   - the same script bound twice (e.g. via both a base-name and a
+//     prefixed host_bindings key) yields the same handler name — no
+//     duplicate registration.
+//   - two different aliases/levels binding two different scripts never
+//     collide, without needing the full alias chain threaded through here.
+func resolveHostBindingScripts(def *AppDef, imp *ImportDef, baseDir, file, alias string) []error {
+	if imp == nil || len(imp.HostBindings) == 0 {
+		return nil
+	}
+	var errs []error
+	for _, name := range sortedKeys(imp.HostBindings) {
+		spec := imp.HostBindings[name]
+		if spec.Script == "" {
+			continue // plain handler-name form — nothing to resolve.
+		}
+
+		rawScript := strings.TrimSpace(spec.Script)
+		resolved := rawScript
+		if !filepath.IsAbs(resolved) {
+			resolved = filepath.Join(baseDir, resolved)
+		}
+		resolved = filepath.Clean(resolved)
+
+		if _, statErr := os.Stat(resolved); statErr != nil {
+			errs = append(errs, &ValidationError{File: file, Message: fmt.Sprintf(
+				"imports.%s: host_bindings.%s script %q not found (resolved to %q)", alias, name, rawScript, resolved)})
+			continue
+		}
+		sidecarPath := resolved + ".yaml"
+		raw, readErr := os.ReadFile(sidecarPath)
+		if readErr != nil {
+			errs = append(errs, &ValidationError{File: file, Message: fmt.Sprintf(
+				"imports.%s: host_bindings.%s script %q has no sidecar (expected %q): %v", alias, name, rawScript, sidecarPath, readErr)})
+			continue
+		}
+		if _, parseErr := starlarkhost.ParseSidecar(raw); parseErr != nil {
+			errs = append(errs, &ValidationError{File: file, Message: fmt.Sprintf(
+				"imports.%s: host_bindings.%s sidecar %q is malformed: %v", alias, name, sidecarPath, parseErr)})
+			continue
+		}
+
+		handlerName := starlarkBindingHandlerName(resolved)
+		if def.StarlarkHostBindings == nil {
+			def.StarlarkHostBindings = make(map[string]string)
+		}
+		def.StarlarkHostBindings[handlerName] = resolved
+		imp.HostBindings[name] = HostBindingSpec{Handler: handlerName}
+	}
+	return errs
+}
+
+// starlarkBindingHandlerName derives a deterministic, collision-safe handler
+// name from an absolute script path (see resolveHostBindingScripts).
+func starlarkBindingHandlerName(absScriptPath string) string {
+	sum := sha1.Sum([]byte(absScriptPath))
+	return starlarkBindingHandlerPrefix + hex.EncodeToString(sum[:])[:16]
+}
+
 // appendUnique adds v to list iff it's not already present. Order is
 // preserved (the order children were folded), which keeps the
 // LoadedManifests list stable across loads.
@@ -270,9 +399,25 @@ func loadImportedChild(path string, parents []string, resolver ImportResolver) (
 	return def, nil
 }
 
+// ResolveSource is the exported form of resolveImportSource — the seam
+// `kitsoki kit add|verify` (cmd/kitsoki) use to resolve an arbitrary source
+// string to an absolute manifest path the same way the loader would, without
+// duplicating the tier logic (S2).
+func ResolveSource(src, importerDir string, resolver ImportResolver) (string, error) {
+	return resolveImportSource(src, importerDir, resolver)
+}
+
 // resolveImportSource maps a `source:` value to an absolute manifest path.
 //
-// For an `@kitsoki/<name>` source the resolution ORDER is:
+// Resolution is tiered by source SHAPE, checked in this order:
+//
+//  0. `git+<url>@<ref>` — the git source tier (S2). Fetched into a
+//     content-addressed cache generalizing the basestories/baseskills
+//     embed→cache→materialize pattern (see internal/kitgit). This is
+//     independent of the `@kitsoki/<name>` tiers below: a git source names
+//     its own remote, not a story inside the kitsoki repo/embedded library.
+//
+// For an `@kitsoki/<name>` source the resolution order is:
 //
 //  1. the injected resolver's `--kitsoki-repo` / KITSOKI_REPO override
 //     (override=true) — checked FIRST so an explicit operator checkout always
@@ -285,6 +430,17 @@ func loadImportedChild(path string, parents []string, resolver ImportResolver) (
 // The loader builds one closure serving both resolver calls; nil keeps the
 // legacy error-on-missing behaviour.
 func resolveImportSource(src, importerDir string, resolver ImportResolver) (string, error) {
+	if url, ref, ok := kitgit.ParseSource(src); ok {
+		res, err := kitgit.Materialize(context.Background(), kitgit.DefaultRunner, url, ref)
+		if err != nil {
+			return "", fmt.Errorf("source %q: %w", src, err)
+		}
+		candidate := filepath.Join(res.Root, "app.yaml")
+		if _, statErr := os.Stat(candidate); statErr != nil {
+			return "", fmt.Errorf("source %q: app.yaml not found at repo root (%s): %w", src, candidate, statErr)
+		}
+		return candidate, nil
+	}
 	if strings.HasPrefix(src, "@kitsoki/") {
 		name := strings.TrimPrefix(src, "@kitsoki/")
 		if name == "" || strings.ContainsAny(name, "/\\") {
@@ -408,6 +564,10 @@ func foldChild(parent *AppDef, alias string, imp *ImportDef, child *AppDef, file
 	for k := range child.Agents {
 		childAgent[k] = struct{}{}
 	}
+	childOperation := make(map[string]struct{}, len(child.Operations))
+	for k := range child.Operations {
+		childOperation[k] = struct{}{}
+	}
 	childIface := make(map[string]struct{}, len(child.HostInterfaces))
 	for k := range child.HostInterfaces {
 		childIface[k] = struct{}{}
@@ -417,6 +577,7 @@ func foldChild(parent *AppDef, alias string, imp *ImportDef, child *AppDef, file
 		childWorldKey:         childWorld,
 		childIntent:           childIntent,
 		childAgent:            childAgent,
+		childOperation:        childOperation,
 		childIface:            childIface,
 		parentExportedIntents: importParentExports(imp),
 	}
@@ -465,11 +626,11 @@ func foldChild(parent *AppDef, alias string, imp *ImportDef, child *AppDef, file
 	// The rewriter also rewrites bare-name targets to slash form
 	// `<alias>/<name>` so a child transition `target: working` resolves
 	// to the nested child sibling inside the compound wrapper.
-	for _, s := range child.States {
+	for name, s := range child.States {
 		if s == nil {
 			continue
 		}
-		rw.rewriteState(s)
+		rw.rewriteState(name, s)
 		rewriteChildStateTransitions(s, alias, imp, &errs, file)
 	}
 
@@ -486,9 +647,10 @@ func foldChild(parent *AppDef, alias string, imp *ImportDef, child *AppDef, file
 		return errs
 	}
 	wrapper := &State{
-		Type:    "compound",
-		Initial: entryName,
-		States:  make(map[string]*State, len(child.States)),
+		Type:        "compound",
+		Initial:     entryName,
+		States:      make(map[string]*State, len(child.States)),
+		ImportAlias: alias,
 	}
 	for _, name := range sortedKeys(child.States) {
 		wrapper.States[name] = child.States[name]
@@ -572,6 +734,21 @@ func foldChild(parent *AppDef, alias string, imp *ImportDef, child *AppDef, file
 		parent.Intents[newKey] = intent
 	}
 
+	// 8a. Fold session-level operation policies under prefixed names. The
+	// rewriter updated transition `operation:` refs to the same names, and
+	// rewrites policy artifact/world-key references to the folded world.
+	if parent.Operations == nil {
+		parent.Operations = make(map[string]*OperationPolicy)
+	}
+	for _, ck := range sortedKeys(child.Operations) {
+		newKey := alias + "__" + ck
+		if _, exists := parent.Operations[newKey]; exists {
+			errs = append(errs, &ValidationError{File: file, Message: fmt.Sprintf("imports.%s: operation %q collides", alias, newKey)})
+			continue
+		}
+		parent.Operations[newKey] = rw.rewriteOperationPolicy(child.Operations[ck])
+	}
+
 	// 9. Host allow-list composition.
 	//
 	// Host names (parent.Hosts) compose per the `hosts:` mode declared on
@@ -636,8 +813,23 @@ func foldChild(parent *AppDef, alias string, imp *ImportDef, child *AppDef, file
 		// Shallow copy is fine: Default is the only field we mutate; the
 		// rest are read-only metadata.
 		clone := *src
-		if handler, ok := imp.HostBindings[ifaceName]; ok {
-			clone.Default = handler
+		if spec, ok := imp.HostBindings[ifaceName]; ok {
+			// Explicit prefixed override wins (e.g. host_bindings:
+			// { bf__ticket: host.X }). By fold time every HostBindingSpec's
+			// Script form has already been resolved to a synthetic Handler
+			// name by resolveHostBindingScripts, so Handler is always the
+			// concrete binding here regardless of the author's original form.
+			clone.Default = spec.Handler
+		} else if terminal := ifaceTerminalName(ifaceName); terminal != ifaceName {
+			// Base-name fallback: a binding keyed on the terminal
+			// capability name (e.g. `ticket: host.gh.ticket`) cascades
+			// to every transitively-lifted `*__ticket` iface that has no
+			// explicit prefixed override. This is what lets an instance
+			// rebind a capability once and have it apply across
+			// all nested folds. See bug 44.
+			if spec, ok := imp.HostBindings[terminal]; ok {
+				clone.Default = spec.Handler
+			}
 		}
 		parent.HostInterfaces[newName] = &clone
 	}
@@ -646,17 +838,32 @@ func foldChild(parent *AppDef, alias string, imp *ImportDef, child *AppDef, file
 	// has folded a grandchild under alias `enc`). The lookup is uniform
 	// via `<alias>__<binding-name>` so the grandparent surface is just
 	// "spell the prefixed name."
-	for bindingName, handler := range imp.HostBindings {
+	for bindingName, spec := range imp.HostBindings {
 		// Skip ifaces directly owned by the child — already applied above.
 		if _, ownedByChild := child.HostInterfaces[bindingName]; ownedByChild {
 			continue
 		}
 		fullName := alias + "__" + bindingName
 		if iface, ok := parent.HostInterfaces[fullName]; ok && iface != nil {
-			iface.Default = handler
+			iface.Default = spec.Handler
 			continue
 		}
 		errs = append(errs, &ValidationError{File: file, Message: fmt.Sprintf("imports.%s: host_bindings.%s: no matching host_interface (looked for %q in lifted child interfaces)", alias, bindingName, fullName)})
+	}
+
+	// 9c. Propagate any starlark-script synthetic bindings this level (or
+	// any descendant already folded into `child`) introduced, so the
+	// top-level Load() sees the full handler-name → script-path map after
+	// all folds complete (resolveHostBindingScripts resolves script paths
+	// against each level's own baseDir; the mapping itself just needs to
+	// bubble up unchanged).
+	if len(child.StarlarkHostBindings) > 0 {
+		if parent.StarlarkHostBindings == nil {
+			parent.StarlarkHostBindings = make(map[string]string, len(child.StarlarkHostBindings))
+		}
+		for name, script := range child.StarlarkHostBindings {
+			parent.StarlarkHostBindings[name] = script
+		}
 	}
 
 	// 10. Intent re-exports.
@@ -965,6 +1172,8 @@ func rewriteChildStateTransitionsAtDepth(s *State, alias string, imp *ImportDef,
 			// Capture world_out projection BEFORE rewriting the target.
 			if strings.HasPrefix(origTarget, "@exit:") {
 				name := strings.TrimPrefix(origTarget, "@exit:")
+				tr.OperationExit = name
+				tr.OperationExitPolicyPrefix = alias + "__"
 				if imp.Exits != nil {
 					if ex, ok := imp.Exits[name]; ok && ex != nil && len(ex.Set) > 0 {
 						tr.Effects = append(tr.Effects, Effect{Set: ex.Set})

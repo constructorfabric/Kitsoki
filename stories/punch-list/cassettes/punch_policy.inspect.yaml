@@ -1,0 +1,26 @@
+kind: inspect_cassette
+interactions:
+  - op: read
+    target: .artifacts/punch-list/policy-fixture.state.json
+    out: |
+      {
+        "items": [
+          {
+            "id": "policy-demo",
+            "story": "stories/punch-list/app.yaml",
+            "implementation_story": "stories/cherny-loop/app.yaml",
+            "harness": "live",
+            "profile": "codex-native",
+            "model": "gpt-5.5",
+            "verify": [
+              { "kind": "command", "cmd": "true" }
+            ]
+          }
+        ]
+      }
+  - op: exists
+    target: stories/punch-list/app.yaml
+    out: "true"
+  - op: exists
+    target: stories/cherny-loop/app.yaml
+    out: "true"

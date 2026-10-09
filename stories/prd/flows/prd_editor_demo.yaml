@@ -18,6 +18,9 @@ initial_state: idle
 initial_world:
   workdir:    "."
   judge_mode: "human"
+  publish_durable_path: "/tmp/kitsoki-prd-fixtures"
+
+starlark_inspect_cassette: ../cassettes/slug_notes_service.inspect.yaml
 
 host_handlers:
   # NOTE: host.ide.* and host.artifacts_dir are intentionally NOT stubbed.
@@ -42,18 +45,6 @@ host_handlers:
             answers_block:       "Q1: platform engineers\nQ2: notes-saved-per-session\n"
             answered_ids_append: "|1||2|"
             matched_count:       2
-  host.run:
-    by_call:
-      mint_workspace:
-        data:
-          ok: true
-          exit_code: 0
-          stdout_json: { slug: "notes-service", workspace: ".artifacts/prd/notes-service" }
-      publish:
-        data:
-          ok: true
-          exit_code: 0
-          stdout_json: { prd_file: "docs/prd/notes-service.md" }
   host.agent.task:
     by_call:
       # First draft (drafting on_enter, id: prd_author) — the full PRD body.
@@ -152,7 +143,7 @@ turns:
     expect_state: __exit__done
     expect_world:
       status:   "done"
-      prd_file: "docs/prd/notes-service.md"
+      prd_file: "/tmp/kitsoki-prd-fixtures/notes-service.md"
 
 expect_terminal: true
 expect_no_errors: true

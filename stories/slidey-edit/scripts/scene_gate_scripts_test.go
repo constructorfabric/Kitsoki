@@ -74,11 +74,21 @@ func runScript(t *testing.T, name string, inputs map[string]any) map[string]any 
 		t.Fatal(err)
 	}
 	ctx := starlarkhost.WithInspector(context.Background(), starlarkhost.NewProductionInspector(root))
-	res, err := starlarkhost.Run(ctx, starlarkhost.Params{Script: name, Source: src, Inputs: inputs})
+	res, err := starlarkhost.Run(ctx, starlarkhost.Params{Script: name, Source: src, Inputs: inputs, Capabilities: slideyScriptCapabilities()})
 	if err != nil {
 		t.Fatalf("run %s: %v", name, err)
 	}
 	return res.Outputs
+}
+
+func slideyScriptCapabilities() starlarkhost.CapabilitySpec {
+	return starlarkhost.CapabilitySpec{
+		World: true,
+		FS: starlarkhost.FSCapability{
+			ReadPatterns:  []string{"**"},
+			WritePatterns: []string{"**"},
+		},
+	}
 }
 
 func TestResolveScene_ViewedSceneWins(t *testing.T) {

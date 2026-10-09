@@ -1,0 +1,51 @@
+# dirty_main_guard — proves the integrate room REFUSES to land into a DIRTY
+# integration tree (the #clean-main guard).
+#
+# The merge --no-ff and, on a build-fail, the `git reset --hard $PRE_MERGE_SHA`
+# recovery both run in MAIN_WT. When MAIN_WT is "." (the self-hosting direct-ship
+# loop integrates into the live repo), uncommitted TRACKED changes there would be
+# clobbered — the "reset --hard nukes main" hazard. The integrate room runs
+# `git status --porcelain --untracked-files=no` in MAIN_WT BEFORE any
+# checkout/merge/reset and, on any dirty tracked file, emits outcome:"dirty_main"
+# → routed to @exit:needs-human with the file list, so the operator commits or
+# stashes first. This protection lives in the STORY, not in a driver's head.
+#
+# This flow MOCKS integrate_exec, so it proves the ROUTING contract (dirty_main
+# is a needs-human outcome, carries last_error). The real `git status` guard is
+# shell logic in the integrate bash; the routing it depends on is what regresses.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: bootstrap
+initial_world:
+  brief:              "Fix the clarifying matcher arg"
+  gate_command:       "go test ./stories/prd/..."
+  base_branch:        main
+  main_worktree_path: "."
+  workspace_id:       bf-prd-fix
+  workspace_branch:   fix/prd
+  worktree_path:      ".worktrees/bf-prd-fix"
+
+host_handlers:
+  host.run:
+    by_call:
+      integrate_exec:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            outcome:        dirty_main
+            integrated_sha: ""
+            last_op_ok:     false
+            last_error:     "refusing to integrate: the integration tree . has uncommitted tracked changes — the merge (and a build-fail reset --hard) would clobber them. Commit or stash them first:\n M stories/git-ops/app.yaml"
+
+turns:
+  - intent: { name: begin, slots: {} }
+    expect_state: __exit__needs-human
+    expect_world:
+      status:            needs-human
+      integrate_outcome: dirty_main
+      integrated_sha:    ""
+      last_error:        "refusing to integrate: the integration tree . has uncommitted tracked changes — the merge (and a build-fail reset --hard) would clobber them. Commit or stash them first:\n M stories/git-ops/app.yaml"
+
+expect_terminal: true

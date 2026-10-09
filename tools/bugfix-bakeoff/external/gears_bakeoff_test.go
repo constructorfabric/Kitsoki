@@ -7,17 +7,17 @@
 // baseline_sha and GREEN after the real fix's source — by delegating to the same
 // deterministic grader (bench.py) the cost-bearing LLM cells use.
 //
-// It runs against a LOCAL checkout (no network): point GEARS_RUST_REPO at one.
+// It runs against a LOCAL checkout (no network): point BUGFIX_BAKEOFF_REPO at one.
 // A throwaway `git clone --local --no-checkout` mirror is used so the grader's
 // `git checkout <fix> -- <src>` never dirties your working tree's index. A shared
 // CARGO_TARGET_DIR caches compiled deps across oracles.
 //
-//	GEARS_RUST_REPO=~/code/gears-rust make gears-bakeoff
+//	BUGFIX_BAKEOFF_REPO=/path/to/checkout make gears-bakeoff
 //	# or:
-//	GEARS_RUST_REPO=~/code/gears-rust \
+//	BUGFIX_BAKEOFF_REPO=/path/to/checkout \
 //	  go test -tags gearsbakeoff -run TestGearsBakeoff -count=1 -v ./tools/bugfix-bakeoff/external/
 //
-// Skips (not fails) when GEARS_RUST_REPO is unset or git/cargo/python3 are absent,
+// Skips (not fails) when BUGFIX_BAKEOFF_REPO is unset or git/cargo/python3 are absent,
 // so it is safe to leave in the tree.
 package qsbakeoff
 
@@ -29,12 +29,12 @@ import (
 )
 
 func TestGearsBakeoff(t *testing.T) {
-	repo := os.Getenv("GEARS_RUST_REPO")
+	repo := os.Getenv("BUGFIX_BAKEOFF_REPO")
 	if repo == "" {
-		t.Skip("GEARS_RUST_REPO unset — point it at a local gears-rust checkout to arm the corpus")
+		t.Skip("BUGFIX_BAKEOFF_REPO unset — point it at a local checkout to arm the corpus")
 	}
 	if _, err := os.Stat(filepath.Join(repo, ".git")); err != nil {
-		t.Skipf("GEARS_RUST_REPO=%q is not a git checkout: %v", repo, err)
+		t.Skipf("BUGFIX_BAKEOFF_REPO=%q is not a git checkout: %v", repo, err)
 	}
 	for _, tool := range []string{"git", "cargo", "python3"} {
 		if _, err := exec.LookPath(tool); err != nil {

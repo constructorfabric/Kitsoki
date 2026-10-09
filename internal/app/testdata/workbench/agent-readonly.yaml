@@ -1,0 +1,23 @@
+app:
+  id: wb-agent-readonly
+  version: 0.1.0
+hosts:
+  - host.agent.task
+intents:
+  go:
+    title: Go
+root: bench
+toolboxes:
+  reviewer_toolbox:
+    tools: [Read, Grep, Glob]
+    effect: read
+states:
+  bench:
+    workbench:
+      agent: reviewer
+      prompt: prompts/bench.md
+      acceptance_schema: schemas/out.json
+agents:
+  reviewer:
+    system_prompt: "review things"
+    toolbox: reviewer_toolbox

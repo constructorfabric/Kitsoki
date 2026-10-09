@@ -1,0 +1,11 @@
+# A comment worth preserving across an apply — proves the yaml.Node rewrite
+# keeps comments/formatting rather than round-tripping through a plain
+# struct marshal.
+- schema: graph/feature/v0
+  id: feature-one
+  title: Feature one
+  status: active
+  visibility: public
+  edges:
+    requirements:
+      - req-one

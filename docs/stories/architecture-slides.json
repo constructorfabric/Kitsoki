@@ -174,13 +174,15 @@
       "cards": [
         { "label": "story.edit",    "sub": "default /meta story", "lines": ["full Claude toolset",  "edits the running story"], "style": "primary" },
         { "label": "story.ask",     "sub": "read-only Q&A",        "lines": ["Read / Glob / Grep",  "agent.ask backend"] },
+        { "label": "story.improve", "sub": "trace-backed report",  "lines": ["prompt / tool notes", "no-LLM coverage"] },
         { "label": "story.bug",     "sub": "file a story bug",     "lines": ["kitsoki bug create"] },
         { "label": "kitsoki.edit",  "sub": "edits kitsoki repo",   "lines": ["needs $KITSOKI_REPO"] },
         { "label": "kitsoki.ask",   "sub": "read-only Q&A",        "lines": ["about kitsoki source"] },
+        { "label": "kitsoki.improve", "sub": "engine report",      "lines": ["tool / host surface", "workflow hardening"] },
         { "label": "kitsoki.bug",   "sub": "file a kitsoki bug",   "lines": ["against kitsoki itself"] }
       ],
-      "caption": "/meta story · /meta kitsoki · bare /meta ask resolves to the story group. /onpath resumes the saved FSM state.",
-      "narration": "/meta pauses the FSM and opens a named-agent sidebar. Story and kitsoki groups — edit, ask, and bug verbs. Every app gets them free."
+      "caption": "/meta story · /meta improve · /meta kitsoki improve. Bare verbs resolve to the story group. /onpath resumes the saved FSM state.",
+      "narration": "/meta pauses the FSM and opens a named-agent sidebar. Story and kitsoki groups — edit, ask, improve, and bug verbs. Every app gets them free."
     },
     {
       "type": "cards",

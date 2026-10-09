@@ -52,7 +52,7 @@ host_handlers:
 turns:
   # Drive the refine intent directly. The Go gate proves free-text→refine routing;
   # this fixture confirms landing_plan_prior continuity and the revised plan binds.
-  - intent: { name: work, slots: { request: "dry-run first, don't write anything yet" } }
+  - intent: { name: landing_capture, slots: { request: "dry-run first, don't write anything yet" } }
     expect_state: landing
     expect_host_calls:
       - handler: host.agent.task

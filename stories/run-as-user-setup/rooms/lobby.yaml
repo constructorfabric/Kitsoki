@@ -1,0 +1,206 @@
+states:
+  lobby:
+    description: "Run-as-user setup"
+    relevant_world: [platform, operator_user, agent_user, group_name, capsule_root, wrapper_bin, protected_root]
+    view:
+      - prose: "Run the deterministic macOS delegated-user setup for coding-agent launches."
+      - kv:
+          pairs:
+            Status: "{{ world.status }}"
+            Platform: "{{ world.platform }}"
+            Operator user: "{{ world.operator_user|default:'(current user)' }}"
+            Agent user: "{{ world.agent_user }}"
+            Agent group: "{{ world.group_name }}"
+            Capsule root: "{{ world.capsule_root }}"
+            Wrapper bin: "{{ world.wrapper_bin }}"
+            Protected root: "{{ world.protected_root }}"
+      - heading: "Apply will"
+      - list:
+          items:
+            - label: "create or reuse the delegated macOS account"
+              hint: "{{ world.agent_user }}"
+            - label: "install root-owned CLI wrappers and sudoers"
+              hint: "{{ world.wrapper_bin }}"
+            - label: "create a sample capsule and run write/write-deny probes"
+              hint: "{{ world.sample_capsule }}"
+      - prose: "The setup uses sudo -n. If macOS needs a password, run sudo -v in the terminal that launched Kitsoki, then apply again."
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "apply"
+              intent: apply
+              hint: "create the account, install wrappers, and run probes"
+            - label: "details"
+              intent: plan
+              hint: "show the generated receipt and deterministic steps"
+            - label: "edit values"
+              intent: edit
+              hint: "change users, paths, or CLI locations"
+            - label: "quit"
+              intent: quit
+            - label: "look"
+              intent: look
+    on:
+      accept:
+        - target: applying
+          effects:
+            - set:
+                apply_ok: false
+                apply_exit_code: -1
+                apply_output: ""
+                last_error: ""
+                status: "applying"
+      apply:
+        - target: applying
+          effects:
+            - set:
+                apply_ok: false
+                apply_exit_code: -1
+                apply_output: ""
+                last_error: ""
+                status: "applying"
+      plan:
+        - target: details
+          effects:
+            - set:
+                setup_summary: ""
+                config_snippet: ""
+                account_steps: ""
+                group_commands: ""
+                wrapper_commands: ""
+                sudoers_snippet: ""
+                assignment_commands: ""
+                validation_commands: ""
+                receipt_markdown: ""
+                security_notes: ""
+                apply_ok: false
+                apply_exit_code: -1
+                apply_output: ""
+                last_error: ""
+                status: "loading details"
+      edit:
+        - target: configuring
+      configure:
+        - target: lobby
+          effects:
+            - set:
+                platform: "{{ slots.platform ?? world.platform }}"
+                operator_user: "{{ slots.operator_user ?? world.operator_user }}"
+                agent_user: "{{ slots.agent_user ?? world.agent_user }}"
+                group_name: "{{ slots.group_name ?? world.group_name }}"
+                capsule_root: "{{ slots.capsule_root ?? world.capsule_root }}"
+                wrapper_bin: "{{ slots.wrapper_bin ?? world.wrapper_bin }}"
+                protected_root: "{{ slots.protected_root ?? world.protected_root }}"
+                codex_bin: "{{ slots.codex_bin ?? world.codex_bin }}"
+                claude_bin: "{{ slots.claude_bin ?? world.claude_bin }}"
+                sample_capsule: "{{ slots.sample_capsule ?? world.sample_capsule }}"
+                setup_summary: ""
+                config_snippet: ""
+                account_steps: ""
+                group_commands: ""
+                wrapper_commands: ""
+                sudoers_snippet: ""
+                assignment_commands: ""
+                validation_commands: ""
+                receipt_markdown: ""
+                security_notes: ""
+                apply_ok: false
+                apply_exit_code: -1
+                apply_output: ""
+                last_error: ""
+                status: "ready to apply"
+      look:
+        - target: .
+      quit:
+        - target: ended
+
+  configuring:
+    description: "Edit run-as-user setup values"
+    relevant_world: [platform, operator_user, agent_user, group_name, capsule_root, wrapper_bin, protected_root, codex_bin, claude_bin, sample_capsule]
+    view:
+      - prose: "Edit the deterministic setup inputs. Leave a field unchanged to keep its current value."
+      - choice:
+          mode: form
+          prompt: "Setup values"
+          intent: configure
+          template: "Use agent {agent_user}, group {group_name}, capsules {capsule_root}, wrappers {wrapper_bin}, protected root {protected_root}."
+          fields:
+            platform:
+              type: string
+              default: "{{ world.platform }}"
+              required: true
+            operator_user:
+              type: string
+              default: "{{ world.operator_user }}"
+              placeholder: "(blank uses current user)"
+              required: false
+            agent_user:
+              type: string
+              default: "{{ world.agent_user }}"
+              required: true
+            group_name:
+              type: string
+              default: "{{ world.group_name }}"
+              required: true
+            capsule_root:
+              type: string
+              default: "{{ world.capsule_root }}"
+              required: true
+            wrapper_bin:
+              type: string
+              default: "{{ world.wrapper_bin }}"
+              required: true
+            protected_root:
+              type: string
+              default: "{{ world.protected_root }}"
+              required: true
+            codex_bin:
+              type: string
+              default: "{{ world.codex_bin }}"
+              required: true
+            claude_bin:
+              type: string
+              default: "{{ world.claude_bin }}"
+              required: true
+            sample_capsule:
+              type: string
+              default: "{{ world.sample_capsule }}"
+              required: true
+      - prose: "Type back to return without changing values."
+    on:
+      configure:
+        - target: lobby
+          effects:
+            - set:
+                platform: "{{ slots.platform ?? world.platform }}"
+                operator_user: "{{ slots.operator_user ?? world.operator_user }}"
+                agent_user: "{{ slots.agent_user ?? world.agent_user }}"
+                group_name: "{{ slots.group_name ?? world.group_name }}"
+                capsule_root: "{{ slots.capsule_root ?? world.capsule_root }}"
+                wrapper_bin: "{{ slots.wrapper_bin ?? world.wrapper_bin }}"
+                protected_root: "{{ slots.protected_root ?? world.protected_root }}"
+                codex_bin: "{{ slots.codex_bin ?? world.codex_bin }}"
+                claude_bin: "{{ slots.claude_bin ?? world.claude_bin }}"
+                sample_capsule: "{{ slots.sample_capsule ?? world.sample_capsule }}"
+                setup_summary: ""
+                config_snippet: ""
+                account_steps: ""
+                group_commands: ""
+                wrapper_commands: ""
+                sudoers_snippet: ""
+                assignment_commands: ""
+                validation_commands: ""
+                receipt_markdown: ""
+                security_notes: ""
+                apply_ok: false
+                apply_exit_code: -1
+                apply_output: ""
+                last_error: ""
+                status: "ready to apply"
+      back:
+        - target: lobby
+      look:
+        - target: .
+      quit:
+        - target: ended

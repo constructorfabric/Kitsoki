@@ -1,0 +1,59 @@
+# Scenario Foundry harness — a minimal one-room app that plays back a mined
+# `kind: conversation` scenario IR document (docs/proposals/scenario-foundry.md
+# #scenario-ir) as a replayable flow fixture.
+#
+# Why this app exists (task 3.1, tools/session-mining/flow_fixture_compiler.py):
+# a mined scenario's turns are free-text (`turns[].text`), not a resolved
+# intent + slots — there is no per-turn router decision recorded upstream. The
+# generic `trace to-flow` shape (internal/testrunner/fromtrace.go) projects
+# onto `intent: {name, slots}` turns, so rather than resolve each mined
+# utterance against some arbitrary story's real intents (a different, much
+# larger problem — see docs/proposals/scenario-foundry.md's "flow-fixture
+# compiler" note), the compiler projects every mined user turn onto ONE
+# explicit intent here (`ask`, slot `text`) that hands the verbatim utterance
+# to host.agent.converse and stays in the same room. `display_input:` on the
+# generated flow turn carries the operator's real words for the trace/replay
+# UI; `slots.text` is what actually drives the (stubbed) converse call.
+#
+# This deliberately mirrors stories/off-ramp-demo's off-ramp mechanic (a
+# free-text utterance answered via a voiced host.agent.converse turn without
+# advancing state) but uses an EXPLICIT intent instead of a clarify/off-ramp
+# no-match, because internal/testrunner's orchestrator-backed runner (needed
+# for host_cassette:) does not support recording-resolved `input:` turns today
+# (see internal/testrunner/flows.go's runOneFlowOrchestrator: "recording
+# routing not yet supported on orchestrator path"). Explicit `intent:` turns
+# sidestep that gap entirely and are fully supported with host_cassette:.
+
+app:
+  id: scenario-foundry-harness
+  version: 0.1.0
+  title: "Scenario Foundry Harness — mined-scenario replay"
+  author: "kitsoki"
+  license: "CC0"
+
+hosts:
+  - host.agent.converse
+
+world:
+  # The current turn's verbatim mined utterance. Empty at load, so the
+  # initial on_enter (which runs before any `ask` intent fires) skips the
+  # invoke below.
+  text: { type: string, default: "" }
+  # The most recent converse reply, bound for view/inspection only.
+  last_answer: { type: string, default: "" }
+
+intents:
+  ask:
+    title: "Ask (mined utterance)"
+    description: "Replay one mined free-text user turn."
+    examples: ["ask a question"]
+    slots:
+      text:
+        type: string
+        required: true
+        description: "Verbatim mined user-turn text."
+
+root: desk
+
+include:
+  - rooms/*.yaml

@@ -43,16 +43,43 @@ type Service struct {
 
 // GenerateRequest captures the operator request being turned into a workflow.
 type GenerateRequest struct {
-	Goal   string
-	Slug   string
-	Story  string
-	Prompt string
+	Goal     string
+	Slug     string
+	Story    string
+	Prompt   string
+	Defaults *ManifestDefaults
+	Items    []CreateItem
 }
 
 // CreateRequest is the input to Create.
 type CreateRequest struct {
-	Goal string
-	Slug string
+	Goal     string            `json:"goal" yaml:"goal"`
+	Slug     string            `json:"slug,omitempty" yaml:"slug,omitempty"`
+	Defaults *ManifestDefaults `json:"defaults,omitempty" yaml:"defaults,omitempty"`
+	Items    []CreateItem      `json:"items,omitempty" yaml:"items,omitempty"`
+}
+
+// CreateItem is an operator-provided decomposition row. It is intentionally
+// close to a punch-list item, while keeping common brief fields like gate and
+// owner_scope short enough to write by hand.
+type CreateItem struct {
+	ID                   string           `json:"id" yaml:"id"`
+	Title                string           `json:"title,omitempty" yaml:"title,omitempty"`
+	Priority             int              `json:"priority,omitempty" yaml:"priority,omitempty"`
+	OwnerScope           string           `json:"owner_scope,omitempty" yaml:"owner_scope,omitempty"`
+	Gate                 string           `json:"gate,omitempty" yaml:"gate,omitempty"`
+	Story                string           `json:"story,omitempty" yaml:"story,omitempty"`
+	Harness              string           `json:"harness,omitempty" yaml:"harness,omitempty"`
+	Profile              string           `json:"profile,omitempty" yaml:"profile,omitempty"`
+	Model                string           `json:"model,omitempty" yaml:"model,omitempty"`
+	RequireGPT55         *bool            `json:"require_gpt55,omitempty" yaml:"require_gpt55,omitempty"`
+	HarnessLadder        *HarnessLadder   `json:"harness_ladder,omitempty" yaml:"harness_ladder,omitempty"`
+	Mode                 string           `json:"mode,omitempty" yaml:"mode,omitempty"`
+	Prompt               string           `json:"prompt,omitempty" yaml:"prompt,omitempty"`
+	ImplementationStory  string           `json:"implementation_story,omitempty" yaml:"implementation_story,omitempty"`
+	ImplementationPrompt string           `json:"implementation_prompt,omitempty" yaml:"implementation_prompt,omitempty"`
+	GateCommand          string           `json:"gate_command,omitempty" yaml:"gate_command,omitempty"`
+	Verify               []ManifestVerify `json:"verify,omitempty" yaml:"verify,omitempty"`
 }
 
 // ExportRequest controls the promotion/export destination.
@@ -71,15 +98,43 @@ type ValidationReport struct {
 // ExportReport is the deterministic promotion/export summary written beside a
 // promoted workflow package.
 type ExportReport struct {
-	WorkflowID      string   `json:"workflow_id"`
-	ExportPath      string   `json:"export_path"`
-	Status          string   `json:"status"`
-	Artifacts       []string `json:"artifacts,omitempty"`
-	StarterFlowPath string   `json:"starter_flow_path,omitempty"`
-	StarterCassette string   `json:"starter_cassette_path,omitempty"`
-	Warnings        []string `json:"warnings,omitempty"`
-	Todos           []string `json:"todos,omitempty"`
-	BaseStory       bool     `json:"base_story,omitempty"`
+	WorkflowID        string                  `json:"workflow_id"`
+	ExportPath        string                  `json:"export_path"`
+	Status            string                  `json:"status"`
+	Artifacts         []string                `json:"artifacts,omitempty"`
+	StarterFlowPath   string                  `json:"starter_flow_path,omitempty"`
+	StarterCassette   string                  `json:"starter_cassette_path,omitempty"`
+	StarterFlowReplay *StarterFlowReplayCheck `json:"starter_flow_replay,omitempty"`
+	Warnings          []string                `json:"warnings,omitempty"`
+	Todos             []string                `json:"todos,omitempty"`
+	BaseStory         bool                    `json:"base_story,omitempty"`
+}
+
+// StarterFlowReplayCheck records whether the generated starter flow was
+// replayed successfully during export. It turns "exported" from a copy-only
+// claim into a runtime-checked artifact.
+type StarterFlowReplayCheck struct {
+	OK     bool   `json:"ok"`
+	Passed int    `json:"passed"`
+	Failed int    `json:"failed"`
+	Error  string `json:"error,omitempty"`
+}
+
+// FormatStarterFlowReplay returns the compact human-facing verdict for a
+// starter-flow replay check. Empty means no replay check was available.
+func FormatStarterFlowReplay(check *StarterFlowReplayCheck) string {
+	if check == nil {
+		return ""
+	}
+	status := "failed"
+	if check.OK {
+		status = "ok"
+	}
+	out := fmt.Sprintf("%s (%d passed, %d failed)", status, check.Passed, check.Failed)
+	if check.Error != "" {
+		out += ": " + check.Error
+	}
+	return out
 }
 
 // Receipt is the common artifact/trackable shape returned by create/validate/
@@ -89,11 +144,13 @@ type Receipt struct {
 	Goal             string           `json:"goal"`
 	Slug             string           `json:"slug"`
 	CreatedAt        time.Time        `json:"created_at"`
+	ModelPolicy      ModelPolicy      `json:"model_policy"`
 	DraftDir         string           `json:"draft_dir"`
 	TemplateStoryDir string           `json:"template_story_dir"`
 	AppPath          string           `json:"app_path"`
 	ManifestPath     string           `json:"manifest_path"`
 	LaunchBasisPath  string           `json:"launch_basis_path"`
+	StatePath        string           `json:"state_path,omitempty"`
 	TracePath        string           `json:"trace_path,omitempty"`
 	EventsPath       string           `json:"events_path,omitempty"`
 	LaunchCommand    string           `json:"launch_command,omitempty"`
@@ -101,47 +158,88 @@ type Receipt struct {
 	ValidationPath   string           `json:"validation_path,omitempty"`
 	ExportPath       string           `json:"export_path,omitempty"`
 	ExportReportPath string           `json:"export_report_path,omitempty"`
+	ExportReport     *ExportReport    `json:"export_report,omitempty"`
 	SessionID        string           `json:"session_id,omitempty"`
 	SessionHandle    string           `json:"session_handle,omitempty"`
 	URL              string           `json:"url,omitempty"`
 }
 
+// ModelPolicy is the effective dispatch policy surfaced on the receipt so a
+// reviewer does not need to open manifest.yaml to audit the worker model.
+type ModelPolicy struct {
+	Harness           string `json:"harness"`
+	Profile           string `json:"profile"`
+	Model             string `json:"model"`
+	RequireTraceModel bool   `json:"require_trace_model"`
+	RequireGPT55      bool   `json:"require_gpt55"`
+}
+
 // Manifest is the punch-list manifest emitted for the workflow.
 type Manifest struct {
-	Version  string           `yaml:"version"`
-	Defaults ManifestDefaults `yaml:"defaults"`
-	Items    []ManifestItem   `yaml:"items"`
+	Version  string           `json:"version" yaml:"version"`
+	Defaults ManifestDefaults `json:"defaults" yaml:"defaults"`
+	Items    []ManifestItem   `json:"items" yaml:"items"`
 }
 
 // ManifestDefaults are copied onto each generated item.
 type ManifestDefaults struct {
-	Harness           string `yaml:"harness"`
-	Profile           string `yaml:"profile"`
-	Model             string `yaml:"model"`
-	TraceRoot         string `yaml:"trace_root"`
-	RequireTraceModel bool   `yaml:"require_trace_model,omitempty"`
+	Harness           string         `json:"harness,omitempty" yaml:"harness"`
+	Profile           string         `json:"profile,omitempty" yaml:"profile"`
+	Model             string         `json:"model,omitempty" yaml:"model"`
+	TraceRoot         string         `json:"trace_root,omitempty" yaml:"trace_root"`
+	RequireGPT55      *bool          `json:"require_gpt55,omitempty" yaml:"require_gpt55,omitempty"`
+	RequireTraceModel bool           `json:"require_trace_model" yaml:"require_trace_model"`
+	HarnessLadder     *HarnessLadder `json:"harness_ladder,omitempty" yaml:"harness_ladder,omitempty"`
+}
+
+// HarnessLadder is the punch-list policy shape for non-default live model
+// dispatch. It keeps generated GLM/synthetic workflows inside the story's
+// accepted policy instead of bypassing the GPT-5.5 live-work guard.
+type HarnessLadder struct {
+	Models  []HarnessLadderModel `json:"models" yaml:"models"`
+	Efforts []string             `json:"efforts,omitempty" yaml:"efforts,omitempty"`
+}
+
+// HarnessLadderModel is one selectable worker profile in a ladder manifest.
+type HarnessLadderModel struct {
+	Backend  string `json:"backend,omitempty" yaml:"backend,omitempty"`
+	Provider string `json:"provider,omitempty" yaml:"provider,omitempty"`
+	Model    string `json:"model" yaml:"model"`
 }
 
 // ManifestItem is one row in the generated punch-list manifest.
 type ManifestItem struct {
-	ID                   string           `yaml:"id"`
-	Title                string           `yaml:"title"`
-	Priority             int              `yaml:"priority"`
-	Story                string           `yaml:"story"`
-	Mode                 string           `yaml:"mode"`
-	Prompt               string           `yaml:"prompt"`
-	ImplementationStory  string           `yaml:"implementation_story,omitempty"`
-	ImplementationPrompt string           `yaml:"implementation_prompt,omitempty"`
-	GateCommand          string           `yaml:"gate_command,omitempty"`
-	Verify               []ManifestVerify `yaml:"verify"`
+	ID                   string           `json:"id" yaml:"id"`
+	Title                string           `json:"title" yaml:"title"`
+	Priority             int              `json:"priority" yaml:"priority"`
+	OwnerScope           string           `json:"owner_scope,omitempty" yaml:"owner_scope,omitempty"`
+	Story                string           `json:"story" yaml:"story"`
+	Harness              string           `json:"harness,omitempty" yaml:"harness,omitempty"`
+	Profile              string           `json:"profile,omitempty" yaml:"profile,omitempty"`
+	Model                string           `json:"model,omitempty" yaml:"model,omitempty"`
+	RequireGPT55         *bool            `json:"require_gpt55,omitempty" yaml:"require_gpt55,omitempty"`
+	HarnessLadder        *HarnessLadder   `json:"harness_ladder,omitempty" yaml:"harness_ladder,omitempty"`
+	Mode                 string           `json:"mode" yaml:"mode"`
+	Prompt               string           `json:"prompt" yaml:"prompt"`
+	ImplementationStory  string           `json:"implementation_story,omitempty" yaml:"implementation_story,omitempty"`
+	ImplementationPrompt string           `json:"implementation_prompt,omitempty" yaml:"implementation_prompt,omitempty"`
+	GateCommand          string           `json:"gate_command,omitempty" yaml:"gate_command,omitempty"`
+	Verify               []ManifestVerify `json:"verify,omitempty" yaml:"verify"`
 }
 
 // ManifestVerify is one deterministic check in the manifest.
 type ManifestVerify struct {
-	Kind  string `yaml:"kind"`
-	Story string `yaml:"story,omitempty"`
-	Cmd   string `yaml:"cmd,omitempty"`
-	Flows string `yaml:"flows,omitempty"`
+	Kind  string `json:"kind" yaml:"kind"`
+	Story string `json:"story,omitempty" yaml:"story,omitempty"`
+	Cmd   string `json:"cmd,omitempty" yaml:"cmd,omitempty"`
+	Flows string `json:"flows,omitempty" yaml:"flows,omitempty"`
+}
+
+type manifestStep struct {
+	id     string
+	title  string
+	prompt string
+	verify []ManifestVerify
 }
 
 var unsafeSlug = regexp.MustCompile(`[^a-zA-Z0-9._-]+`)
@@ -193,18 +291,19 @@ func (s *Service) ensure() {
 func (s *Service) Create(ctx context.Context, req CreateRequest) (*Receipt, error) {
 	_ = ctx
 	s.ensure()
-	genReq := GenerateRequest{Goal: req.Goal, Slug: req.Slug, Story: s.TemplateStoryDir, Prompt: req.Goal}
+	genReq := GenerateRequest{Goal: req.Goal, Slug: req.Slug, Story: s.TemplateStoryDir, Prompt: req.Goal, Defaults: req.Defaults, Items: req.Items}
 	workflowID := s.GenerateWorkflowID(genReq)
 	if workflowID == "" {
 		return nil, fmt.Errorf("dynamicworkflow: empty workflow id")
 	}
-	draftDir := filepath.Join(s.OutputDir, workflowID)
-	if err := os.MkdirAll(draftDir, 0o755); err != nil {
+	workflowID, draftDir, err := s.reserveDraftDir(workflowID)
+	if err != nil {
 		return nil, fmt.Errorf("dynamicworkflow: create draft dir: %w", err)
 	}
 	appPath := filepath.Join(draftDir, "app")
 	manifestPath := filepath.Join(draftDir, "manifest.yaml")
 	launchBasisPath := filepath.Join(draftDir, "launch.yaml")
+	statePath := filepath.Join(draftDir, "punch-list.state.json")
 	validationPath := filepath.Join(draftDir, "validation.json")
 	eventsPath := filepath.Join(draftDir, "events.jsonl")
 	receiptPath := filepath.Join(draftDir, "receipt.json")
@@ -218,7 +317,7 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (*Receipt, erro
 	if err := writeYAML(manifestPath, manifest); err != nil {
 		return nil, err
 	}
-	if err := writeLaunchBasis(launchBasisPath, manifestPath); err != nil {
+	if err := writeLaunchBasis(launchBasisPath, runtimePath(s.RootDir, manifestPath), runtimePath(s.RootDir, statePath)); err != nil {
 		return nil, err
 	}
 
@@ -231,11 +330,13 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (*Receipt, erro
 		Goal:             req.Goal,
 		Slug:             workflowSlug(req.Slug, req.Goal),
 		CreatedAt:        s.Now().UTC(),
+		ModelPolicy:      modelPolicyFromDefaults(manifest.Defaults),
 		DraftDir:         draftDir,
 		TemplateStoryDir: s.TemplateStoryDir,
 		AppPath:          appPath,
 		ManifestPath:     manifestPath,
 		LaunchBasisPath:  launchBasisPath,
+		StatePath:        statePath,
 		TracePath:        filepath.Join(draftDir, "trace.jsonl"),
 		EventsPath:       eventsPath,
 		Validation:       report,
@@ -258,6 +359,7 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (*Receipt, erro
 		"app_path":        appPath,
 		"manifest_path":   manifestPath,
 		"manifest_hash":   mustHashFile(manifestPath),
+		"model_policy":    receipt.ModelPolicy,
 		"launch_basis":    launchBasisPath,
 		"trace_path":      receipt.TracePath,
 		"validation_path": validationPath,
@@ -284,6 +386,28 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (*Receipt, erro
 	return receipt, nil
 }
 
+func (s *Service) reserveDraftDir(baseWorkflowID string) (string, string, error) {
+	if err := os.MkdirAll(s.OutputDir, 0o755); err != nil {
+		return "", "", err
+	}
+	for i := 0; i < 1000; i++ {
+		workflowID := baseWorkflowID
+		if i > 0 {
+			workflowID = fmt.Sprintf("%s-%d", baseWorkflowID, i+1)
+		}
+		draftDir := filepath.Join(s.OutputDir, workflowID)
+		err := os.Mkdir(draftDir, 0o755)
+		if err == nil {
+			return workflowID, draftDir, nil
+		}
+		if os.IsExist(err) {
+			continue
+		}
+		return "", "", err
+	}
+	return "", "", fmt.Errorf("exhausted unique ids for %s", baseWorkflowID)
+}
+
 // Launch resolves the draft receipt and ensures it is validated before launch.
 // The caller is responsible for creating any live session handle; this method
 // just normalizes the launch receipt shape and persists it.
@@ -292,6 +416,15 @@ func (s *Service) Launch(ctx context.Context, workflowID string) (*Receipt, erro
 	s.ensure()
 	receipt, err := s.ReadReceipt(workflowID)
 	if err != nil {
+		return nil, err
+	}
+	if receipt.StatePath == "" {
+		receipt.StatePath = filepath.Join(s.OutputDir, receipt.WorkflowID, "punch-list.state.json")
+	}
+	if receipt.LaunchBasisPath == "" {
+		receipt.LaunchBasisPath = filepath.Join(s.OutputDir, receipt.WorkflowID, "launch.yaml")
+	}
+	if err := writeLaunchBasis(receipt.LaunchBasisPath, runtimePath(s.RootDir, receipt.ManifestPath), runtimePath(s.RootDir, receipt.StatePath)); err != nil {
 		return nil, err
 	}
 	if !receipt.Validation.OK {
@@ -342,14 +475,82 @@ func (s *Service) ValidateDraft(appPath, manifestPath string) ValidationReport {
 		return report
 	}
 	report.Errors = append(report.Errors, validateManifest(s.RootDir, manifest, appPath)...)
+	launchWorld, launchErrs := s.validateLaunchBasis(filepath.Join(filepath.Dir(manifestPath), "launch.yaml"), manifestPath)
+	report.Errors = append(report.Errors, launchErrs...)
+	if len(launchErrs) == 0 {
+		report.Errors = append(report.Errors, s.validateLaunchReadiness(appPath, launchWorld)...)
+	}
 	report.OK = len(report.Errors) == 0
 	return report
+}
+
+func (s *Service) validateLaunchBasis(launchBasisPath, manifestPath string) (map[string]any, []string) {
+	world, err := LaunchInitialWorld(s.RootDir, launchBasisPath)
+	if err != nil {
+		return nil, []string{fmt.Sprintf("launch basis invalid: %v", err)}
+	}
+	expectedManifest := filepath.ToSlash(runtimePath(s.RootDir, manifestPath))
+	if got := strings.TrimSpace(stringFromAny(world["manifest_path"])); got != expectedManifest {
+		return nil, []string{fmt.Sprintf("launch basis manifest_path mismatch: got %q, want %q", got, expectedManifest)}
+	}
+	return world, nil
+}
+
+func (s *Service) validateLaunchReadiness(appPath string, launchWorld map[string]any) []string {
+	tmpDir, err := os.MkdirTemp("", "kitsoki-dynamicworkflow-validate-*")
+	if err != nil {
+		return []string{fmt.Sprintf("runtime launch-readiness setup failed: %v", err)}
+	}
+	defer os.RemoveAll(tmpDir)
+
+	appYAML := filepath.Join(appPath, "app.yaml")
+	flowPath := filepath.Join(tmpDir, "launch-readiness.yaml")
+	flow := map[string]any{
+		"test_kind":        "flow",
+		"app":              filepath.ToSlash(runtimePath(s.RootDir, appYAML)),
+		"use_orchestrator": true,
+		"initial_state":    "idle",
+		"initial_world":    launchWorld,
+		"turns": []map[string]any{
+			{
+				"intent":       map[string]any{"name": "start", "slots": map[string]any{}},
+				"expect_state": "load",
+				"expect_world": map[string]any{"load_error": ""},
+			},
+			{
+				"intent":       map[string]any{"name": "next_item", "slots": map[string]any{}},
+				"expect_state": "board",
+			},
+		},
+		"expect_no_errors": true,
+	}
+	if err := writeYAML(flowPath, flow); err != nil {
+		return []string{fmt.Sprintf("runtime launch-readiness setup failed: %v", err)}
+	}
+
+	report, err := runPreservingStateFile(s.RootDir, launchWorld, func() (*testrunner.FlowReport, error) {
+		return testrunner.RunFlows(context.Background(), appYAML, flowPath, testrunner.FlowOptions{FailFast: true})
+	})
+	if err != nil {
+		return []string{fmt.Sprintf("runtime launch-readiness failed: %v", err)}
+	}
+	if report.Failed == 0 {
+		return nil
+	}
+	errs := []string{"runtime launch-readiness failed"}
+	for _, result := range report.Results {
+		for _, turn := range result.Turns {
+			for _, failure := range turn.Failures {
+				errs = append(errs, fmt.Sprintf("runtime launch-readiness turn %d: %s", turn.TurnIndex, failure))
+			}
+		}
+	}
+	return errs
 }
 
 // Export copies a generated workflow package to targetDir and writes starter
 // flow/cassette artifacts derived from the trace when available.
 func (s *Service) Export(ctx context.Context, workflowID string, req ExportRequest) (*Receipt, error) {
-	_ = ctx
 	s.ensure()
 	draftDir := filepath.Join(s.OutputDir, workflowID)
 	receipt, err := s.ReadReceipt(workflowID)
@@ -384,7 +585,9 @@ func (s *Service) Export(ctx context.Context, workflowID string, req ExportReque
 	manifest.Defaults.TraceRoot = filepath.ToSlash(filepath.Join(targetDir, "traces"))
 	for i := range manifest.Items {
 		manifest.Items[i].Story = filepath.ToSlash(exportAppPath)
-		manifest.Items[i].ImplementationStory = filepath.ToSlash(exportAppPath)
+		if strings.TrimSpace(manifest.Items[i].ImplementationStory) != "" {
+			manifest.Items[i].ImplementationStory = filepath.ToSlash(exportAppPath)
+		}
 		for j := range manifest.Items[i].Verify {
 			switch manifest.Items[i].Verify[j].Kind {
 			case "story_validate", "story_test":
@@ -395,7 +598,8 @@ func (s *Service) Export(ctx context.Context, workflowID string, req ExportReque
 	if err := writeYAML(filepath.Join(targetDir, "manifest.yaml"), manifest); err != nil {
 		return nil, err
 	}
-	if err := writeLaunchBasis(filepath.Join(targetDir, "launch.yaml"), filepath.Join(targetDir, "manifest.yaml")); err != nil {
+	exportStatePath := filepath.Join(targetDir, "punch-list.state.json")
+	if err := writeLaunchBasis(filepath.Join(targetDir, "launch.yaml"), runtimePath(s.RootDir, filepath.Join(targetDir, "manifest.yaml")), runtimePath(s.RootDir, exportStatePath)); err != nil {
 		return nil, err
 	}
 	readme := strings.TrimSpace(fmt.Sprintf(`# %s
@@ -423,7 +627,11 @@ Validation: %t
 	if tracePath := receipt.TracePath; tracePath != "" {
 		flowRes, convErr := testrunner.ConvertTraceToFlow(tracePath, testrunner.ConvertOptions{
 			AppPath:      filepath.ToSlash(filepath.Join(targetDir, "app", "app.yaml")),
-			CassettePath: filepath.ToSlash(filepath.Join(targetDir, "flows", "generated.cassette.yaml")),
+			CassettePath: "generated.cassette.yaml",
+			InitialWorld: map[string]any{
+				"manifest_path": filepath.ToSlash(filepath.Join(targetDir, "manifest.yaml")),
+				"state_path":    filepath.ToSlash(filepath.Join(targetDir, "flows", "generated.state.json")),
+			},
 		})
 		if convErr != nil {
 			report.Status = "copied-with-todos"
@@ -470,6 +678,12 @@ Validation: %t
 			if report.StarterCassette == "" {
 				report.Todos = append(report.Todos, "add a host cassette if the trace recorded host calls")
 			}
+			report.StarterFlowReplay = validateStarterFlowReplay(ctx, filepath.Join(targetDir, "app", "app.yaml"), flowPath)
+			if !report.StarterFlowReplay.OK {
+				report.Status = "copied-with-todos"
+				report.Warnings = append(report.Warnings, fmt.Sprintf("starter flow replay failed: %s", report.StarterFlowReplay.Error))
+				report.Todos = append(report.Todos, "fix the generated starter flow before using it as a regression fixture")
+			}
 		}
 	} else {
 		report.Status = "copied-with-todos"
@@ -499,9 +713,11 @@ Validation: %t
 	}
 	receipt.ExportPath = targetDir
 	receipt.ExportReportPath = reportPath
+	receipt.ExportReport = &report
 	receipt.LaunchBasisPath = filepath.Join(targetDir, "launch.yaml")
 	receipt.AppPath = exportAppDir
 	receipt.ManifestPath = filepath.Join(targetDir, "manifest.yaml")
+	receipt.StatePath = exportStatePath
 	receipt.LaunchCommand = fmt.Sprintf("kitsoki run %s --warp %s", quoteArg(filepath.Join(exportAppDir, "app.yaml")), quoteArg(receipt.LaunchBasisPath))
 	if err := writeJSON(filepath.Join(draftDir, "receipt.json"), receipt); err != nil {
 		return nil, err
@@ -521,6 +737,25 @@ Validation: %t
 	return receipt, nil
 }
 
+func validateStarterFlowReplay(ctx context.Context, appPath, flowPath string) *StarterFlowReplayCheck {
+	check := &StarterFlowReplayCheck{}
+	statePath := filepath.Join(filepath.Dir(flowPath), "generated.state.json")
+	_ = os.Remove(statePath)
+	defer os.Remove(statePath)
+	report, err := testrunner.RunFlows(ctx, appPath, flowPath, testrunner.FlowOptions{FailFast: true})
+	if err != nil {
+		check.Error = err.Error()
+		return check
+	}
+	check.Passed = report.Passed
+	check.Failed = report.Failed
+	check.OK = report.Failed == 0
+	if !check.OK {
+		check.Error = fmt.Sprintf("%d generated starter flow(s) failed", report.Failed)
+	}
+	return check
+}
+
 // ReadReceipt loads receipt.json for a draft.
 func (s *Service) ReadReceipt(workflowID string) (*Receipt, error) {
 	s.ensure()
@@ -529,7 +764,26 @@ func (s *Service) ReadReceipt(workflowID string) (*Receipt, error) {
 	if err := readJSON(path, &receipt); err != nil {
 		return nil, err
 	}
+	if receipt.ModelPolicy == (ModelPolicy{}) && receipt.ManifestPath != "" {
+		if manifest, err := readManifest(receipt.ManifestPath); err == nil {
+			receipt.ModelPolicy = modelPolicyFromDefaults(manifest.Defaults)
+		}
+	}
 	return &receipt, nil
+}
+
+// ReadCreateRequest reads a YAML or JSON workflow brief. It is shared by the
+// CLI and tests; Studio MCP callers can pass the same shape as JSON args.
+func ReadCreateRequest(path string) (CreateRequest, error) {
+	var req CreateRequest
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return req, err
+	}
+	if err := goyaml.Unmarshal(b, &req); err != nil {
+		return req, err
+	}
+	return req, nil
 }
 
 func (s *Service) buildManifest(req GenerateRequest, workflowID, appPath, manifestPath string) Manifest {
@@ -538,65 +792,347 @@ func (s *Service) buildManifest(req GenerateRequest, workflowID, appPath, manife
 		goal = workflowID
 	}
 	goalSentence := truncateWords(goal, 12)
-	steps := []struct {
-		id     string
-		title  string
-		prompt string
-		verify []ManifestVerify
-	}{
-		{
-			id:     "scope",
-			title:  "Scope the task",
-			prompt: fmt.Sprintf("Read the goal carefully and identify the parts that need implementation for %s.", goalSentence),
-			verify: []ManifestVerify{{Kind: "story_validate", Story: filepath.ToSlash(filepath.Join(appPath, "app.yaml"))}},
-		},
-		{
-			id:     "implement",
-			title:  "Implement the core slice",
-			prompt: fmt.Sprintf("Make the smallest coherent implementation for %s and keep the result reviewable.", goalSentence),
-			verify: []ManifestVerify{{Kind: "story_validate", Story: filepath.ToSlash(filepath.Join(appPath, "app.yaml"))}},
-		},
-		{
-			id:     "wire",
-			title:  "Wire the surfaces",
-			prompt: fmt.Sprintf("Thread the result through the MCP, CLI, and runstatus-facing surfaces for %s.", goalSentence),
-			verify: []ManifestVerify{{Kind: "story_validate", Story: filepath.ToSlash(filepath.Join(appPath, "app.yaml"))}},
-		},
-		{
-			id:     "test",
-			title:  "Test and document it",
-			prompt: fmt.Sprintf("Add deterministic checks, docs, and dogfood evidence for %s.", goalSentence),
-			verify: []ManifestVerify{
-				{Kind: "story_validate", Story: filepath.ToSlash(filepath.Join(appPath, "app.yaml"))},
-				{Kind: "command", Cmd: "go test ./..."},
+	fullGoal := truncateWords(goal, 80)
+	defaults := inferManifestDefaults(goal, filepath.ToSlash(runtimePath(s.RootDir, filepath.Join(filepath.Dir(manifestPath), "traces"))))
+	if req.Defaults != nil {
+		defaults = mergeManifestDefaults(defaults, *req.Defaults)
+	}
+	var steps []manifestStep
+	researchOnly := false
+	appYAML := filepath.ToSlash(runtimePath(s.RootDir, filepath.Join(appPath, "app.yaml")))
+	if len(req.Items) > 0 {
+		return Manifest{
+			Version:  ManifestVersion,
+			Defaults: defaults,
+			Items:    s.buildStructuredItems(req.Items, fullGoal, appYAML),
+		}
+	}
+	if isResearchGoal(goal) {
+		researchOnly = true
+		defaults = syntheticGLMLadderDefaults(defaults)
+		steps = researchFanoutSteps(fullGoal, appYAML)
+	} else if isCoverageFanoutGoal(goal) {
+		steps = coverageFanoutSteps(fullGoal, appYAML)
+	} else {
+		steps = []manifestStep{
+			{
+				id:     "scope",
+				title:  "Scope the task",
+				prompt: fmt.Sprintf("Read the goal carefully and identify the parts that need implementation for %s.", goalSentence),
+				verify: []ManifestVerify{{Kind: "story_validate", Story: appYAML}},
 			},
-		},
+			{
+				id:     "implement",
+				title:  "Implement the core slice",
+				prompt: fmt.Sprintf("Make the smallest coherent implementation for %s and keep the result reviewable.", goalSentence),
+				verify: []ManifestVerify{{Kind: "story_validate", Story: appYAML}},
+			},
+			{
+				id:     "wire",
+				title:  "Wire the surfaces",
+				prompt: fmt.Sprintf("Thread the result through the MCP, CLI, and runstatus-facing surfaces for %s.", goalSentence),
+				verify: []ManifestVerify{{Kind: "story_validate", Story: appYAML}},
+			},
+			{
+				id:     "test",
+				title:  "Test and document it",
+				prompt: fmt.Sprintf("Add deterministic checks, docs, and dogfood evidence for %s.", goalSentence),
+				verify: []ManifestVerify{
+					{Kind: "story_validate", Story: appYAML},
+					{Kind: "command", Cmd: "go test ./..."},
+				},
+			},
+		}
 	}
 	items := make([]ManifestItem, 0, len(steps))
 	for i, step := range steps {
+		implementationStory := appYAML
+		implementationPrompt := step.prompt
+		if researchOnly {
+			implementationStory = ""
+			implementationPrompt = ""
+		}
 		items = append(items, ManifestItem{
 			ID:                   step.id,
 			Title:                step.title,
 			Priority:             i + 1,
-			Story:                filepath.ToSlash(filepath.Join(appPath, "app.yaml")),
+			Story:                appYAML,
 			Mode:                 "drive",
 			Prompt:               step.prompt,
-			ImplementationStory:  filepath.ToSlash(filepath.Join(appPath, "app.yaml")),
-			ImplementationPrompt: step.prompt,
+			ImplementationStory:  implementationStory,
+			ImplementationPrompt: implementationPrompt,
 			GateCommand:          "",
 			Verify:               step.verify,
 		})
 	}
 	return Manifest{
-		Version: ManifestVersion,
-		Defaults: ManifestDefaults{
-			Harness:           "live",
-			Profile:           "codex-native",
-			Model:             "gpt-5.5",
-			TraceRoot:         filepath.ToSlash(filepath.Join(filepath.Dir(manifestPath), "traces")),
-			RequireTraceModel: true,
+		Version:  ManifestVersion,
+		Defaults: defaults,
+		Items:    items,
+	}
+}
+
+func (s *Service) buildStructuredItems(items []CreateItem, goal, appYAML string) []ManifestItem {
+	out := make([]ManifestItem, 0, len(items))
+	for i, item := range items {
+		id := strings.TrimSpace(item.ID)
+		if id == "" {
+			id = fmt.Sprintf("item-%d", i+1)
+		}
+		title := strings.TrimSpace(item.Title)
+		if title == "" {
+			title = id
+		}
+		mode := strings.TrimSpace(item.Mode)
+		if mode == "" {
+			mode = "drive"
+		}
+		story := strings.TrimSpace(item.Story)
+		if story == "" {
+			story = appYAML
+		}
+		gateCommand := strings.TrimSpace(firstNonEmpty(item.GateCommand, item.Gate))
+		verify := append([]ManifestVerify(nil), item.Verify...)
+		if len(verify) == 0 && gateCommand == "" {
+			verify = []ManifestVerify{{Kind: "story_validate", Story: appYAML}}
+		}
+		prompt := strings.TrimSpace(item.Prompt)
+		if prompt == "" {
+			prompt = structuredItemPrompt(goal, title, item.OwnerScope, gateCommand)
+		}
+		implementationStory := strings.TrimSpace(item.ImplementationStory)
+		if implementationStory == "" {
+			implementationStory = appYAML
+		}
+		implementationPrompt := strings.TrimSpace(item.ImplementationPrompt)
+		if implementationPrompt == "" {
+			implementationPrompt = prompt
+		}
+		priority := item.Priority
+		if priority == 0 {
+			priority = i + 1
+		}
+		out = append(out, ManifestItem{
+			ID:                   id,
+			Title:                title,
+			Priority:             priority,
+			OwnerScope:           strings.TrimSpace(item.OwnerScope),
+			Story:                story,
+			Harness:              strings.TrimSpace(item.Harness),
+			Profile:              strings.TrimSpace(item.Profile),
+			Model:                strings.TrimSpace(item.Model),
+			RequireGPT55:         item.RequireGPT55,
+			HarnessLadder:        item.HarnessLadder,
+			Mode:                 mode,
+			Prompt:               prompt,
+			ImplementationStory:  implementationStory,
+			ImplementationPrompt: implementationPrompt,
+			GateCommand:          gateCommand,
+			Verify:               verify,
+		})
+	}
+	return out
+}
+
+func structuredItemPrompt(goal, title, ownerScope, gate string) string {
+	lines := []string{
+		fmt.Sprintf("Complete the structured workflow item %q.", title),
+		"Goal: " + goal,
+	}
+	if strings.TrimSpace(ownerScope) != "" {
+		lines = append(lines, "Owner scope: "+strings.TrimSpace(ownerScope))
+	}
+	if strings.TrimSpace(gate) != "" {
+		lines = append(lines, "Deterministic gate: "+strings.TrimSpace(gate))
+	}
+	lines = append(lines, "Keep edits inside the assigned scope where practical, record changed files and risks, and do not run live LLMs from tests.")
+	return strings.Join(lines, "\n")
+}
+
+func mergeManifestDefaults(base, override ManifestDefaults) ManifestDefaults {
+	if override.Harness != "" {
+		base.Harness = override.Harness
+	}
+	if override.Profile != "" {
+		base.Profile = override.Profile
+	}
+	if override.Model != "" {
+		base.Model = override.Model
+	}
+	if override.TraceRoot != "" {
+		base.TraceRoot = override.TraceRoot
+	}
+	if override.RequireGPT55 != nil {
+		base.RequireGPT55 = override.RequireGPT55
+	}
+	if override.RequireTraceModel {
+		base.RequireTraceModel = true
+	}
+	if override.HarnessLadder != nil {
+		base.HarnessLadder = override.HarnessLadder
+	}
+	return base
+}
+
+func modelPolicyFromDefaults(defaults ManifestDefaults) ModelPolicy {
+	return ModelPolicy{
+		Harness:           firstNonEmpty(defaults.Harness, "live"),
+		Profile:           firstNonEmpty(defaults.Profile, "codex-native"),
+		Model:             firstNonEmpty(defaults.Model, "gpt-5.5"),
+		RequireTraceModel: defaults.RequireTraceModel,
+		RequireGPT55:      boolDefault(defaults.RequireGPT55, true),
+	}
+}
+
+func inferManifestDefaults(goal, traceRoot string) ManifestDefaults {
+	defaults := ManifestDefaults{
+		Harness:           "live",
+		Profile:           "codex-native",
+		Model:             "gpt-5.5",
+		TraceRoot:         traceRoot,
+		RequireTraceModel: true,
+	}
+	lowered := strings.ToLower(goal)
+	switch {
+	case strings.Contains(lowered, "synthetic-claude") || strings.Contains(lowered, "claude-synthetic"):
+		defaults.Profile = "synthetic-claude"
+	case strings.Contains(lowered, "synthetic-codex") || strings.Contains(lowered, "codex-synthetic"):
+		defaults.Profile = "synthetic-codex"
+	}
+	if strings.Contains(lowered, "glm-5.2") || strings.Contains(lowered, "glm 5.2") || strings.Contains(lowered, "hf:zai-org/glm-5.2") {
+		defaults.Model = "hf:zai-org/GLM-5.2"
+		if defaults.Profile == "codex-native" {
+			defaults.Profile = "synthetic-claude"
+		}
+		defaults.Harness = "ladder"
+		defaults.RequireGPT55 = boolPointer(false)
+		defaults.RequireTraceModel = false
+		defaults.HarnessLadder = &HarnessLadder{
+			Models: []HarnessLadderModel{
+				{Backend: ladderBackend(defaults.Profile), Provider: defaults.Profile, Model: defaults.Model},
+				{Backend: "codex", Provider: "codex-native", Model: "gpt-5.5"},
+			},
+			Efforts: []string{"low", "medium", "high", "xhigh", "max"},
+		}
+	}
+	return defaults
+}
+
+func syntheticGLMLadderDefaults(defaults ManifestDefaults) ManifestDefaults {
+	if defaults.Harness == "ladder" && defaults.HarnessLadder != nil {
+		return defaults
+	}
+	defaults.Harness = "ladder"
+	defaults.Profile = "synthetic-claude"
+	defaults.Model = "hf:zai-org/GLM-5.2"
+	defaults.RequireGPT55 = boolPointer(false)
+	defaults.RequireTraceModel = false
+	defaults.HarnessLadder = &HarnessLadder{
+		Models: []HarnessLadderModel{
+			{Backend: "claude", Provider: "synthetic-claude", Model: "hf:zai-org/GLM-5.2"},
+			{Backend: "codex", Provider: "codex-native", Model: "gpt-5.5"},
 		},
-		Items: items,
+		Efforts: []string{"low", "medium", "high", "xhigh", "max"},
+	}
+	return defaults
+}
+
+func boolPointer(v bool) *bool {
+	return &v
+}
+
+func ladderBackend(profile string) string {
+	if strings.Contains(strings.ToLower(profile), "codex") {
+		return "codex"
+	}
+	return "claude"
+}
+
+func isCoverageFanoutGoal(goal string) bool {
+	lowered := strings.ToLower(goal)
+	return strings.Contains(lowered, "coverage") && (strings.Contains(lowered, "fan out") || strings.Contains(lowered, "fanning out") || strings.Contains(lowered, "typescript") || strings.Contains(lowered, "stories"))
+}
+
+func isResearchGoal(goal string) bool {
+	lowered := strings.ToLower(goal)
+	return strings.Contains(lowered, "research") || strings.Contains(lowered, "survey") || strings.Contains(lowered, "investigate") || strings.Contains(lowered, "map the")
+}
+
+func researchFanoutSteps(goal, appYAML string) []manifestStep {
+	storyCheck := ManifestVerify{Kind: "story_validate", Story: appYAML}
+	return []manifestStep{
+		{
+			id:     "research-scope",
+			title:  "Frame the research map",
+			prompt: fmt.Sprintf("Frame the research question, list the repo areas to inspect, and define the evidence files to write under .context/. Do not edit product code or run live LLM calls. Goal: %s", goal),
+			verify: []ManifestVerify{storyCheck},
+		},
+		{
+			id:     "go-testing-research",
+			title:  "Research Go testing",
+			prompt: fmt.Sprintf("Survey Go test packages, coverage commands, fixtures, and no-LLM seams. Write findings and recommended gates under .context/. Do not add or modify tests in this research item. Goal: %s", goal),
+			verify: []ManifestVerify{storyCheck},
+		},
+		{
+			id:     "js-e2e-testing-research",
+			title:  "Research JS and e2e testing",
+			prompt: fmt.Sprintf("Survey TypeScript/JavaScript, Playwright, runstatus, VS Code, and web UI test approaches. Write evidence-backed findings under .context/. Do not add or modify tests in this research item. Goal: %s", goal),
+			verify: []ManifestVerify{storyCheck},
+		},
+		{
+			id:     "story-flow-research",
+			title:  "Research stories and flows",
+			prompt: fmt.Sprintf("Survey story flow fixtures, cassettes, flow coverage, Starlark coverage, and replay patterns. Write evidence-backed findings under .context/. Do not run live agents. Goal: %s", goal),
+			verify: []ManifestVerify{storyCheck},
+		},
+		{
+			id:     "research-synthesis",
+			title:  "Synthesize testing approaches",
+			prompt: fmt.Sprintf("Merge worker findings into one concise .context research report with a taxonomy of testing approaches, recommended validation gates, gaps, and follow-up work. Inspect traces, diffs, and untracked files before reporting. Goal: %s", goal),
+			verify: []ManifestVerify{storyCheck},
+		},
+	}
+}
+
+func coverageFanoutSteps(goal, appYAML string) []manifestStep {
+	storyCheck := ManifestVerify{Kind: "story_validate", Story: appYAML}
+	return []manifestStep{
+		{
+			id:     "measure-coverage",
+			title:  "Measure current coverage",
+			prompt: fmt.Sprintf("Measure current Go, TypeScript/JavaScript, story, and e2e coverage for this goal. Save the baseline and high-value gaps under .context/. Goal: %s", goal),
+			verify: []ManifestVerify{storyCheck},
+		},
+		{
+			id:     "go-coverage",
+			title:  "Add Go coverage",
+			prompt: fmt.Sprintf("Add focused deterministic Go tests for low-risk uncovered internals. Avoid live LLM calls and commit only verified changes. Goal: %s", goal),
+			verify: []ManifestVerify{storyCheck, {Kind: "command", Cmd: "go test ./internal/dynamicworkflow ./internal/mcp/studio"}},
+		},
+		{
+			id:     "story-workflow-coverage",
+			title:  "Add story workflow coverage",
+			prompt: fmt.Sprintf("Cover dynamic workflow and punch-list story behavior with deterministic story validation or flow fixtures. Treat skill/tool failures as bugs. Goal: %s", goal),
+			verify: []ManifestVerify{storyCheck},
+		},
+		{
+			id:     "js-ts-coverage",
+			title:  "Add JS and TS coverage",
+			prompt: fmt.Sprintf("Add focused deterministic TypeScript/JavaScript tests for tooling or UI gaps. Do not require network or live models. Goal: %s", goal),
+			verify: []ManifestVerify{storyCheck},
+		},
+		{
+			id:     "e2e-flow-coverage",
+			title:  "Add e2e and flow coverage",
+			prompt: fmt.Sprintf("Add no-LLM e2e, Playwright, or flow coverage for important user paths that can run deterministically. Goal: %s", goal),
+			verify: []ManifestVerify{storyCheck},
+		},
+		{
+			id:     "supervisor-verify",
+			title:  "Verify and report",
+			prompt: fmt.Sprintf("Inspect traces, diffs, untracked files, coverage deltas, and validation gates. Produce a concise .context report. Goal: %s", goal),
+			verify: []ManifestVerify{storyCheck, {Kind: "command", Cmd: "go test ./internal/dynamicworkflow ./internal/mcp/studio"}},
+		},
 	}
 }
 
@@ -624,9 +1160,10 @@ func validateManifest(root string, manifest Manifest, appPath string) []string {
 		if item.ImplementationStory != "" && !pathExists(root, item.ImplementationStory) {
 			errs = append(errs, fmt.Sprintf("%s.implementation_story path does not exist: %s", prefix, item.ImplementationStory))
 		}
-		if len(item.Verify) == 0 {
-			errs = append(errs, fmt.Sprintf("%s.verify must not be empty", prefix))
+		if len(item.Verify) == 0 && strings.TrimSpace(item.GateCommand) == "" {
+			errs = append(errs, fmt.Sprintf("%s.verify or gate_command must not be empty", prefix))
 		}
+		errs = append(errs, validatePunchListRuntimePolicy(prefix, manifest.Defaults, item)...)
 		for j, check := range item.Verify {
 			checkPrefix := fmt.Sprintf("%s.verify[%d]", prefix, j)
 			switch check.Kind {
@@ -642,9 +1179,84 @@ func validateManifest(root string, manifest Manifest, appPath string) []string {
 				errs = append(errs, fmt.Sprintf("%s.kind is unsupported: %s", checkPrefix, check.Kind))
 			}
 		}
+		if item.GateCommand != "" && isLLMSpendingCommand(item.GateCommand) {
+			errs = append(errs, fmt.Sprintf("%s.gate_command appears to invoke an LLM or live run", prefix))
+		}
 	}
 	_ = appPath
 	return errs
+}
+
+func validatePunchListRuntimePolicy(prefix string, defaults ManifestDefaults, item ManifestItem) []string {
+	var errs []string
+	harness := firstNonEmpty(item.Harness, defaults.Harness, "live")
+	profile := firstNonEmpty(item.Profile, defaults.Profile, "codex-native")
+	model := firstNonEmpty(item.Model, defaults.Model, "gpt-5.5")
+	requiresGPT55 := boolDefault(defaults.RequireGPT55, true)
+	if item.RequireGPT55 != nil {
+		requiresGPT55 = *item.RequireGPT55
+	}
+	liveWork := (harness == "live" || harness == "ladder") && (item.ImplementationStory != "" || item.Mode == "drive")
+	if !liveWork {
+		return errs
+	}
+	switch harness {
+	case "live":
+		if requiresGPT55 && profile != "codex-native" {
+			errs = append(errs, fmt.Sprintf("%s: live work must use profile codex-native or harness: ladder", prefix))
+		}
+		if requiresGPT55 && model != "gpt-5.5" {
+			errs = append(errs, fmt.Sprintf("%s: live work must use model gpt-5.5 or harness: ladder", prefix))
+		}
+	case "ladder":
+		ladder := defaults.HarnessLadder
+		if item.HarnessLadder != nil {
+			ladder = item.HarnessLadder
+		}
+		errs = append(errs, validateHarnessLadder(prefix, ladder)...)
+	}
+	return errs
+}
+
+func validateHarnessLadder(prefix string, ladder *HarnessLadder) []string {
+	var errs []string
+	if ladder == nil || len(ladder.Models) == 0 {
+		return append(errs, fmt.Sprintf("%s: harness_ladder.models must be a non-empty list", prefix))
+	}
+	for i, model := range ladder.Models {
+		if strings.TrimSpace(model.Model) == "" {
+			errs = append(errs, fmt.Sprintf("%s: harness_ladder.models[%d].model is required", prefix, i))
+		}
+		switch model.Backend {
+		case "", "claude", "codex", "copilot":
+		default:
+			errs = append(errs, fmt.Sprintf("%s: harness_ladder.models[%d].backend is invalid: %s", prefix, i, model.Backend))
+		}
+	}
+	for _, effort := range ladder.Efforts {
+		switch effort {
+		case "low", "medium", "high", "xhigh", "max":
+		default:
+			errs = append(errs, fmt.Sprintf("%s: harness_ladder.efforts contains invalid value: %s", prefix, effort))
+		}
+	}
+	return errs
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func boolDefault(value *bool, fallback bool) bool {
+	if value == nil {
+		return fallback
+	}
+	return *value
 }
 
 func readManifest(path string) (Manifest, error) {
@@ -659,14 +1271,117 @@ func readManifest(path string) (Manifest, error) {
 	return m, nil
 }
 
-func writeLaunchBasis(path, manifestPath string) error {
+func writeLaunchBasis(path, manifestPath, statePath string) error {
 	body := map[string]any{
 		"state": "idle",
 		"world": map[string]any{
 			"manifest_path": filepath.ToSlash(manifestPath),
+			"state_path":    filepath.ToSlash(statePath),
 		},
 	}
 	return writeYAML(path, body)
+}
+
+// LaunchInitialWorld reads the persisted launch basis and returns the exact
+// world values that a runtime launch should use.
+func LaunchInitialWorld(root, launchBasisPath string) (map[string]any, error) {
+	var basis struct {
+		State string         `yaml:"state"`
+		World map[string]any `yaml:"world"`
+	}
+	b, err := os.ReadFile(launchBasisPath)
+	if err != nil {
+		return nil, err
+	}
+	if err := goyaml.Unmarshal(b, &basis); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(basis.State) != "idle" {
+		return nil, fmt.Errorf("state must be idle")
+	}
+	if basis.World == nil {
+		return nil, fmt.Errorf("world is required")
+	}
+	manifestPath := strings.TrimSpace(stringFromAny(basis.World["manifest_path"]))
+	if manifestPath == "" {
+		return nil, fmt.Errorf("world.manifest_path is required")
+	}
+	statePath := strings.TrimSpace(stringFromAny(basis.World["state_path"]))
+	if statePath == "" {
+		return nil, fmt.Errorf("world.state_path is required")
+	}
+	if !pathExists(root, manifestPath) {
+		return nil, fmt.Errorf("world.manifest_path does not exist: %s", manifestPath)
+	}
+	world := map[string]any{}
+	for k, v := range basis.World {
+		world[k] = v
+	}
+	world["manifest_path"] = filepath.ToSlash(manifestPath)
+	world["state_path"] = filepath.ToSlash(statePath)
+	return world, nil
+}
+
+func runPreservingStateFile(root string, launchWorld map[string]any, run func() (*testrunner.FlowReport, error)) (*testrunner.FlowReport, error) {
+	statePath := strings.TrimSpace(stringFromAny(launchWorld["state_path"]))
+	if statePath == "" {
+		return nil, fmt.Errorf("world.state_path is required")
+	}
+	resolved := resolveRuntimePath(root, statePath)
+	var original []byte
+	var originalMode fs.FileMode
+	existed := false
+	if info, err := os.Stat(resolved); err == nil {
+		existed = true
+		originalMode = info.Mode().Perm()
+		b, readErr := os.ReadFile(resolved)
+		if readErr != nil {
+			return nil, readErr
+		}
+		original = b
+	} else if !os.IsNotExist(err) {
+		return nil, err
+	}
+	report, runErr := run()
+	if existed {
+		restoreErr := os.WriteFile(resolved, original, originalMode)
+		if runErr != nil {
+			return report, runErr
+		}
+		return report, restoreErr
+	}
+	removeErr := os.Remove(resolved)
+	if removeErr != nil && !os.IsNotExist(removeErr) {
+		if runErr != nil {
+			return report, runErr
+		}
+		return report, removeErr
+	}
+	return report, runErr
+}
+
+func resolveRuntimePath(root, path string) string {
+	if filepath.IsAbs(path) {
+		return filepath.Clean(filepath.FromSlash(path))
+	}
+	if root == "" {
+		return filepath.Clean(filepath.FromSlash(path))
+	}
+	return filepath.Join(root, filepath.FromSlash(path))
+}
+
+func stringFromAny(v any) string {
+	switch t := v.(type) {
+	case string:
+		return t
+	case fmt.Stringer:
+		return t.String()
+	default:
+		if t == nil {
+			return ""
+		}
+		return fmt.Sprint(t)
+	}
 }
 
 func writeYAML(path string, v any) error {
@@ -755,6 +1470,27 @@ func pathExists(root, rel string) bool {
 	_, err := os.Stat(filepath.Join(root, filepath.FromSlash(rel)))
 	return err == nil
 }
+
+func runtimePath(root, path string) string {
+	if path == "" {
+		return ""
+	}
+	cleanPath := filepath.Clean(path)
+	if root != "" {
+		if absRoot, err := filepath.Abs(root); err == nil {
+			if absPath, err := filepath.Abs(cleanPath); err == nil {
+				if rel, err := filepath.Rel(absRoot, absPath); err == nil && rel != "." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && rel != ".." {
+					return filepath.ToSlash(rel)
+				}
+			}
+		}
+	}
+	return filepath.ToSlash(cleanPath)
+}
+
+// RuntimePath returns the path form that stories can read at runtime: repo
+// relative when the file is under root, otherwise the cleaned slash path.
+func RuntimePath(root, path string) string { return runtimePath(root, path) }
 
 func copyDir(src, dst string) error {
 	return filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {

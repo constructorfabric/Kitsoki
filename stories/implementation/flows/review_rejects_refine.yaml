@@ -22,6 +22,8 @@ host_handlers:
     data: { ok: true, message_id: "msg-1" }
   host.inbox.add:
     data: { ok: true, id: "ib-1" }
+  host.artifacts_dir:
+    data: { ok: true, path: ".artifacts/implementation-flow-artifact.md", message_id: "artifact-1" }
   host.git_worktree:
     data: { ok: true, log: "" }
   host.git:
@@ -55,46 +57,32 @@ host_handlers:
 
 turns:
   - intent: { name: start, slots: {} }
-    expect_state: review_task_executing
-  - intent: { name: proceed, slots: {} }
     expect_state: review_task_awaiting_reply
   - intent: { name: accept, slots: {} }
-    expect_state: write_code_executing
-  - intent: { name: proceed, slots: {} }
     expect_state: write_code_awaiting_reply
   - intent: { name: accept, slots: {} }
-    expect_state: test_executing
-  - intent: { name: proceed, slots: {} }
     expect_state: test_awaiting_reply
   - intent: { name: accept, slots: {} }
-    expect_state: review_executing
-  - intent: { name: proceed, slots: {} }
     expect_state: review_awaiting_reply
 
   # User refines the review. Arc:
-  #   target: write_code_executing
+  #   target: write_code_executing, which auto-settles to write_code_awaiting_reply
   #   effects: refine_feedback, cycle++
   - intent:
       name: refine
       slots: { feedback: "Missing test coverage for the 60s→10s transition window." }
-    expect_state: write_code_executing
+    expect_state: write_code_awaiting_reply
     expect_world:
       cycle:           1
       refine_feedback: "Missing test coverage for the 60s→10s transition window."
 
-  # Re-walk write_code → test → review → accept → handoff.
-  - intent: { name: proceed, slots: {} }
-    expect_state: write_code_awaiting_reply
+  # Re-walk test → review from the refreshed code checkpoint.
   - intent: { name: accept, slots: {} }
-    expect_state: test_executing
+    expect_state: test_awaiting_reply
     expect_world:
       cycle:           0
       refine_feedback: ""
-  - intent: { name: proceed, slots: {} }
-    expect_state: test_awaiting_reply
   - intent: { name: accept, slots: {} }
-    expect_state: review_executing
-  - intent: { name: proceed, slots: {} }
     expect_state: review_awaiting_reply
 
   # Bail at the second review to keep the flow narrow.

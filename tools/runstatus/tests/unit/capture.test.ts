@@ -20,6 +20,11 @@ import {
   type ErrorWindow,
 } from "../../src/data/error-capture.js";
 import {
+  installNetworkCapture,
+  snapshotNetworkHar,
+  __resetNetworkCapture,
+} from "../../src/data/network-capture.js";
+import {
   startSessionCapture,
   snapshotSessionEvents,
   buildSessionEnvelope,
@@ -118,6 +123,52 @@ describe("error-capture", () => {
   it("gatherErrorInfo tolerates a missing source (null last_rpc)", () => {
     const info = gatherErrorInfo();
     expect(info.last_rpc).toBeNull();
+  });
+});
+
+describe("network-capture", () => {
+  beforeEach(() => __resetNetworkCapture());
+
+  it("records browser-observed fetches as HAR entries with RPC comments", async () => {
+    window.fetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          error: { code: -32000, message: "failed" },
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }
+      )
+    ) as unknown as typeof fetch;
+    installNetworkCapture();
+
+    const body = JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "runstatus.session.turn",
+      params: { input: "go" },
+    });
+    const response = await window.fetch("/rpc?sid=abc", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+    });
+    await response.text();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const har = snapshotNetworkHar();
+    expect(har.log.creator.name).toBe("kitsoki-browser");
+    expect(har.log.entries.length).toBe(1);
+    const entry = har.log.entries[0];
+    expect(entry.request?.method).toBe("POST");
+    expect(entry.request?.url).toContain("/rpc?sid=abc");
+    expect(entry.request?.postData?.text).toContain("runstatus.session.turn");
+    expect(entry.response?.status).toBe(200);
+    expect(entry.response?.content?.text).toContain("-32000");
+    expect(entry.comment).toContain("json-rpc runstatus.session.turn error -32000");
   });
 });
 

@@ -1,0 +1,42 @@
+schema: kitsoki.docs/v1
+owner:
+  kind: kit
+  id: "@kitsoki/object-graph"
+title: Project object graph viewer
+summary_path: README.md
+audiences: [operator, story-author, integrator]
+docs:
+  - id: overview
+    title: Overview
+    path: README.md
+    kind: overview
+    order: 10
+components:
+  - kind: story
+    id: object-graph
+    docs:
+      - id: contract
+        title: Story contract
+        generated_from: stories/object-graph/app.yaml
+        kind: reference
+  - kind: host-interface
+    id: graph
+    docs:
+      - id: interface
+        title: Graph interface
+        generated_from: stories/object-graph/app.yaml#host_interfaces.graph
+        kind: reference
+  - kind: script
+    id: scripts/presentation.star
+    docs:
+      - id: sidecar
+        title: Presentation script sidecar
+        generated_from: scripts/presentation.star.yaml
+        kind: reference
+  - kind: ui
+    id: graph
+    docs:
+      - id: viewer
+        title: Viewer UI
+        generated_from: ui/graph.mjs
+        kind: reference

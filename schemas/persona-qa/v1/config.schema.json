@@ -1,0 +1,65 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://kitsoki.dev/schemas/persona-qa/v1/config.schema.json",
+  "title": "Persona QA Kit Config",
+  "description": "Project-local configuration that lets the Persona QA Kit load catalogs, drivers, artifact roots, and public schemas without assuming the Kitsoki checkout layout.",
+  "type": "object",
+  "required": ["version", "project", "catalogs", "drivers", "artifacts", "schemas"],
+  "additionalProperties": true,
+  "properties": {
+    "version": { "type": "integer", "enum": [1] },
+    "project": {
+      "type": "object",
+      "required": ["id", "root"],
+      "additionalProperties": true,
+      "properties": {
+        "id": { "type": "string" },
+        "root": { "type": "string" }
+      }
+    },
+    "catalogs": {
+      "type": "object",
+      "required": ["catalog", "personas", "scenarios", "github_targets"],
+      "additionalProperties": true,
+      "properties": {
+        "catalog": { "type": "string" },
+        "personas": { "type": "string" },
+        "scenarios": { "type": "string" },
+        "github_targets": { "type": "string" }
+      }
+    },
+    "drivers": {
+      "type": "object",
+      "required": ["default", "dir"],
+      "additionalProperties": true,
+      "properties": {
+        "default": { "type": "string" },
+        "dir": { "type": "string" }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "required": ["root", "run_log"],
+      "additionalProperties": true,
+      "properties": {
+        "root": { "type": "string" },
+        "run_log": { "type": "string" }
+      }
+    },
+    "deck": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "publish": { "type": "string" }
+      }
+    },
+    "schemas": {
+      "type": "object",
+      "required": ["root"],
+      "additionalProperties": true,
+      "properties": {
+        "root": { "type": "string" }
+      }
+    }
+  }
+}

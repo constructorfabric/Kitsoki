@@ -1,0 +1,6 @@
+# yaml-language-server: $schema=../../../../features/feature.schema.json
+id: unrelated
+kind: feature
+title: An unrelated feature
+tagline: Present to prove the scan doesn't false-positive on unrelated content.
+summary: "This feature has nothing to do with gadget X; its presence must not satisfy X.2's coverage requirement."

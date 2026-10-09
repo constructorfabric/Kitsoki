@@ -16,11 +16,20 @@ JSON via the `submit` tool.
 ## This cycle
 
 - Cycle **{{ args.cycle }}** of **{{ args.max_cycles }}**.
-- The test command is: `{{ args.test_cmd }}`
+- Full acceptance command: `{{ args.test_cmd }}`
+- Quick repair-loop command: `{{ args.quick_test_cmd }}`
 {% if args.cycle > 1 %}
 - A previous cycle already attempted a fix; the failures below are what
   **remained** after it. Focus on them, and do not undo the prior cycle's
   correct changes.
+{% endif %}
+{% if args.review_feedback %}
+- The deterministic command was green, but the review gate rejected the diff.
+  Treat this as the primary failure to fix:
+
+```
+{{ args.review_feedback }}
+```
 {% endif %}
 
 ## Failure output
@@ -34,8 +43,10 @@ JSON via the `submit` tool.
 1. Read the failure output and open the relevant source and test files.
 2. Identify the **root cause**. Decide whether the bug is in the *code under
    test* or in the *test itself* (a stale assertion, a wrong fixture).
-3. Apply the smallest change that fixes it. You may run `{{ args.test_cmd }}`
-   (or a narrower `go test ./path/...`) to check your work before submitting.
+3. Apply the smallest change that fixes it. You may run
+   `{{ args.quick_test_cmd }}` (or a narrower `go test ./path/...`) to check
+   your work before submitting. The story will run the full acceptance command
+   before review.
 4. Submit the structured artifact.
 
 {% block spec_house_rules %}

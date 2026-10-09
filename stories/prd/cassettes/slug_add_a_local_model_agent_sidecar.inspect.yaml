@@ -1,0 +1,8 @@
+kind: inspect_cassette
+interactions:
+  - op: exists
+    target: .artifacts/prd/add-a-local-model-agent-sidecar
+    out: "false"
+  - op: exists
+    target: /tmp/kitsoki-prd-fixtures/add-a-local-model-agent-sidecar.md
+    out: "false"

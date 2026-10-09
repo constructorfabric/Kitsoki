@@ -131,6 +131,9 @@ func TestResolveTraceArg(t *testing.T) {
 	base := time.Now().Add(-time.Hour)
 	mk("appA", "1111-old.jsonl", base)
 	newest := mk("kitsoki-dev", "7ca57b33-tui-x.jsonl", base.Add(time.Minute))
+	ticketTrace := mk("kitsoki", "308b5d05-tui-x.jsonl", base.Add(2*time.Minute))
+	require.NoError(t, os.WriteFile(ticketTrace, []byte(`{"turn":2,"kind":"world.update","payload":{"set":{"root__bf__ticket_id":"64","root__ticket_id":"64"}}}`+"\n"), 0o644))
+	require.NoError(t, os.Chtimes(ticketTrace, base.Add(2*time.Minute), base.Add(2*time.Minute)))
 
 	t.Run("stdin passthrough", func(t *testing.T) {
 		got, err := resolveTraceArg(root, "-", "")
@@ -152,10 +155,20 @@ func TestResolveTraceArg(t *testing.T) {
 		require.NoError(t, err)
 		assert.Contains(t, got, "appA")
 	})
+	t.Run("ticket filter matches qualified world ticket id", func(t *testing.T) {
+		got, err := resolveTraceArgWithOptions(root, "", traceResolveOptions{TicketID: "64"})
+		require.NoError(t, err)
+		assert.Equal(t, ticketTrace, got)
+	})
 	t.Run("no match is a clear error", func(t *testing.T) {
 		_, err := resolveTraceArg(root, "nope-nothing", "")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "no session trace found")
+	})
+	t.Run("ticket no match is a clear error", func(t *testing.T) {
+		_, err := resolveTraceArgWithOptions(root, "", traceResolveOptions{TicketID: "65"})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), `ticket_id "65"`)
 	})
 }
 

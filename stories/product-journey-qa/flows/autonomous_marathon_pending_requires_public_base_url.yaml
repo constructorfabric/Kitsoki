@@ -1,0 +1,64 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.run:
+    by_call:
+      capture_product_journey_preflight:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: passed
+            preflight_id: preflight-live-public-url
+            preflight_dir: .artifacts/product-journey/preflights/preflight-live-public-url
+            preflight_path: .artifacts/product-journey/preflights/preflight-live-public-url/preflight.json
+            markdown_path: .artifacts/product-journey/preflights/preflight-live-public-url/preflight.md
+            webshot_output: .artifacts/product-journey/preflights/preflight-live-public-url/webshot-smoke.png
+            passed: 6
+            failed: 0
+
+turns:
+  - intent:
+      name: capture_preflight
+      slots:
+        seed: live-public-url
+    expect_state: idle
+    expect_world:
+      status: capture_preflight_checked
+      capture_preflight_status: passed
+      capture_preflight_failed: 0
+    expect_host_calls:
+      - handler: host.run
+        args: { call: capture_product_journey_preflight }
+
+  - intent:
+      name: autonomous_marathon
+      slots:
+        project: vscode
+        persona: core-maintainer
+        seed: live-public-url
+        scenarios: bugfix
+        live_budget_minutes: 6
+        ticket_repo: owner/repo
+    expect_state: idle
+    expect_world:
+      status: autonomous_marathon_invalid
+      autonomous_marathon_status: autonomous_marathon_invalid
+      autonomous_marathon_summary: "Live-budgeted autonomous marathon requires gh_agent_public_base_url before driver handoff."
+      autonomous_driver_mode: pending
+      autonomous_driver_status: invalid
+      autonomous_driver_summary: "gh_agent_public_base_url is required before live-budgeted driver handoff"
+      live_budget_minutes: 6
+      autonomous_fix_status: not_run
+      autonomous_gate_summary: "preflight=pass, filing=not_run, gh_agent=fail, independent_verify=not_run, review=not_run, validation=fail"
+      validation_status: invalid
+      validation_errors: 1
+      validation_issue_summary: gh-agent-public-base-url
+      gh_agent_missing_evidence_summary: "gh_agent_public_base_url is required before live-budgeted autonomous marathon"
+      review_status: not_run
+    expect_view_matches: "PRODUCT JOURNEY QA[\\s\\S]*Autonomous marathon[\\s\\S]*autonomous_marathon_invalid[\\s\\S]*Autonomous driver[\\s\\S]*pending / invalid[\\s\\S]*Validation issues[\\s\\S]*gh-agent-public-base-url"
+    expect_no_host_calls: [host.run]
+
+expect_no_errors: true

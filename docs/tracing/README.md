@@ -120,6 +120,13 @@ kitsoki trace --turn 3 --app kitsoki-dev    # turn 3, full dispatched prompt
   with `kitsoki status serve … --trace run.jsonl`. Built from the trace, so it
   shows exactly what the trace records.
 
+## Mining real conversations into fixtures
+
+- **[`scenario-foundry.md`](scenario-foundry.md)** — the `kind:
+  conversation` IR compiled from mined Claude Code/codex sessions
+  (goals, corrections, abandonment) and the compilers that project it
+  onto flow fixtures, swarm tier 2, and `product-journey` scenarios.
+
 ## See also
 
 - **[`../tui/rendering-tests.md`](../tui/rendering-tests.md)** —

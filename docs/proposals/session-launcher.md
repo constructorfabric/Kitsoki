@@ -1,5 +1,7 @@
 ## Kitsoki Session Launcher
 
+**Status:** Draft v1. Nothing implemented yet.
+
 **Title** — A story-driven CLI session launcher that spins up tailored Claude Code instances per task
 
 ---

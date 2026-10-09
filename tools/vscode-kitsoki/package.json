@@ -2,7 +2,7 @@
   "name": "kitsoki",
   "displayName": "Kitsoki",
   "description": "Embed the kitsoki web UI (chat + trace) inside VS Code.",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "private": true,
   "publisher": "kitsoki",
   "license": "Apache-2.0",
@@ -157,6 +157,17 @@
           "type": "string",
           "default": "",
           "description": "Stories directory to pass to 'kitsoki web --stories-dir'."
+        },
+        "kitsoki.mode": {
+          "type": "string",
+          "default": "",
+          "enum": ["", "staged", "one-shot"],
+          "description": "Execution mode to pass to 'kitsoki web --mode'. Leave empty for the backend default (staged); 'one-shot' auto-advances synthetic emit chains through decision gates (needed to drive a flow fixture whose decompose/lint/review chain has no operator-facing button at each hop)."
+        },
+        "kitsoki.ticketRepo": {
+          "type": "string",
+          "default": "",
+          "description": "GitHub 'owner/repo' the in-product 'Report a bug' feature files issues against (requires GH_TOKEN or GITHUB_TOKEN). Leave empty (the default) to file locally instead, as issues/bugs/<id>.md under the workspace — no GitHub auth needed."
         }
       }
     }
@@ -165,7 +176,7 @@
     "typecheck": "tsc --noEmit",
     "build": "node esbuild.mjs",
     "package": "pnpm dlx @vscode/vsce@^3 package --no-dependencies",
-    "test": "node --test --import tsx tests/relay.unit.test.ts tests/bridge-relay.integration.test.ts tests/ide-server.unit.test.ts tests/spa-visual.unit.test.ts",
+    "test": "node --test --import tsx tests/relay.unit.test.ts tests/bridge-relay.integration.test.ts tests/ide-server.unit.test.ts tests/spa-visual.unit.test.ts tests/discover.unit.test.ts tests/backend-resolve.unit.test.ts tests/diff-mode-a.unit.test.ts",
     "test:bridge": "node --test --import tsx tests/ide-bridge.e2e.test.ts",
     "playwright": "playwright test",
     "e2e": "KITSOKI_VSCODE_PACE=0 playwright test vscode-tour.e2e"

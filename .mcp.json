@@ -5,8 +5,24 @@
       "args": ["mcp", "--stories-dir", "stories"]
     },
     "slidey": {
+      "command": "/Users/Brad.Smith/.local/bin/slidey-mcp",
+      "args": ["--root", "/Users/Brad.Smith/code/kitsoki"]
+    },
+    "stagehand": {
       "command": "node",
-      "args": ["/Users/brad/code/slidey/src/mcp.js", "--root", "/Users/brad/code/Kitsoki"]
+      "args": ["tools/stagehand-mcp/server.mjs"],
+      "env": {
+        "KITSOKI_REPO": ".",
+        "KITSOKI_AGENT_CMD": "kitsoki"
+      }
+    },
+    "frontend-mockup": {
+      "command": "node",
+      "args": ["tools/frontend-mockup-mcp/server.mjs"],
+      "env": {
+        "KITSOKI_REPO": ".",
+        "KITSOKI_AGENT_CMD": "kitsoki"
+      }
     }
   }
 }

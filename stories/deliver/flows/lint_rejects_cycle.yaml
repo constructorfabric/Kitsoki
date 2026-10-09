@@ -1,8 +1,11 @@
-# lint_rejects_cycle — lint detects a dep cycle → @exit:needs-human, specific last_error.
+# lint_rejects_cycle — lint detects a dep cycle → budgeted refine loop back
+# to decompose (NOT a hard exit — reshaped for B2b, proposal task 2.3), the
+# refined manifest breaks the cycle, lint passes, review accepts, and the
+# run lands in fleet.load.
 #
-# The decomposer returns a manifest where slice-a deps slice-b and slice-b deps
-# slice-a (a cycle). The lint script mock returns route:"fail" with the specific
-# cycle error. deliver routes to @exit:needs-human carrying that exact message.
+# The real Starlark lint script reads the manifest from the sequential
+# starlark_inspect_cassette reads below: first the cyclic slice-a/slice-b
+# pair (fail), then the same pair with the cycle broken (pass).
 
 test_kind: flow
 app: ../app.yaml
@@ -11,39 +14,18 @@ initial_world:
   base_branch: main
   main_worktree_path: "."
 
-host_handlers:
-  host.agent.task:
-    by_call:
-      decomposer:
-        data:
-          submitted:
-            briefs:
-              - id: slice-a
-                brief: "Implement slice A so that go test ./... passes."
-                gate_command: "go test ./..."
-                deps: [slice-b]
-              - id: slice-b
-                brief: "Implement slice B so that go test ./... passes."
-                gate_command: "go test ./..."
-                deps: [slice-a]
-  host.run:
-    by_call:
-      lint:
-        data:
-          ok: true
-          exit_code: 0
-          stdout_json:
-            route: "fail"
-            error: "dependency cycle detected involving 'slice-a'"
+host_cassette: ../cassettes/lint_cycle.cassette.yaml
+starlark_inspect_cassette: ../cassettes/lint_cycle.inspect.yaml
 
 turns:
   - intent:
       name: start
       slots:
         epic_path: "stories/deliver/testdata/fixture_epic.md"
-    expect_state: __exit__needs-human
+    expect_state: fleet.load
     expect_world:
-      last_error: "dependency cycle detected involving 'slice-a'"
+      lint_route:      "ok"
+      refine_cycle:    1
+      refine_feedback: "dependency cycle detected involving 'slice-a'"
 
-expect_terminal: true
 expect_no_errors: true

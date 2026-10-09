@@ -1,0 +1,141 @@
+# execute_driver_error_still_judges — the driver dispatch itself dies
+# (host.agent.task: drive_leg errors, e.g. the agent session was abandoned
+# without a successful submit). execute.yaml's on_error: judge still routes
+# forward to judge rather than stranding the loop — judge_leg is dispatched
+# with drive_result left at its stale/empty `{}` default. record_leg_result's
+# deterministic G7 guard (scripts/record_leg_result.star) then forces the
+# recorded verdict to "degraded-evidence" regardless of what the judge
+# itself reports, because there is no real evidence_refs to grade — this is
+# the case that guard exists for. Exercises execute.yaml:56.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.run:
+    by_call:
+      emit_scenario_qa_run:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            run_id: scenario-qa-run-driver-error
+            run_dir: /repo/.artifacts/product-journey/scenario-qa-run-driver-error
+            driver_plan_path: /repo/.artifacts/product-journey/scenario-qa-run-driver-error/driver-plan.md
+            execution_plan_path: /repo/.artifacts/product-journey/scenario-qa-run-driver-error/execution-plan.md
+            agent_brief_path: /repo/.artifacts/product-journey/scenario-qa-run-driver-error/agent-brief.md
+      build_scenario_qa_deck:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: scenario_qa_deck_built
+            run_dir: /repo/.artifacts/product-journey/scenario-qa-run-driver-error
+            deck_path: /repo/.artifacts/product-journey/scenario-qa-run-driver-error/deck.slidey.json
+            leg_count: 1
+            pass_count: 0
+            fail_count: 0
+            degraded_count: 1
+            summary: "0 / 1 transport checks passed (1 degraded)."
+
+  host.starlark.run:
+    by_call:
+      plan_legs:
+        data:
+          legs:
+            items:
+              - leg_id: "bugfix::tui"
+                scenario: "bugfix"
+                transport: "tui"
+                visual_surface: "tui"
+                evidence_dir: "evidence/gears-rust--core-maintainer/bugfix"
+                primary_story: "stories/bugfix/app.yaml"
+                success_criteria: ["Hidden oracle passes."]
+                transport_evidence_contract:
+                  primary_tool: "render.tui_png"
+                  evidence_kind: "rendered_tui_frame"
+                  level: "frame-level"
+          leg_count: 1
+          driver_agent: ".agents/agents/product-journey-qa-driver.md"
+          run_dir_rel: ".artifacts/product-journey/scenario-qa-run-driver-error"
+          plan_status: { resolved: true }
+      pick_leg:
+        data:
+          current_leg:
+            leg_id: "bugfix::tui"
+            scenario: "bugfix"
+            transport: "tui"
+            visual_surface: "tui"
+            evidence_dir: "evidence/gears-rust--core-maintainer/bugfix"
+          current_leg_id: "bugfix::tui"
+      record_leg_result:
+        data:
+          leg_results:
+            items:
+              - leg_id: "bugfix::tui"
+                scenario: "bugfix"
+                transport: "tui"
+                visual_surface: "tui"
+                driver_status: "unattempted"
+                evidence_refs: []
+                verdict: "degraded-evidence"
+                verdict_summary: "No driver report was captured; nothing to judge."
+                frames_dir: ""
+          pass_count: 0
+          fail_count: 0
+          degraded_count: 1
+      build_report:
+        data:
+          report_path: ".artifacts/product-journey/scenario-qa-run-driver-error/report.md"
+          report_summary: "0 / 1 transport checks passed (1 degraded)."
+
+  host.agent.task:
+    by_call:
+      drive_leg:
+        error: "host.agent.task: driver session abandoned without successful submit"
+      judge_leg:
+        data:
+          ok: true
+          submitted:
+            verdict: "degraded-evidence"
+            summary: "No driver report was captured; nothing to judge."
+            cited_frames: []
+            frames_dir: ""
+
+turns:
+  - intent:
+      name: check
+      slots:
+        scenario: bugfix
+        transport: tui
+        persona: core-maintainer
+        target: gears-rust
+        seed: story-flow
+    expect_state: report
+    expect_world:
+      mode: catalog
+      run_id: scenario-qa-run-driver-error
+      leg_count: 1
+      pass_count: 0
+      fail_count: 0
+      degraded_count: 1
+      last_error: "host.agent.task: driver session abandoned without successful submit"
+    expect_host_calls:
+      - handler: host.run
+        args: { call: emit_scenario_qa_run }
+      - handler: host.starlark.run
+        args: { call: plan_legs }
+      - handler: host.starlark.run
+        args: { call: pick_leg }
+      - handler: host.agent.task
+        args: { call: drive_leg }
+      - handler: host.agent.task
+        args: { call: judge_leg }
+      - handler: host.starlark.run
+        args: { call: record_leg_result }
+      - handler: host.starlark.run
+        args: { call: build_report }
+    expect_view_matches: "Scenario:[\\s\\S]*bugfix[\\s\\S]*driver session abandoned without successful submit[\\s\\S]*tui \\[\\] verdict=degraded-evidence driver=unattempted"
+
+expect_no_errors: true

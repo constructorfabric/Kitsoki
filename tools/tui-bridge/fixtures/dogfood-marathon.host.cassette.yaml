@@ -1,0 +1,214 @@
+kind: host_cassette
+app_id: kitsoki-dev
+app_version: 0.1.0
+generated_at: "2026-07-08T00:00:00Z"
+source_run: "authentic TUI demo fixture; agent outcomes replayed, not live"
+record_mode: new_episodes
+episodes:
+  - id: load_backlog
+    match: { handler: host.starlark.run, call: load_backlog }
+    response:
+      data:
+        backlog:
+          items:
+            - { id: "constructorfabric/Kitsoki#66", title: "TUI bug reporter shows raw AskOffPath payload", baseline: "issue-parent", baseline_policy: "fix-parent", repro_command: "go test ./internal/tui -run TestBugReporterFriendlyAskOffPath", source_kind: "github", source_repo: "constructorfabric/Kitsoki", source_url: "https://github.com/constructorfabric/Kitsoki/issues/66", body_excerpt: "Bug filed from the real TUI path: operator sees raw orchestration details instead of a useful failure." }
+            - { id: "constructorfabric/Kitsoki#65", title: "Bug report created from init failure has no useful title", baseline: "issue-parent", baseline_policy: "fix-parent", repro_command: "go test ./cmd/kitsoki -run TestInitDiscoverFailureTitle", source_kind: "github", source_repo: "constructorfabric/Kitsoki", source_url: "https://github.com/constructorfabric/Kitsoki/issues/65", body_excerpt: "init_discover_failed context is captured but the resulting artifact is hard to triage." }
+            - { id: "constructorfabric/Kitsoki#64", title: "Landing quick actions wrap into one prose block", baseline: "issue-parent", baseline_policy: "fix-parent", repro_command: "go test ./internal/tui -run TestQuickActionRows", source_kind: "github", source_repo: "constructorfabric/Kitsoki", source_url: "https://github.com/constructorfabric/Kitsoki/issues/64", body_excerpt: "The TUI action list loses scannable row structure at common terminal widths." }
+            - { id: "constructorfabric/Kitsoki#63", title: "Duplicate inbox notification is visible on landing", baseline: "issue-parent", baseline_policy: "fix-parent", repro_command: "go test ./internal/inbox -run TestPromptNotificationDedupe", source_kind: "github", source_repo: "constructorfabric/Kitsoki", source_url: "https://github.com/constructorfabric/Kitsoki/issues/63", body_excerpt: "Landing repeats the same active issue notification and makes the prompt look noisy." }
+            - { id: "constructorfabric/Kitsoki#61", title: "First-run profile setup is feature-sized and needs scope", baseline: "issue-parent", baseline_policy: "fix-parent", repro_command: "go test ./cmd/kitsoki -run TestProfileSetupScopeGate", source_kind: "github", source_repo: "constructorfabric/Kitsoki", source_url: "https://github.com/constructorfabric/Kitsoki/issues/61", issue_label: "Kitsoku Issue #61", issue_url: "https://github.com/constructorfabric/Kitsoki/issues/61", body_excerpt: "Provider setup touches credentials UX and should pause for explicit operator scope." }
+            - { id: "bsacrobatix/Kitsoki#1202", title: "Blocked findings disappear from dogfood accounting", baseline: "issue-parent", baseline_policy: "fix-parent", repro_command: "go test ./tools/bugfix-bakeoff -run TestExcludedOutcomeRows", source_kind: "github", source_repo: "bsacrobatix/Kitsoki", source_url: "https://github.com/bsacrobatix/Kitsoki/issues/1202", body_excerpt: "Marathon reports omit blocked/seeded findings from the cost and outcome table." }
+            - { id: "bsacrobatix/Kitsoki#1201", title: "Replay outer session fails host.agent.task dispatch", baseline: "issue-parent", baseline_policy: "fix-parent", repro_command: "go test ./internal/host -run TestReplayAgentTaskDispatchPreflight", source_kind: "github", source_repo: "bsacrobatix/Kitsoki", source_url: "https://github.com/bsacrobatix/Kitsoki/issues/1201", body_excerpt: "The replay harness can enter an outer session that cannot dispatch the inner agent task." }
+            - { id: "bsacrobatix/Kitsoki#1200", title: "TUI bugfix starts with no ticket queue", baseline: "issue-parent", baseline_policy: "fix-parent", repro_command: "go test ./stories/dev-story -run TestBugfixTicketProvisioning", source_kind: "github", source_repo: "bsacrobatix/Kitsoki", source_url: "https://github.com/bsacrobatix/Kitsoki/issues/1200", body_excerpt: "Bugfix provisioning can land at pick_ticket with no queued ticket source." }
+            - { id: "bsacrobatix/Kitsoki#1199", title: "Hosted preflight did not terminally triage", baseline: "issue-parent", baseline_policy: "fix-parent", repro_command: "go test ./tools/persona-qa -run TestHostedPreflightTerminalTriage", source_kind: "github", source_repo: "bsacrobatix/Kitsoki", source_url: "https://github.com/bsacrobatix/Kitsoki/issues/1199", body_excerpt: "The hosted preflight oracle and live triaging state disagree about the terminal handoff." }
+            - { id: "bsacrobatix/Kitsoki#1198", title: "HAR list hides JSON-RPC method names", baseline: "issue-parent", baseline_policy: "fix-parent", repro_command: "pnpm -C tools/runstatus test -- har-method-labels", source_kind: "github", source_repo: "bsacrobatix/Kitsoki", source_url: "https://github.com/bsacrobatix/Kitsoki/issues/1198", body_excerpt: "Evidence review shows requests but not the JSON-RPC method that matters." }
+            - { id: "bsacrobatix/Kitsoki#1197", title: "Collapsed trace rows have empty user labels", baseline: "issue-parent", baseline_policy: "fix-parent", repro_command: "pnpm -C tools/runstatus test -- trace-row-labels", source_kind: "github", source_repo: "bsacrobatix/Kitsoki", source_url: "https://github.com/bsacrobatix/Kitsoki/issues/1197", body_excerpt: "Trace rows for user turns collapse to blank labels in the runstatus UI." }
+            - { id: "bsacrobatix/Kitsoki#1196", title: "Observe-mode tour step dead-ends on mobile", baseline: "issue-parent", baseline_policy: "fix-parent", repro_command: "pnpm -C tools/runstatus test -- observe-tour-mobile", source_kind: "github", source_repo: "bsacrobatix/Kitsoki", source_url: "https://github.com/bsacrobatix/Kitsoki/issues/1196", body_excerpt: "The tour popover collision fix works on desktop but leaves mobile with no useful target." }
+            - { id: "bsacrobatix/Kitsoki#1194", title: "GitHub label recovery hits secondary rate limits", baseline: "issue-parent", baseline_policy: "fix-parent", repro_command: "go test ./cmd/kitsoki -run TestIssueLabelRecoveryRateLimit", source_kind: "github", source_repo: "bsacrobatix/Kitsoki", source_url: "https://github.com/bsacrobatix/Kitsoki/issues/1194", body_excerpt: "Label recovery can loop through GitHub secondary rate limits without a clear outcome." }
+            - { id: "bsacrobatix/Kitsoki#1190", title: "on_error dispatch uses the wrong provider profile", baseline: "issue-parent", baseline_policy: "fix-parent", repro_command: "go test ./internal/host -run TestOnErrorKeepsActiveProfile", source_kind: "github", source_repo: "bsacrobatix/Kitsoki", source_url: "https://github.com/bsacrobatix/Kitsoki/issues/1190", body_excerpt: "An on_error transition re-enters the delegated agent under the wrong profile." }
+            - { id: "local/bugfix-auth-profile", title: "bugfix live run blocked: codex profile dispatches unauthenticated Claude Code agent", baseline: "local-current", baseline_policy: "current-main", repro_command: "go test ./internal/host -run TestCodexProfileBackendAssertion", source_kind: "local", source_path: ".artifacts/issues/bugs/2026-07-08T063431Z-bugfix-live-run-blocked-codex-profile-dispatches-unauthentic.md", source_repo: "local", source_url: "", body_excerpt: "Local artifact ticket: a codex profile bugfix run dispatched an unauthenticated Claude Code agent and blocked the live run." }
+        run_id: "bug15-real-tui"
+        run_dir: ".artifacts/dogfood-marathon/bug15-real-tui"
+        journal_path: ".artifacts/dogfood-marathon/bug15-real-tui/journal.json"
+        journal_markdown_path: ".artifacts/dogfood-marathon/bug15-real-tui/journal.md"
+        results: { items: [] }
+        findings: { items: [] }
+        exceptions: { items: [] }
+        last_result: {}
+        case_index: 0
+        cases_processed: 0
+        loaded_journal: false
+        journal_status: "loaded"
+        journal_summary: "loaded: 0 processed, 15 loaded, next index 0"
+        last_checkpoint: "intake"
+  - id: triage_01
+    match: { handler: host.agent.task, call: triage_case }
+    response: { data: { submitted: { verdict: STILL-LIVE, evidence: "constructorfabric/Kitsoki#66 reproduces in TUI error path", note: "raw AskOffPath payload visible" } } }
+    agent: { verb: task, agent: triager, model: gpt-5.5, duration_ms: 4100, prompt_tokens: 3200, response_tokens: 280, cost_usd: 0.10, response: "STILL-LIVE" }
+  - id: drive_01
+    match: { handler: host.agent.task, call: drive_case }
+    response:
+      data:
+        submitted: { exit: shipped, worktree: ".capsules/workspaces/bug15/case-01", branch: "agent/bug15-case-01", fix_ref: "agent/bug15-case-01", deliverable_present: true, oracle_pass: true, trace: ".artifacts/dogfood-marathon/bug15-real-tui/traces/case-01.jsonl", cost_usd: 0.74, tokens: 188000, wall_s: 326, summary: "Converted the raw orchestration error into a concise operator-facing failure with trace reference.", findings: [] }
+    delay: 900ms
+    agent: { verb: task, agent: driver, model: gpt-5.5, duration_ms: 326000, prompt_tokens: 151000, response_tokens: 37000, cost_usd: 0.74, response: "shipped" }
+  - id: triage_02
+    match: { handler: host.agent.task, call: triage_case }
+    response: { data: { submitted: { verdict: STILL-LIVE, evidence: "constructorfabric/Kitsoki#65 has captured init_discover_failed context", note: "bug report path lacks useful title" } } }
+  - id: drive_02
+    match: { handler: host.agent.task, call: drive_case }
+    response:
+      data:
+        submitted: { exit: shipped, worktree: ".capsules/workspaces/bug15/case-02", branch: "agent/bug15-case-02", fix_ref: "agent/bug15-case-02", deliverable_present: true, oracle_pass: true, trace: ".artifacts/dogfood-marathon/bug15-real-tui/traces/case-02.jsonl", cost_usd: 0.69, tokens: 171000, wall_s: 284, summary: "Added state-derived fallback titles for TUI-filed bug reports with empty descriptions.", findings: [] }
+    delay: 900ms
+  - id: triage_03
+    match: { handler: host.agent.task, call: triage_case }
+    response: { data: { submitted: { verdict: STILL-LIVE, evidence: "constructorfabric/Kitsoki#64 quick actions wrap into one prose block", note: "terminal layout regression" } } }
+  - id: drive_03
+    match: { handler: host.agent.task, call: drive_case }
+    response:
+      data:
+        submitted: { exit: shipped, worktree: ".capsules/workspaces/bug15/case-03", branch: "agent/bug15-case-03", fix_ref: "agent/bug15-case-03", deliverable_present: true, oracle_pass: true, trace: ".artifacts/dogfood-marathon/bug15-real-tui/traces/case-03.jsonl", cost_usd: 0.58, tokens: 145000, wall_s: 231, summary: "Constrained landing quick actions into stable rows with truncation and hints.", findings: [] }
+    delay: 900ms
+  - id: triage_04
+    match: { handler: host.agent.task, call: triage_case }
+    response: { data: { submitted: { verdict: STILL-LIVE, evidence: "constructorfabric/Kitsoki#63 duplicate inbox notification is visible on landing", note: "inbox render dedupe needed" } } }
+  - id: drive_04
+    match: { handler: host.agent.task, call: drive_case }
+    response:
+      data:
+        submitted: { exit: shipped, worktree: ".capsules/workspaces/bug15/case-04", branch: "agent/bug15-case-04", fix_ref: "agent/bug15-case-04", deliverable_present: true, oracle_pass: true, trace: ".artifacts/dogfood-marathon/bug15-real-tui/traces/case-04.jsonl", cost_usd: 0.52, tokens: 132000, wall_s: 208, summary: "Deduped active inbox announcements by issue URL before rendering the prompt.", findings: [] }
+    delay: 900ms
+  - id: triage_05
+    match: { handler: host.agent.task, call: triage_case }
+    response: { data: { submitted: { verdict: UNCLEAR, evidence: "constructorfabric/Kitsoki#61 is a feature-sized first-run workflow", note: "needs operator scoping" } } }
+  - id: drive_05
+    match: { handler: host.agent.task, call: drive_case }
+    response:
+      data:
+        submitted:
+          exit: needs-human
+          worktree: ".capsules/workspaces/bug15/case-05"
+          branch: "agent/bug15-case-05"
+          fix_ref: "agent/bug15-case-05"
+          deliverable_present: true
+          requires_operator: true
+          exception_severity: serious
+          operator_question: "Should this marathon leave Kitsoku Issue #61 parked as a scoped product/design follow-up instead of changing first-run credentials UX now?"
+          operator_impact: "Answer decides whether the agent may change credential setup UX in this run; without approval the case stays needs-human and the marathon continues."
+          trace_label: "case-05 trace"
+          trace: ".artifacts/dogfood-marathon/bug15-real-tui/traces/case-05.jsonl"
+          cost_usd: 0.81
+          tokens: 196000
+          wall_s: 412
+          summary: "Drafted a scoped plan and stopped before changing credentials UX without operator approval."
+          findings:
+            - { severity: serious, title: "Credential setup requires explicit operator scope", detail: "Do not auto-write profile credentials from a broad bug marathon." }
+    delay: 900ms
+  - id: triage_06
+    match: { handler: host.agent.task, call: triage_case }
+    response: { data: { submitted: { verdict: STILL-LIVE, evidence: "bsacrobatix/Kitsoki#1202 documents zero accounting for blocked findings", note: "filing result accounting" } } }
+  - id: drive_06
+    match: { handler: host.agent.task, call: drive_case }
+    response:
+      data:
+        submitted: { exit: shipped, worktree: ".capsules/workspaces/bug15/case-06", branch: "agent/bug15-case-06", fix_ref: "agent/bug15-case-06", deliverable_present: true, oracle_pass: true, trace: ".artifacts/dogfood-marathon/bug15-real-tui/traces/case-06.jsonl", cost_usd: 0.47, tokens: 118000, wall_s: 176, summary: "Added excluded outcome rows and a counter for blocked/seeded findings.", findings: [] }
+    delay: 900ms
+  - id: triage_07
+    match: { handler: host.agent.task, call: triage_case }
+    response: { data: { submitted: { verdict: STILL-LIVE, evidence: "bsacrobatix/Kitsoki#1201 replay outer session fails host.agent.task dispatch", note: "documentation plus fail-fast gap" } } }
+  - id: drive_07
+    match: { handler: host.agent.task, call: drive_case }
+    response:
+      data:
+        submitted: { exit: shipped, worktree: ".capsules/workspaces/bug15/case-07", branch: "agent/bug15-case-07", fix_ref: "agent/bug15-case-07", deliverable_present: true, oracle_pass: true, trace: ".artifacts/dogfood-marathon/bug15-real-tui/traces/case-07.jsonl", cost_usd: 0.62, tokens: 154000, wall_s: 245, summary: "Documented the outer harness requirement and added an actionable preflight guard.", findings: [] }
+    delay: 900ms
+  - id: triage_08
+    match: { handler: host.agent.task, call: triage_case }
+    response: { data: { submitted: { verdict: STILL-LIVE, evidence: "bsacrobatix/Kitsoki#1200 exits to pick_ticket with no queue", note: "bugfix x TUI provisioning gap" } } }
+  - id: drive_08
+    match: { handler: host.agent.task, call: drive_case }
+    response:
+      data:
+        submitted: { exit: shipped, worktree: ".capsules/workspaces/bug15/case-08", branch: "agent/bug15-case-08", fix_ref: "agent/bug15-case-08", deliverable_present: true, oracle_pass: true, trace: ".artifacts/dogfood-marathon/bug15-real-tui/traces/case-08.jsonl", cost_usd: 0.71, tokens: 179000, wall_s: 298, summary: "Seeded ticket source validation before the TUI-pinned bugfix leg starts.", findings: [] }
+    delay: 900ms
+  - id: triage_09
+    match: { handler: host.agent.task, call: triage_case }
+    response: { data: { submitted: { verdict: STILL-LIVE, evidence: "bsacrobatix/Kitsoki#1199 hosted preflight did not terminally triage", note: "flow expectation mismatch" } } }
+  - id: drive_09
+    match: { handler: host.agent.task, call: drive_case }
+    response:
+      data:
+        submitted: { exit: shipped, worktree: ".capsules/workspaces/bug15/case-09", branch: "agent/bug15-case-09", fix_ref: "agent/bug15-case-09", deliverable_present: true, oracle_pass: true, trace: ".artifacts/dogfood-marathon/bug15-real-tui/traces/case-09.jsonl", cost_usd: 0.55, tokens: 139000, wall_s: 218, summary: "Updated the preflight oracle to accept the live triaging state and terminal handoff separately.", findings: [] }
+    delay: 900ms
+  - id: triage_10
+    match: { handler: host.agent.task, call: triage_case }
+    response: { data: { submitted: { verdict: STILL-LIVE, evidence: "bsacrobatix/Kitsoki#1198 HAR list hides JSON-RPC methods", note: "web evidence readability" } } }
+  - id: drive_10
+    match: { handler: host.agent.task, call: drive_case }
+    response:
+      data:
+        submitted: { exit: needs-human, worktree: ".capsules/workspaces/bug15/case-10", branch: "agent/bug15-case-10", fix_ref: "agent/bug15-case-10", deliverable_present: true, trace: ".artifacts/dogfood-marathon/bug15-real-tui/traces/case-10.jsonl", cost_usd: 0.49, tokens: 123000, wall_s: 199, summary: "Prototype extracted JSON-RPC method labels, but HAR scrubber ownership needs review.", findings: [ { severity: medium, title: "HAR scrubber method extraction needs owner review", detail: "The parser should not retain request secrets while surfacing method names." } ] }
+    delay: 900ms
+  - id: triage_11
+    match: { handler: host.agent.task, call: triage_case }
+    response: { data: { submitted: { verdict: STILL-LIVE, evidence: "bsacrobatix/Kitsoki#1197 user trace rows have empty collapsed labels", note: "trace table UI" } } }
+  - id: drive_11
+    match: { handler: host.agent.task, call: drive_case }
+    response:
+      data:
+        submitted: { exit: shipped, worktree: ".capsules/workspaces/bug15/case-11", branch: "agent/bug15-case-11", fix_ref: "agent/bug15-case-11", deliverable_present: true, oracle_pass: true, trace: ".artifacts/dogfood-marathon/bug15-real-tui/traces/case-11.jsonl", cost_usd: 0.43, tokens: 109000, wall_s: 167, summary: "Rendered user intent names in collapsed trace rows.", findings: [] }
+    delay: 900ms
+  - id: triage_12
+    match: { handler: host.agent.task, call: triage_case }
+    response: { data: { submitted: { verdict: STILL-LIVE, evidence: "bsacrobatix/Kitsoki#1196 observe-mode tour step dead-ends", note: "tour placement regression" } } }
+  - id: drive_12
+    match: { handler: host.agent.task, call: drive_case }
+    response:
+      data:
+        submitted: { exit: shipped, worktree: ".capsules/workspaces/bug15/case-12", branch: "agent/bug15-case-12", fix_ref: "agent/bug15-case-12", deliverable_present: true, oracle_pass: false, trace: ".artifacts/dogfood-marathon/bug15-real-tui/traces/case-12.jsonl", cost_usd: 0.66, tokens: 161000, wall_s: 253, summary: "Candidate adjusted popover collision padding but failed the mobile tour oracle.", findings: [ { severity: medium, title: "Tour collision fix needs mobile oracle coverage", detail: "Desktop improved; mobile still dead-ends." } ] }
+    delay: 900ms
+  - id: triage_13
+    match: { handler: host.agent.task, call: triage_case }
+    response: { data: { submitted: { verdict: STILL-LIVE, evidence: "bsacrobatix/Kitsoki#1194 label recovery can hit secondary limits", note: "GitHub API rate handling" } } }
+  - id: drive_13
+    match: { handler: host.agent.task, call: drive_case }
+    response:
+      data:
+        submitted: { exit: shipped, worktree: ".capsules/workspaces/bug15/case-13", branch: "agent/bug15-case-13", fix_ref: "agent/bug15-case-13", deliverable_present: true, oracle_pass: true, trace: ".artifacts/dogfood-marathon/bug15-real-tui/traces/case-13.jsonl", cost_usd: 0.51, tokens: 128000, wall_s: 203, summary: "Rate-limited label recovery and made missing-label outcomes explicit.", findings: [] }
+    delay: 900ms
+  - id: triage_14
+    match: { handler: host.agent.task, call: triage_case }
+    response: { data: { submitted: { verdict: STILL-LIVE, evidence: "bsacrobatix/Kitsoki#1190 wrong profile after on_error dispatch", note: "harness selection bug" } } }
+  - id: drive_14
+    match: { handler: host.agent.task, call: drive_case }
+    response:
+      data:
+        submitted: { exit: shipped, worktree: ".capsules/workspaces/bug15/case-14", branch: "agent/bug15-case-14", fix_ref: "agent/bug15-case-14", deliverable_present: true, oracle_pass: true, trace: ".artifacts/dogfood-marathon/bug15-real-tui/traces/case-14.jsonl", cost_usd: 0.63, tokens: 157000, wall_s: 241, summary: "Threaded active profile selection through on_error dispatches.", findings: [] }
+    delay: 900ms
+  - id: triage_15
+    match: { handler: host.agent.task, call: triage_case }
+    response: { data: { submitted: { verdict: STILL-LIVE, evidence: "local artifact records unauthenticated Claude Code dispatch under codex profile", note: "local bugfix profile dispatch bug" } } }
+  - id: drive_15
+    match: { handler: host.agent.task, call: drive_case }
+    response:
+      data:
+        submitted: { exit: shipped, worktree: ".capsules/workspaces/bug15/case-15", branch: "agent/bug15-case-15", fix_ref: "agent/bug15-case-15", deliverable_present: true, oracle_pass: true, trace: ".artifacts/dogfood-marathon/bug15-real-tui/traces/local-bugfix-auth-profile.jsonl", cost_usd: 0.76, tokens: 184000, wall_s: 311, summary: "Added profile/backend assertion before launching the delegated agent.", findings: [] }
+    delay: 900ms
+  - id: render_report
+    match: { handler: host.slidey.render, call: render_report }
+    response:
+      data:
+        ok: true
+        path: ".artifacts/dogfood-marathon/bug15-real-tui/decks/aggregate.html"
+  - id: emit_report
+    match: { handler: host.artifacts_dir, call: emit_report }
+    response:
+      data:
+        ok: true
+        handle: { id: "dogfood-marathon-bug15-real-tui", kind: slideshow, mime: text/html }
+        path: ".artifacts/dogfood-marathon/bug15-real-tui/decks/aggregate.html"
+  - id: unexpected_agent_task
+    match: { handler: host.agent.task }
+    replay: any
+    response:
+      error: "unexpected host.agent.task call in dogfood TUI demo cassette"

@@ -1,0 +1,63 @@
+# bugfix_url_first_capture_intake -- a pasted GitHub issue URL at the landing
+# workbench should enter the bugfix provider intake, not the generic workbench
+# agent.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world:
+  bugfix_mode: "triage"
+  judge_mode: "human"
+
+host_bindings:
+  ticket: host.local_github.ticket
+
+host_handlers:
+  host.local_github.ticket:
+    by_op:
+      get:
+        data:
+          ok: true
+          id: "117"
+          title: "Bugfix URL should route to the bugfix story"
+          type: "bug"
+          source: "github"
+          body: |
+            The operator pasted a GitHub issue URL directly at landing.
+          status: "open"
+          url: "https://github.com/bsacrobatix/Kitsoki/issues/117"
+  host.agent.codeact:
+    data:
+      ok: true
+      terminated: "done"
+      payload:
+        verdict: "STILL-LIVE"
+        confidence: 0.82
+        summary_title: "STILL-LIVE - URL reached triage"
+        evidence: "The issue URL was resolved before triage."
+        summary_markdown: "The URL-first bug reference reached the bugfix story."
+        suggested_action: "drive the full bugfix pipeline"
+        fixed_in_ref: null
+        involved_components: []
+      steps: []
+
+turns:
+  - intent:
+      name: landing_capture
+      slots:
+        request: "https://github.com/bsacrobatix/Kitsoki/issues/117"
+    expect_state: bf.triaging
+    expect_host_calls:
+      - handler: host.local_github.ticket.get
+        args:
+          id: "https://github.com/bsacrobatix/Kitsoki/issues/117"
+    expect_world:
+      bf__ticket_id: "117"
+      bf__ticket_title: "Bugfix URL should route to the bugfix story"
+      bf__ticket_source_mode: "remote"
+      bf__ticket_source_ref: "https://github.com/bsacrobatix/Kitsoki/issues/117"
+      bf__ticket_url: "https://github.com/bsacrobatix/Kitsoki/issues/117"
+      bf__ticket_body: |
+        The operator pasted a GitHub issue URL directly at landing.
+
+expect_no_errors: true

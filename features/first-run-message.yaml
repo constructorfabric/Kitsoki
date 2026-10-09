@@ -1,0 +1,6 @@
+# yaml-language-server: $schema=feature.schema.json
+id: first-run-message
+kind: feature
+title: An actionable message on a no-provider first run
+tagline: No Claude CLI and no API key? kitsoki says exactly what's missing instead of silently faking it.
+summary: Before this fix, a first run with neither the claude CLI nor an API key configured silently fell back to replay mode with no explanation. kitsoki now detects the missing provider up front and prints what's missing and how to fix it, so a stranger's first run never looks like it worked when it didn't.

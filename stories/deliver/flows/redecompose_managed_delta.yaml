@@ -1,0 +1,67 @@
+# redecompose_managed_delta — a prior decomposition.yaml already exists →
+# the change routes through the decompose-update transaction
+# (tools/decomposition-update/apply_delta.py), never a blind decomposer
+# overwrite (proposal: deliver-canonical-decomposition B2c, task 3.2).
+#
+# Full path: configure → start → decompose (detect_prior_decomposition.star
+# finds decomposition_path already on disk → decompose_route=redecompose,
+# decomposer NOT invoked) → redecompose (decomposer agent authors an additive
+# delta, mocked) → redecompose_apply (host.run apply_delta.py, STUBBED — the
+# real transaction is covered by tools/decomposition-update/tests/run_no_llm.py
+# and stories/decompose-update's own flow) → lint (real Starlark over the
+# post-apply manifest) → review (agent mocked, accept) → fleet.load.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: configure
+initial_world:
+  base_branch: main
+  main_worktree_path: "."
+
+starlark_inspect_cassette: ../cassettes/redecompose_managed_delta.inspect.yaml
+
+host_handlers:
+  host.agent.task:
+    by_call:
+      redecompose_delta:
+        data:
+          ok: true
+          submitted:
+            trigger: "epic revised: add a /health/metrics counter"
+            added: [health-metrics]
+  host.agent.decide:
+    by_call:
+      review:
+        data:
+          submitted:
+            verdict: accept
+            reason: "The new metrics brief is self-contained and depends only on the prior health-model brief."
+            questions: []
+  host.run:
+    by_call:
+      redecompose_apply:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: '{"route": "ok", "ok": true, "out": ".artifacts/deliver/decomposition.yaml", "added": ["health-metrics"]}'
+          stdout_json:
+            route: "ok"
+            ok: true
+            out: ".artifacts/deliver/decomposition.yaml"
+            added: [health-metrics]
+
+turns:
+  - intent:
+      name: start
+      slots:
+        epic_path: "stories/deliver/testdata/fixture_epic.md"
+    expect_state: fleet.load
+    expect_world:
+      decompose_route:         "redecompose"
+      redecompose_trigger:     "epic revised: add a /health/metrics counter"
+      redecompose_added:       [health-metrics]
+      redecompose_apply_ok:    true
+      redecompose_apply_route: "ok"
+      lint_route:              "ok"
+
+expect_no_errors: true

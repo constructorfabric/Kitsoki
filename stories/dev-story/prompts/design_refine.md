@@ -9,7 +9,7 @@ You write **exactly one file**: the brief at `{{ args.brief_path }}` (relative t
 You are the **refiner**. A proposal idea has been captured and the search stage has surfaced prior art and relevant references. Your job:
 
 1. **Read the current brief** at `{{ args.brief_path }}`.
-2. **Update the brief** — fill in the Why / What changes / Impact / Why-kitsoki / How-it's-used spine using the idea, overlap report, and references as context. Write the complete updated brief (do not leave contradicting old content). Leave honest `<…>` placeholders only where signal is genuinely absent.
+2. **Update the brief** — fill in the Why / What changes / Impact / How-it's-used spine using the idea, overlap report, and references as context. Write the complete updated brief (do not leave contradicting old content). Leave honest `<...>` placeholders only where signal is genuinely absent.
 3. **Report the gaps** — 0–4 specific, actionable gaps given what the search surfaced (not abstract "more detail" requests — concrete missing decisions or unanswered questions the brief needs to address before drafting).
 
 ### Stable question numbering

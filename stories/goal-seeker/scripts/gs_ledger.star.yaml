@@ -1,0 +1,9 @@
+inputs:
+  goal_dir: { type: string, required: true }   # docs/goals/<slug>/ — holds decomposition.yaml + GOAL.md
+  work_dir: { type: string, required: true }   # .artifacts/goal/<slug>/ — holds log.jsonl, ledger.json
+outputs:
+  ledger:      { type: object }   # { goal_slug, counts, remaining, ready_ids, changes: [row...] }
+  counts:      { type: object }   # { <state>: n }
+  remaining:   { type: int }      # count of changes not yet integrated (0 ⇒ goal done)
+  ready_id:    { type: string }   # first scope-disjoint deps-satisfied ready change ("" if none)
+  ready_count: { type: int }      # number of ready changes

@@ -392,6 +392,127 @@ so the LLM sees them and can self-correct
    plans. Kitsoki wants a one-shot extraction: free text → intent. If
    the user needs multi-step, the state graph models it, not the LLM.
 
+### 4c. CodeAct / OpenHands (executable-code-as-action)
+
+CodeAct ("Executable Code Actions Elicit Better LLM Agents", Wang et al.,
+ICML 2024 — the paradigm behind OpenHands/OpenDevin and HuggingFace
+`smolagents`' `CodeAgent`) makes the opposite control-level bet from every
+other framework in this document: instead of a constrained tool-call format,
+the agent's action space is **executable code**. A live interpreter runs the
+emitted Python, stdout/stderr/return values come back as observations, the
+model self-debugs from execution errors and loops until it decides it's
+done. The claim is capability — code gives loops, conditionals, and
+composition in one action, so agents do more in fewer steps than a
+JSON-tool-call format allows.
+
+Kitsoki's `transition` tool (§5) is exactly the constrained format CodeAct
+argues against — deliberately: CodeAct wants a more capable autonomous
+agent, kitsoki wants a workflow where "the model probably does the right
+thing" isn't enough (`concept.md` §1). But kitsoki doesn't reject
+code-as-action wholesale — it already embeds a fully-controlled code
+runtime, Starlark (`host.starlark.run`, go.starlark.net), and the
+**`agent.codeact` verb** (`internal/host/codeact`) is CodeAct's loop
+re-admitted on top of it: the LLM emits Starlark snippets against an
+author-declared capability allowlist, each step executed in a traced,
+budget-bounded thread, observations (a return dict or a structured error
+envelope) feed back, and a final `done(payload)` is schema-gated before
+control returns to the state machine. It slots into the agent-verb taxonomy
+(§6.4) between the finite intent alphabet (max control, min expressivity)
+and `task` (max expressivity, min control) — composable like `task`, but
+every action traced, deterministic-by-construction, bounded, and
+no-LLM-replayable.
+
+Starlark beats a raw Python REPL as the substrate precisely because kitsoki
+owns the interpreter, so CodeAct's central trade — expressivity *for*
+auditability — disappears:
+
+| | CodeAct (Python) | `agent.codeact` (Starlark) |
+|---|---|---|
+| Sandbox | bolted-on (containers/seccomp); blast radius = whatever the model imports | intrinsic — no ambient I/O; the action space **is** the set of Go builtins the author exposes, loader-checked like every other verb's blast radius |
+| Tracing | none by default | every builtin call + step journaled (same event log every other verb writes to) |
+| Errors | raw tracebacks | a structured error envelope, the same contract as the validation-feedback retry loop (§4b) |
+| Termination | unbounded | no `while`/recursion is free in Starlark; a step budget bounds the outer loop too |
+| Replay | none — rerunning yields a new trajectory | pure interpreter + cassette'd HTTP/builtin calls → a recorded trajectory replays with zero LLM and zero live side effects (provable in CI, per the no-real-LLM-in-tests rule this whole document's `Steal`/`Avoid` sections assume) |
+
+The payoff is a **promotion ratchet** (`concept.md` §4, "code as artifact"):
+`agent.codeact` and `host.starlark.run` share one interpreter and one
+capability model, differing only in authorship — a live trajectory can be
+extracted (`internal/host/codeact.ExtractTrajectory`) and frozen into a
+committed `.star` file, swapping the exploratory `agent.codeact` invoke for
+a deterministic `host.starlark.run` call with zero further agent dispatch.
+This only applies when a call's answer is genuinely a fixed function of its
+inputs — a first dogfood pass tried to promote `stories/bugfix`'s
+ticket-triage room and correctly refused: a triage verdict is
+ticket-specific, so freezing one trajectory would silently give every
+future ticket the same stale answer. The ratchet is real, but it isn't a
+substitute for judgment about what's actually reusable.
+
+#### Transports: CLI vs direct API
+
+`codeact.Run` treats its `Agent` as a black box, so the per-step LLM call has
+two interchangeable backends, selected by `AgentCodeactHandler`:
+
+- **`RealCodeactAgent`** (`internal/host/agent_codeact_real.go`, the default)
+  forks one `claude -p` per step, gating the step on the same mcp-validator
+  `submit` mechanism `host.agent.decide` uses. Selected when the effect's
+  `agent:` resolves to the default (`builtin.claude_cli`) or to no plugin.
+- **`ApiCodeactAgent`** (`internal/host/agent_codeact_api.go`) calls an
+  OpenAI-compatible model API directly — one `{endpoint}/v1/chat/completions`
+  POST per step, the fixed `{action: snippet|done}` discriminated-union schema
+  sent as `response_format: json_schema`. Selected when `agent:` resolves to a
+  `builtin.local_llm` plugin (the opt-in check `reg.IsLocalLLM(pluginName)` in
+  `AgentCodeactHandler`); it generalizes `internal/agent/local_llm.go`'s client
+  rather than forking a CLI.
+
+The direct-API path exists because every step otherwise inherits the
+external-CLI friction this codebase keeps hitting — `tool_search`/MCP-approval
+dance, sandbox-bypass flags, quota inference from stdout — none of it inherent
+to the *model*, all of it the foreign harness layer in between. Config is the
+existing plugin-routing convention `decide` already uses: the `agent:` name is
+declared in both `agents:` (persona) and `agent_plugins:` (transport), sharing
+one key; the `builtin.local_llm` entry adds two knobs for an authenticated
+OpenAI-compatible endpoint:
+
+```yaml
+agents:
+  agent.glm:
+    system_prompt: "You triage bugs by emitting Starlark snippets against ctx..."
+agent_plugins:
+  agent.glm:
+    plugin: builtin.local_llm
+    endpoint: https://open.bigmodel.cn/api/paas/v4
+    api_key_env: GLM_API_KEY   # env-var NAME; secret read at call time, never in YAML
+    model: glm-4.6
+    json_schema: true          # response_format: json_schema for any schema (OpenAI-native),
+                               # independent of the llama.cpp grammar-subset gate `grammar` governs
+```
+
+The done()-payload schema gate, the structured-error feedback, the step
+journal, and the no-LLM cassette/replay are all unchanged — `ApiCodeactAgent`
+is just a different `Agent` impl fed into the same `codeact.Run`, so a recorded
+trajectory replays identically regardless of which transport produced it.
+
+**Steal:**
+
+1. Code as the action for compositional, capability-scoped tasks — CodeAct's
+   core insight, kept, with the interpreter's ambient I/O sealed off by
+   default so the insight doesn't cost the auditability the rest of this
+   document argues for.
+2. Two-tier cassetting an agent loop: the LLM's emitted decisions
+   (episode-level, like every other agent verb) and the interpreter's own
+   I/O (exchange-level, generalizing the existing HTTP-cassette format) are
+   recorded and replayed independently — necessary because a code-acting
+   loop has two distinct sources of nondeterminism, not one.
+
+**Avoid:**
+
+1. An unsandboxed, Turing-complete action space. CodeAct's Python REPL
+   trades away exactly the properties (determinism, replay, a loader-checked
+   blast radius) this document's `Steal` sections keep collecting from every
+   other framework.
+2. Promoting a trajectory whose answer isn't actually a fixed function of
+   its inputs — the ratchet's refusal case above, not a hypothetical.
+
 ---
 
 ## 5. Why one generic MCP tool, not per-state typed tools
@@ -666,7 +787,7 @@ feedback in under a second.
 | **Sub-story imports w/ capability rebinding** | flow link | none | subgraph (no rebind) | ✓ `host_bindings` |
 | **World isolation + projection per import** | none | none | partial | ✓ `world_in:` / per-exit `set:` |
 | **`emit_intent` resolution across import depth** | n/a | n/a | n/a | ✓ `IntentAliases` walk |
-| **Agent-verb blast-radius taxonomy** | one action type | webhook | one node | ✓ ask / decide / task / extract / converse |
+| **Agent-verb blast-radius taxonomy** | one action type | webhook | one node | ✓ ask / decide / task / extract / converse / codeact |
 | **Sandbox-enforced read-only LLM call** | DIY | none | DIY | ✓ verb-level |
 | **Semantic routing tiers before LLM** | NLU adapter | route matcher | DIY | ✓ four tiers |
 | **Multi-surface transport (TUI / MCP / Jira / file)** | channels DIY | CX channels | LangServe | ✓ first-class |

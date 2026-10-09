@@ -11,11 +11,31 @@ initial_world:
 host_handlers:
   host.run:
     by_call:
-      run_parity:
+      parity_provider_stream:
         data:
           ok: true
           exit_code: 0
-          stdout_json:
+          stdout: "ok host parity\n"
+      parity_tui_activity:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: "ok tui parity\n"
+      parity_web_activity:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: "ok web parity\n"
+      parity_vscode_surface:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: "ok vscode parity\n"
+  host.starlark.run:
+    by_call:
+      parity_report:
+        data:
+          parity_result:
             passed: true
             status: complete
             surfaces: ["tui", "web", "vscode"]
@@ -28,6 +48,9 @@ host_handlers:
                 kind: go-test
                 command: "go test ./internal/host -run TestAgentStream_HarnessParityThinkingAndToolUse"
                 contract: "Claude and Codex stream fixtures normalize to the same ordered thinking/tool activity feed."
+                status: passed
+                exit_code: 0
+                output_tail: "ok host parity"
             visual_gate:
               policy: deterministic
               automated: false
@@ -43,7 +66,15 @@ turns:
       status: ready
     expect_host_calls:
       - handler: host.run
-        args: { call: run_parity }
+        args: { call: parity_provider_stream }
+      - handler: host.run
+        args: { call: parity_tui_activity }
+      - handler: host.run
+        args: { call: parity_web_activity }
+      - handler: host.run
+        args: { call: parity_vscode_surface }
+      - handler: host.starlark.run
+        args: { call: parity_report }
 
   - intent: { name: accept, slots: {} }
     expect_state: done

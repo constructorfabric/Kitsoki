@@ -1,0 +1,76 @@
+# check_live_budget_default — a `check` with no `live_budget_minutes` slot
+# must still render `--live-budget-minutes 20` on the
+# emit_scenario_qa_run invoke, not omit the flag or send 0. Sibling to
+# check_live_budget_override.yaml, which covers the override path; kept in
+# its own fresh session because world.live_budget_minutes persists across
+# turns within one session (an override in an earlier turn would otherwise
+# leak into a later "default" turn in the same flow).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.run:
+    by_call:
+      emit_scenario_qa_run:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            run_id: scenario-qa-budget-default-run-1
+            run_dir: /repo/.artifacts/product-journey/scenario-qa-budget-default-run-1
+            driver_plan_path: /repo/.artifacts/product-journey/scenario-qa-budget-default-run-1/driver-plan.md
+            execution_plan_path: /repo/.artifacts/product-journey/scenario-qa-budget-default-run-1/execution-plan.md
+            agent_brief_path: /repo/.artifacts/product-journey/scenario-qa-budget-default-run-1/agent-brief.md
+
+  host.starlark.run:
+    by_call:
+      plan_legs:
+        data:
+          legs: { items: [] }
+          leg_count: 0
+          driver_agent: ".agents/agents/product-journey-qa-driver.md"
+          run_dir_rel: ".artifacts/product-journey/scenario-qa-budget-default-run-1"
+          plan_status: { resolved: true }
+
+turns:
+  - intent:
+      name: check
+      slots:
+        scenario: prd-design
+        transport: tui
+        persona: core-maintainer
+        target: gears-rust
+        seed: scenario-qa
+        profile: claude-native
+    expect_state: idle
+    expect_world:
+      last_error: "No transport checks resolved for this scenario/transport combination — check scenario/transport values."
+    expect_host_calls:
+      - handler: host.run
+        args:
+          call: emit_scenario_qa_run
+          cmd: python3
+          args:
+            - tools/product-journey/run.py
+            - --emit-run
+            - --scenario-qa-workspace
+            - --project
+            - gears-rust
+            - --persona
+            - core-maintainer
+            - --seed
+            - scenario-qa
+            - --scenarios
+            - prd-design
+            - --transport
+            - tui
+            - --live-budget-minutes
+            - 20
+            - --json-output
+          cwd: "."
+      - handler: host.starlark.run
+        args: { call: plan_legs }
+
+expect_no_errors: true

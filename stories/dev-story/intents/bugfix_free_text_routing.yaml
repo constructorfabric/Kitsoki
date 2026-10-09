@@ -1,0 +1,114 @@
+# bugfix_free_text_routing -- landing should distinguish free-text bug reports
+# from explicit ticket references and existing queue/pipeline commands.
+#
+# Run with:
+#
+#   go run ./cmd/kitsoki test routing stories/dev-story/app.yaml \
+#     --intents stories/dev-story/intents/bugfix_free_text_routing.yaml
+
+test_kind: intents
+app: ../app.yaml
+state: landing
+defaults:
+  runs: 1
+  min_pass_rate: 1.0
+
+fixtures:
+  # Inline reports: the operator is describing an unfiled bug. The complaint
+  # text should be loaded into ticket_body by landing.bugfix_report.
+  - id: inline-fix-this-bug
+    intent:
+      name: bugfix_report
+      slots:
+        complaint: "the run list still shows deleted runs"
+    inputs:
+      - "fix this bug the run list still shows deleted runs"
+
+  - id: inline-bug-where
+    intent:
+      name: bugfix_report
+      slots:
+        complaint: "cleanup leaves deleted runs visible"
+    inputs:
+      - "fix the bug where cleanup leaves deleted runs visible"
+
+  - id: inline-debug-this-bug
+    intent:
+      name: bugfix_report
+      slots:
+        complaint: "opening saved filters crashes"
+    inputs:
+      - "debug this bug opening saved filters crashes"
+
+  - id: pasted-report-body
+    intent:
+      name: bugfix_report
+      slots:
+        complaint: "the web ui hangs after reload"
+    inputs:
+      - "pasted bug report the web ui hangs after reload"
+
+  - id: inline-bugfix-brief
+    defers_to_interpreter: true
+    inputs:
+      - "bugfix brief the workbench sends issue links to the generic agent instead of bugfix"
+
+  # References: the operator has supplied an ID/URL. These intentionally defer
+  # out of semantic routing so landing's default-intent capture can preserve the
+  # exact punctuation/case (`TKT-404`, `#77`, GitHub URLs) before provider lookup.
+  - id: local-bug-id
+    defers_to_interpreter: true
+    inputs:
+      - "fix bug id TKT-404"
+
+  - id: short-bug-id
+    defers_to_interpreter: true
+    inputs:
+      - "fix bug TKT-404"
+
+  - id: issue-number
+    defers_to_interpreter: true
+    inputs:
+      - "fix issue 77"
+
+  - id: issue-number-hash
+    defers_to_interpreter: true
+    inputs:
+      - "fix issue #77"
+
+  - id: github-issue-number
+    defers_to_interpreter: true
+    inputs:
+      - "fix github issue 77"
+
+  - id: github-issue-url
+    defers_to_interpreter: true
+    inputs:
+      - "fix github issue https://github.com/acme/api/issues/77"
+
+  - id: issue-link-url
+    defers_to_interpreter: true
+    inputs:
+      - "fix issue link https://github.com/acme/api/issues/77"
+
+  - id: url-first-github-issue
+    defers_to_interpreter: true
+    inputs:
+      - "https://github.com/acme/api/issues/77"
+
+  # Boundaries: existing queue commands stay queue commands; bug filing remains
+  # the separate report-bug surface, not the fix pipeline.
+  - id: selected-bug-still-queue-command
+    intent: { name: go_bugfix }
+    inputs:
+      - "fix selected bug"
+
+  - id: work-on-bugs-still-queue-command
+    intent: { name: go_bugfix }
+    inputs:
+      - "i want to work on some bugs"
+
+  - id: filebug-not-fix
+    defers_to_interpreter: true
+    inputs:
+      - "file a bug about the login button being broken"

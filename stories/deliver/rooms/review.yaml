@@ -1,0 +1,116 @@
+# review — adversarial feasibility/completeness gate between lint and fleet.
+#
+# Runs after lint passes (deterministic structure is already proven). Invokes
+# host.agent.decide with a skeptic prompt (prompts/review_adversary.md) that
+# reads the epic + manifest and attacks per-brief buildability and
+# cross-brief coverage (schemas/review-decision.json:
+# {verdict: accept|revise, reason, questions[]}).
+#
+# Fully autonomous, no manual gate — same auto-routing paradigm as
+# decompose/lint: on_enter binds the verdict then emit_intents itself.
+#
+#   accept ─▶ fleet import
+#   revise ─▶ decompose, re-armed with `questions` as refine_feedback,
+#             sharing the SAME refine_cycle/refine_budget as lint's refine
+#             loop (one budget for the whole decompose↔lint↔review ring).
+#             Budget exhausted ─▶ @exit:needs-human {last_error}
+#
+# No `once:true` here — review must re-run fresh every entry (including
+# after a lint-refine or review-revise cycle produces a new manifest).
+
+states:
+
+  review:
+    description: "Adversarial feasibility/completeness review of the decomposition manifest."
+    relevant_world: [decomposition_path, coverage_note, review_verdict, review_reason, review_questions, refine_cycle, refine_budget]
+    view:
+      - prose: "Adversarial review of {{ world.decomposition_path }}…"
+      - kv:
+          pairs:
+            Verdict: '{{ world.review_verdict|default:"(pending)" }}'
+            Reason:  '{{ world.review_reason }}'
+            Cycle:   "{{ world.refine_cycle }} / {{ world.refine_budget }}"
+      - heading: "Questions"
+        when: "world.review_questions"
+      - code: '{{ world.review_questions|default:"[]" }}'
+        when: "world.review_questions"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "look"
+              intent: look
+    on_enter:
+      - invoke: host.agent.decide
+        id: review
+        with:
+          agent: reviewer
+          prompt: prompts/review_adversary.md
+          schema: schemas/review-decision.json
+          working_dir: "{{ world.main_worktree_path }}"
+          args:
+            epic_path:          "{{ world.epic_path }}"
+            decomposition_path: "{{ world.decomposition_path }}"
+            coverage_note:      "{{ world.coverage_note }}"
+        bind:
+          review_verdict:   submitted.verdict
+          review_reason:    submitted.reason
+          review_questions: submitted.questions
+        on_error: review_error
+      - when: "world.review_verdict == 'accept'"
+        emit_intent: review_accepted
+      - when: |
+          world.review_verdict == 'revise' &&
+          world.refine_cycle >= world.refine_budget
+        emit_intent: refine_budget_exhausted
+      - when: |
+          world.review_verdict == 'revise' &&
+          world.refine_cycle < world.refine_budget
+        emit_intent: review_revise
+    on:
+      review_accepted:
+        - target: fleet
+      review_revise:
+        - target: decompose
+          effects:
+            - set:
+                refine_feedback:      "Adversarial review requested changes: {{ world.review_reason }} — {{ join(world.review_questions ?? [], '; ') }}"
+                refine_cycle:         "{{ world.refine_cycle + 1 }}"
+                # Clear the once: bind so decompose's on_enter re-runs the agent.
+                decomposition_briefs: []
+                review_verdict:       ""
+      refine_budget_exhausted:
+        - target: "@exit:needs-human"
+          effects:
+            - set:
+                last_error: "Refine budget exhausted after {{ world.refine_cycle }} cycles: adversarial review still requests revisions ({{ world.review_reason }})."
+      look:
+        - target: .
+
+  # review_error — reviewer host-call failed; auto-routes to @exit:needs-human,
+  # mirroring decompose_error's shape (engine sets last_error from the host error).
+  review_error:
+    description: "Adversarial reviewer failed — routing to @exit:needs-human."
+    relevant_world: [last_error, decomposition_path]
+    view:
+      - prose: "The adversarial reviewer failed for {{ world.decomposition_path }}."
+      - code: '{{ world.last_error|default:"(no error detail)" }}'
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "look"
+              intent: look
+    on_enter:
+      - emit_intent: bail
+    on:
+      # See stories/deliver/rooms/decompose.yaml decompose_error for why the
+      # pass-through set: is needed once deliver is imported (dev-story's
+      # `deliver` import).
+      bail:
+        - target: "@exit:needs-human"
+          effects:
+            - set:
+                last_error: "{{ world.last_error }}"
+      look:
+        - target: .

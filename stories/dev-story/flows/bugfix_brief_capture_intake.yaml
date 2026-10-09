@@ -1,0 +1,43 @@
+# bugfix_brief_capture_intake -- an explicit inline bugfix brief should enter
+# bugfix directly with the brief as ticket_body.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world:
+  bugfix_mode: "triage"
+  judge_mode: "human"
+
+host_handlers:
+  host.agent.codeact:
+    data:
+      ok: true
+      terminated: "done"
+      payload:
+        verdict: "UNCLEAR"
+        confidence: 0.45
+        summary_title: "UNCLEAR - needs reproduction detail"
+        evidence: "The inline brief reached triage as ticket_body."
+        summary_markdown: "The hub accepted an inline bugfix brief without requiring a selected ticket."
+        suggested_action: "ask for exact reproduction steps"
+        fixed_in_ref: null
+        involved_components: []
+      steps: []
+
+turns:
+  - intent:
+      name: landing_capture
+      slots:
+        request: "bugfix brief the workbench sends issue links to the generic agent instead of bugfix"
+    expect_state: bf.triaging
+    expect_world:
+      bf__ticket_title: "Free-form bug report"
+      bf__ticket_source_mode: "freeform"
+      bf__ticket_source_ref: "operator brief"
+      bf__ticket_body: "the workbench sends issue links to the generic agent instead of bugfix"
+    expect_events:
+      - kind: machine.say
+        effect:
+          text: "Bug brief captured; entering bugfix with the inline brief."
+
+expect_no_errors: true

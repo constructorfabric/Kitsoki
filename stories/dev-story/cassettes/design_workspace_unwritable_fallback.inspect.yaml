@@ -1,0 +1,20 @@
+kind: inspect_cassette
+interactions:
+  # name_slug (design.on_enter): durable_path input is still the UNRESOLVED
+  # default here — the resolve step hasn't run yet (it lives in
+  # design_search's on_enter, entered only after this transition).
+  - op: exists
+    target: docs/proposals/.workspace/offline-cache-expensive-querie
+    out: "false"
+  - op: exists
+    target: docs/proposals/offline-cache-expensive-querie.md
+    out: "false"
+  # uniquify (design_materialize.on_enter): durable_path is now the
+  # resolved FALLBACK (.context/designs), rebound by design_search's
+  # resolve_durable_path step.
+  - op: exists
+    target: .context/designs/.workspace/offline-cache-expensive-querie
+    out: "false"
+  - op: exists
+    target: .context/designs/offline-cache-expensive-querie.md
+    out: "false"

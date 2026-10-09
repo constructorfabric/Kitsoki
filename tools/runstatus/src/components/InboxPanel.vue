@@ -64,6 +64,11 @@
               <span class="work-item__main">
                 <span class="work-item__title">{{ proposal.title || "(untitled)" }}</span>
                 <span v-if="proposal.detail" class="work-item__body">{{ proposal.detail }}</span>
+                <span class="work-item__choices" data-testid="work-item-choices">
+                  <span class="work-item__choice">accept</span>
+                  <span class="work-item__choice">refine</span>
+                  <span class="work-item__choice">dismiss</span>
+                </span>
                 <span class="work-item__meta">
                   <span>{{ proposal.kind }}</span>
                   <span class="work-item__action">review</span>
@@ -84,6 +89,18 @@
                 <span v-if="item.body" class="work-item__body">{{ item.body }}</span>
                 <span v-if="item.origin_url" class="work-item__origin">{{ item.origin_url }}</span>
                 <span v-if="workContext(item)" class="work-item__context">{{ workContext(item) }}</span>
+                <span
+                  v-if="workChoices(item).length > 0"
+                  class="work-item__choices"
+                  data-testid="work-item-choices"
+                >
+                  <span
+                    v-for="choice in workChoices(item)"
+                    :key="choice"
+                    class="work-item__choice"
+                    data-testid="work-item-choice"
+                  >{{ choice }}</span>
+                </span>
                 <span class="work-item__meta">
                   <span>{{ item.status || item.kind }}</span>
                   <span v-if="item.updated_at">{{ relativeTime(item.updated_at) }}</span>
@@ -102,6 +119,11 @@
               <span class="work-item__main">
                 <span class="work-item__title">{{ proposal.title || "(untitled)" }}</span>
                 <span v-if="proposal.detail" class="work-item__body">{{ proposal.detail }}</span>
+                <span class="work-item__choices" data-testid="work-item-choices">
+                  <span class="work-item__choice">accept</span>
+                  <span class="work-item__choice">refine</span>
+                  <span class="work-item__choice">dismiss</span>
+                </span>
                 <span class="work-item__meta">
                   <span>{{ proposal.kind }}</span>
                   <span class="work-item__action">review</span>
@@ -318,6 +340,19 @@ function workContext(item: WorkItem): string {
   return parts.join(" | ");
 }
 
+function workChoices(item: WorkItem): string[] {
+  if (item.kind !== "operator_question" || !item.questions?.length) return [];
+  const labels: string[] = [];
+  for (const question of item.questions) {
+    for (const option of question.options || []) {
+      const label = option.label.trim();
+      if (label && !labels.includes(label)) labels.push(label);
+    }
+  }
+  if (labels.length <= 4) return labels;
+  return [...labels.slice(0, 3), `+${labels.length - 3} more`];
+}
+
 function workAction(item: WorkItem): string {
   if (item.kind === "operator_question") return "answer";
   if (item.kind === "mining_proposal") return "review";
@@ -497,6 +532,21 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+.work-item__choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 0.1rem;
+}
+.work-item__choice {
+  border: 1px solid var(--k-border, #334155);
+  border-radius: 6px;
+  color: var(--k-fg, #cbd5e1);
+  font-size: 0.64rem;
+  font-weight: 600;
+  line-height: 1.1;
+  padding: 0.14rem 0.34rem;
 }
 .work-item__origin {
   color: var(--k-fg-accent, #60a5fa);

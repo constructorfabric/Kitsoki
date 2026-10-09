@@ -97,7 +97,7 @@ episodes:
       ok: true
       submitted:
         items:
-        - path: docs/prd/speaker-notes-export.md
+        - path: /tmp/kitsoki-prd-fixtures/speaker-notes-export.md
           sections: "\xA75"
           rationale: the PRD this design realizes
 - id: decide_default
@@ -176,4 +176,4 @@ episodes:
       ok: true
       exit_code: 0
       stdout_json:
-        prd_file: docs/prd/speaker-notes-export.md
+        prd_file: /tmp/kitsoki-prd-fixtures/speaker-notes-export.md

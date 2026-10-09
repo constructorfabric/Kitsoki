@@ -22,12 +22,22 @@ test_kind: flow
 app: ../app.yaml
 initial_state: landing
 initial_world:
+  # Opt out of bf's auto_triage pre-flight (default on): this fixture tests
+  # the downstream bugfix walk, not triage. Parent-level key — the import
+  # wrapper re-seeds bf__auto_triage on entry; only the world_in projection
+  # sticks. The pre-flight contract lives in
+  # stories/bugfix/flows/preflight_triage_*.yaml.
+  auto_triage: false
   ticket_id:      "B-2026-05-18-list-broken"
   ticket_title:   "Note list disappears after creating a second note"
   ticket_type:    "bug"
   ticket_url:     "issues/bugs/B-2026-05-18-list-broken.md"
   thread:         "B-2026-05-18-list-broken"
   workdir:        "testdata/projects/cake"
+  # This walk deliberately runs in a prepared demo-project workspace; declare
+  # it so bugfix's Step-0w isolation guard (idle.yaml) keeps the seeded
+  # identity instead of re-deriving a .worktrees/bf-* one.
+  workspace_prepared: true
   workspace_id:   "ws-cake-bug"
   base_branch:    "main"
   feature_branch: "fix/B-2026-05-18-list-broken"

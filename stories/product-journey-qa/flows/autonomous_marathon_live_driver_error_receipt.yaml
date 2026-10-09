@@ -1,0 +1,211 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.run:
+    by_call:
+      capture_product_journey_preflight:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: passed
+            preflight_id: preflight-live-driver-error
+            preflight_dir: .artifacts/product-journey/preflights/preflight-live-driver-error
+            preflight_path: .artifacts/product-journey/preflights/preflight-live-driver-error/preflight.json
+            markdown_path: .artifacts/product-journey/preflights/preflight-live-driver-error/preflight.md
+            webshot_output: .artifacts/product-journey/preflights/preflight-live-driver-error/webshot-smoke.png
+            passed: 6
+            failed: 0
+      autonomous_product_journey_marathon_create:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: autonomous_marathon_ready_for_driver
+            run_id: run-live-driver-error
+            run_dir: .artifacts/product-journey/run-live-driver-error
+            project: vscode
+            persona: core-maintainer
+            seed: live-driver-error
+            deck_path: .artifacts/product-journey/run-live-driver-error/deck.slidey.json
+            execution_plan_path: .artifacts/product-journey/run-live-driver-error/execution-plan.md
+            driver_plan_path: .artifacts/product-journey/run-live-driver-error/driver-plan.md
+            driver_journal_path: .artifacts/product-journey/run-live-driver-error/driver-journal.md
+            agent_brief_path: .artifacts/product-journey/run-live-driver-error/agent-brief.md
+            driver_handoff_path: .artifacts/product-journey/run-live-driver-error/driver-handoff.md
+            media_manifest_path: .artifacts/product-journey/run-live-driver-error/media-manifest.json
+            scenario_outcomes_path: .artifacts/product-journey/run-live-driver-error/scenario-outcomes.md
+            autonomous_marathon_status: autonomous_marathon_ready_for_driver
+            autonomous_marathon_summary: "Created 1 scenario(s); driver evidence capture is ready for story-owned dispatch."
+            autonomous_marathon_report_path: .artifacts/product-journey/run-live-driver-error/autonomous-marathon-report.md
+            autonomous_driver_mode: live
+            autonomous_driver_live_profile: test-live
+            autonomous_driver_status: ready_for_dispatch
+            autonomous_driver_summary: "Story-owned live driver dispatch is ready."
+            autonomous_driver_evidence_count: 0
+            autonomous_driver_issue_count: 0
+            autonomous_control_status: ready_for_driver
+            autonomous_control_path: .artifacts/product-journey/run-live-driver-error/autonomous-marathon-control.json
+            autonomous_control_markdown_path: .artifacts/product-journey/run-live-driver-error/autonomous-marathon-control.md
+            autonomous_control_summary: "driver=live, cadence=24h, watchdog=45m"
+            autonomous_fix_status: not_run
+            autonomous_gate_summary: "driver=ready, filing=not_run, gh_agent=not_run, independent_verify=not_run, review=not_run, validation=not_run"
+            independent_verify_status: not_run
+            independent_verify_summary: "independent verification not run"
+            validation_status: ""
+            validation_errors: 0
+            validation_warnings: 0
+            validation_issue_summary: ""
+            review_status: not_run
+            review_failed_count: 0
+            live_budget_minutes: 6
+            scenario_count: 1
+            proof_evidence_count: 0
+            demo_evidence_count: 0
+            missing_proof_evidence_count: 5
+            minimum_evidence_count: 5
+            proof_minimum_evidence_count: 0
+      record_autonomous_product_journey_driver_dispatch_failure:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: autonomous_driver_dispatch_recorded
+            run_id: run-live-driver-error
+            run_dir: .artifacts/product-journey/run-live-driver-error
+            autonomous_driver_dispatch_path: .artifacts/product-journey/run-live-driver-error/autonomous-driver-dispatch.json
+            autonomous_driver_dispatch_markdown_path: .artifacts/product-journey/run-live-driver-error/autonomous-driver-dispatch.md
+            autonomous_driver_dispatch_status: failed
+            autonomous_driver_dispatch_summary: "host.agent.task: driver session abandoned without successful submit"
+            autonomous_driver_dispatch_trace: ""
+            autonomous_marathon_status: autonomous_marathon_ready_for_driver
+            autonomous_driver_mode: live
+            autonomous_driver_live_profile: test-live
+            autonomous_driver_status: failed
+            autonomous_driver_summary: "host.agent.task: driver session abandoned without successful submit"
+            autonomous_driver_evidence_count: 0
+            autonomous_driver_issue_count: 0
+      autonomous_product_journey_marathon_finalize:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: autonomous_marathon_invalid
+            run_id: run-live-driver-error
+            run_dir: .artifacts/product-journey/run-live-driver-error
+            deck_path: .artifacts/product-journey/run-live-driver-error/deck.slidey.json
+            execution_plan_path: .artifacts/product-journey/run-live-driver-error/execution-plan.md
+            driver_plan_path: .artifacts/product-journey/run-live-driver-error/driver-plan.md
+            driver_journal_path: .artifacts/product-journey/run-live-driver-error/driver-journal.md
+            agent_brief_path: .artifacts/product-journey/run-live-driver-error/agent-brief.md
+            driver_handoff_path: .artifacts/product-journey/run-live-driver-error/driver-handoff.md
+            media_manifest_path: .artifacts/product-journey/run-live-driver-error/media-manifest.json
+            scenario_outcomes_path: .artifacts/product-journey/run-live-driver-error/scenario-outcomes.md
+            autonomous_marathon_status: autonomous_marathon_invalid
+            autonomous_marathon_summary: "driver=fail: host.agent.task: driver session abandoned without successful submit"
+            autonomous_marathon_report_path: .artifacts/product-journey/run-live-driver-error/autonomous-marathon-report.md
+            autonomous_driver_mode: live
+            autonomous_driver_live_profile: test-live
+            autonomous_driver_status: failed
+            autonomous_driver_summary: "host.agent.task: driver session abandoned without successful submit"
+            autonomous_driver_evidence_count: 0
+            autonomous_driver_issue_count: 0
+            autonomous_driver_dispatch_markdown_path: .artifacts/product-journey/run-live-driver-error/autonomous-driver-dispatch.md
+            autonomous_driver_dispatch_trace: ""
+            autonomous_control_status: ready_for_driver
+            autonomous_control_path: .artifacts/product-journey/run-live-driver-error/autonomous-marathon-control.json
+            autonomous_control_markdown_path: .artifacts/product-journey/run-live-driver-error/autonomous-marathon-control.md
+            autonomous_control_summary: "driver=live, cadence=24h, watchdog=45m"
+            autonomous_watchdog_status: not_run
+            autonomous_watchdog_summary: "watchdog skipped because autonomous driver dispatch did not capture proof"
+            autonomous_fix_status: not_run
+            autonomous_gate_summary: "driver=fail, watchdog=not_run, filing=not_run, gh_agent=not_run, independent_verify=fail, review=not_run, validation=fail"
+            independent_verify_status: fail
+            independent_verify_summary: "host.agent.task: driver session abandoned without successful submit"
+            filing_status: not_run
+            findings_filed_count: 0
+            findings_skipped_count: 0
+            findings_failed_count: 0
+            findings_unfiled_count: 0
+            filing_summary: "Issue filing skipped because autonomous driver dispatch did not capture proof."
+            gh_agent_enqueue_status: not_run
+            gh_agent_drain_status: not_run
+            gh_agent_drained_count: 0
+            gh_agent_done_count: 0
+            gh_agent_failed_count: 0
+            gh_agent_active_count: 0
+            review_status: not_run
+            review_failed_count: 0
+            validation_status: invalid
+            validation_errors: 1
+            validation_warnings: 0
+            validation_issue_summary: autonomous-driver-dispatch
+            stats_status: not_run
+            stats_gate_status: fail
+            stats_gate_summary: "driver dispatch failed before stats"
+            stats_current_run_scanned: no
+
+  host.agent.task:
+    by_call:
+      autonomous_product_journey_driver:
+        error: "host.agent.task: driver session abandoned without successful submit"
+
+turns:
+  - intent:
+      name: capture_preflight
+      slots:
+        seed: live-driver-error
+    expect_state: idle
+    expect_world:
+      status: capture_preflight_checked
+      capture_preflight_status: passed
+      capture_preflight_failed: 0
+    expect_host_calls:
+      - handler: host.run
+        args: { call: capture_product_journey_preflight }
+
+  - intent:
+      name: autonomous_marathon
+      slots:
+        project: vscode
+        persona: core-maintainer
+        seed: live-driver-error
+        scenarios: bugfix
+        live_budget_minutes: 6
+        autonomous_driver_mode: live
+        autonomous_driver_live_profile: test-live
+        ticket_repo: bsacrobatix/Kitsoki
+        gh_agent_public_base_url: https://agent.example
+    expect_state: run_created
+    expect_world:
+      status: autonomous_marathon_complete
+      autonomous_marathon_status: autonomous_marathon_invalid
+      autonomous_driver_mode: live
+      autonomous_driver_live_profile: test-live
+      autonomous_driver_status: failed
+      autonomous_driver_summary: "host.agent.task: driver session abandoned without successful submit"
+      autonomous_driver_evidence_count: 0
+      autonomous_driver_issue_count: 0
+      autonomous_driver_dispatch_markdown_path: .artifacts/product-journey/run-live-driver-error/autonomous-driver-dispatch.md
+      autonomous_gate_summary: "driver=fail, watchdog=not_run, filing=not_run, gh_agent=not_run, independent_verify=fail, review=not_run, validation=fail"
+      autonomous_watchdog_status: not_run
+      autonomous_fix_status: not_run
+      gh_agent_drain_status: not_run
+      stats_status: not_run
+      validation_status: invalid
+      validation_issue_summary: autonomous-driver-dispatch
+      last_error: "host.agent.task: driver session abandoned without successful submit"
+    expect_view_matches: "RUN CREATED[\\s\\S]*Autonomous gates[\\s\\S]*driver=fail, watchdog=not_run[\\s\\S]*Autonomous driver[\\s\\S]*live / failed[\\s\\S]*Driver receipt[\\s\\S]*autonomous-[\\s\\S]*driver-dispatch.md[\\s\\S]*Issue filing[\\s\\S]*not_run[\\s\\S]*GH-agent drain[\\s\\S]*not_run[\\s\\S]*Validation issues[\\s\\S]*autonomous-driver-dispatch[\\s\\S]*Action failed:[\\s\\S]*driver session abandoned without successful[\\s\\S]*submit"
+    expect_host_calls:
+      - handler: host.run
+        args: { call: autonomous_product_journey_marathon_create }
+      - handler: host.agent.task
+        args: { call: autonomous_product_journey_driver }
+      - handler: host.run
+        args: { call: record_autonomous_product_journey_driver_dispatch_failure }
+      - handler: host.run
+        args: { call: autonomous_product_journey_marathon_finalize }
+
+expect_no_errors: true

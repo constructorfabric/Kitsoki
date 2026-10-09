@@ -1,0 +1,126 @@
+# deck_build_failure_report_still_succeeds — regression for the "quiet
+# partial failure" fix in rooms/report.yaml: report.yaml's deck-generation
+# step (tools/product-journey/run.py --scenario-qa-report) used to have
+# `on_error: .`, which swallowed a build failure and silently left
+# world.deck_path/report.md's "Review deck" line looking like it was just
+# "(building…)" forever — no error anywhere. This flow simulates that
+# subprocess failing (build_scenario_qa_deck stubbed with exit_code: 1, no
+# stdout_json) and asserts:
+#   - the room still reaches "report" (never bounces to idle);
+#   - world.deck_error captures the honest cause;
+#   - report.md is STILL produced (report_path/report_summary populated) —
+#     build_report.star is a subprocess-free writer, so a failing python
+#     step can never take it down;
+#   - the report view surfaces "Deck generation failed: ..." and the
+#     "Review deck" artifact line reads "(failed — see below)" instead of a
+#     stale "(building…)" or a bare deck path that was never actually built.
+#
+# Only host.run/host.agent.task are stubbed (matching persona_qa_demo.yaml's
+# approach) so build_report.star's REAL fs.write + deck_error handling runs,
+# not a mocked stand-in.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.run:
+    by_call:
+      emit_scenario_qa_run:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            run_id: scenario-qa-deck-fail-run
+            run_dir: /repo/.artifacts/product-journey/scenario-qa-deck-fail-run
+            driver_plan_path: /repo/.artifacts/product-journey/scenario-qa-deck-fail-run/driver-plan.md
+            execution_plan_path: /repo/.artifacts/product-journey/scenario-qa-deck-fail-run/execution-plan.md
+            agent_brief_path: /repo/.artifacts/product-journey/scenario-qa-deck-fail-run/agent-brief.md
+            driver_plan:
+              driver_agent: ".agents/agents/product-journey-qa-driver.md"
+              scenarios:
+                - leg_id: "bugfix::tui"
+                  scenario: "bugfix"
+                  label: "Bugfix"
+                  task: "Resolve a red gate."
+                  transport: "tui"
+                  visual_surface: "tui"
+                  evidence_dir: "evidence/gears-rust--core-maintainer/bugfix"
+                  primary_story: "stories/bugfix/app.yaml"
+                  success_criteria: ["Hidden oracle passes."]
+                  transport_evidence_contract:
+                    primary_tool: "render.tui_png"
+                    evidence_kind: "rendered_tui_frame"
+                    level: "frame-level"
+      # Simulates run.py --scenario-qa-report crashing/exiting non-zero
+      # (e.g. the deck-shape validator rejecting a malformed leg) BEFORE it
+      # ever reaches its own report.md/deck.slidey.json writes. No
+      # stdout_json — host.run's best-effort JSON envelope parse only fires
+      # on a trailing JSON value, and this stdout has none, so deck_path
+      # never binds.
+      build_scenario_qa_deck:
+        data:
+          ok: false
+          exit_code: 1
+          stdout: "SystemExit: scenario-qa deck validation failed: leg 0 missing required field 'evidence'"
+
+  host.agent.task:
+    by_call:
+      drive_leg:
+        data:
+          ok: true
+          submitted:
+            status: "captured"
+            evidence_refs: ["render_tui_png:frame-1"]
+            frames_dir: "evidence/gears-rust--core-maintainer/bugfix"
+            summary: "Captured a render.tui_png frame showing the fixed state."
+      judge_leg:
+        data:
+          ok: true
+          submitted:
+            verdict: "pass"
+            summary: "TUI frame confirms the fix state."
+            cited_frames: ["frame-1.png"]
+
+turns:
+  - intent:
+      name: check
+      slots:
+        scenario: bugfix
+        transport: tui
+        persona: core-maintainer
+        target: gears-rust
+        seed: deck-fail
+    expect_state: report
+    expect_world:
+      run_id: scenario-qa-deck-fail-run
+      leg_count: 1
+      pass_count: 1
+      fail_count: 0
+      degraded_count: 0
+      deck_path: ""
+      deck_error: "deck build exited 1: SystemExit: scenario-qa deck validation failed: leg 0 missing required field 'evidence'"
+      report_path: "/repo/.artifacts/product-journey/scenario-qa-deck-fail-run/report.md"
+      report_summary: "1 / 1 transport checks passed."
+    expect_host_calls:
+      - handler: host.run
+        args: { call: emit_scenario_qa_run }
+      - handler: host.starlark.run
+        args: { call: plan_legs }
+      - handler: host.starlark.run
+        args: { call: pick_leg }
+      - handler: host.agent.task
+        args: { call: drive_leg }
+      - handler: host.starlark.run
+        args: { call: prepare_judge }
+      - handler: host.agent.task
+        args: { call: judge_leg }
+      - handler: host.starlark.run
+        args: { call: record_leg_result }
+      - handler: host.run
+        args: { call: build_scenario_qa_deck }
+      - handler: host.starlark.run
+        args: { call: build_report }
+    expect_view_matches: "SCENARIO QA REPORT[\\s\\S]*Summary report:[\\s\\S]*report.md[\\s\\S]*Review deck:[\\s\\S]*\\(failed — see below\\)[\\s\\S]*Deck generation failed: deck build exited 1[\\s\\S]*tui \\[frame-level\\] verdict=pass"
+
+expect_no_errors: true

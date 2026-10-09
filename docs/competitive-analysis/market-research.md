@@ -92,7 +92,7 @@ Five trends each independently push buyers toward kitsoki's architectural shape:
 4. **Structured-output / schema-validated calling is now table-stakes.** Validation between every step and a token/step/wall-clock budget per agent run are the documented production-reliability pattern ([Morph, 2026][morph-llm-workflows]).
 5. **Self-improving / lifelong-learning agent workflows are the 2026 frontier.** A January 2026 IEEE TPAMI survey codified "lifelong learning for LLM agents" as a recognised subfield ([qianlima-lab survey][lifelong-survey]). The pattern: agents extract reusable knowledge from each run into a non-parametric memory and inject it into future prompts — parameter-free improvement that sidesteps fine-tuning ([Experiential Reflective Learning, arXiv 2603.24639][erl]; [Memento, arXiv 2508.16153][memento]). Reflexion-style self-reflection ([arXiv][reflexion-survey]) and Just-in-Time RL ([arXiv 2601.18510][jitrl]) are now mainstream research touchstones.
 
-Kitsoki is architecturally compliant with the first four trends *by design* — the LLM has no latitude outside the declared intent alphabet, every transition is validated by the state machine, the event log is the source of truth for replay, and the four-tier routing stack means 78%+ of turns never call the LLM at all. For the fifth trend, **a planned 4-layer self-improvement model** (described in §4.5) is the explicit roadmap response, with a working internal precedent already shipped inside Acronis as the `loopy` tool ([cyber-repo/tools/loopy][loopy-self-improvement]).
+Kitsoki is architecturally compliant with the first four trends *by design* — the LLM has no latitude outside the declared intent alphabet, every transition is validated by the state machine, the event log is the source of truth for replay, and the four-tier routing stack means 78%+ of turns never call the LLM at all. For the fifth trend, **a planned 4-layer self-improvement model** (described in §4.5) is the explicit roadmap response, with a working internal precedent already shipped inside Acronis as the `loopy` tool ([focused-engineering/tools/loopy][loopy-self-improvement]).
 
 ### 2.3 Pricing and business model context
 
@@ -230,7 +230,7 @@ Kitsoki is alone in the upper-left quadrant *for a working implementation at the
 
 ### 4.5 The planned self-improvement layer (roadmap differentiator)
 
-The 2026 academic frontier (Trend 5 in §2.2) has codified self-improving / lifelong-learning agent workflows as a distinct subfield. The pattern — agents extract reusable knowledge from each run into a non-parametric memory, then inject it into future prompts — is parameter-free improvement that sidesteps fine-tuning. Kitsoki's roadmap adopts a 4-layer model already validated inside Acronis by the `loopy` autonomous-bug-fix tool ([cyber-repo/tools/loopy/docs/SELF-IMPROVEMENT.md][loopy-self-improvement]):
+The 2026 academic frontier (Trend 5 in §2.2) has codified self-improving / lifelong-learning agent workflows as a distinct subfield. The pattern — agents extract reusable knowledge from each run into a non-parametric memory, then inject it into future prompts — is parameter-free improvement that sidesteps fine-tuning. Kitsoki's roadmap adopts a 4-layer model already validated inside Acronis by the `loopy` autonomous-bug-fix tool ([focused-engineering/tools/loopy/docs/SELF-IMPROVEMENT.md][loopy-self-improvement]):
 
 | Layer | What it does | Loopy precedent |
 |---|---|---|
@@ -511,7 +511,7 @@ When the audience is specifically regulated industry, a tighter variant works:
 - [arXiv 2508.16153 — Memento: Fine-tuning LLM Agents without Fine-tuning LLMs][memento]
 - [arXiv 2601.18510 — Just-In-Time Reinforcement Learning: Continual Learning in LLM Agents][jitrl]
 - [emergentmind — Lifelong Learning for LLM Agents (Reflexion summary)][reflexion-survey]
-- [`cyber-repo/tools/loopy/docs/SELF-IMPROVEMENT.md`][loopy-self-improvement] — Acronis-internal precedent: the 4-layer model already shipped in production for autonomous bug-fix.
+- [`focused-engineering/tools/loopy/docs/SELF-IMPROVEMENT.md`][loopy-self-improvement] — Acronis-internal precedent: the 4-layer model already shipped in production for autonomous bug-fix.
 
 ### Internal kitsoki references
 - [`docs/architecture/prior-art.md`][prior-art] — kitsoki's comparative grounding across IF parsers, statecharts, dialogue managers, and LLM orchestration.
@@ -548,7 +548,7 @@ When the audience is specifically regulated industry, a tighter variant works:
 [memento]: https://arxiv.org/pdf/2508.16153
 [jitrl]: https://arxiv.org/pdf/2601.18510
 [reflexion-survey]: https://www.emergentmind.com/topics/lifelong-learning-for-llm-based-agents
-[loopy-self-improvement]: /home/cloud-user/code/cyber-repo/tools/loopy/docs/SELF-IMPROVEMENT.md
+[loopy-self-improvement]: /home/cloud-user/code/focused-engineering/tools/loopy/docs/SELF-IMPROVEMENT.md
 [meta-mode]: ../meta-mode.md
 [imports]: ../imports.md
 [domain-paradox]: ./domain-research.md#45-trend-5-the-ai-productivity-paradox

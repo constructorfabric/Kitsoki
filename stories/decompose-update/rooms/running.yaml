@@ -1,0 +1,52 @@
+states:
+  running:
+    description: "Executing the no-LLM managed-delta transaction gate."
+    view:
+      - banner:
+          text: "Running"
+          subtitle: "The story is executing tools/decomposition-update/tests/run_no_llm.py."
+          color: "#0F766E"
+      - kv:
+          pairs:
+            Status: "{{ world.status }}"
+            Review: "{{ world.review_summary }}"
+            Exit code: "{{ world.result_exit_code }}"
+            OK: "{{ world.result_ok }}"
+      - heading: "Output"
+      - code: '{{ world.result_stdout|default:"(pending - managed delta gate has not returned yet)" }}'
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "accept"
+              intent: accept
+            - label: "quit"
+              intent: quit
+            - label: "look"
+              intent: look
+    on_enter:
+      - invoke: host.run
+        id: managed_delta_gate
+        with:
+          cmd: python3
+          args:
+            - tools/decomposition-update/tests/run_no_llm.py
+          cwd: "{{ world.workdir }}"
+          timeout: "120s"
+        bind:
+          result_stdout: stdout
+          result_exit_code: exit_code
+          result_ok: ok
+        on_error: failed
+      - set: { status: "ready" }
+    on:
+      accept:
+        - when: "world.result_ok"
+          target: "@exit:done"
+        - target: failed
+          effects:
+            - set: { status: "failed" }
+      quit:
+        - target: "@exit:abandoned"
+      look:
+        - target: .

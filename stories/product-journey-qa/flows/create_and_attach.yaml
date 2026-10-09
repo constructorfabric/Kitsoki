@@ -51,7 +51,7 @@ host_handlers:
             proof_minimum_evidence_count: 0
             minimum_evidence_count: 30
             missing_proof_summary: "project-onboarding: generated_config_diff, onboarding_smoke_result"
-            driver_contract_summary: "Driver contract: 6 scenarios (product-discovery, project-onboarding, bugfix, prd-design, feature-implementation, +1 more); 6 missing-proof rows; 2 final gates. Inspect last_result.driver_scenarios, last_result.missing_proof_evidence, and last_result.driver_final_gates."
+            driver_contract_summary: "Driver contract: 6 scenarios (product-discovery, project-onboarding, bugfix, prd-design, feature-implementation, +1 more); 6 missing-proof rows; 4 final gates. Inspect last_result.driver_scenarios, last_result.missing_proof_evidence, and last_result.driver_final_gates."
             next_driver_capture: "Next capture: product-discovery/browser_screenshot. Save a retained visual MCP screenshot or PNG reference."
             next_driver_attach_command: 'python3 tools/product-journey/run.py --attach-evidence --run-dir .artifacts/product-journey/run-123 --scenario product-discovery --evidence-kind browser_screenshot --evidence-path <path-or-retained-id> --evidence-source <retained|external|local|cassette> --notes "Save a retained visual MCP screenshot or PNG reference."'
             next_driver_blocker_command: "python3 tools/product-journey/run.py --record-blocker --run-dir .artifacts/product-journey/run-123 --scenario product-discovery --title <blocker-title> --summary <why-this-scenario-could-not-be-captured> --evidence-path <trace-or-frame-path>"
@@ -200,7 +200,7 @@ host_handlers:
           stdout_json:
             status: reviewed
             review_status: needs_evidence
-            summary: "needs_evidence: 16/19 checks passed, 2 warnings, 1 failures"
+            summary: "needs_evidence: 17/20 checks passed, 2 warnings, 1 failures"
             run_dir: .artifacts/product-journey/run-123
             review_path: .artifacts/product-journey/run-123/review.json
             deck_path: .artifacts/product-journey/run-123/deck.slidey.json
@@ -211,14 +211,14 @@ host_handlers:
             driver_handoff_path: .artifacts/product-journey/run-123/driver-handoff.md
             media_manifest_path: .artifacts/product-journey/run-123/media-manifest.json
             scenario_outcomes_path: .artifacts/product-journey/run-123/scenario-outcomes.md
-            passed: 16
+            passed: 17
             warnings: 2
             failed: 1
-            total: 19
-            review_passed_count: 16
+            total: 20
+            review_passed_count: 17
             review_failed_count: 1
             review_warning_count: 2
-            review_total_count: 19
+            review_total_count: 20
             review_backlog_summary: "fail: quality-gates (bugfix (3/5)); warn: non-demo-evidence (proof=0, demo=30); warn: playback-artifacts-resolve (artifacts/bugfix.mp4)"
       prepare_product_journey_driver_handoff:
         data:
@@ -437,7 +437,7 @@ turns:
       proof_minimum_evidence_count: 0
       minimum_evidence_count: 30
       missing_proof_summary: "project-onboarding: generated_config_diff, onboarding_smoke_result"
-      driver_contract_summary: "Driver contract: 6 scenarios (product-discovery, project-onboarding, bugfix, prd-design, feature-implementation, +1 more); 6 missing-proof rows; 2 final gates. Inspect last_result.driver_scenarios, last_result.missing_proof_evidence, and last_result.driver_final_gates."
+      driver_contract_summary: "Driver contract: 6 scenarios (product-discovery, project-onboarding, bugfix, prd-design, feature-implementation, +1 more); 6 missing-proof rows; 4 final gates. Inspect last_result.driver_scenarios, last_result.missing_proof_evidence, and last_result.driver_final_gates."
       next_driver_capture: "Next capture: product-discovery/browser_screenshot. Save a retained visual MCP screenshot or PNG reference."
       next_driver_attach_command: 'python3 tools/product-journey/run.py --attach-evidence --run-dir .artifacts/product-journey/run-123 --scenario product-discovery --evidence-kind browser_screenshot --evidence-path <path-or-retained-id> --evidence-source <retained|external|local|cassette> --notes "Save a retained visual MCP screenshot or PNG reference."'
       next_driver_blocker_command: "python3 tools/product-journey/run.py --record-blocker --run-dir .artifacts/product-journey/run-123 --scenario product-discovery --title <blocker-title> --summary <why-this-scenario-could-not-be-captured> --evidence-path <trace-or-frame-path>"
@@ -570,7 +570,7 @@ turns:
       issue_count: 1
       fix_count: 1
       blocked_count: 0
-    expect_view_matches: "Finding matrix[\\s\\S]*5 total; strength 1, weakness 2, issue 1, fix 1, blocked 0"
+    expect_view_matches: "Finding matrix[\\s\\S]*5 total; strength 1, weakness 2, issue 1, fix 1, blocked[\\s\\S]*0"
     expect_host_calls:
       - handler: host.run
         args: { call: seed_product_journey_demo }
@@ -580,11 +580,11 @@ turns:
     expect_world:
       status: reviewed
       review_status: needs_evidence
-      review_summary: "needs_evidence: 16/19 checks passed, 2 warnings, 1 failures"
-      review_passed_count: 16
+      review_summary: "needs_evidence: 17/20 checks passed, 2 warnings, 1 failures"
+      review_passed_count: 17
       review_failed_count: 1
       review_warning_count: 2
-      review_total_count: 19
+      review_total_count: 20
       review_backlog_summary: "fail: quality-gates (bugfix (3/5)); warn: non-demo-evidence (proof=0, demo=30); warn: playback-artifacts-resolve (artifacts/bugfix.mp4)"
       deck_path: .artifacts/product-journey/run-123/deck.slidey.json
       execution_plan_path: .artifacts/product-journey/run-123/execution-plan.md
@@ -594,7 +594,7 @@ turns:
       driver_handoff_path: .artifacts/product-journey/run-123/driver-handoff.md
       media_manifest_path: .artifacts/product-journey/run-123/media-manifest.json
       scenario_outcomes_path: .artifacts/product-journey/run-123/scenario-outcomes.md
-    expect_view_matches: "Review checks[\\s\\S]*16 / 19 passed; 1 failed; 2 warnings[\\s\\S]*fail: quality-gates[\\s\\S]*warn: non-demo-evidence"
+    expect_view_matches: "Review checks[\\s\\S]*17 / 20 passed; 1 failed; 2 warnings[\\s\\S]*fail: quality-gates[\\s\\S]*warn: non-demo-evidence"
     expect_host_calls:
       - handler: host.run
         args: { call: review_product_journey_run }

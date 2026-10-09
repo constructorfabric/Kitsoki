@@ -1,0 +1,73 @@
+# freeform_complaint_autostarts — bugfix can start from an operator complaint
+# with no filed ticket, no issue id, and no repro evidence. The story
+# synthesizes a session-scoped ticket id, carries the complaint as ticket_body,
+# runs pre-flight triage, then proceeds as far as reproduction can get before
+# holding for guidance.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  judge_mode: "llm_then_human"
+  session_id: "sess-freeform"
+
+host_handlers:
+  host.append_to_file: { data: { ok: true, message_id: "msg-1" } }
+  host.git_worktree:   { data: { ok: true, log: "created" } }
+  host.agent.codeact:
+    data:
+      ok: true
+      terminated: "done"
+      payload:
+        verdict:          "UNCLEAR"
+        confidence:       0.45
+        summary_title:    "UNCLEAR — complaint needs a sharper reproduction"
+        evidence:         "No specific file/function was cited; code search did not identify a unique owner."
+        summary_markdown: "The inline complaint was accepted, but it is too broad to prove from code alone. Continue into reproduction and ask the operator for a concrete failing action if needed."
+        suggested_action: "try the bugfix pipeline; ask for exact steps if reproduction cannot be produced"
+        fixed_in_ref:     null
+        involved_components: []
+      steps: []
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary_title:        "Not reproduced yet"
+        summary_markdown:     "The complaint was inspected, but it does not include enough concrete steps to create a deterministic reproducer. Need the exact screen/action and observed failure."
+        bug_verified:         false
+        repro_command:        ""
+        repro_test_paths:     []
+        steps:                []
+        expected_outcome:     "The reported behavior should be reproducible from the complaint."
+        actual_outcome:       "No deterministic reproduction could be created from the complaint alone."
+        evidence_paths:       []
+        involved_components:  []
+  host.agent.decide:
+    data:
+      ok: true
+      submitted:
+        outcome:    "uncertain"
+        intent:     "uncertain"
+        verdict:    "uncertain"
+        confidence: 0.3
+        reasoning:  "The reproducer says the complaint lacks exact failing steps; hold for operator guidance."
+
+turns:
+  - intent:
+      name: work_complaint
+      slots:
+        complaint: "The run list sometimes does not refresh after cleanup; the user has to restart the app to see the latest status."
+    expect_state: reproducing
+    expect_not_state: idle
+    expect_world:
+      ticket_id:              "complaint-sess-freeform"
+      ticket_title:           "Free-form bug report"
+      ticket_source_mode:     "freeform"
+      ticket_source_ref:      "operator complaint"
+      ticket_body:            "The run list sometimes does not refresh after cleanup; the user has to restart the app to see the latest status."
+      thread:                 "issues/bugs/complaint-sess-freeform.md"
+      escalate_low_value:     true
+      bf_autostart_attempted: true
+
+expect_terminal: false
+expect_no_errors: true

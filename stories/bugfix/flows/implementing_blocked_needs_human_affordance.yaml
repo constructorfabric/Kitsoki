@@ -1,0 +1,34 @@
+# implementing_blocked_needs_human_affordance — applied=false is a visible
+# blocker and accepting it stops at needs-human instead of advancing to tests.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: implementing
+initial_world:
+  ticket_id:      "TKT-AFF-2"
+  ticket_title:   "Implementer blocker needs operator attention"
+  thread:         "TKT-AFF-2"
+  bugfix_mode:    "full"
+  judge_mode:     "human"
+  implement_artifact:
+    summary_title: "Blocked: target file missing"
+    applied: false
+    files_changed: []
+    blockers:
+      - "The proposed fix names internal/widget/widget.go, but that file does not exist in this checkout."
+    summary_markdown: >
+      The implementer could not apply the requested edit because the proposed
+      target file does not exist. A human needs to correct the proposal or
+      provide the right file before tests can run.
+
+turns:
+  - intent: { name: look, slots: {} }
+    expect_state: implementing
+    expect_view_matches: "ACTION NEEDED: IMPLEMENTER BLOCKED[\\s\\S]*Continue does[\\s\\S]*stop at needs-human[\\s\\S]*Blockers[\\s\\S]*target file[\\s\\S]*blocked: stop run[\\s\\S]*ACTION NEEDED: stop at needs-human"
+  - intent: { name: accept, slots: {} }
+    expect_state: __exit__needs-human
+    expect_world:
+      status: "needs-human"
+
+expect_terminal: true
+expect_no_errors: true

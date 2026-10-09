@@ -22,6 +22,18 @@ import (
 	"kitsoki/internal/world"
 )
 
+// effectFields returns the resolved (effect, deterministic) pair for a host
+// call, ready to merge into a HostDispatched/HostReturned event payload
+// (effect-taxonomy.md's decision-recording consumer) so a trace is
+// self-describing without re-deriving the class from the story. Backed by
+// the builtin classification table (internal/effect via
+// host.ClassifyDispatchedCall), consulted with the call's resolved args so
+// multi-op verbs (host.git, host.gh.ticket, host.local, ...) resolve per-op.
+func effectFields(namespace string, args map[string]any) (string, bool) {
+	class, det := host.ClassifyDispatchedCall(namespace, args)
+	return string(class), det
+}
+
 // dispatchHostCalls invokes each HostInvocation, applies bindings to world,
 // and re-renders the view. Returns the new events, the updated world, the
 // refreshed view (empty if no changes), an override state path (non-empty
@@ -77,6 +89,31 @@ func (o *Orchestrator) writeModePosture(state app.StatePath, w world.World) (wri
 	return wm, scope
 }
 
+// applyErrorBannerSeam is the single never-silent redirect-application seam
+// (docs/proposals/never-silent-runtime.md, Task 1.1): every code path that
+// applies an on_error: redirect converges on dispatchHostCalls or
+// dispatchHostCallsDetailed, and both call this helper on the resolved
+// redirect view before returning it. That makes the banner an invariant of
+// the seam itself rather than a convention each of the orchestrator's five
+// call sites (Turn, submitDirect, ContinueTurn, OneShot, RunInitialOnEnter)
+// has to remember to re-implement — OneShot silently lacked it before this
+// fix (see TestOrchestrator_OneShot_AppliesErrorBannerOnRedirect).
+//
+// Gated on (last_error being a non-empty string AND the view not already
+// containing it), so it never fires on success and never double-shows for
+// stories whose on_error: target already renders {{ world.last_error }}
+// itself.
+func applyErrorBannerSeam(view string, w world.World) string {
+	msg, ok := w.Vars["last_error"].(string)
+	if !ok || msg == "" {
+		return view
+	}
+	if strings.Contains(view, msg) {
+		return view
+	}
+	return appendErrorBanner(view, msg)
+}
+
 func (o *Orchestrator) dispatchHostCalls(ctx context.Context, sid app.SessionID, calls []machine.HostInvocation, w world.World, state app.StatePath) ([]store.Event, world.World, string, app.StatePath, error) {
 	if o.hosts == nil || len(calls) == 0 {
 		return nil, w, "", "", nil
@@ -123,7 +160,7 @@ func (o *Orchestrator) dispatchHostCalls(ctx context.Context, sid app.SessionID,
 	// `with: { agent: <name> }` references to a host.Agent value. Built
 	// once per dispatch (cheap — translation is tag-equivalent).
 	ctx = host.WithAgents(ctx, agentsForContext(o.def))
-	ctx = host.WithProviders(ctx, providersForContext(o.def))
+	ctx = host.WithProviders(ctx, o.providersForDispatch())
 	// Resolve the live harness selection once for this dispatch: the active
 	// profile chooses the backend to fork and the env/model default (installed as
 	// the operator-selected provider via WithActiveProfile). No profile selected
@@ -131,6 +168,11 @@ func (o *Orchestrator) dispatchHostCalls(ctx context.Context, sid app.SessionID,
 	backendName, activeProfile := o.resolveSelection(o.agentBackendName)
 	ctx = host.WithAgentBackendNamed(ctx, backendName)
 	ctx = host.WithActiveProfile(ctx, activeProfile)
+	ctx = host.WithHarnessLadder(ctx, o.harnessLadder)
+	ctx = host.WithLadderSessionState(ctx, o.ladderSession)
+	if o.agentLaunchPolicy.Enabled {
+		ctx = host.WithAgentLaunchPolicy(ctx, o.agentLaunchPolicy)
+	}
 	// Inject the prompt renderer so agent handlers resolve and render prompt
 	// files through the story's overlay → story search path. nil is safe
 	// (handlers use the legacy path).
@@ -244,10 +286,8 @@ func (o *Orchestrator) dispatchHostCalls(ctx context.Context, sid app.SessionID,
 					slog.String("phase", "dispatch_background"),
 					slog.String("err", bgErr.Error()),
 				)
-				w.Vars["last_error"] = bgErr.Error()
-				events = append(events, newOrchestratorEvent(store.EffectApplied, map[string]any{
-					"set": map[string]any{"last_error": bgErr.Error()},
-				}, 0))
+				w.Set("last_error", bgErr.Error())
+				events = append(events, newOrchestratorEvent(store.EffectApplied, operationWorldUpdatePayload(w, "set", map[string]any{"last_error": bgErr.Error()}), 0))
 			} else {
 				w = bgWorld
 			}
@@ -280,11 +320,14 @@ func (o *Orchestrator) dispatchHostCalls(ctx context.Context, sid app.SessionID,
 		// Stamp it with the foreground turn (existing.Turn, inherited from the
 		// turn entry point via AgentCallCtx) so the live JSONL write buckets it
 		// under the turn it actually belongs to, not turn 0.
+		callEffect, callDeterministic := effectFields(hc.Namespace, invokeArgs)
 		hostDispatchedEv := newOrchestratorEvent(store.HostDispatched, map[string]any{
 			"namespace":          hc.Namespace,
 			"args":               invokeArgs,
 			"rerender_fell_back": fellBack,
 			"background":         hc.Background,
+			"effect":             callEffect,
+			"deterministic":      callDeterministic,
 		}, existing.Turn)
 		// Flush HostDispatched to the JSONL sink LIVE, before the (possibly
 		// long-blocking) Invoke below — otherwise the whole turn's event batch
@@ -350,23 +393,21 @@ func (o *Orchestrator) dispatchHostCalls(ctx context.Context, sid app.SessionID,
 		}
 		if err != nil {
 			// Infrastructure failure (e.g. handler not registered): record and move on.
-			w.Vars["last_error"] = err.Error()
-			events = append(events, newOrchestratorEvent(store.EffectApplied, map[string]any{
-				"set": map[string]any{"last_error": err.Error()},
-			}, 0))
+			w.Set("last_error", err.Error())
+			events = append(events, newOrchestratorEvent(store.EffectApplied, operationWorldUpdatePayload(w, "set", map[string]any{"last_error": err.Error()}), 0))
 			// Structured global host_error so the redirect target room can render
 			// a rich error (namespace + message). Reserved global, never folded.
 			herr := map[string]any{
 				"namespace": hc.Namespace,
 				"message":   err.Error(),
 			}
-			w.Vars["host_error"] = herr
-			events = append(events, newOrchestratorEvent(store.EffectApplied, map[string]any{
-				"set": map[string]any{"host_error": herr},
-			}, 0))
+			w.Set("host_error", herr)
+			events = append(events, newOrchestratorEvent(store.EffectApplied, operationWorldUpdatePayload(w, "set", map[string]any{"host_error": herr}), 0))
 			events = append(events, newOrchestratorEvent(store.HostReturned, map[string]any{
-				"namespace": hc.Namespace,
-				"error":     err.Error(),
+				"namespace":     hc.Namespace,
+				"error":         err.Error(),
+				"effect":        callEffect,
+				"deterministic": callDeterministic,
 			}, 0))
 			applied = true
 			// Honour on_error even on infrastructure failure: the
@@ -374,7 +415,14 @@ func (o *Orchestrator) dispatchHostCalls(ctx context.Context, sid app.SessionID,
 			// route here", and "never registered" is a stronger failure
 			// than a non-zero exit.  Stop processing further calls.
 			if hc.OnError != "" {
-				o.logger.DebugContext(ctx, trace.EvHostOnErrorRedirect,
+				// WARN, not DEBUG: an INFRA host failure (the call could not run
+				// at all — handler missing, or a subprocess that failed to spawn
+				// under fork/memory load) routing to on_error is exactly the
+				// signal you need visible in CI to root-cause a flake like the
+				// punch-list studio test (host.run → needs_human). The error
+				// string carries the underlying cause (e.g. "exec: ... resource
+				// temporarily unavailable").
+				o.logger.WarnContext(ctx, trace.EvHostOnErrorRedirect,
 					slog.String("session_id", string(sid)),
 					slog.String("namespace", hc.Namespace),
 					slog.String("from", string(state)),
@@ -388,10 +436,8 @@ func (o *Orchestrator) dispatchHostCalls(ctx context.Context, sid app.SessionID,
 			continue
 		}
 		if res.Error != "" {
-			w.Vars["last_error"] = res.Error
-			events = append(events, newOrchestratorEvent(store.EffectApplied, map[string]any{
-				"set": map[string]any{"last_error": res.Error},
-			}, 0))
+			w.Set("last_error", res.Error)
+			events = append(events, newOrchestratorEvent(store.EffectApplied, operationWorldUpdatePayload(w, "set", map[string]any{"last_error": res.Error}), 0))
 			// Structured global host_error mirrors last_error but carries the
 			// namespace and (when the host result returned a Data payload) the
 			// raw data plus the conventional stderr/exit_code host.run carries.
@@ -409,10 +455,8 @@ func (o *Orchestrator) dispatchHostCalls(ctx context.Context, sid app.SessionID,
 					herr["exit_code"] = v
 				}
 			}
-			w.Vars["host_error"] = herr
-			events = append(events, newOrchestratorEvent(store.EffectApplied, map[string]any{
-				"set": map[string]any{"host_error": herr},
-			}, 0))
+			w.Set("host_error", herr)
+			events = append(events, newOrchestratorEvent(store.EffectApplied, operationWorldUpdatePayload(w, "set", map[string]any{"host_error": herr}), 0))
 		}
 
 		// Emit one EffectApplied event per binding so replay reconstructs
@@ -467,15 +511,13 @@ func (o *Orchestrator) dispatchHostCalls(ctx context.Context, sid app.SessionID,
 					continue
 				}
 			}
-			w.Vars[wkey] = val
+			w.Set(wkey, val)
 			dispatchBinds[wkey] = val
-			events = append(events, newOrchestratorEvent(store.EffectApplied, map[string]any{
-				"set": map[string]any{wkey: val},
-			}, 0))
+			events = append(events, newOrchestratorEvent(store.EffectApplied, operationWorldUpdatePayload(w, "set", map[string]any{wkey: val}), 0))
 			applied = true
 		}
 
-		payload := map[string]any{"namespace": hc.Namespace}
+		payload := map[string]any{"namespace": hc.Namespace, "effect": callEffect, "deterministic": callDeterministic}
 		if res.Error != "" {
 			payload["error"] = res.Error
 		}
@@ -490,12 +532,25 @@ func (o *Orchestrator) dispatchHostCalls(ctx context.Context, sid app.SessionID,
 		// host scripts (the bugfix room's verifier, deploy, etc.)
 		// actually block the pipeline instead of silently advancing.
 		if res.Error != "" && hc.OnError != "" {
-			o.logger.DebugContext(ctx, trace.EvHostOnErrorRedirect,
+			// WARN, not DEBUG: a host call reporting a DOMAIN error (a non-zero
+			// exit / an explicit Result.Error) that routes to on_error is a
+			// signal worth surfacing in CI to root-cause flakes like the
+			// punch-list studio test (host.run → needs_human). exit_code/ok from
+			// the result are attached so a spurious error under load is
+			// diagnosable from the log alone.
+			exitCode, ok := "", ""
+			if res.Data != nil {
+				exitCode = fmt.Sprintf("%v", res.Data["exit_code"])
+				ok = fmt.Sprintf("%v", res.Data["ok"])
+			}
+			o.logger.WarnContext(ctx, trace.EvHostOnErrorRedirect,
 				slog.String("session_id", string(sid)),
 				slog.String("namespace", hc.Namespace),
 				slog.String("from", string(state)),
 				slog.String("to", hc.OnError),
 				slog.String("error", res.Error),
+				slog.String("exit_code", exitCode),
+				slog.String("ok", ok),
 				slog.String("phase", "domain"),
 			)
 			redirect = app.StatePath(hc.OnError)
@@ -542,6 +597,7 @@ func (o *Orchestrator) dispatchHostCalls(ctx context.Context, sid app.SessionID,
 			}
 			errView = v
 		}
+		errView = applyErrorBannerSeam(errView, w)
 		return events, w, errView, resolvedRedirect, nil
 	}
 
@@ -793,7 +849,7 @@ func (o *Orchestrator) dispatchHostCallsDetailed(ctx context.Context, calls []ma
 		}
 	}
 	ctx = host.WithAgents(ctx, agentsForContext(o.def))
-	ctx = host.WithProviders(ctx, providersForContext(o.def))
+	ctx = host.WithProviders(ctx, o.providersForDispatch())
 	// Resolve the live harness selection once for this dispatch: the active
 	// profile chooses the backend to fork and the env/model default (installed as
 	// the operator-selected provider via WithActiveProfile). No profile selected
@@ -801,6 +857,11 @@ func (o *Orchestrator) dispatchHostCallsDetailed(ctx context.Context, calls []ma
 	backendName, activeProfile := o.resolveSelection(o.agentBackendName)
 	ctx = host.WithAgentBackendNamed(ctx, backendName)
 	ctx = host.WithActiveProfile(ctx, activeProfile)
+	ctx = host.WithHarnessLadder(ctx, o.harnessLadder)
+	ctx = host.WithLadderSessionState(ctx, o.ladderSession)
+	if o.agentLaunchPolicy.Enabled {
+		ctx = host.WithAgentLaunchPolicy(ctx, o.agentLaunchPolicy)
+	}
 	// Inject the prompt renderer so agent handlers resolve and render prompt
 	// files through the story's overlay → story search path. nil is safe
 	// (handlers use the legacy path).
@@ -838,11 +899,14 @@ func (o *Orchestrator) dispatchHostCallsDetailed(ctx context.Context, calls []ma
 		// earlier args — see dispatchRerenderWorld / rerenderHostArgs above.
 		invokeArgs, fellBack := rerenderHostArgs(hc, dispatchRerenderWorld(hc, dispatchBinds, w))
 		summary := HostCallSummary{Namespace: hc.Namespace, Args: invokeArgs}
+		callEffect, callDeterministic := effectFields(hc.Namespace, invokeArgs)
 		events = append(events, newOrchestratorEvent(store.HostDispatched, map[string]any{
 			"namespace":          hc.Namespace,
 			"args":               invokeArgs,
 			"rerender_fell_back": fellBack,
 			"background":         hc.Background,
+			"effect":             callEffect,
+			"deterministic":      callDeterministic,
 		}, 0))
 		// B-7: inject agent plugin alias for summary dispatch path.
 		invokeCtx2 := host.WithWorldSnapshot(ctx, w.Vars)
@@ -855,13 +919,13 @@ func (o *Orchestrator) dispatchHostCallsDetailed(ctx context.Context, calls []ma
 		if err != nil {
 			summary.Error = err.Error()
 			summaries = append(summaries, summary)
-			w.Vars["last_error"] = err.Error()
-			events = append(events, newOrchestratorEvent(store.EffectApplied, map[string]any{
-				"set": map[string]any{"last_error": err.Error()},
-			}, 0))
+			w.Set("last_error", err.Error())
+			events = append(events, newOrchestratorEvent(store.EffectApplied, operationWorldUpdatePayload(w, "set", map[string]any{"last_error": err.Error()}), 0))
 			events = append(events, newOrchestratorEvent(store.HostReturned, map[string]any{
-				"namespace": hc.Namespace,
-				"error":     err.Error(),
+				"namespace":     hc.Namespace,
+				"error":         err.Error(),
+				"effect":        callEffect,
+				"deterministic": callDeterministic,
 			}, 0))
 			applied = true
 			if hc.OnError != "" {
@@ -878,11 +942,9 @@ func (o *Orchestrator) dispatchHostCallsDetailed(ctx context.Context, calls []ma
 			continue
 		}
 		if res.Error != "" {
-			w.Vars["last_error"] = res.Error
+			w.Set("last_error", res.Error)
 			summary.Error = res.Error
-			events = append(events, newOrchestratorEvent(store.EffectApplied, map[string]any{
-				"set": map[string]any{"last_error": res.Error},
-			}, 0))
+			events = append(events, newOrchestratorEvent(store.EffectApplied, operationWorldUpdatePayload(w, "set", map[string]any{"last_error": res.Error}), 0))
 		}
 		if res.Data != nil {
 			summary.Data = res.Data
@@ -900,15 +962,13 @@ func (o *Orchestrator) dispatchHostCallsDetailed(ctx context.Context, calls []ma
 			if !ok {
 				continue
 			}
-			w.Vars[wkey] = val
+			w.Set(wkey, val)
 			dispatchBinds[wkey] = val
-			events = append(events, newOrchestratorEvent(store.EffectApplied, map[string]any{
-				"set": map[string]any{wkey: val},
-			}, 0))
+			events = append(events, newOrchestratorEvent(store.EffectApplied, operationWorldUpdatePayload(w, "set", map[string]any{wkey: val}), 0))
 			applied = true
 		}
 
-		payload := map[string]any{"namespace": hc.Namespace}
+		payload := map[string]any{"namespace": hc.Namespace, "effect": callEffect, "deterministic": callDeterministic}
 		if res.Error != "" {
 			payload["error"] = res.Error
 		}
@@ -952,6 +1012,7 @@ func (o *Orchestrator) dispatchHostCallsDetailed(ctx context.Context, calls []ma
 			}
 			errView = v
 		}
+		errView = applyErrorBannerSeam(errView, w)
 		return summaries, events, w, errView, resolvedRedirect, nil
 	}
 
@@ -981,19 +1042,24 @@ func (o *Orchestrator) dispatchHostCallsDetailed(ctx context.Context, calls []ma
 func foldAgentCost(w *world.World, batchCost float64) []store.Event {
 	var events []store.Event
 	if batchCost != worldFloat(w.Vars["turn_cost_usd"]) {
-		w.Vars["turn_cost_usd"] = batchCost
-		events = append(events, newOrchestratorEvent(store.EffectApplied, map[string]any{
-			"set": map[string]any{"turn_cost_usd": batchCost},
-		}, 0))
+		w.Set("turn_cost_usd", batchCost)
+		events = append(events, newOrchestratorEvent(store.EffectApplied, operationWorldUpdatePayload(*w, "set", map[string]any{"turn_cost_usd": batchCost}), 0))
 	}
 	if batchCost > 0 {
 		session := worldFloat(w.Vars["session_cost_usd"]) + batchCost
-		w.Vars["session_cost_usd"] = session
-		events = append(events, newOrchestratorEvent(store.EffectApplied, map[string]any{
-			"set": map[string]any{"session_cost_usd": session},
-		}, 0))
+		w.Set("session_cost_usd", session)
+		events = append(events, newOrchestratorEvent(store.EffectApplied, operationWorldUpdatePayload(*w, "set", map[string]any{"session_cost_usd": session}), 0))
 	}
 	return events
+}
+
+func operationWorldUpdatePayload(w world.World, kind string, value map[string]any) map[string]any {
+	payload := map[string]any{kind: value}
+	if w.Operation != nil {
+		payload["operation_id"] = w.Operation.ID
+		payload["operation_local"] = true
+	}
+	return payload
 }
 
 // worldFloat coerces a world value to float64 — float64 when set by foldAgentCost

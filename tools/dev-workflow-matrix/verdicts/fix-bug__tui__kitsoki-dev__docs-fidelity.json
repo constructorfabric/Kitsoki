@@ -1,0 +1,170 @@
+{
+  "axis": {
+    "surface": "tui",
+    "workflow": "fix-bug"
+  },
+  "check_type": "docs-fidelity",
+  "claims": [
+    {
+      "claim": "The pipeline is stories/bugfix/ and its README is the authoritative reference for rooms, exits, judge modes, cycle budgets, and the RED\u2192GREEN regression-gate discipline",
+      "note": "stories/bugfix/README.md exists and documents all of these: rooms table, exits table, judge polymorphism, cycle budgets (Wave 3/Phase 4), and a 'RED\u2192GREEN regression gate' section that explicitly names the characterization-test trap.",
+      "score": "truthful"
+    },
+    {
+      "claim": "Full pipeline via `start` / `full_pipeline` walks idle \u2192 reproducing \u2192 proposing \u2192 implementing \u2192 testing \u2192 reviewing \u2192 validating \u2192 done",
+      "note": "bugfix README intent table lists both `start` and `full_pipeline` landing at reproducing_executing; room files for all eight rooms exist under stories/bugfix/rooms/.",
+      "score": "truthful"
+    },
+    {
+      "claim": "Triage-only mode via the `triage` intent or `bugfix_mode=triage` gives a read-only ALREADY-FIXED/STILL-LIVE/PARTIAL/UNCLEAR verdict with no worktree",
+      "note": "rooms/idle.yaml defines a `triage` intent that sets bugfix_mode=triage and targets `triaging`; idle's workspace-creation effects are all guarded on bugfix_mode != 'triage' and triage mode pins workdir='.'; verdict vocabulary (ALREADY-FIXED, STILL-LIVE) appears in triage flows.",
+      "score": "truthful"
+    },
+    {
+      "claim": "stories/bugfix/rooms/triaging.yaml exists",
+      "note": "File exists at that path.",
+      "score": "truthful"
+    },
+    {
+      "claim": "Quick fix (`quick_fix` intent) skips the reviewing + validating checkpoints; see README#mode-shortcuts",
+      "note": "README has a 'Mode shortcuts' section and the intent table says quick mode's accept at testing_awaiting_reply jumps to done_executing, skipping reviewing + validating.",
+      "score": "truthful"
+    },
+    {
+      "claim": "The pipeline ends via the `bugfix_exit` world key: `direct-ship` (default, composes the shared ship-it tail integrate \u2192 verify \u2192 cleanup) or `open-PR` (hands off to pr-refinement)",
+      "note": "app.yaml:328 declares bugfix_exit with default \"direct-ship\"; README's exit-slot section describes the imported ship-it tail (integrate \u2192 verify \u2192 cleanup) and the open-PR handoff; stories/ship-it/README.md and stories/pr-refinement/README.md both exist.",
+      "score": "truthful"
+    },
+    {
+      "claim": "An opt-in `open-PR-merge` exit walks pr-refinement's CI-watch and merge to a real @exit:merged with no parent hub; see README#the-exit-slot--direct-ship-vs-open-pr-delivery-loop-slice-4",
+      "note": "README heading 'The exit slot \u2014 direct-ship vs open-PR (delivery-loop slice 4)' matches the anchor; it documents open-PR-merge composing imported pr-refinement (open_pr \u2192 ci_monitoring \u2192 merge) reaching @exit:merged standalone.",
+      "score": "truthful"
+    },
+    {
+      "claim": "A standalone run selects the exit via `initial_world: {bugfix_exit: open-PR}`; dev-story instead derives it from its own `bugfix_destination` choice",
+      "note": "bugfix_exit is a plain world var (app.yaml world block), overridable via initial_world; stories/dev-story/app.yaml:505 declares bugfix_destination and line 1667 maps it to bugfix_exit (local-merge\u2192direct-ship, else open-PR).",
+      "score": "truthful"
+    },
+    {
+      "claim": "Prerequisite: repo must be onboarded per ../project-onboarding.md so a ticket source (local issues/bugs/ or a bound host.gh.ticket GitHub repo) exists",
+      "note": "docs/project-onboarding.md exists and covers both local-file tickets under issues/ and binding iface.ticket \u2192 host.gh.ticket to a GitHub repo, plus the agent-backend prerequisite.",
+      "score": "truthful"
+    },
+    {
+      "claim": "The repro_command/gate_command convention (ticket frontmatter repro_command seeds world.gate_command) is documented in stories/bugfix/README.md",
+      "note": "README's 'repro RED-gate' section documents exactly this: ticket `repro_command:` frontmatter projected into world.gate_command at ticket-load.",
+      "score": "truthful"
+    },
+    {
+      "claim": "TUI runs from dev-story with judge_mode=human as the standalone default, so each checkpoint pauses for an explicit bf__accept instead of auto-cascading under judge_mode=llm",
+      "note": "bugfix app.yaml/README declare judge_mode default `human`; the judge polymorphism section confirms llm mode auto-fires verdicts while human mode waits for explicit reply intents.",
+      "score": "truthful"
+    },
+    {
+      "claim": "Start the TUI with bare `kitsoki run`",
+      "note": "cmd/kitsoki/main.go `run` accepts MaximumNArgs(1); with no arg it synthesizes the implicit project root from .kitsoki.yaml (a dev-story instance), so the no-arg form is valid.",
+      "score": "truthful"
+    },
+    {
+      "claim": "TUI command sequence: tickets \u2192 search_tickets open \u2192 pick_ticket TKT-100 \u2192 go_bugfix \u2192 bf__start \u2192 bf__proceed/bf__accept walk through reproducing, proposing, implementing, testing, reviewing, validating, done \u2192 @exit:done \u2192 pr.open_pr",
+      "note": "Matches stories/dev-story/README.md 'Manual TUI walkthrough' (lines 510\u2013528) verbatim, including the exact bf__proceed/bf__accept ordering and the bf @exit:done \u2192 pr.open_pr handoff.",
+      "score": "truthful"
+    },
+    {
+      "claim": "`go_bugfix` forces bf regardless of ticket_type; `drive` also routes here when ticket_type is \"bug\"",
+      "note": "dev-story README: the walkthrough types go_bugfix for a bug; `drive` reads ticket_type and routes accordingly (impl for feature tickets).",
+      "score": "truthful"
+    },
+    {
+      "claim": "For triage-only: after go_bugfix lands at bf.idle, type `bf__triage` instead of `bf__start` \u2014 lands at a read-only verdict, no worktree",
+      "note": "The `triage` intent is declared on bugfix's idle room and targets the triaging room with no workspace creation; under the bf import alias intents are prefixed bf__ (same rewriter mechanism as bf__start/bf__accept per README's IntentAliases note).",
+      "score": "truthful"
+    },
+    {
+      "claim": "See stories/dev-story/README.md#manual-tui-walkthrough for the full walkthrough including the feature-ticket (drive \u2192 impl) branch",
+      "note": "That heading exists at stories/dev-story/README.md:505 and the drive\u2192impl feature branch is described right after the walkthrough.",
+      "score": "truthful"
+    },
+    {
+      "claim": "Standalone: `kitsoki run stories/bugfix/app.yaml`",
+      "note": "stories/bugfix/app.yaml exists; the bugfix README gives the identical standalone command.",
+      "score": "truthful"
+    },
+    {
+      "claim": "Verify command: `go run ./cmd/kitsoki test flows stories/bugfix/app.yaml --flows 'stories/bugfix/flows/triage_verdict_autonomous.yaml'`",
+      "note": "`kitsoki test flows <app.yaml>` exists (cmd/kitsoki/test_flows.go) with a --flows override flag, and stories/bugfix/flows/triage_verdict_autonomous.yaml exists.",
+      "score": "truthful"
+    },
+    {
+      "claim": "Verify command: `go run ./cmd/kitsoki test flows stories/bugfix/app.yaml --flows 'stories/bugfix/flows/done_opens_pr_and_merges.yaml'`",
+      "note": "stories/bugfix/flows/done_opens_pr_and_merges.yaml exists; same command shape as above.",
+      "score": "truthful"
+    },
+    {
+      "claim": "The full flow suite covers the pipeline end-to-end \u2014 run with --flows 'stories/bugfix/flows/*.yaml'; the README has the index",
+      "note": "80+ flow fixtures exist under stories/bugfix/flows/ and the README's file-layout section indexes them.",
+      "score": "truthful"
+    },
+    {
+      "claim": "The kitsoki-debugging skill (.agents/skills/kitsoki-debugging/SKILL.md) diagnoses the state machine against on-disk repo state without a live session",
+      "note": ".agents/skills/kitsoki-debugging/SKILL.md exists; the dev-workflow-matrix's Fix-a-bug\u00d7TUI note independently corroborates that silent-bounce reliability warranted this dedicated debugging skill.",
+      "score": "truthful"
+    },
+    {
+      "claim": "Web: `kitsoki web` runs the same bugfix orchestrator over HTTP but is reliability-suspect (staged-gate and pacing issues historically)",
+      "note": "kitsoki web is a real subcommand (listed in cmd/kitsoki/doctor.go command groups); the matrix's Fix-a-bug\u00d7Web row says exactly 'drivable; staged-gate & pace issues historically' \u2014 \ud83d\udfe1 proof-thin.",
+      "score": "truthful"
+    },
+    {
+      "claim": "VS Code: drivable via the same webview embed as file-a-bug.md; a dedicated e2e spec tools/vscode-kitsoki/tests/vscode-bugfix-walk.e2e.spec.ts (real VS Code via kitsoki.flow) drives the full pipeline idle \u2192 done \u2192 @exit:done",
+      "note": "docs/workflows/file-a-bug.md exists; the spec file exists and its header + code confirm the idle \u2192 \u2026cascade\u2026 \u2192 done \u2192 @exit:done walk in a real VS Code window via the extension's `kitsoki.flow` setting.",
+      "score": "truthful"
+    },
+    {
+      "claim": "The VS Code spec is the real socket capture that pinned host.ide.get_diagnostics' wire shape (still-open follow-up; no standalone IDE-integration architecture doc yet)",
+      "note": "The matrix's Fix-a-bug\u00d7VS Code row states the same spec is 'the real-socket capture that pinned host.ide.get_diagnostics' wire shape (ide-integration.md follow-up)'; bugfix README confirms the validating room's host.ide.get_diagnostics pull citing docs/proposals/ide-integration.md (a proposal, not an architecture doc).",
+      "score": "truthful"
+    },
+    {
+      "claim": "gh-agent: a bug-labeled issue mention routes to a real dispatch of stories/bugfix in a per-job worktree .worktrees/gh-job-<id>, replaying by default with KITSOKI_GHAGENT_HARNESS=live as explicit opt-in",
+      "note": "internal/ghagent/router.go maps label \"bug\" \u2192 stories/bugfix; realdispatch.go builds .worktrees/gh-job-<id>; dispatch.go's resolveHarnessMode defaults to replay and only KITSOKI_GHAGENT_HARNESS=live (never credential-sniffed) enables live.",
+      "score": "truthful"
+    },
+    {
+      "claim": "stories/bugfix is the one story with a registered realDispatchPlan today",
+      "note": "internal/ghagent/realdispatch.go:75 \u2014 'realDispatchPlans is keyed by route.Story. Only stories/bugfix has a plan'.",
+      "score": "truthful"
+    },
+    {
+      "claim": "See ../architecture/github-agent.md#real-dispatch-per-job-worktree for the mechanics and honesty contract",
+      "note": "docs/architecture/github-agent.md exists with the heading 'Real dispatch: per-job worktree' (anchor real-dispatch-per-job-worktree).",
+      "score": "truthful"
+    },
+    {
+      "claim": "No triage-only route is exposed via a label \u2014 a mention always attempts the full pipeline route table in internal/ghagent/router.go",
+      "note": "router.go's LabelStoryMap has only bug/feature/epic story routes, all full-pipeline (bug \u2192 stories/bugfix with judge_mode llm_then_human); no triage label route exists. The matrix corroborates: 'no triage-only label route yet'.",
+      "score": "truthful"
+    },
+    {
+      "claim": "KITSOKI_APP_DIR is still process-global but the racy span (loading each job's app.yaml) is serialized behind a package mutex \u2014 see github-agent.md#kitsoki_app_dir-concurrency",
+      "note": "docs/architecture/github-agent.md has the heading '`KITSOKI_APP_DIR` concurrency' (anchor kitsoki_app_dir-concurrency); the matrix row confirms 'APP_DIR races scoped to the load span'.",
+      "score": "truthful"
+    },
+    {
+      "claim": "Standing proof status: see the fix-bug row of ../testing/dev-workflow-matrix.md",
+      "note": "docs/testing/dev-workflow-matrix.md exists with a 'Fix a bug' row (\ud83d\udfe1 proof-thin across all four surfaces) plus per-surface detail bullets naming docs/workflows/fix-a-bug.md as canonical.",
+      "score": "truthful"
+    }
+  ],
+  "evidence_refs": [
+    "docs/workflows/fix-a-bug.md"
+  ],
+  "health": "model:result",
+  "job_type": "dev-workflow-matrix",
+  "metrics": {},
+  "overall_pass": true,
+  "schema_version": "1.1.0",
+  "summary": "Every actionable claim in docs/workflows/fix-a-bug.md checks out against the tree \u2014 files, flows, intents, world keys, CLI shapes, anchors, and gh-agent code all match; no stale references and no missing steps were needed to drive the TUI path.",
+  "target_id": "kitsoki-dev",
+  "verdict": "solved"
+}

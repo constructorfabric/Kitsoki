@@ -1,0 +1,64 @@
+# triage_remote_source_body — remote tickets are explicit, not inferred.
+#
+# The triage prompt must support GitHub/remote issue-backed queues without
+# pretending every ticket has a local issues/bugs/<id>.md file. This flow proves
+# the room threads the explicit remote mode + body into the triager call.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  ticket_id:          "118"
+  ticket_title:       "pre-seeded workdir bypasses worktree isolation"
+  ticket_url:         "https://github.com/bsacrobatix/Kitsoki/issues/118"
+  ticket_repo:        "bsacrobatix/Kitsoki"
+  ticket_source_mode: "remote"
+  ticket_source_ref:  "github:bsacrobatix/Kitsoki#118"
+  ticket_body:        |
+    EXPECTED: the bugfix pipeline always isolates maker agents in a .worktrees/bf-<id> worktree.
+    ACTUAL: seeding initial world workdir "." skips workspace creation and live maker rooms run against the primary checkout.
+    SUGGESTED FIX: treat pre-seeded non-.worktrees workdir as invalid for maker rooms or re-derive the isolated worktree.
+  thread:             "118"
+  workdir:            "."
+  bugfix_mode:        "full"
+  judge_mode:         "human"
+
+host_handlers:
+  host.append_to_file: { data: { ok: true, message_id: "msg-1" } }
+  host.agent.codeact:
+    data:
+      ok: true
+      terminated: "done"
+      payload:
+        verdict: "STILL-LIVE"
+        confidence: 0.8
+        summary_title: "STILL-LIVE — remote body was supplied"
+        evidence: "Inspected stories/bugfix/rooms/idle.yaml and the supplied remote body."
+        summary_markdown: "The triager received the GitHub issue body from world.ticket_body instead of looking for a local issues/bugs/118.md file."
+        suggested_action: "drive the full bugfix pipeline"
+        fixed_in_ref: null
+        involved_components: ["stories/bugfix/rooms/idle.yaml"]
+      steps:
+        - snippet: "def main(ctx):\n    return {'seen': ctx.world.get('ticket_body')}"
+          observation: { seen: "supplied" }
+
+turns:
+  - intent: { name: triage, slots: {} }
+    expect_state: triaging
+    expect_host_calls:
+      - handler: host.agent.codeact
+        args:
+          agent: "triager"
+    expect_world:
+      triage_verdict:
+        verdict: "STILL-LIVE"
+        confidence: 0.8
+        summary_title: "STILL-LIVE — remote body was supplied"
+        evidence: "Inspected stories/bugfix/rooms/idle.yaml and the supplied remote body."
+        summary_markdown: "The triager received the GitHub issue body from world.ticket_body instead of looking for a local issues/bugs/118.md file."
+        suggested_action: "drive the full bugfix pipeline"
+        fixed_in_ref: null
+        involved_components: ["stories/bugfix/rooms/idle.yaml"]
+
+expect_terminal: false
+expect_no_errors: true

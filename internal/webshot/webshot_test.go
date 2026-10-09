@@ -3,6 +3,7 @@ package webshot
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"image"
 	"image/color"
 	"image/png"
@@ -62,21 +63,28 @@ func (s *stubInvoker) Capture(_ context.Context, req CaptureRequest) error {
 	return nil
 }
 
-// noLLMHandler is a stand-in kitsoki-web handler: it 200s on GET / (so the real
-// HandlerServer health poll passes) and flips a flag if anything ever touches an
-// agent/LLM-shaped endpoint during a shot — proving the shot itself performs no
-// live harness/agent work.
+// noLLMHandler is a stand-in kitsoki-web handler: it answers the harmless
+// runstatus.stories.list RPC health probe and flips a flag if anything ever
+// touches an agent/LLM-shaped endpoint during a shot — proving the shot itself
+// performs no live harness/agent work.
 type noLLMHandler struct {
-	rootHits    int32
+	rpcHits     int32
 	agentHits   int32
 	lastNonRoot string
 }
 
 func (h *noLLMHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path == "/" {
-		atomic.AddInt32(&h.rootHits, 1)
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("<!doctype html><title>kitsoki web (no-LLM stub)</title>"))
+	if r.URL.Path == "/rpc" {
+		atomic.AddInt32(&h.rpcHits, 1)
+		var req struct {
+			Method string `json:"method"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		if req.Method != "runstatus.stories.list" {
+			h.lastNonRoot = r.URL.Path
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":[]}`))
 		return
 	}
 	h.lastNonRoot = r.URL.Path
@@ -195,9 +203,9 @@ func TestTargetURL_RouteQueryMustBeHashRoute(t *testing.T) {
 
 // TestShot_NoLLMPosture asserts a shot performs NO live harness/agent work:
 // the only endpoint the boot/health/capture path hits on the served handler is
-// GET / (health), and no agent/LLM-shaped path is ever touched. The
-// determinism is the served handler's (built no-LLM by the caller); this guards
-// the seam from sneaking in a live call of its own.
+// /rpc for runstatus.stories.list, and no agent/LLM-shaped path is ever touched.
+// The determinism is the served handler's (built no-LLM by the caller); this
+// guards the seam from sneaking in a live call of its own.
 func TestShot_NoLLMPosture(t *testing.T) {
 	h := &noLLMHandler{}
 	inv := &stubInvoker{}
@@ -212,14 +220,36 @@ func TestShot_NoLLMPosture(t *testing.T) {
 	if got := atomic.LoadInt32(&h.agentHits); got != 0 {
 		t.Errorf("shot hit an agent/LLM endpoint %d time(s); want 0 (last non-root path %q)", got, h.lastNonRoot)
 	}
-	if got := atomic.LoadInt32(&h.rootHits); got == 0 {
-		t.Errorf("health poll never hit GET / (rootHits=0)")
+	if got := atomic.LoadInt32(&h.rpcHits); got == 0 {
+		t.Errorf("health poll never hit /rpc (rpcHits=0)")
 	}
 	// The stub invoker never calls back into the server (it writes a synthetic
 	// PNG), so the only server traffic a shot generates is the health poll —
 	// proving the shot drives no live harness turn.
 	if h.lastNonRoot != "" {
-		t.Errorf("shot hit a non-root server path %q; a shot should only health-poll", h.lastNonRoot)
+		t.Errorf("shot hit an unexpected server path %q; a shot should only health-poll", h.lastNonRoot)
+	}
+}
+
+func TestHandlerServerHealthUsesRPCWhenRootIsUnavailable(t *testing.T) {
+	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/":
+			http.Error(w, "SPA not bundled into this binary", http.StatusServiceUnavailable)
+		case "/rpc":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":[]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	})
+
+	_, err := Shot(context.Background(), Spec{StoryPath: "stories/bugfix"}, Options{
+		Server:  &HandlerServer{Handler: h, HealthTimeout: 2 * time.Second},
+		Browser: &stubInvoker{},
+	})
+	if err != nil {
+		t.Fatalf("Shot: %v", err)
 	}
 }
 
@@ -327,7 +357,8 @@ func TestShot_RequiresSeams(t *testing.T) {
 
 // TestNodeInvoker_BuildsWebShotArgv asserts the default invoker shells the
 // maintained web-shot.ts with the expected argv (no Node required: the runner
-// is stubbed). Guards the contract with the TS helper's CLI.
+// is stubbed). It intentionally bypasses pnpm exec: pnpm writes workspace temp
+// files even for exec, which breaks render.web from a protected checkout.
 func TestNodeInvoker_BuildsWebShotArgv(t *testing.T) {
 	rec := &recordingRunner{}
 	inv := &NodeInvoker{RepoRoot: "/repo", Runner: rec}
@@ -342,8 +373,9 @@ func TestNodeInvoker_BuildsWebShotArgv(t *testing.T) {
 	if rec.dir != filepath.Join("/repo", "tools", "runstatus") {
 		t.Errorf("cwd = %q, want /repo/tools/runstatus", rec.dir)
 	}
-	if rec.name != "pnpm" {
-		t.Errorf("command = %q, want pnpm", rec.name)
+	wantName := filepath.Join("/repo", "tools", "runstatus", "node_modules", ".bin", "tsx")
+	if rec.name != wantName {
+		t.Errorf("command = %q, want %q", rec.name, wantName)
 	}
 	joined := strings.Join(rec.args, " ")
 	for _, want := range []string{

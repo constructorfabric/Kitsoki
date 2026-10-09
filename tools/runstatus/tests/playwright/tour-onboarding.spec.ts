@@ -43,6 +43,14 @@ test("first login: tour auto-starts on home and is dismissible", async () => {
     // The welcome popover — NOT the holding pill — proves the first step anchored.
     await expect(page.getByTestId("tour-title")).toHaveText("Welcome to kitsoki", { timeout: 8000 });
     await expect(page.getByTestId("tour-loading")).toHaveCount(0);
+    await expect(page.locator(".tour__backdrop")).toHaveCount(0);
+
+    // The tour should guide without dimming the page: anchorless intro steps
+    // have no backdrop, and targeted steps keep only the highlight ring.
+    await page.getByTestId("tour-next").click();
+    await expect(page.getByTestId("tour-title")).toHaveText("Your stories", { timeout: 8000 });
+    await expect(page.locator(".tour__backdrop")).toHaveCount(0);
+    await expect(page.locator(".tour__ring")).toBeVisible();
 
     // Always escapable, and the UI is usable again immediately after.
     await page.getByTestId("tour-skip").click();

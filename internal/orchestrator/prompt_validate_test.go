@@ -112,7 +112,7 @@ func TestValidatePromptExtensions_MissingOverlay(t *testing.T) {
 // imported children) must pass the load-time pass, or `kitsoki run` would
 // reject valid stories.
 func TestValidatePromptExtensions_RealStories(t *testing.T) {
-	for _, rel := range []string{"bugfix", "oregon-trail", "frontier_event"} {
+	for _, rel := range []string{"bugfix", "dev-story", "oregon-trail", "frontier_event"} {
 		rel := rel
 		t.Run(rel, func(t *testing.T) {
 			appPath, _ := filepath.Abs(filepath.Join("..", "..", "stories", rel, "app.yaml"))
@@ -124,5 +124,16 @@ func TestValidatePromptExtensions_RealStories(t *testing.T) {
 				t.Fatalf("real story %s should pass prompt validation, got: %v", rel, errs)
 			}
 		})
+	}
+}
+
+func TestValidatePromptExtensions_ProjectKitsokiDev(t *testing.T) {
+	appPath, _ := filepath.Abs(filepath.Join("..", "..", ".kitsoki", "stories", "kitsoki-dev", "app.yaml"))
+	if _, err := os.Stat(appPath); err != nil {
+		t.Skipf("project kitsoki-dev story not present: %v", err)
+	}
+	orch := orchFor(t, appPath)
+	if errs := orch.ValidatePromptExtensions(); len(errs) != 0 {
+		t.Fatalf("project kitsoki-dev story should pass prompt validation, got: %v", errs)
 	}
 }

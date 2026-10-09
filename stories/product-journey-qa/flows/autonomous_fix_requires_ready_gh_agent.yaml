@@ -1,0 +1,153 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.run:
+    by_call:
+      load_product_journey_run:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: run_loaded
+            run_id: run-autofix-ready
+            run_dir: .artifacts/product-journey/run-autofix-ready
+            project: vscode
+            persona: core-maintainer
+            seed: autofix-ready
+            deck_path: .artifacts/product-journey/run-autofix-ready/deck.slidey.json
+            execution_plan_path: .artifacts/product-journey/run-autofix-ready/execution-plan.md
+            driver_plan_path: .artifacts/product-journey/run-autofix-ready/driver-plan.md
+            driver_journal_path: .artifacts/product-journey/run-autofix-ready/driver-journal.md
+            agent_brief_path: .artifacts/product-journey/run-autofix-ready/agent-brief.md
+            driver_handoff_path: .artifacts/product-journey/run-autofix-ready/driver-handoff.md
+            media_manifest_path: .artifacts/product-journey/run-autofix-ready/media-manifest.json
+            scenario_outcomes_path: .artifacts/product-journey/run-autofix-ready/scenario-outcomes.md
+            finding_total_count: 1
+            issue_count: 1
+            proof_evidence_count: 3
+            review_status: needs_evidence
+      autonomous_product_journey_marathon_watchdog:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            schema: kitsoki/product-journey-autonomous-marathon-watchdog/v1
+            status: autonomous_watchdog_ok
+            autonomous_watchdog_status: autonomous_watchdog_ok
+            autonomous_watchdog_summary: "heartbeat age 10m within watchdog=45m"
+            autonomous_watchdog_path: .artifacts/product-journey/run-autofix-ready/autonomous-marathon-watchdog.json
+            autonomous_watchdog_markdown_path: .artifacts/product-journey/run-autofix-ready/autonomous-marathon-watchdog.md
+            autonomous_watchdog_age_minutes: 10
+            driver_journal_path: .artifacts/product-journey/run-autofix-ready/driver-journal.md
+      autonomous_product_journey_fix:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: autonomous_fix_invalid
+            autonomous_fix_status: autonomous_fix_invalid
+            autonomous_fix_report_path: .artifacts/product-journey/run-autofix-ready/autonomous-fix-report.md
+            ticket_repo: owner/repo
+            gh_agent_public_base_url: https://agent.example
+            filing_status: not_run
+            filing_summary: "Hosted gh-agent readiness check failed before autonomous fix: https://agent.example/api/ready: repo mismatch, expected owner/repo, got other/repo"
+            findings_filed_count: 0
+            findings_skipped_count: 0
+            findings_failed_count: 0
+            findings_unfiled_count: 0
+            filed_issue_summary: ""
+            gh_agent_health_status: pass
+            gh_agent_health_summary: "https://agent.example/healthz: ok"
+            gh_agent_readiness_status: fail
+            gh_agent_readiness_summary: "https://agent.example/api/ready: repo mismatch, expected owner/repo, got other/repo"
+            gh_agent_enqueue_status: not_run
+            gh_agent_enqueued_count: 0
+            gh_agent_skipped_count: 0
+            gh_agent_claim_status: not_run
+            gh_agent_claim_count: 0
+            gh_agent_drain_status: not_run
+            gh_agent_drained_count: 0
+            gh_agent_done_count: 0
+            gh_agent_failed_count: 0
+            gh_agent_active_count: 0
+            gh_agent_fix_evidence_count: 0
+            gh_agent_missing_evidence_count: 0
+            gh_agent_triage_evidence_count: 0
+            gh_agent_missing_triage_count: 0
+            gh_agent_independent_verify_count: 0
+            gh_agent_missing_verify_count: 0
+            gh_agent_missing_run_url_count: 0
+            gh_agent_missing_evidence_summary: "Hosted gh-agent readiness check failed before autonomous fix: https://agent.example/api/ready: repo mismatch, expected owner/repo, got other/repo"
+            gh_agent_missing_triage_summary: "Hosted gh-agent readiness check failed before autonomous fix: https://agent.example/api/ready: repo mismatch, expected owner/repo, got other/repo"
+            gh_agent_missing_verify_summary: "Hosted gh-agent readiness check failed before autonomous fix: https://agent.example/api/ready: repo mismatch, expected owner/repo, got other/repo"
+            autonomous_gate_summary: "filing=not_run, gh_agent=fail, independent_verify=fail, review=not_run, validation=fail"
+            independent_verify_status: fail
+            independent_verify_summary: "Hosted gh-agent readiness check failed before autonomous fix: https://agent.example/api/ready: repo mismatch, expected owner/repo, got other/repo"
+            issue_closeout_status: skipped
+            issue_closeout_count: 0
+            issue_closeout_summary: "Issue close-out skipped because hosted gh-agent readiness failed before filing."
+            review_status: not_run
+            review_summary: "Hosted gh-agent readiness check failed before autonomous fix: https://agent.example/api/ready: repo mismatch, expected owner/repo, got other/repo"
+            review_passed_count: 0
+            review_failed_count: 0
+            review_warning_count: 0
+            review_total_count: 0
+            validation_status: invalid
+            validation_errors: 1
+            validation_warnings: 0
+            validation_issue_summary: gh-agent-readiness
+
+turns:
+  - intent:
+      name: load
+      slots:
+        run_dir: .artifacts/product-journey/run-autofix-ready
+    expect_state: run_created
+    expect_world:
+      status: run_loaded
+      run_id: run-autofix-ready
+      run_dir: .artifacts/product-journey/run-autofix-ready
+    expect_host_calls:
+      - handler: host.run
+        args: { call: load_product_journey_run }
+
+  - intent:
+      name: autonomous_watchdog
+    expect_state: run_created
+    expect_world:
+      status: autonomous_watchdog_checked
+      autonomous_watchdog_status: autonomous_watchdog_ok
+      autonomous_watchdog_age_minutes: 10
+    expect_host_calls:
+      - handler: host.run
+        args: { call: autonomous_product_journey_marathon_watchdog }
+
+  - intent:
+      name: autonomous_fix
+      slots:
+        ticket_repo: owner/repo
+        gh_agent_story: stories/bugfix
+        gh_agent_public_base_url: https://agent.example
+    expect_state: run_created
+    expect_world:
+      status: autonomous_fix_complete
+      autonomous_fix_status: autonomous_fix_invalid
+      filing_status: not_run
+      gh_agent_health_status: pass
+      gh_agent_readiness_status: fail
+      gh_agent_enqueue_status: not_run
+      gh_agent_drain_status: not_run
+      autonomous_gate_summary: "filing=not_run, gh_agent=fail, independent_verify=fail, review=not_run, validation=fail"
+      independent_verify_status: fail
+      review_status: not_run
+      validation_status: invalid
+      validation_errors: 1
+      validation_issue_summary: gh-agent-readiness
+    expect_view_matches: "RUN CREATED[\\s\\S]*Autonomous fix[\\s\\S]*autonomous_fix_invalid[\\s\\S]*Autonomous gates[\\s\\S]*filing=not_run, gh_agent=fail, independent_verify=fail,[\\s\\S]*review=not_run, validation=fail[\\s\\S]*Issue filing[\\s\\S]*not_run[\\s\\S]*GH-agent health[\\s\\S]*pass: https://agent.example/healthz[\\s\\S]*GH-agent readiness[\\s\\S]*fail: https://agent.example/api/ready[\\s\\S]*Validation issues[\\s\\S]*gh-agent-readiness"
+    expect_host_calls:
+      - handler: host.run
+        args: { call: autonomous_product_journey_fix }
+
+expect_no_errors: true

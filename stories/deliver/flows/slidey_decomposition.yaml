@@ -11,7 +11,8 @@
 #     with a validated work plan.
 #
 # Full path: configure (seeded epic_path) → start → decompose (agent mocked) →
-#            lint (script mocked) → fleet.load (fleet_load mocked).
+#            lint (Starlark) → review (agent mocked, accept) → fleet.load
+#            (Starlark).
 
 test_kind: flow
 app: ../app.yaml
@@ -20,6 +21,8 @@ initial_world:
   epic_path: "stories/deliver/testdata/fixture_epic_slidey.md"
   base_branch: main
   main_worktree_path: "."
+
+starlark_inspect_cassette: ../cassettes/slidey_decomposition.inspect.yaml
 
 host_handlers:
   host.agent.task:
@@ -40,26 +43,14 @@ host_handlers:
                 brief: "Register a --notes <path> flag on the slidey CLI that renders the handout over the parsed deck spec. Gate: go test ./cmd/slidey/..."
                 gate_command: "go test ./cmd/slidey/..."
                 deps: [notes-renderer]
-  host.run:
+  host.agent.decide:
     by_call:
-      lint:
+      review:
         data:
-          ok: true
-          exit_code: 0
-          stdout_json:
-            route: "ok"
-            error: ""
-      fleet_load:
-        data:
-          ok: true
-          exit_code: 0
-          stdout_json:
-            fleet_briefs:
-              - { id: notes-model,    brief: "Add a SceneNotes struct...",       gate_command: "go test ./internal/notes/...",        status: pending, last_error: "" }
-              - { id: notes-renderer, brief: "Add RenderHandout...",             gate_command: "go test ./internal/notes/render/...", status: pending, last_error: "" }
-              - { id: notes-cli-flag, brief: "Register a --notes <path> flag...", gate_command: "go test ./cmd/slidey/...",             status: pending, last_error: "" }
-            fleet_state_path: "/tmp/fleet-slidey-decomp-test.json"
-            error: ""
+          submitted:
+            verdict: accept
+            reason: "Three briefs cover the notes model, renderer, and CLI wiring with clean deps."
+            questions: []
 
 turns:
   - intent:

@@ -25,10 +25,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"syscall"
 	"time"
 
@@ -43,20 +47,24 @@ import (
 
 func webCmd() *cobra.Command {
 	var (
-		addr          string
-		harnessType   string
-		claudeModel   string
-		agentBackend  string
-		recordingPath string
-		recordPath    string
-		dbPath        string
-		execModeFlag  string
-		flowPath      string
-		hostCassette  string
-		configPath    string
-		storyDirs     []string
-		actor         string
-		ticketRepo    string
+		addr             string
+		harnessType      string
+		claudeModel      string
+		agentBackend     string
+		recordingPath    string
+		recordPath       string
+		dbPath           string
+		execModeFlag     string
+		flowPath         string
+		hostCassette     string
+		configPath       string
+		storyDirs        []string
+		actor            string
+		ticketRepo       string
+		agentEvidenceDir string
+		improveProvider  string
+		maxSessions      int
+		kitsDir          string
 	)
 
 	cmd := &cobra.Command{
@@ -207,12 +215,43 @@ authentication.`,
 			}
 
 			// ── Story discovery config (flags > .kitsoki.yaml > ./stories) ──
+			// Loading the config (root-story world-key resolution) and the
+			// story catalogue below both run per-story loader lint (deprecated
+			// agent fields, missing on_enter bind fallbacks, etc.) via
+			// slog.Warn. Across dozens of transitively-imported stories that's
+			// hundreds of startup lines with no bearing on `web` actually
+			// starting — real failures still surface as returned errors, not
+			// through this logger. Suppress the default logger for the whole
+			// load+scan phase, matching the same precedent `run` uses to keep
+			// TUI/output rendering clean (main.go's oldLogger/io.Discard
+			// swaps). slog.SetDefault also redirects the stdlib "log"
+			// package's writer/flags as a side effect when swapping to a
+			// non-default handler (see log/slog's SetDefault doc) and does
+			// NOT undo that on restore (the original default is specially
+			// exempted) — so log.Writer()/log.Flags() are saved and restored
+			// explicitly too, or the stdlib log package would stay silenced
+			// for the rest of the process.
+			restoreDefaultLogging := suppressDefaultLogging()
+			loggingRestored := false
+			restoreLogging := func() {
+				if loggingRestored {
+					return
+				}
+				restoreDefaultLogging()
+				loggingRestored = true
+			}
+			defer restoreLogging()
 			cfg, err := webconfig.Load(configPath)
 			if err != nil {
 				return err
 			}
 			dirs := webconfig.Resolve(storyDirs, cfg)
 			harnessProfiles, defaultProfile := harnessProfilesFromConfig(cfg)
+			bugPrivacyRuntime := bugPrivacyRuntimeConfig{
+				AgentBackend:         resolveAgentBackend(agentBackend),
+				ClaudeModel:          claudeModel,
+				UseDefaultLiveLadder: fixture == nil,
+			}
 
 			// ── Operator identity ────────────────────────────────────────────
 			// An explicit --actor wins; otherwise fall back to the configured
@@ -236,6 +275,8 @@ authentication.`,
 				AgentBackend:      resolveAgentBackend(agentBackend),
 				HarnessProfiles:   harnessProfiles,
 				DefaultProfile:    defaultProfile,
+				HarnessLadder:     cfg.HarnessLadder.ToHostLadderConfig(),
+				AgentLaunchPolicy: agentLaunchPolicyFromConfig(cfg),
 				RecordingPath:     recordingPath,
 				RecordPath:        recordPath,
 				Flow:              fixture,
@@ -249,8 +290,12 @@ authentication.`,
 
 			// ── Registry + initial story catalogue ──────────────────────────
 			registry := NewRegistry(cfg, dirs, base)
+			if maxSessions > 0 {
+				registry.SetMaxSessions(maxSessions)
+			}
 			defer registry.Close()
 			stories, err := registry.Rescan()
+			restoreLogging()
 			if err != nil {
 				return fmt.Errorf("discover stories: %w", err)
 			}
@@ -260,12 +305,28 @@ authentication.`,
 			// stories live in: the git toplevel of the first resolved story dir,
 			// falling back to that dir, then $PWD. This mirrors `kitsoki bug
 			// --target story` (which writes under $PWD) while preferring the repo
-			// root so the issues/bugs/ pile is shared across story subdirs.
+			// root so the .artifacts/issues/bugs/ pile is shared across story subdirs.
+			// --kits-dir enables the kit.<kit>.<iface>.<op> JSON-RPC fallback +
+			// runstatus.kits.list (S3b); empty (the default) leaves both
+			// reporting "no kits installed" — most instances have none yet.
+			kits, err := buildKitDispatcher(kitsDir)
+			if err != nil {
+				return fmt.Errorf("load installed kits from %q: %w", kitsDir, err)
+			}
+			bugRoot := resolveWebBugRoot(dirs)
+			bugPrivacyResolver := bugPrivacyCheckerResolverFromConfig(cfg, bugRoot, bugPrivacyRuntime)
 			srv := server.NewMulti(registry,
 				server.WithDefaultActor(actor),
-				server.WithBugRoot(resolveWebBugRoot(dirs)),
-				server.WithWorkflowRoot(resolveWebBugRoot(dirs)),
+				server.WithBugRoot(bugRoot),
+				server.WithWorkflowRoot(bugRoot),
 				server.WithTicketRepo(ticketRepo),
+				server.WithAgentEvidenceDir(agentEvidenceDir),
+				server.WithImproveTicketProvider(improveProvider),
+				server.WithBugPrivacyChecker(bugPrivacyResolver(orchestrator.ProfileSelection{})),
+				server.WithBugPrivacyCheckerResolver(bugPrivacyServerResolver(bugPrivacyResolver)),
+				server.WithSetupWarnings(setupWarningsFromRuntimeConfig(cfg, runtime.GOOS, bugPrivacyRuntime, ticketRepo != "")),
+				server.WithProjectOnboarded(projectOnboardedForRoot(bugRoot)),
+				server.WithKits(kits),
 			)
 			// Attach the cross-session notification relay sink so each new
 			// session's background-turn fan-out reaches the runstatus.notification
@@ -314,13 +375,29 @@ authentication.`,
 	cmd.Flags().StringVar(&flowPath, "flow", "", "drive every session deterministically from a flow fixture (no LLM; host_handlers stub host.* calls, intents are submitted explicitly)")
 	cmd.Flags().StringVar(&hostCassette, "host-cassette", "", "host cassette file backing host.* calls (deterministic, no LLM); combinable with --flow")
 	cmd.Flags().StringVar(&actor, "actor", "", "operator identity recorded on browser-driven turns as slots.author (default: git config user.name; the X-Kitsoki-Actor header and an explicit actor RPC param override it)")
-	cmd.Flags().StringVar(&ticketRepo, "ticket-repo", "constructorfabric/Kitsoki", "file Report-bug reports as GitHub issues on this owner/repo (evidence saved under .artifacts/bug-reports for developer review) instead of a local issues/bugs/*.md file; requires gh auth. Pass an empty string to write local issues/bugs/*.md files instead")
+	cmd.Flags().StringVar(&ticketRepo, "ticket-repo", "", "file Report-bug reports as GitHub issues on this owner/repo (evidence saved under .artifacts/bug-reports for developer review); requires GitHub auth from `kitsoki gh-agent login`, `kitsoki gh-agent token`, or GH_TOKEN/GITHUB_TOKEN. Default empty value writes local artifact tickets under .artifacts/issues/bugs instead")
+	cmd.Flags().StringVar(&agentEvidenceDir, "agent-evidence-dir", "", "after a GitHub bug filing, also deposit the scrubbed rrweb+HAR here under <DeckID>/ so the kitsoki gh-agent can auto-build a hosted deck without re-downloading; point at the agent's --evidence-dir")
+	cmd.Flags().StringVar(&improveProvider, "improve-ticket-provider", "", "ticket_provider/v1 .star script used by meta-improve reports after writing a local evidence bundle; useful for private story ticket systems. Empty uses --ticket-repo when set, otherwise local artifacts")
+	cmd.Flags().IntVar(&maxSessions, "max-sessions", 0, "cap on concurrently live in-memory sessions before idle eviction kicks in (default: $KITSOKI_WEB_MAX_SESSIONS or a generous built-in default; 0 means use that default)")
+	cmd.Flags().StringVar(&kitsDir, "kits-dir", "", "directory of installed kit.yaml roots (enables kit.<kit>.<iface>.<op> + runstatus.kits.list, S3b)")
 
 	return cmd
 }
 
+func suppressDefaultLogging() func() {
+	oldLogger := slog.Default()
+	oldLogOutput := log.Writer()
+	oldLogFlags := log.Flags()
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	return func() {
+		slog.SetDefault(oldLogger)
+		log.SetOutput(oldLogOutput)
+		log.SetFlags(oldLogFlags)
+	}
+}
+
 // resolveWebBugRoot picks the repo root under which web-filed bug reports
-// (runstatus.bug.report) write issues/bugs/. It walks up from the first
+// (runstatus.bug.report) write .artifacts/issues/bugs/. It walks up from the first
 // resolved story dir to the nearest ancestor containing a .git entry; if none
 // is found it returns that story dir, and if there are no story dirs it falls
 // back to the process cwd. Empty means "let the server resolve per request".

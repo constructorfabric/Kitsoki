@@ -176,4 +176,4 @@ Use this sparingly. Every unannotated `claude -p` call in `stories/` or
 | `agent.task` | Agentic mutation with acceptance loop (rarely needed in validators). |
 | `agent.converse` | Free-form session; not typical in automated scripts. |
 
-Full CLI reference: [`docs/architecture/agent-cli.md`](../../docs/architecture/agent-cli.md).
+Full CLI reference: [`docs/guide/agents/cli.md`](../../docs/guide/agents/cli.md).

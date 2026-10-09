@@ -1,9 +1,9 @@
 # prd_search_override — the operator overrides the guard.
 #
-# With an overlap present, `confirm` bounces (the guard). The operator
-# insists on a NEW PRD anyway via `override_new`, which advances to
-# clarifying recording prd_overlap_decision: "new" and clearing any amend
-# target.
+# With an overlap present, `confirm` bounces with visible feedback (the
+# guard). The operator insists on a NEW PRD anyway via `override_new`, which
+# advances to clarifying recording prd_overlap_decision: "new" and clearing
+# any amend target.
 
 test_kind: flow
 app: ../app.yaml
@@ -11,11 +11,14 @@ initial_state: search
 initial_world:
   workdir:    "."
   judge_mode: "human"
+  publish_durable_path: "/tmp/kitsoki-prd-fixtures"
   idea:       "A standalone metrics dashboard."
   prd_existing_state:
     overlaps:
       - { path: "docs/prd-observability.md", kind: "accepted", summary: "Covers a metrics surface, but not a standalone dashboard.", recommendation: "new" }
     roadmap_fit: "Adjacent to the observability PRD; arguably separate."
+
+starlark_inspect_cassette: ../cassettes/slug_a_standalone_metrics_dashboard.inspect.yaml
 
 host_handlers:
   # references on_enter runs the optional semantic pre-seed; empty hits = no embeddings.
@@ -28,27 +31,24 @@ host_handlers:
         questions:
           - { id: "q1", question: "Who is the primary user?", why: "scopes the persona" }
   # override_new mints the per-PRD workspace (it commits to a NEW PRD).
-  host.run:
-    by_call:
-      mint_workspace:
-        data:
-          ok: true
-          exit_code: 0
-          stdout_json: { slug: "metrics-dashboard", workspace: ".artifacts/prd/metrics-dashboard" }
 
 turns:
-  # confirm bounces while the overlap remains (the guard).
+  # confirm bounces while the overlap remains (the guard) and renders explicit
+  # guidance instead of an indistinguishable self-loop.
   - intent: { name: confirm, slots: {} }
     expect_state: search
     expect_world:
-      prd_overlap_decision: ""
+      prd_overlap_decision: "blocked_confirm"
+      prd_overlap_feedback: "An overlapping PRD was found. Choose an existing document to amend, or use override_new if you intentionally want a separate PRD."
+    expect_view_matches: "Overlap gate still active"
 
   # override_new forces a new PRD despite the overlap.
   - intent: { name: override_new, slots: {} }
     expect_state: clarifying
     expect_world:
       prd_overlap_decision: "new"
+      prd_overlap_feedback: ""
       prd_change_target:    ""
-      prd_workspace:        ".artifacts/prd/metrics-dashboard"
+      prd_workspace:        ".artifacts/prd/a-standalone-metrics-dashboard"
 
 expect_no_errors: true

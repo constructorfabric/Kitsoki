@@ -22,6 +22,7 @@ import * as os from 'node:os';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { spawn, type ChildProcess } from 'node:child_process';
+import { WebSocket } from 'ws';
 import { IdeServer, type ToolDispatcher } from '../src/ide-server';
 
 const EXT_ROOT = path.resolve(__dirname, '..');
@@ -173,5 +174,85 @@ test('ide bridge: PRD walk opens the draft and a refine shows a verdict-gated di
     assert.match(viewText, /Non-Goals/i, 'accepted refine promoted the v2 PRD into the view');
   } catch (e) {
     throw new Error(`${(e as Error).message}\n--- backend log ---\n${backendLog.slice(-3000)}`);
+  }
+});
+
+/**
+ * Dial the extension's real IdeServer as a raw MCP client (mirroring
+ * internal/ide/client.go's handshake), issue one `tools/call`, and return the
+ * decoded result envelope. No Go binary involved — this proves the wire
+ * contract directly against IdeServer + a fake dispatcher, which is the
+ * point of the Mode A round-trip test below (stories/bugfix's
+ * reviewing_external is the real Mode A producer, but spinning the full
+ * bugfix pipeline just to reach one openDiff call is unnecessary — the wire
+ * shape is what's under test).
+ */
+async function callToolRaw(
+  port: number,
+  authToken: string,
+  name: string,
+  args: Record<string, unknown>,
+): Promise<{ payload: unknown; isError: boolean }> {
+  const ws = new WebSocket(`ws://127.0.0.1:${port}`, {
+    headers: { 'x-claude-code-ide-authorization': authToken },
+  });
+  try {
+    await new Promise<void>((resolve, reject) => {
+      ws.once('open', () => resolve());
+      ws.once('error', reject);
+    });
+    const send = (id: number, method: string, params: Record<string, unknown> = {}) =>
+      new Promise<any>((resolve, reject) => {
+        const onMessage = (data: Buffer) => {
+          const msg = JSON.parse(data.toString());
+          if (msg.id !== id) return;
+          ws.off('message', onMessage);
+          if (msg.error) reject(new Error(msg.error.message));
+          else resolve(msg.result);
+        };
+        ws.on('message', onMessage);
+        ws.send(JSON.stringify({ jsonrpc: '2.0', id, method, params }));
+      });
+    await send(1, 'initialize');
+    const result = await send(2, 'tools/call', { name, arguments: args });
+    const text = result?.content?.[0]?.text ?? '{}';
+    return { payload: JSON.parse(text), isError: !!result?.isError };
+  } finally {
+    ws.close();
+  }
+}
+
+test('ide bridge: openDiff Mode A ({paths, base}) round-trips the collective-verdict shape', async () => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'kitsoki-bridge-modea-'));
+  const lockDir = path.join(workspace, '.claude', 'ide');
+  const tools = new RecordingTools();
+  const ide = new IdeServer(noopLog, tools, { lockDir, workspaceFolders: [workspace] });
+  const port = await ide.ready;
+  assert.ok(port, 'ide server bound a port');
+
+  try {
+    const lockPath = path.join(lockDir, `${port}.lock`);
+    const lock = JSON.parse(fs.readFileSync(lockPath, 'utf8')) as { authToken: string };
+
+    tools.verdict = 'accepted';
+    const args = {
+      paths: ['internal/foo/foo.go', 'internal/foo/bar.go'],
+      base: 'main',
+      title: 'KIT-42 — fix the frob',
+    };
+    const { payload, isError } = await callToolRaw(port!, lock.authToken, 'openDiff', args);
+
+    assert.equal(isError, false);
+    assert.deepEqual(payload, { ok: true, verdict: 'accepted' });
+
+    // The fake dispatcher's own record is the assertion on the WIRE ARGS
+    // reviewing_external actually sends — {paths, base, title}, not the
+    // Mode B {path, new_text} shape.
+    const diffCalls = tools.callsOf('openDiff');
+    assert.equal(diffCalls.length, 1);
+    assert.deepEqual(diffCalls[0].args, args);
+  } finally {
+    ide.dispose();
+    fs.rmSync(workspace, { recursive: true, force: true });
   }
 });

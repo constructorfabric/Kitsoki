@@ -1,0 +1,1 @@
+<ExtensionComponent :component="$params.component" />

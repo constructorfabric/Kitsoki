@@ -15,7 +15,7 @@ that must honour a narrow `ask / return` contract.
 > **Plugins vs providers.** This doc covers *which component answers* an agent
 > call. To keep the built-in claude component but point it at a different
 > Anthropic-compatible backend (model + env) per invocation, see
-> [`agent-providers.md`](./agent-providers.md) — that mechanism is orthogonal
+> [`agent-providers.md`](../guide/agents/providers.md) — that mechanism is orthogonal
 > and composes with the verbs below.
 
 ---
@@ -318,11 +318,40 @@ agent_plugins:
     # port: 8080                   # optional; managed sidecar bind port
     # server_bin: /path/to/llama-server  # optional; skip the binary fetch
     # endpoint: http://127.0.0.1:8080     # endpoint mode: attach to a running server, never spawn
+    # api_key_env: GLM_API_KEY     # optional; bearer token for an authenticated endpoint (see below)
+    # json_schema: true            # optional; OpenAI-native response_format: json_schema for any schema
 ```
 
 A decl must set **either** `model:` (managed mode) **or** `endpoint:`
 (attach mode), or story load fails fast with
 `requires model: or endpoint:`.
+
+### Authenticated & OpenAI-native endpoints
+
+Two knobs extend `endpoint:` mode beyond the local llama.cpp sidecar to any
+OpenAI-compatible API (e.g. GLM-5.2):
+
+- **`api_key_env:`** names an environment variable holding a bearer token,
+  sent as `Authorization: Bearer <key>` on every request. The value is the
+  *env-var name*, not the secret; the secret is read at call time so it never
+  has to be materialized in YAML. An unset var is a hard `transport_error`,
+  not a silent unauthenticated request. Empty (the default) disables auth.
+- **`json_schema: true`** sends `response_format: {type: "json_schema",
+  strict: true}` for **any** schema present, independent of the
+  `grammar:`/grammar-subset gate below. This is the OpenAI-native
+  constrained-output path — use it for endpoints that honour `json_schema`
+  natively, including for schemas outside the GBNF subset (discriminated
+  unions with `if`/`then`/`const`/`enum`, e.g. `agent.codeact`'s step
+  schema). `AskResponse.Meta["json_schema"]` records whether it was applied.
+
+`json_schema` wins over `grammar` when both are set (the GBNF concept is
+meaningless to a non-llama.cpp endpoint). The `claude`-CLI default and
+managed-mode `local_llm` usage are unchanged when both are omitted.
+
+The primary consumer is `agent.codeact`'s direct-API transport — see
+[prior-art.md §4c "Transports: CLI vs direct API"](./prior-art.md#transports-cli-vs-direct-api)
+for the selection rule and the `agents:` + `agent_plugins:` dual-declaration
+config that points a `host.agent.codeact` effect at one of these endpoints.
 
 ### Grammar is best-effort, `ValidateSubmission` is the guarantee
 

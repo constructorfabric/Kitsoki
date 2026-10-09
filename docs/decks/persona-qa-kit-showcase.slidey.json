@@ -1,0 +1,92 @@
+{
+  "_comment": "Showcase deck for the story-owned Scenario QA surface.",
+  "meta": {
+    "title": "Scenario QA Story",
+    "resolution": {
+      "width": 1920,
+      "height": 1080
+    },
+    "theme": "rose-pine-moon"
+  },
+  "scenes": [
+    {
+      "type": "title",
+      "eyebrow": "Kitsoki product QA",
+      "title": "Scenario QA Story",
+      "subtitle": "One scenario, deterministic transport legs, honest evidence, and Slidey reports",
+      "narration": "Scenario QA turns the product-journey harness into a story-owned workflow that can preview, drive, judge, and report every supported transport."
+    },
+    {
+      "type": "objectives",
+      "title": "Story Surface",
+      "items": [
+        {
+          "label": "Preview",
+          "status": "done",
+          "detail": "preview scenario=... transport=... expands deterministic scenario x transport legs without creating a run bundle."
+        },
+        {
+          "label": "Check",
+          "status": "done",
+          "detail": "check scenario=... transport=... creates the run bundle and drives one transport-pinned leg at a time."
+        },
+        {
+          "label": "Report",
+          "status": "done",
+          "detail": "report folds driver and independent judge outcomes into report.md and deck.slidey.json."
+        }
+      ],
+      "caption": "The public surface is the Kitsoki story; lower-level Python remains deterministic implementation support."
+    },
+    {
+      "type": "evidence",
+      "title": "Contracts",
+      "items": [
+        {
+          "label": "Schemas",
+          "status": "done",
+          "detail": "Versioned JSON Schemas define support data for persona, scenario, driver, run, leg result, transport-suite, and review shapes.",
+          "refType": "path",
+          "ref": "schemas/persona-qa/v1"
+        },
+        {
+          "label": "Completion state",
+          "status": "done",
+          "detail": "The internal adapter emits schemas/completion-state.schema.json so arena and CI consumers avoid stdout verdict scraping.",
+          "refType": "path",
+          "ref": "schemas/completion-state.schema.json"
+        },
+        {
+          "label": "Transport axis",
+          "status": "done",
+          "detail": "TUI, web, VS Code bridge, and CLI legs carry explicit evidence contracts and proof levels.",
+          "refType": "doc",
+          "ref": "docs/persona-qa.md"
+        }
+      ],
+      "caption": "The story consumes machine-checkable contracts while keeping retained artifacts backward compatible."
+    },
+    {
+      "type": "objectives",
+      "title": "No-LLM Gate",
+      "items": [
+        {
+          "label": "Flow tests",
+          "status": "done",
+          "detail": "kitsoki test flows stories/scenario-qa/app.yaml covers preview, run planning, leg pacing, and report close-out."
+        },
+        {
+          "label": "Runner tests",
+          "status": "done",
+          "detail": "transport_axis_test.py and scenario_qa_report_test.py cover transport expansion and Slidey deck folding without spend."
+        },
+        {
+          "label": "Story UI",
+          "status": "done",
+          "detail": "stories/scenario-qa calls the runner backend directly and keeps per-leg judgement independent."
+        }
+      ],
+      "caption": "Automated gates stay deterministic; live capture remains an explicit operator-controlled workflow."
+    }
+  ]
+}

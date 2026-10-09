@@ -24,7 +24,7 @@ states:
             Summary:    '{{ world.propose_fix_artifact.summary_title|default:"(pending)" }}'
             Confidence: '{% if world.propose_fix_artifact.confidence %}{{ world.propose_fix_artifact.confidence|floatformat:2 }}{% else %}(pending){% endif %}'
       - heading: "Artifact"
-      - code: '{{ world.propose_fix_artifact.summary_markdown|default:"(pending — agent has not returned yet)" }}'
+      - template: '{{ world.propose_fix_artifact.summary_markdown|default:"(pending — agent has not returned yet)" }}'
       - choice:
           mode: single
           prompt: "Actions"
@@ -128,7 +128,8 @@ states:
 
       - when: |
           world.judge_mode != 'human' &&
-          world.llm_verdict.confidence >= world.judge_confidence_threshold &&
+          (world.llm_verdict.verdict ?? '') != '' &&
+          (world.llm_verdict.confidence ?? 0) >= world.judge_confidence_threshold &&
           world.llm_verdict.verdict != 'uncertain' &&
           world.llm_verdict.intent != 'uncertain'
         emit_intent: "{{ world.llm_verdict.intent }}"
@@ -141,10 +142,10 @@ states:
       - when: |
           world.escalate_low_value &&
           world.judge_mode != 'human' &&
-          world.llm_verdict.verdict != '' &&
+          (world.llm_verdict.verdict ?? '') != '' &&
           (world.llm_verdict.verdict == 'uncertain' ||
            world.llm_verdict.intent == 'uncertain' ||
-           world.llm_verdict.confidence < world.judge_confidence_threshold)
+           (world.llm_verdict.confidence ?? 0) < world.judge_confidence_threshold)
         emit_intent: escalate_human
         slots:
           reason: "Judge uncertain/low-confidence on the fix proposal for {{ world.ticket_id }} (verdict {{ world.llm_verdict.verdict }}, confidence {{ world.llm_verdict.confidence }}): {{ world.llm_verdict.reason }}"
@@ -155,6 +156,7 @@ states:
             - invoke: iface.transport.post
               with:
                 thread:   "{{ world.thread }}"
+                workdir:  "{{ world.workdir }}"
                 title:    "Fix proposal: {{ world.ticket_id }}"
                 body:     "{{ world.propose_fix_artifact.summary_markdown }}"
                 phase_id: "proposing_{{ world.ticket_id }}_{{ world.cycle }}"
@@ -162,6 +164,11 @@ states:
                 last_reply_author: "{{ slots.author ?? 'human' }}"
                 refine_feedback:   ""
                 cycle:             0
+                # A fresh proposal invalidates all implementation/test evidence
+                # from an earlier pass; re-enter implementing/test with clean
+                # once: binds so both agents actually re-run.
+                implement_artifact:        {}
+                implement_review_artifact: {}
 
       # (internal) active escalation → quit to a human with the question.
       escalate_human:

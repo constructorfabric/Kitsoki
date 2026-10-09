@@ -75,6 +75,50 @@ episodes:
     data:
       ok: true
   replay: any
+- id: repro_det_gate
+  match:
+    handler: host.run
+  response:
+    data:
+      ok: true
+      exit_code: 0
+      stdout_json:
+        ran: true
+        baseline_green: true
+        test_red: true
+        ok: true
+        summary: "GREEN->RED proven: baseline passes, reproducer regression fails before the fix"
+        log: "baseline(GREEN) node --test test/timing.test.js exit=0 | reproducer(RED) node --test test/timing.test.js exit=1"
+- id: regression_gate_exec
+  match:
+    handler: host.run
+  response:
+    data:
+      ok: true
+      exit_code: 0
+      stdout_json:
+        red: true
+        checked: true
+        log: "pre-fix timing regression fails as expected"
+- id: done_clean_tree_check
+  match:
+    handler: host.run
+  response:
+    data:
+      ok: true
+      exit_code: 0
+      stdout_json:
+        dirty: false
+        files: ""
+- id: done_fixed_in_commit
+  match:
+    handler: host.run
+  response:
+    data:
+      ok: true
+      exit_code: 0
+      stdout_json:
+        commit: "19c8798"
 - id: reproduce_host_agent_task_1
   match:
     handler: host.agent.task

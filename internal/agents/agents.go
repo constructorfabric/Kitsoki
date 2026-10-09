@@ -19,6 +19,12 @@ const (
 	NameStoryAuthor = "story-author"
 	// NameKitsokiEngineer edits Go code in the kitsoki repo and runs tests.
 	NameKitsokiEngineer = "kitsoki-engineer"
+	// NameStoryImprover reviews a running story session for prompt, tool,
+	// and flow-test improvements.
+	NameStoryImprover = "story-improver"
+	// NameKitsokiImprover reviews a running kitsoki session for engine-level
+	// prompt, tool, and workflow improvements.
+	NameKitsokiImprover = "kitsoki-improver"
 	// NameStoryBugReporter files a bug against the running story.
 	NameStoryBugReporter = "story-bug-reporter"
 	// NameKitsokiBugReporter files a bug against kitsoki itself.
@@ -64,6 +70,8 @@ func NewBuiltins() Registry {
 	r.Register(defaultAgent())
 	r.Register(storyAuthor())
 	r.Register(kitsokiEngineer())
+	r.Register(storyImprover())
+	r.Register(kitsokiImprover())
 	r.Register(storyBugReporter())
 	r.Register(kitsokiBugReporter())
 	r.Register(storyExplainer())
@@ -80,6 +88,8 @@ func BuiltinNames() []string {
 		NameDefaultAgent,
 		NameStoryAuthor,
 		NameKitsokiEngineer,
+		NameStoryImprover,
+		NameKitsokiImprover,
 		NameStoryBugReporter,
 		NameKitsokiBugReporter,
 		NameStoryExplainer,

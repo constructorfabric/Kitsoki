@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"kitsoki/internal/app"
+	"kitsoki/internal/storyauthoring"
 )
 
 // repoRoot resolves the kitsoki worktree root so @kitsoki/dev-story resolves and
@@ -31,6 +32,19 @@ func testRepoRoot(t *testing.T) string {
 	}
 }
 
+func writableRepoRoot(t *testing.T) string {
+	t.Helper()
+	realRoot := testRepoRoot(t)
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module kitsoki\n"), 0o644); err != nil {
+		t.Fatalf("write temp go.mod: %v", err)
+	}
+	if err := os.Symlink(filepath.Join(realRoot, "stories"), filepath.Join(root, "stories")); err != nil {
+		t.Fatalf("symlink stories into temp repo: %v", err)
+	}
+	return root
+}
+
 // normalize strips the load-provenance fields that legitimately differ between a
 // synthesized def and a file-loaded one (path-rooted) plus the app metadata
 // (title/id are cosmetic), so the structural fold result can be deep-compared.
@@ -39,14 +53,48 @@ func normalize(def *app.AppDef) {
 	def.LoadedManifests = nil
 	def.ImportWrappers = nil
 	def.App = app.AppMeta{}
+	normalizeStoryAuthoringPaths(def)
 	// Hosts is the allow-list — semantically a set. The import fold unions
 	// handler names via map iteration, so its slice order is nondeterministic;
 	// sort before comparing so the round-trip asserts set-equality, not order.
 	sort.Strings(def.Hosts)
 }
 
+func normalizeStoryAuthoringPaths(def *app.AppDef) {
+	if def == nil || def.States == nil {
+		return
+	}
+	s := def.States[storyauthoring.RoomState]
+	if s == nil {
+		return
+	}
+	for i := range s.View.Elements {
+		el := &s.View.Elements[i]
+		if el.Kind != "kv" {
+			continue
+		}
+		for j := range el.Pairs {
+			key, _ := el.Pairs[j].Key.(string)
+			if key == "Story root" {
+				el.Pairs[j].Value = "<story-dir>"
+			}
+		}
+	}
+	if len(s.OnEnter) == 0 || s.OnEnter[0].With == nil {
+		return
+	}
+	s.OnEnter[0].With["working_dir"] = "<story-dir>"
+	ctx, _ := s.OnEnter[0].With["context"].(map[string]any)
+	args, _ := ctx["args"].(map[string]any)
+	if args == nil {
+		return
+	}
+	args["story_dir"] = "<story-dir>"
+	args["app_file"] = "<app-file>"
+}
+
 func TestMaterializeRoundTrip(t *testing.T) {
-	root := testRepoRoot(t)
+	root := writableRepoRoot(t)
 	spec := &app.RootSpec{
 		Bindings: map[string]string{"transport": "host.append_to_file"},
 		World:    map[string]any{"judge_mode": "llm_then_human"},
@@ -59,18 +107,15 @@ func TestMaterializeRoundTrip(t *testing.T) {
 	}
 
 	// Emit, write under the repo worktree so @kitsoki/dev-story resolves, reload.
-	yamlBytes, err := emitRootYAML(spec, "materialize-roundtrip")
+	slug := "materialize-roundtrip"
+	yamlBytes, err := emitRootYAML(spec, slug, root, nil)
 	if err != nil {
 		t.Fatalf("emit: %v", err)
 	}
-	// Write under the repo root but OUTSIDE stories/ so findRepoRoot still
-	// resolves @kitsoki/dev-story while cross-package stories/ walkers (which
-	// copy stories/ in parallel) never race on this transient dir.
-	outDir, err := os.MkdirTemp(root, "mat-rt-")
-	if err != nil {
-		t.Fatalf("mkdtemp under repo: %v", err)
+	outDir := filepath.Join(root, ".kitsoki", "stories", slug)
+	if err := os.MkdirAll(outDir, 0o755); err != nil {
+		t.Fatalf("mkdir materialized dir: %v", err)
 	}
-	defer os.RemoveAll(outDir)
 	outPath := filepath.Join(outDir, "app.yaml")
 	if err := os.WriteFile(outPath, yamlBytes, 0o644); err != nil {
 		t.Fatalf("write emitted: %v", err)
@@ -90,8 +135,55 @@ func TestMaterializeRoundTrip(t *testing.T) {
 	}
 }
 
+func TestMaterializeRoundTripScriptBinding(t *testing.T) {
+	root := writableRepoRoot(t)
+	if err := os.MkdirAll(filepath.Join(root, ".kitsoki", "providers"), 0o755); err != nil {
+		t.Fatalf("mkdir providers: %v", err)
+	}
+	script := filepath.Join(root, ".kitsoki", "providers", "ticket.star")
+	if err := os.WriteFile(script, []byte(`def main(ctx):
+    return {"tickets": []}
+`), 0o644); err != nil {
+		t.Fatalf("write script: %v", err)
+	}
+	if err := os.WriteFile(script+".yaml", []byte(`inputs:
+  op: { type: string, required: false }
+outputs:
+  tickets:
+    type: list
+`), 0o644); err != nil {
+		t.Fatalf("write sidecar: %v", err)
+	}
+
+	slug := "script-binding"
+	spec := &app.RootSpec{Bindings: map[string]string{"ticket": ".kitsoki/providers/ticket.star"}}
+	yamlBytes, err := emitRootYAML(spec, slug, root, nil)
+	if err != nil {
+		t.Fatalf("emit: %v", err)
+	}
+	if body := string(yamlBytes); !strings.Contains(body, "ticket: ../../providers/ticket.star") {
+		t.Fatalf("expected script binding rewritten relative to materialized app dir:\n%s", body)
+	}
+
+	outDir := filepath.Join(root, ".kitsoki", "stories", slug)
+	if err := os.MkdirAll(outDir, 0o755); err != nil {
+		t.Fatalf("mkdir materialized dir: %v", err)
+	}
+	outPath := filepath.Join(outDir, "app.yaml")
+	if err := os.WriteFile(outPath, yamlBytes, 0o644); err != nil {
+		t.Fatalf("write emitted: %v", err)
+	}
+	def, err := app.Load(outPath)
+	if err != nil {
+		t.Fatalf("reload emitted app.yaml: %v\n---\n%s", err, string(yamlBytes))
+	}
+	if len(def.StarlarkHostBindings) != 1 {
+		t.Fatalf("expected one starlark binding, got %+v", def.StarlarkHostBindings)
+	}
+}
+
 func TestMaterializeEmitHasProvenanceHeaderAndDevStorySource(t *testing.T) {
-	b, err := emitRootYAML(nil, "provtest")
+	b, err := emitRootYAML(nil, "provtest", testRepoRoot(t), nil)
 	if err != nil {
 		t.Fatalf("emit: %v", err)
 	}
@@ -107,7 +199,7 @@ func TestMaterializeEmitHasProvenanceHeaderAndDevStorySource(t *testing.T) {
 // (runMaterialize): a rung-0 .kitsoki.yaml (no root: block) materializes a
 // loadable file, and a second run against the same slug refuses to overwrite.
 func TestMaterializeCmd_RoundTripAndRefuseOverwrite(t *testing.T) {
-	root := testRepoRoot(t)
+	root := writableRepoRoot(t)
 	// Materialize's write root is a temp dir UNDER the repo root (not real
 	// stories/): @kitsoki/dev-story still resolves via findRepoRoot, while the
 	// transient .kitsoki/stories/<slug> it writes can't race parallel stories/
@@ -144,7 +236,7 @@ func TestMaterializeCmd_RoundTripAndRefuseOverwrite(t *testing.T) {
 }
 
 func TestMaterializeCmd_UsesProjectProfile(t *testing.T) {
-	root := testRepoRoot(t)
+	root := writableRepoRoot(t)
 	matRoot, err := os.MkdirTemp(root, "mat-profile-")
 	if err != nil {
 		t.Fatalf("mkdtemp: %v", err)
@@ -212,7 +304,7 @@ dev_story_profile:
 // TestMaterializeCmd_AbortOnInvalidRoot proves materialize never writes a file
 // when synthesis fails (a bad root: block): no partial is left behind.
 func TestMaterializeCmd_AbortOnInvalidRoot(t *testing.T) {
-	root := testRepoRoot(t)
+	root := writableRepoRoot(t)
 	matRoot, err := os.MkdirTemp(root, "mat-abort-")
 	if err != nil {
 		t.Fatalf("mkdtemp: %v", err)

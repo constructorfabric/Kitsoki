@@ -27,13 +27,13 @@ states:
             "Checkpoint":  '{{ world.restore_label|default:"(name one)" }}'
       - heading: "Restored"
         when: "world.restore_outcome == 'restored'"
-      - prose: "Branch reset to checkpoint {{ world.restore_label }} ({{ world.checkpoint_sha }}){% if world.checkpoint_dirty %}, dirty tracked changes re-applied{% endif %}. The pre-restore state was saved to auto-pre-restore (restore label=auto-pre-restore to undo)."
+      - prose: "Branch reset to checkpoint {{ world.restore_label ?? '(pending)' }} ({{ world.checkpoint_sha ?? '(pending)' }}){% if world.checkpoint_dirty ?? false %}, dirty tracked changes re-applied{% endif %}. The pre-restore state was saved to auto-pre-restore (restore label=auto-pre-restore to undo)."
         when: "world.restore_outcome == 'restored'"
       - heading: "No such checkpoint"
         when: "world.restore_outcome == 'not_found'"
-      - prose: "{{ world.last_error }} Existing checkpoints: {{ world.checkpoint_list.raw|default:'(none)' }}"
+      - prose: "{{ world.last_error ?? '(pending)' }} Existing checkpoints: {{ world.checkpoint_list.raw|default:'(none)' }}"
         when: "world.restore_outcome == 'not_found'"
-      - prose: "Restore failed: {{ world.last_error }}"
+      - prose: "Restore failed: {{ world.last_error ?? '(pending)' }}"
         when: "world.restore_outcome == 'error'"
       - choice:
           mode: single

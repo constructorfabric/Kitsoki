@@ -1,0 +1,79 @@
+# init_apply_profile_validation_failed_review_first -- a schema-valid draft can
+# still fail the deterministic apply-time runtime validator if the local schema
+# and runtime schema diverge. That failure should send the operator back to the
+# profile review instead of making Enter retry the same invalid profile.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: init
+initial_world:
+  init_target_path: "/Users/brad/code/platform-presentation"
+  init_project_id: "platform-presentation"
+  init_project_title: "Platform Presentation"
+  init_stack: "go project"
+  init_dev_command: ""
+  init_test_command: "go test ./..."
+  init_build_command: "go build ./..."
+  init_conventions: "hybrid"
+  init_tracker: "none"
+  init_ticket_provider: "local"
+  init_ticket_repo: ""
+  init_profile_status: "draft"
+  init_profile_mode: "llm-validated"
+  init_profile_json: '{"schema":"project-profile/v1","id":"platform-presentation","title":"Platform Presentation"}'
+  init_profile_validation: { ok: true, schema: [], semantic: [], warnings: [] }
+  init_starter_stories: []
+  init_story_pack: "core-engineering"
+  init_story_pack_title: "Core engineering starter"
+  init_transcript_count: 0
+  init_mining_recommendation: {}
+  init_feedback: ""
+
+host_handlers:
+  host.run:
+    by_call:
+      apply:
+        data:
+          ok: false
+          exit_code: 1
+          stdout: '{"status":"profile-validation-failed","target_path":"/Users/brad/code/platform-presentation","profile_validation":{"ok":false,"schema":["at ''/onboarding'': additional properties ''capability'', ''capability_reason'' not allowed"],"semantic":[],"warnings":[]}}'
+          stdout_json:
+            status: "profile-validation-failed"
+            target_path: "/Users/brad/code/platform-presentation"
+            profile_validation:
+              ok: false
+              schema:
+                - "at '/onboarding': additional properties 'capability', 'capability_reason' not allowed"
+              semantic: []
+              warnings: []
+        error: "host.run: command exited 1"
+      install_tools:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: '{"status":"installed"}'
+
+turns:
+  - intent: { name: confirm_init, slots: {} }
+    expect_state: init_apply_failed
+    expect_world:
+      init_apply_result:
+        status: "profile-validation-failed"
+        target_path: "/Users/brad/code/platform-presentation"
+        profile_validation:
+          ok: false
+          schema:
+            - "at '/onboarding': additional properties 'capability', 'capability_reason' not allowed"
+          semantic: []
+          warnings: []
+      last_error: "host.run: command exited 1"
+    expect_view_matches: "Profile validation failed during apply"
+
+  - intent: { name: revise_init, slots: { feedback: "review after apply failure" } }
+    expect_state: init
+    expect_world:
+      init_profile_status: "needs-revision"
+      init_feedback: "review after apply failure"
+    expect_view_matches: "review after apply failure"
+
+expect_no_errors: true

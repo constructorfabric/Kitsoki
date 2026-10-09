@@ -1,0 +1,159 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+# Load an existing run bundle, then debug-file its credible issue findings to
+# GitHub through the runner's --file-findings bridge (which drives `kitsoki bug
+# file-findings` -> host.GitHubFileFindings -> host.GitHubFileBug, the same
+# artifact-preserving orchestration as web Report-bug / TUI /bug). This
+# diagnostic path is filing-only: story-owned fixing, independent verification,
+# and close-out live behind autonomous_fix.
+
+host_handlers:
+  host.run:
+    by_call:
+      load_product_journey_run:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: run_loaded
+            run_id: run-777
+            run_dir: .artifacts/product-journey/run-777
+            project: vscode
+            persona: ide-first-engineer
+            seed: filing-demo
+            deck_path: .artifacts/product-journey/run-777/deck.slidey.json
+            execution_plan_path: .artifacts/product-journey/run-777/execution-plan.md
+            driver_plan_path: .artifacts/product-journey/run-777/driver-plan.md
+            driver_journal_path: .artifacts/product-journey/run-777/driver-journal.md
+            agent_brief_path: .artifacts/product-journey/run-777/agent-brief.md
+            driver_handoff_path: .artifacts/product-journey/run-777/driver-handoff.md
+            media_manifest_path: .artifacts/product-journey/run-777/media-manifest.json
+            scenario_outcomes_path: .artifacts/product-journey/run-777/scenario-outcomes.md
+            finding_total_count: 4
+            strength_count: 1
+            weakness_count: 1
+            issue_count: 2
+            fix_count: 0
+            blocked_count: 1
+            proof_evidence_count: 3
+            review_status: needs_evidence
+      file_product_journey_findings:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: findings_filed
+            run_dir: .artifacts/product-journey/run-777
+            ticket_repo: bsacrobatix/Kitsoki
+            dry_run: "no"
+            findings_filed_count: 2
+            findings_skipped_count: 0
+            findings_failed_count: 0
+            findings_unfiled_count: 0
+            filed_issue_urls:
+              - https://github.com/bsacrobatix/Kitsoki/issues/101
+              - https://github.com/bsacrobatix/Kitsoki/issues/102
+            filed_issue_summary: "https://github.com/bsacrobatix/Kitsoki/issues/101; https://github.com/bsacrobatix/Kitsoki/issues/102"
+            filing_summary: "Filed findings to bsacrobatix/Kitsoki: 2 filed, 0 already filed, 0 failed; 0 credible finding(s) remain unfiled."
+            gh_agent_enqueue_status: disabled
+            gh_agent_enqueued_count: 0
+            gh_agent_skipped_count: 0
+            gh_agent_job_summary: ""
+            gh_agent_drain_status: disabled
+            gh_agent_drained_count: 0
+            gh_agent_done_count: 0
+            gh_agent_failed_count: 0
+            gh_agent_active_count: 0
+            gh_agent_run_summary: ""
+            outcomes:
+              - finding_id: finding-1
+                title: verify gate loops forever
+                scenario: dependency-bugfix
+                status: filed
+                issue_url: https://github.com/bsacrobatix/Kitsoki/issues/101
+                issue_number: "101"
+              - finding_id: finding-4
+                title: onboarding config generator emits stale commands
+                scenario: project-onboarding
+                status: filed
+                issue_url: https://github.com/bsacrobatix/Kitsoki/issues/102
+                issue_number: "102"
+            deck_path: .artifacts/product-journey/run-777/deck.slidey.json
+            execution_plan_path: .artifacts/product-journey/run-777/execution-plan.md
+            driver_plan_path: .artifacts/product-journey/run-777/driver-plan.md
+            driver_journal_path: .artifacts/product-journey/run-777/driver-journal.md
+            agent_brief_path: .artifacts/product-journey/run-777/agent-brief.md
+            driver_handoff_path: .artifacts/product-journey/run-777/driver-handoff.md
+            media_manifest_path: .artifacts/product-journey/run-777/media-manifest.json
+            scenario_outcomes_path: .artifacts/product-journey/run-777/scenario-outcomes.md
+            finding_total_count: 4
+            strength_count: 1
+            weakness_count: 1
+            issue_count: 2
+            fix_count: 0
+            blocked_count: 1
+            proof_evidence_count: 3
+
+turns:
+  - intent:
+      name: load
+      slots:
+        run_dir: .artifacts/product-journey/run-777
+    expect_state: run_created
+    expect_world:
+      status: run_loaded
+      run_id: run-777
+      run_dir: .artifacts/product-journey/run-777
+      issue_count: 2
+    expect_host_calls:
+      - handler: host.run
+        args: { call: load_product_journey_run }
+
+  - intent:
+      name: file_findings
+      slots:
+        ticket_repo: bsacrobatix/Kitsoki
+        mode: file
+        debug_file: "true"
+    expect_state: run_created
+    expect_world:
+      status: findings_filing_complete
+      ticket_repo: bsacrobatix/Kitsoki
+      filing_status: findings_filed
+      filing_dry_run: "no"
+      findings_filed_count: 2
+      findings_skipped_count: 0
+      findings_failed_count: 0
+      findings_unfiled_count: 0
+      filed_issue_summary: "https://github.com/bsacrobatix/Kitsoki/issues/101; https://github.com/bsacrobatix/Kitsoki/issues/102"
+      filing_summary: "Filed findings to bsacrobatix/Kitsoki: 2 filed, 0 already filed, 0 failed; 0 credible finding(s) remain unfiled."
+      gh_agent_enqueue_status: disabled
+      gh_agent_enqueued_count: 0
+      gh_agent_skipped_count: 0
+      gh_agent_job_summary: ""
+      gh_agent_drain_status: disabled
+      gh_agent_drained_count: 0
+      gh_agent_done_count: 0
+      gh_agent_failed_count: 0
+      gh_agent_active_count: 0
+      gh_agent_run_summary: ""
+    expect_view_matches: "RUN CREATED[\\s\\S]*Ticket repo[\\s\\S]*bsacrobatix/Kitsoki[\\s\\S]*Issue filing[\\s\\S]*findings_filed: filed 2, skipped 0, failed 0, unfiled 0[\\s\\S]*GH-agent fixes[\\s\\S]*disabled: queued 0, skipped 0[\\s\\S]*GH-agent drain[\\s\\S]*disabled: drained 0, done 0, failed 0, active 0[\\s\\S]*Filed findings to bsacrobatix/Kitsoki[\\s\\S]*issues/101[\\s\\S]*issues/102[\\s\\S]*file_findings ticket_repo=owner/repo"
+    expect_host_calls:
+      - handler: host.run
+        args:
+          call: file_product_journey_findings
+          args:
+            - tools/product-journey/run.py
+            - --file-findings
+            - --json-output
+            - --run-dir
+            - .artifacts/product-journey/run-777
+            - --ticket-repo
+            - bsacrobatix/Kitsoki
+            - --filing-mode
+            - file
+            - --debug-file
+
+expect_no_errors: true

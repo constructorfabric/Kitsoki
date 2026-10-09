@@ -1,0 +1,81 @@
+# init_customizations_review -- after onboarding applies files, the operator can
+# explicitly promote and review session-mined customization proposals from the
+# story. Host calls are stubbed; no mining pipeline, LLM, or checkout mutation
+# runs in this fixture.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: init_done
+initial_world:
+  init_target_path: "/tmp/kitsoki-init-fixtures/acme-go"
+  init_project_id: "acme-go"
+  init_project_title: "Acme Go"
+  init_profile_status: "applied"
+  init_apply_result:
+    status: "applied"
+    config_path: "/tmp/kitsoki-init-fixtures/acme-go/.kitsoki.yaml"
+    profile_path: "/tmp/kitsoki-init-fixtures/acme-go/.kitsoki/project-profile.yaml"
+    instance_path: "/tmp/kitsoki-init-fixtures/acme-go/.kitsoki/stories/acme-go-dev/app.yaml"
+    gitignore_path: "/tmp/kitsoki-init-fixtures/acme-go/.gitignore"
+    profile_validation:
+      ok: true
+      warnings: []
+
+host_handlers:
+  host.run:
+    by_call:
+      customizations:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: '{"action":"promote","updated":true,"counts":{"pending":1},"entries":[{"id":"mined-session-1-003","status":"pending","summary":"Review session-mined deterministic recipe: run tests.","evidence":".artifacts/mining/jobs/seed/analysis.json#session-1#003"}],"changed":[]}'
+          stdout_json:
+            action: "promote"
+            updated: true
+            counts:
+              pending: 1
+            entries:
+              - id: "mined-session-1-003"
+                status: "pending"
+                summary: "Review session-mined deterministic recipe: run tests."
+                evidence: ".artifacts/mining/jobs/seed/analysis.json#session-1#003"
+            changed: []
+
+turns:
+  - intent: { name: review_customizations, slots: {} }
+    expect_state: init_customizations
+    expect_world:
+      init_profile_status: "reviewing-customizations"
+      init_customization_action: "promote"
+      init_customization_ok: true
+      init_customization_result:
+        action: "promote"
+        updated: true
+        counts:
+          pending: 1
+        entries:
+          - id: "mined-session-1-003"
+            status: "pending"
+            summary: "Review session-mined deterministic recipe: run tests."
+            evidence: ".artifacts/mining/jobs/seed/analysis.json#session-1#003"
+        changed: []
+    expect_view_matches: "mined-session-1-003"
+
+  - intent: { name: customizations_reviewed, slots: {} }
+    expect_state: init_done
+    expect_world:
+      init_profile_status: "applied"
+      init_customization_result:
+        action: "promote"
+        updated: true
+        counts:
+          pending: 1
+        entries:
+          - id: "mined-session-1-003"
+            status: "pending"
+            summary: "Review session-mined deterministic recipe: run tests."
+            evidence: ".artifacts/mining/jobs/seed/analysis.json#session-1#003"
+        changed: []
+    expect_view_matches: "Mined Customizations"
+
+expect_no_errors: true

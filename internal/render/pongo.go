@@ -3,9 +3,11 @@ package render
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/flosch/pongo2/v6"
 	"github.com/muesli/reflow/wordwrap"
@@ -13,6 +15,24 @@ import (
 	"kitsoki/internal/expr"
 	"kitsoki/internal/render/sourcecolor"
 )
+
+// globalPongoMu serialises compilation against pongo2's package-level
+// DefaultSet (the set behind pongo2.FromString). That set caches compiled
+// templates in an unsynchronised map shared process-wide, so two goroutines
+// compiling inline templates concurrently — e.g. one session's foreground turn
+// and another session's background job listener both rendering a scalar view
+// leaf — race on the cache. Holding mu around FromString keeps the compile
+// single-threaded; Execute is left unlocked because these inline templates have
+// no loader-backed {% include %}/{% extends %}, so executing them never touches
+// the cache map. See AppRenderer.mu for the per-app twin of this guard.
+var globalPongoMu sync.Mutex
+
+// compileGlobal compiles src against pongo2's DefaultSet under globalPongoMu.
+func compileGlobal(src string) (*pongo2.Template, error) {
+	globalPongoMu.Lock()
+	defer globalPongoMu.Unlock()
+	return pongo2.FromString(src)
+}
 
 // TemplateErrorSnippetLength bounds the template source echoed in a wrapped
 // render error. Inline view leaves are usually short, but a multi-line
@@ -254,7 +274,7 @@ func PongoParse(src string) error {
 	if !hasDelims(src) {
 		return nil
 	}
-	if _, err := pongo2.FromString(preprocessCoalesce(src)); err != nil {
+	if _, err := compileGlobal(preprocessCoalesce(src)); err != nil {
 		return wrapTemplateError(src, err)
 	}
 	return nil
@@ -272,7 +292,7 @@ func Pongo(src string, env expr.Env) (out string, err error) {
 		return src, nil
 	}
 	src = preprocessCoalesce(src)
-	tpl, err := pongo2.FromString(src)
+	tpl, err := compileGlobal(src)
 	if err != nil {
 		return "", wrapTemplateError(src, err)
 	}
@@ -422,6 +442,80 @@ func indexOfAny(s string, subs ...string) int {
 	return best
 }
 
+// jsonObject and jsonArray are named wrappers over the untyped map/slice
+// shapes that flow through the world snapshot. Their value-receiver
+// String() methods render the value as compact JSON, which pongo2's
+// Value.String() picks up via the fmt.Stringer check it runs BEFORE its
+// reflect-kind switch. Without these, a map/slice interpolated into a
+// string context (`{{ world.someObjectKey }}`) falls through pongo2's
+// switch to Go's reflect placeholder `<map[string]interface {} Value>` /
+// `<[]interface {} Value>` — useless to a downstream agent and the root
+// cause this fix addresses.
+//
+// Crucially the underlying kinds stay reflect.Map / reflect.Slice, so all
+// existing reflection-driven access continues to work: member access
+// (`.questions`), indexing (`.0`), `{% for %}` iteration, and the
+// slice/map filters (`reverse`, `default`).
+type jsonObject map[string]any
+
+// String renders the object as compact JSON. json.Marshal sorts map keys,
+// so the output is deterministic (important for replayable traces).
+func (o jsonObject) String() string {
+	b, err := json.Marshal(map[string]any(o))
+	if err != nil {
+		// Marshal of an arbitrary world value can fail (e.g. an
+		// unsupported type buried in the map); degrade to Go's default
+		// rather than panic at the render seam. Do not fmt the value here:
+		// fmt can recurse forever on cycles, the same class of failure we are
+		// containing.
+		return "<unrenderable object>"
+	}
+	return string(b)
+}
+
+type jsonArray []any
+
+// String renders the array as compact JSON. See jsonObject.String.
+func (a jsonArray) String() string {
+	b, err := json.Marshal([]any(a))
+	if err != nil {
+		return "<unrenderable array>"
+	}
+	return string(b)
+}
+
+// wrapNonScalar recursively converts every map[string]any to jsonObject and
+// every []any to jsonArray, leaving scalars (and all other types) untouched.
+// Applied to each env value at the render seam so any non-scalar leaf
+// interpolated into a string context stringifies as JSON instead of Go's
+// reflect placeholder. The recursion ensures nested objects/arrays render
+// usefully too (e.g. `{{ world.a.b }}` where b is itself an object).
+func wrapNonScalar(v any) any {
+	return wrapNonScalarDepth(v, 0)
+}
+
+func wrapNonScalarDepth(v any, depth int) any {
+	if depth > 64 {
+		return v
+	}
+	switch t := v.(type) {
+	case map[string]any:
+		out := make(jsonObject, len(t))
+		for k, val := range t {
+			out[k] = wrapNonScalarDepth(val, depth+1)
+		}
+		return out
+	case []any:
+		out := make(jsonArray, len(t))
+		for i, val := range t {
+			out[i] = wrapNonScalarDepth(val, depth+1)
+		}
+		return out
+	default:
+		return v
+	}
+}
+
 // ToContext converts an expr.Env into a pongo2.Context.
 //
 // Exposed keys mirror the expr.Env struct tags so author-visible variables
@@ -447,17 +541,18 @@ func ToContext(env expr.Env) pongo2.Context {
 		state = map[string]any{}
 	}
 	ctx := pongo2.Context{
-		"world": env.World,
-		"slots": env.Slots,
-		"event": env.Event,
+		"world": wrapNonScalar(env.World),
+		"slots": wrapNonScalar(env.Slots),
+		"event": wrapNonScalar(env.Event),
 		"run": map[string]any{
 			"id":   env.Run.ID,
 			"turn": env.Run.Turn,
 		},
-		"args":  env.Args,
-		"menu":  env.Menu,
-		"item":  env.Item,
-		"state": state,
+		"args":          wrapNonScalar(env.Args),
+		"menu":          wrapNonScalar(env.Menu),
+		"prerequisites": wrapNonScalar(env.Prerequisites),
+		"item":          wrapNonScalar(env.Item),
+		"state":         wrapNonScalar(state),
 	}
 
 	if env.Available != nil {

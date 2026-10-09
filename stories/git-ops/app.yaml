@@ -20,6 +20,26 @@ hosts:
   - host.agent.decide
   - host.agent.task
 
+host_interfaces:
+  ticket:
+    description: "Issue tracker abstraction (file / GitHub Issues / Jira)."
+    operations:
+      create:
+        input:  { title: string, body: string, repo: string, labels: list }
+        output: { id: string, number: string, url: string, warning: string }
+      get:
+        input:  { id: string, repo: string }
+        output: { id: string, title: string, body: string, status: string,
+                  priority: string, assignee: string, url: string, comments: list,
+                  source: string, legacy_id: string }
+      comment:
+        input:  { id: string, repo: string, body: string }
+        output: { ok: bool, comment_id: string, url: string }
+      transition:
+        input:  { id: string, repo: string, to: string }
+        output: { ok: bool, status: string }
+    default: host.local_files.ticket
+
 # conflict_resolver is declared with tools: [Read, Edit] and NO Bash —
 # the v1 write-fence. The agent physically cannot run git commit / push /
 # checkout; correctness is gated by the acceptance.post_cmd (git diff --check)
@@ -37,7 +57,28 @@ agents:
       resolved=true.
     model: claude-sonnet-4-6
     tools: [Read, Edit]
-    external_side_effect: false
+  git_assistant:
+    system_prompt: |
+      You are a focused git operations assistant inside Kitsoki's git-ops workbench.
+      The deterministic story commands perform mutations; your job is to answer
+      operator follow-ups, explain the current git state, inspect read-only context,
+      and recommend the next safe story action. Be concise. If the operator asks
+      you to perform a mutating git operation, explain the exact git-ops command or
+      button they should use instead of running it yourself.
+    model: claude-sonnet-4-6
+    tools: [Read, Grep, Glob, Bash]
+    bash_profile: read-only
+
+operations:
+  gitops.sync_main:
+    title: "Sync protected main"
+    mode: supervised
+    execution_mode: one-shot
+    run_in_background: true
+    stop_on: [host-error, policy-denied]
+    pause_on: [operator-ask, protected-branch-approval]
+    phase_summary:
+      from: [sync_result]
 
 world:
   integration_branch:       { type: string, default: "main" }
@@ -59,6 +100,8 @@ world:
   rebase_base_sha:          { type: string, default: "" }
   conflict_origin:          { type: string, default: "" }
   conflict_files:           { type: string, default: "" }
+  conflict_scan_done:       { type: bool,   default: false }
+  conflict_agent_ready:     { type: bool,   default: false }
   conflict_verdict:         { type: object, default: {} }
   conflict_intent_guidance: { type: string, default: "" }
   merge_branch_name:        { type: string, default: "" }
@@ -108,6 +151,33 @@ world:
   checkpoint_list:          { type: object, default: {} }
   restore_label:            { type: string, default: "" }
   restore_outcome:          { type: string, default: "" }
+  # protected-main remote sync arc. This delegates to
+  # scripts/sync-main-from-remote.sh so local main is reconciled through an
+  # integration worktree instead of a pull in the guarded checkout.
+  sync_remote:              { type: string, default: "origin" }
+  sync_remote_branch:       { type: string, default: "main" }
+  sync_name:                { type: string, default: "" }
+  sync_continue_branch:     { type: string, default: "" }
+  sync_auto_resolve:        { type: bool,   default: false }
+  sync_result:              { type: object, default: {} }
+  # guarded main publish arc. This only fast-forwards the remote ref from the
+  # current integration branch; it never force-pushes or rewrites remote work.
+  push_remote:              { type: string, default: "origin" }
+  push_remote_branch:       { type: string, default: "main" }
+  push_result:              { type: object, default: {} }
+  # issue status arc. In kitsoki-dev this resolves through iface.ticket →
+  # host.gh.ticket, so operators can inspect GitHub issues from the story
+  # surface instead of shelling out to `gh issue view`.
+  ticket_repo:              { type: string, default: "" }
+  issue_id:                 { type: string, default: "" }
+  issue_title:              { type: string, default: "" }
+  issue_status:             { type: string, default: "" }
+  issue_url:                { type: string, default: "" }
+  issue_source:             { type: string, default: "" }
+  issue_legacy_id:          { type: string, default: "" }
+  issue_body:               { type: string, default: "" }
+  issue_warning:            { type: string, default: "" }
+  issue_comment_url:        { type: string, default: "" }
 
 intents:
   # ── Routing (internal; emitted by on_enter) ─────────────────────────
@@ -149,6 +219,14 @@ intents:
     description: "Internal routing: only go.sum is conflicted — handle via go mod tidy."
     examples: []
     priority: 95
+  rebase_stuck:
+    description: "Internal routing: a rebase is in progress but no files are conflicted — rest for continue/abort."
+    examples: []
+    priority: 95
+  conflict_ready:
+    description: "Internal routing: conflict files have been scanned and the resolver can run."
+    examples: []
+    priority: 95
   pull_done:
     description: "Internal routing: pull completed successfully."
     examples: []
@@ -175,6 +253,35 @@ intents:
     priority: 95
 
   # ── Hub operations ───────────────────────────────────────────────────
+  issue_status:
+    description: "Fetch an issue/ticket through the configured ticket provider."
+    examples: ["issue status", "show issue", "issue 105", "show ticket 105", "what is issue 105"]
+    priority: 82
+    slots:
+      id: { type: string, required: false }
+  issue_create:
+    description: "Create an issue/ticket through the configured ticket provider."
+    examples: ["create issue", "file an issue", "open a ticket", "report issue", "make issue"]
+    priority: 82
+    slots:
+      title: { type: string, required: false }
+      body: { type: string, required: false }
+      labels: { type: string, required: false }
+  issue_comment:
+    description: "Comment on an issue/ticket through the configured ticket provider."
+    examples: ["comment on issue", "add issue comment", "post issue comment", "comment issue 105"]
+    priority: 82
+    slots:
+      id: { type: string, required: false }
+      body: { type: string, required: false }
+  issue_transition:
+    description: "Transition an issue/ticket through the configured ticket provider."
+    examples: ["close issue", "resolve issue", "reopen issue", "mark issue resolved"]
+    priority: 82
+    slots:
+      id: { type: string, required: false }
+      to: { type: string, required: false }
+
   commit:
     description: "Stage and commit changes with an agent-authored message."
     # "commit the staged fix"/"…work" are verbatim mined real-session phrasings.
@@ -242,6 +349,30 @@ intents:
     examples: ["pull", "pull from upstream", "git pull", "sync upstream"]
     priority: 70
 
+  sync_main:
+    description: "Reconcile protected local main with a remote main through an integration worktree."
+    examples: ["sync main from origin", "reconcile main with origin",
+               "update local main from origin", "sync protected main",
+               "sync origin main", "sync upstream main",
+               "continue main sync", "finish main sync"]
+    priority: 75
+    slots:
+      remote:        { type: string, required: false }
+      remote_branch: { type: string, required: false }
+      name:          { type: string, required: false }
+      branch:        { type: string, required: false }
+      continue_branch: { type: string, required: false }
+      auto_resolve:  { type: bool,   required: false }
+
+  push_main:
+    description: "Fast-forward a remote main ref from the current protected local main."
+    examples: ["push main to origin", "publish local main", "sync origin from local main",
+               "make origin main match local main", "push origin main"]
+    priority: 74
+    slots:
+      remote:        { type: string, required: false }
+      remote_branch: { type: string, required: false }
+
   merge_branch:
     description: "Merge a named branch into the integration branch (from main_ops)."
     examples: ["merge branch", "merge a branch", "merge into main"]
@@ -277,6 +408,11 @@ intents:
     description: "Accept the agent's output and execute the operation."
     examples: ["accept", "ok", "yes", "lgtm", "continue", "proceed"]
     priority: 85
+
+  save_draft:
+    description: "Persist the current operation overlay as an explicit draft and return to the hub."
+    examples: ["save draft", "continue later", "park this", "draft"]
+    priority: 62
 
   edit_message:
     description: "Replace the agent commit message with a custom one."
@@ -412,6 +548,11 @@ intents:
     examples: ["quit", "exit", "done", "bye"]
     priority: 50
 
+  main_room:
+    description: "Return from git-ops to the parent story's main room."
+    examples: ["main room", "home", "go home", "back to main", "return to main"]
+    priority: 55
+
   look:
     # Status-query phrasings. Avoid examples that reduce to a bare command verb
     # stem — "is this committed"→{commit} and "what files are staged"→{stage}
@@ -422,6 +563,11 @@ intents:
                "what's uncommitted", "am I on main", "show the working tree state",
                "refresh", "status"]
     priority: 10
+
+# Named return points for importers. Standalone runs synthesize terminal rooms.
+exits:
+  main:
+    description: "Operator leaves git-ops for the parent story's main room."
 
 root: idle
 

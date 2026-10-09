@@ -1,0 +1,39 @@
+# Cassette for flows/lint_fail_refine_loop.yaml — decomposer output is the
+# same structured envelope on both decompose entries (the manifest CONTENT
+# that lint actually sees comes from the starlark_inspect_cassette instead;
+# this cassette only satisfies the decomposition_briefs bind + once: guard),
+# and review accepts once lint finally passes.
+
+kind: host_cassette
+app_id: deliver
+generated_at: 2026-07-05T00:00:00Z
+match_on: [handler, call]
+
+episodes:
+  - id: decomposer_call
+    match:
+      handler: host.agent.task
+      call: decomposer
+    response:
+      data:
+        ok: true
+        submitted:
+          briefs:
+            - id: slice-1
+              brief: "Implement slice 1 so that go test ./... passes."
+              gate_command: "go test ./..."
+              deps: []
+    replay: any
+
+  - id: review_accept
+    match:
+      handler: host.agent.decide
+      call: review
+    response:
+      data:
+        ok: true
+        submitted:
+          verdict: accept
+          reason: "Single brief, no deps, gate is plausible."
+          questions: []
+    replay: any

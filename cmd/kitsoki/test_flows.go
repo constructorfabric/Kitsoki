@@ -20,7 +20,7 @@ import (
 // Use --flows to override.
 func testFlowsCmd() *cobra.Command {
 	var (
-		flowsGlob          string
+		flowsGlobs         []string
 		jsonOut            string
 		recordingPath      string
 		failFast           bool
@@ -51,6 +51,7 @@ Exit codes:
 			appPath := args[0]
 
 			// Resolve default glob.
+			flowsGlob := strings.Join(flowsGlobs, ",")
 			if flowsGlob == "" {
 				flowsGlob = defaultFlowsGlob(appPath)
 			}
@@ -81,8 +82,8 @@ Exit codes:
 		},
 	}
 
-	cmd.Flags().StringVar(&flowsGlob, "flows", "",
-		"glob for flow fixture files (default: <app-dir>/flows/*.yaml)")
+	cmd.Flags().StringArrayVar(&flowsGlobs, "flows", nil,
+		"glob for flow fixture files; may be repeated or comma-separated (default: <app-dir>/flows/*.yaml)")
 	cmd.Flags().StringVar(&jsonOut, "json", "",
 		"write JSON report to this file")
 	cmd.Flags().StringVar(&recordingPath, "recording", "",

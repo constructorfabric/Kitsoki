@@ -78,11 +78,14 @@ const byId = new Map(index.features.map((f) => [f.id, f]));
 const master = byId.get(featureId);
 if (!master) die(`no feature "${featureId}" in the index`);
 if (!master.sections) die(`feature "${featureId}" has no sections (kind: product-tour?)`);
-if (!master.demo) die(`feature "${featureId}" has no demo binding`);
+const masterDemo = master.demo || {
+  artifactDir: `.artifacts/${featureId}`,
+  video: `.artifacts/${featureId}/${featureId}.mp4`,
+};
 
-const outDir = path.join(repoRoot, master.demo.artifactDir);
+const outDir = path.join(repoRoot, masterDemo.artifactDir);
 fs.mkdirSync(outDir, { recursive: true });
-const outVideo = path.join(outDir, `${path.basename(master.demo.video).replace(/\.mp4$/, "")}${suffix}.mp4`);
+const outVideo = path.join(outDir, `${path.basename(masterDemo.video).replace(/\.mp4$/, "")}${suffix}.mp4`);
 
 const tmp = fs.mkdtempSync(path.join(outDir, ".stitch-"));
 const cleanup = () => fs.rmSync(tmp, { recursive: true, force: true });
@@ -102,7 +105,7 @@ function resolveClip(sourceId) {
   v = v || { video: src.demo.video, chapters: src.demo.chapters };
   const video = path.join(repoRoot, v.video);
   const chaptersPath = path.join(repoRoot, v.chapters);
-  if (!fs.existsSync(video)) die(`source "${sourceId}" video missing: ${v.video} (record with: make demos)`);
+  if (!fs.existsSync(video)) die(`source "${sourceId}" video missing: ${v.video} (legacy export: make render-video FEATURE=${sourceId})`);
   if (!fs.existsSync(chaptersPath)) die(`source "${sourceId}" chapters missing: ${v.chapters}`);
   return { src, video, chaptersPath, chapters: JSON.parse(fs.readFileSync(chaptersPath, "utf8")) };
 }

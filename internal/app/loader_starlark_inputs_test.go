@@ -147,3 +147,65 @@ count: "{{ world.count }}"`)
 		}
 	}
 }
+
+func TestValidateStarlarkCapabilities_RejectsMissingGrant(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "scripts"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mustWriteFile(t, filepath.Join(dir, "scripts", "read.star"), `def main(ctx):
+    return {"result": ctx.fs.read("README.md")}
+`)
+	mustWriteFile(t, filepath.Join(dir, "scripts", "read.star.yaml"), `outputs:
+  result: { type: string }
+`)
+	mustWriteFile(t, filepath.Join(dir, "app.yaml"), `app:
+  id: test-starlark-capabilities
+  version: 0.1.0
+root: probing
+states:
+  probing:
+    on_enter:
+      - invoke: host.starlark.run
+        with:
+          script: scripts/read.star
+        bind:
+          result: result
+`)
+	got := slLoadErr(t, filepath.Join(dir, "app.yaml"))
+	if !strings.Contains(got, "with.capabilities.fs.read is empty") {
+		t.Fatalf("expected missing fs.read capability error, got:\n%s", got)
+	}
+}
+
+func TestValidateStarlarkCapabilities_RejectsUnknownKey(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "scripts"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mustWriteFile(t, filepath.Join(dir, "scripts", "noop.star"), `def main(ctx):
+    return {"result": "ok"}
+`)
+	mustWriteFile(t, filepath.Join(dir, "scripts", "noop.star.yaml"), `outputs:
+  result: { type: string }
+`)
+	mustWriteFile(t, filepath.Join(dir, "app.yaml"), `app:
+  id: test-starlark-capabilities
+  version: 0.1.0
+root: probing
+states:
+  probing:
+    on_enter:
+      - invoke: host.starlark.run
+        with:
+          script: scripts/noop.star
+          capabilities:
+            not_real: true
+        bind:
+          result: result
+`)
+	got := slLoadErr(t, filepath.Join(dir, "app.yaml"))
+	if !strings.Contains(got, "capabilities are invalid") || !strings.Contains(got, "not_real") {
+		t.Fatalf("expected unknown capability key error, got:\n%s", got)
+	}
+}

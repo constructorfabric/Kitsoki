@@ -1,0 +1,14 @@
+{
+  "name": "kitsoki-frontend-mockup-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs",
+    "smoke": "node scripts/smoke.mjs",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "@browserbasehq/stagehand": "3.6.0"
+  }
+}

@@ -1,0 +1,112 @@
+# prepare - deterministic source and progressive-determinism plan.
+#
+# The Starlark script records exactly which transcript sources and artifact
+# classes the later mining/map/author phases must honor. Keeping this as a real
+# deterministic host call prevents the source policy from living only in prompts.
+# It runs as an explicit transition effect from idle.start / prepare.refine /
+# prepare.restart_from so the operator action and the resulting plan are part of
+# the same turn.
+
+states:
+
+  prepare:
+    description: "Prepare transcript sources and the progressive-determinism plan."
+    view:
+      - banner:
+          text:     "PREPARE"
+          subtitle: "Phase 1 / 6  -  source matrix + L0-L4 ladder"
+          color:    "#14B8A6"
+      - prose: "{{ world.job }} - sources {{ world.transcript_sources }} - target {{ world.stories_dir }}"
+      - kv:
+          pairs:
+            Sources: "{{ world.transcript_sources }}"
+            Targets: "{{ world.target_artifacts }}"
+            "Claude transcripts": '{{ world.project_dir|default:"(current repo slug)" }}'
+            "Codex transcripts": "{{ world.codex_sessions_dir }}"
+            "Next turn": "mine Claude Code and Codex before rendering the brief"
+            "Progressive determinism": "start new automation at L2, climb only from recorded gate evidence"
+      - heading: "Plan"
+      - template: '{{ world.source_summary_markdown|default:"(pending - source planner has not returned yet)" }}'
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "continue"
+              hint:   "accept the source plan and mine transcripts"
+              intent: accept
+            - label:  "refine"
+              hint:   "re-plan with feedback (for example, source scope or target artifacts)"
+              intent: refine
+              param: { slot: feedback, type: string, placeholder: "what to re-plan", required: false }
+            - label:  "quit"
+              hint:   "abandon the loop"
+              intent: quit
+            - label:  "look"
+              hint:   "re-render"
+              intent: look
+    relevant_world: [job, transcript_sources, project_dir, codex_sessions_dir, stories_dir, target_artifacts, automation_goal, source_plan_artifact, source_summary_markdown, refine_feedback, cycle]
+    on:
+      accept:
+        - target: mine
+          effects:
+            - say: "Source plan accepted. Mining Claude Code and Codex now; the next view is the mined BRIEF.md report."
+            - set: { refine_feedback: "", cycle: 0 }
+      refine:
+        - when: "world.prepare_cycle >= world.prepare_budget"
+          target: "@exit:abandoned"
+          effects:
+            - set: { abandon_reason: "prepare_cycle_budget_exhausted", status: "abandoned" }
+        - target: prepare
+          effects:
+            - set:
+                refine_feedback: "{{ slots.feedback }}"
+                prepare_cycle:   "{{ world.prepare_cycle + 1 }}"
+                cycle:           "{{ world.cycle + 1 }}"
+                source_plan_artifact: {}
+                source_summary_markdown: ""
+            - invoke: host.starlark.run
+              id: plan_sources
+              with:
+                script: scripts/plan_sources.star
+                inputs:
+                  job: "{{ world.job }}"
+                  transcript_sources: "{{ world.transcript_sources }}"
+                  project_dir: "{{ world.project_dir }}"
+                  codex_sessions_dir: "{{ world.codex_sessions_dir }}"
+                  stories_dir: "{{ world.stories_dir }}"
+                  target_artifacts: "{{ world.target_artifacts }}"
+                  automation_goal: "{{ world.automation_goal }}"
+                  determinism_doc: "{{ world.determinism_doc }}"
+                  prompt_intercept_doc: "{{ world.prompt_intercept_doc }}"
+                  refine_feedback: "{{ slots.feedback }}"
+              bind:
+                source_plan_artifact: source_plan
+                source_summary_markdown: summary_markdown
+      restart_from:
+        - target: prepare
+          effects:
+            - set: { refine_feedback: "", prepare_cycle: 0, cycle: 0, source_plan_artifact: {}, source_summary_markdown: "" }
+            - invoke: host.starlark.run
+              id: plan_sources
+              with:
+                script: scripts/plan_sources.star
+                inputs:
+                  job: "{{ world.job }}"
+                  transcript_sources: "{{ world.transcript_sources }}"
+                  project_dir: "{{ world.project_dir }}"
+                  codex_sessions_dir: "{{ world.codex_sessions_dir }}"
+                  stories_dir: "{{ world.stories_dir }}"
+                  target_artifacts: "{{ world.target_artifacts }}"
+                  automation_goal: "{{ world.automation_goal }}"
+                  determinism_doc: "{{ world.determinism_doc }}"
+                  prompt_intercept_doc: "{{ world.prompt_intercept_doc }}"
+                  refine_feedback: ""
+              bind:
+                source_plan_artifact: source_plan
+                source_summary_markdown: summary_markdown
+      quit:
+        - target: "@exit:abandoned"
+          effects:
+            - set: { abandon_reason: "quit_at_prepare", status: "abandoned" }
+      look:
+        - target: .

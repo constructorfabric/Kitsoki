@@ -240,12 +240,13 @@ func TestStudioOperatorAsk_FallbackProtocol(t *testing.T) {
 	assert.Equal(t, probeQuestion, pq.questions[0].Question)
 
 	// Resume with the operator's choice → the turn settles, world.answer is bound.
-	res, pq2, turnDone, ok, err := sh.Runtime.resumeSuspendable(
-		context.Background(), pq.id, map[string]any{probeQuestion: "Postgres"})
+	res, pq2, turnDone, running, ok, err := sh.Runtime.resumeSuspendable(
+		context.Background(), pq.id, map[string]any{probeQuestion: "Postgres"}, 0)
 	require.NoError(t, err)
 	require.True(t, ok, "the question id was awaiting an answer")
 	require.True(t, turnDone, "the turn settles once answered")
 	require.Nil(t, pq2)
+	require.Nil(t, running)
 	require.NoError(t, res.err, "the turn completed cleanly")
 
 	ins, err := sh.Runtime.inspect(context.Background(), 5, sh.Key)

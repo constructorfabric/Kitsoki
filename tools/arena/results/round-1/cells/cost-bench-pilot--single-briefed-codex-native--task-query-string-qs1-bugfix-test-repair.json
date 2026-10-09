@@ -1,0 +1,23 @@
+{
+  "axis": {
+    "task": "query-string-qs1-bugfix-test-repair"
+  },
+  "cell_id": "cost-bench-pilot--single-briefed-codex-native--task:query-string-qs1-bugfix-test-repair",
+  "evidence_refs": [
+    "/Users/brad/code/Kitsoki/.worktrees/generalized-usage-rebase/tools/arena/corpus/cost-bench.manifest.yaml#query-string-qs1-bugfix-test-repair",
+    "/Users/brad/code/Kitsoki/.worktrees/generalized-usage-rebase/.artifacts/arena/paired-task-work/query-string-qs1-bugfix-test-repair--single-briefed--codex--gpt-5.5-score.json"
+  ],
+  "health": "model:result",
+  "job_type": "paired-task",
+  "metrics": {
+    "cost_usd": 0.481624,
+    "host": "local",
+    "tokens": 85622,
+    "wall_s": 178.095
+  },
+  "notes": "codex exit=0: Implemented the fix for query-string issue 336: separator array parsing now splits only on literal raw separators, then decodes each segment. Encoded separators like `%7C` or `%2C` stay inside a single decoded value.; [bench] query-string/qs1 oracle=pass suite=True -> solved; cost_usd=0.481624 (blended estimate, not exact)",
+  "target_id": "cost-bench-pilot",
+  "trace_ref": "",
+  "variant_id": "single-briefed-codex-native",
+  "verdict": "solved"
+}

@@ -55,3 +55,24 @@ states:
 	// relative to the materialized dev-story dir.
 	require.Contains(t, def.States, "core", "dev-story should fold under the `core` alias")
 }
+
+func TestEmbeddedImplicitRootResolvesDeclaredHosts(t *testing.T) {
+	// Hermetic cache/home; never touch the developer's persisted repo or kit-dev
+	// overrides. This forces buildImportResolver's embedded-library fallback.
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv(kitrepo.EnvVar, "")
+	t.Setenv("KITSOKI_KIT_DEV_DEV_STORY", "")
+
+	if _, err := basestories.Materialize(t.Context()); err == basestories.ErrNotStaged {
+		t.Skip("story library not staged into the test binary; run `make embed-stories`")
+	}
+
+	repo := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(repo, "go.mod"), []byte("module example.com/foreign\n"), 0o644))
+
+	def, err := app.SynthesizeRootWithResolver(nil, repo, buildImportResolver())
+	require.NoError(t, err, "implicit root must satisfy dev-story's hosts: declared contract from embedded stories")
+	require.Contains(t, def.States, app.RootAlias)
+	require.Contains(t, def.Hosts, "host.fs.writable_dir")
+}

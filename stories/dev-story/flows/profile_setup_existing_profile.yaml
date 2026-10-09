@@ -1,0 +1,104 @@
+# profile_setup_existing_profile — discover an existing checked-in profile and
+# write only a local default_profile override after review. Host calls are
+# stubbed; no provider binary or LLM is invoked.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world:
+  workdir: "/tmp/kitsoki-profile-fixture"
+  repo_root: "/tmp/kitsoki-profile-fixture"
+
+host_handlers:
+  host.run:
+    by_call:
+      profile_setup_discover:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: '{"schema":"kitsoki-profile-setup-discovery/v1","status":"ok","target_path":"/tmp/kitsoki-profile-fixture","config_path":"/tmp/kitsoki-profile-fixture/.kitsoki.yaml","local_config_path":"/tmp/kitsoki-profile-fixture/.kitsoki.local.yaml","default_profile":"claude-native","profiles":[{"name":"claude-native","source":"baseline","backend":"claude","model":"opus","readiness":"installed"}],"backend_sources":[{"backend":"claude","installed":true,"logged_in":"yes","path_source":"PATH","auth_summary":"probe:logged-in","auth_probe":{"command":"claude auth status --json","status":"ok","exit_code":0,"logged_in":true,"auth_method":"subscription","api_provider":"firstParty"}}],"env_sources":[{"name":"ANTHROPIC_API_KEY","present":false}],"candidate_action":"set_default","candidate_profile":{"action":"set_default","name":"claude-native"},"patch_preview":"default_profile: claude-native\n","warnings":[".kitsoki.local.yaml does not exist yet; apply will create it"]}'
+          stdout_json:
+            schema: "kitsoki-profile-setup-discovery/v1"
+            status: "ok"
+            target_path: "/tmp/kitsoki-profile-fixture"
+            config_path: "/tmp/kitsoki-profile-fixture/.kitsoki.yaml"
+            local_config_path: "/tmp/kitsoki-profile-fixture/.kitsoki.local.yaml"
+            default_profile: "claude-native"
+            profiles:
+              - { name: "claude-native", source: "baseline", backend: "claude", model: "opus", readiness: "installed" }
+            backend_sources:
+              - backend: "claude"
+                installed: true
+                logged_in: "yes"
+                path_source: "PATH"
+                auth_summary: "probe:logged-in"
+                auth_probe:
+                  command: "claude auth status --json"
+                  status: "ok"
+                  exit_code: 0
+                  logged_in: true
+                  auth_method: "subscription"
+                  api_provider: "firstParty"
+            env_sources:
+              - { name: "ANTHROPIC_API_KEY", present: false }
+            candidate_action: "set_default"
+            candidate_profile: { action: "set_default", name: "claude-native" }
+            patch_preview: "default_profile: claude-native\n"
+            warnings:
+              - ".kitsoki.local.yaml does not exist yet; apply will create it"
+      profile_setup_apply:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: '{"schema":"kitsoki-profile-setup-apply/v1","status":"applied","target_path":"/tmp/kitsoki-profile-fixture","local_config_path":"/tmp/kitsoki-profile-fixture/.kitsoki.local.yaml","writes":["/tmp/kitsoki-profile-fixture/.kitsoki.local.yaml"],"default_profile":"claude-native","profiles":[{"name":"claude-native","source":"baseline","backend":"claude","model":"opus","readiness":"installed"}],"warnings":[]}'
+          stdout_json:
+            schema: "kitsoki-profile-setup-apply/v1"
+            status: "applied"
+            target_path: "/tmp/kitsoki-profile-fixture"
+            local_config_path: "/tmp/kitsoki-profile-fixture/.kitsoki.local.yaml"
+            writes: ["/tmp/kitsoki-profile-fixture/.kitsoki.local.yaml"]
+            default_profile: "claude-native"
+            profiles:
+              - { name: "claude-native", source: "baseline", backend: "claude", model: "opus", readiness: "installed" }
+            warnings: []
+
+turns:
+  - intent: { name: go_profile_setup, slots: { target: "/tmp/kitsoki-profile-fixture" } }
+    expect_state: profile_setup_discover
+    expect_world:
+      profile_setup_status: "discovering"
+      profile_setup_default_profile: "claude-native"
+      profile_setup_candidate_action: "set_default"
+    expect_view_matches: "claude-native"
+
+  - intent: { name: profile_setup_discovered, slots: {} }
+    expect_state: profile_setup_review
+    expect_world:
+      profile_setup_status: "review"
+      profile_setup_patch_preview: "default_profile: claude-native\n"
+    expect_view_matches: "Patch Preview"
+
+  - intent: { name: confirm_profile_setup, slots: {} }
+    expect_state: profile_setup_apply
+    expect_world:
+      profile_setup_apply_result:
+        schema: "kitsoki-profile-setup-apply/v1"
+        status: "applied"
+        target_path: "/tmp/kitsoki-profile-fixture"
+        local_config_path: "/tmp/kitsoki-profile-fixture/.kitsoki.local.yaml"
+        writes: ["/tmp/kitsoki-profile-fixture/.kitsoki.local.yaml"]
+        default_profile: "claude-native"
+        profiles:
+          - { name: "claude-native", source: "baseline", backend: "claude", model: "opus", readiness: "installed" }
+        warnings: []
+      profile_setup_default_profile: "claude-native"
+    expect_view_matches: ".kitsoki.local.yaml"
+
+  - intent: { name: profile_setup_applied, slots: {} }
+    expect_state: profile_setup_done
+    expect_world:
+      profile_setup_status: "configured"
+      profile_setup_default_profile: "claude-native"
+    expect_view_matches: "configured"
+
+expect_no_errors: true

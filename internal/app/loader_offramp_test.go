@@ -65,6 +65,34 @@ agents:
 	require.Equal(t, "(thinking it through)", st.AgentOffRamp.Banner)
 }
 
+func TestOffRamp_StructFormAllowsCaptureFreeText(t *testing.T) {
+	yaml := `app:
+  id: offramp-capture-free-text
+  version: 0.1.0
+agents:
+  discovery-guide:
+    model: test
+    system_prompt: "Answer questions about the room."
+intents:
+  look:
+    title: Look
+root: idea
+states:
+  idea:
+    view: "..."
+    agent_off_ramp:
+      agent: discovery-guide
+      capture_free_text: true
+    on:
+      look: [{ target: idea }]
+`
+	def, err := LoadBytes([]byte(yaml))
+	require.NoError(t, err)
+	st := def.States["idea"]
+	require.NotNil(t, st.AgentOffRamp)
+	require.True(t, st.AgentOffRamp.CaptureFreeText)
+}
+
 // TestOffRamp_FalseScalarNormalizesToNil asserts that an explicit
 // `agent_off_ramp: false` is normalized to a nil pointer so the runtime sees
 // no off-ramp (byte-identical to omitting the key).

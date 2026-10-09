@@ -1,0 +1,168 @@
+# headless_thread_default — a headless drive (no operator-chosen `thread`) must
+# not hard-fail the reporting tail. `thread` defaults to "" (app.yaml ~line 259) and
+# every checkpoint's `iface.transport.post` invoke posts `thread: "{{ world.thread }}"`
+# — an empty thread hits the real transport handler's `thread argument is required`
+# hard-fail (the default binding, host.append_to_file — see
+# internal/host/append_file_transport.go). Before the fix, a caller that projects
+# only `ticket_id` (a headless drive with just the change's item text — no thread)
+# would hit that hard-fail at the FIRST checkpoint post.
+#
+# Fix: idle.on_enter now derives `thread: "issues/bugs/{{ ticket_id }}.md"` when
+# ticket_id is set and thread is still empty (rooms/idle.yaml "Step 0").
+#
+# Proof shape: host.append_to_file is STUBBED here (same as every other bugfix
+# flow — a real unstubbed invoke's Result.Error is NOT surfaced by
+# expect_no_errors when the invoke has no on_error:, so an unstubbed run proves
+# nothing extra and would touch real disk under issues/bugs/ for no benefit).
+# The actual assertion is `expect_host_calls`, which inspects the ARGS the story
+# actually passed to the handler: it fails if `thread` were still "" (the bug) and
+# passes only once the derived, non-empty thread reaches the call. This exercises
+# the exact same contract (`iface.transport.post` → thread required) without any
+# filesystem side effect.
+#
+# idle's on_enter only runs on a REAL transition into idle — a flow that SEEDS
+# initial_state: idle bypasses on_enter entirely (see idle.yaml's own note), so this
+# fixture seeds at `reproducing` (thread still unset) and uses reproducing's own
+# `restart_from` arc to bounce back through idle for real, exactly the "leave and
+# re-enter via idle so on_enter fires again" idiom the story already documents.
+# judge_mode=llm collapses the rest of the pipeline into the same shape as
+# flows/happy_llm.yaml.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: reproducing
+initial_world:
+  bugfix_exit:     "open-PR"
+  ticket_id:       "TKT-HEADLESS"
+  ticket_title:    "Headless drive with no operator-supplied thread"
+  # thread intentionally omitted — defaults to "" (the headless-drive scenario).
+  workspace_id:    "ws-tkt-headless"
+  workdir:         ".worktrees/tkt-headless"
+  feature_branch:  "fix/tkt-headless"
+  base_branch:     "main"
+  bugfix_mode:     "full"
+  judge_mode:      "llm"
+  judge_confidence_threshold: 0.8
+
+host_handlers:
+  host.append_to_file:
+    data: { ok: true, message_id: "msg-1" }
+  host.inbox.add:    { data: { ok: true, id: "ib-1" } }
+  host.git_worktree: { data: { ok: true, log: "synced" } }
+  host.git:          { data: { ok: true, sha: "abc123", diff: "diff --git a/x b/x\n", files: [] } }
+  host.local:        { data: { ok: true, log: "PASS: 12 tests", passed: 12, failed: 0 } }
+  # done room's lost-work clean-tree check: report clean so accept reaches @exit:done.
+  host.run:
+    data: { ok: true, exit_code: 0, stdout_json: { dirty: false, files: "" } }
+  # Every merged room's judge (llm mode) fires host.agent.decide from on_enter; the
+  # SAME payload also satisfies the artifact schemas host.agent.task/ask bind into
+  # (additionalProperties: true) — same combined-stub trick as flows/happy_llm.yaml.
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary_title:        "Confident artifact"
+        summary_markdown:     "An artifact body sufficient for state-machine testing."
+        bug_verified:         true
+        involved_components:  [{ name: "tui", reason: "the foyer renders here" }]
+        fix_description:      "Render the banner with `truncate=false`."
+        root_cause:           "renderWidth() returns terminal-width-2 instead of terminal-width."
+        affected_files:       ["internal/tui/foyer.go"]
+        confidence:           0.9
+        reasoning:            "Well-established fix pattern in this repo."
+        status:               "passed"
+        tests_run:            { passed: 4, failed: 0, log: "PASS 4 tests" }
+        outcome:              "pass"
+        evidence:             { build: "ok", api: "n/a", ui: "ok" }
+        lessons: []
+        verdict:    "pass"
+        intent:     "accept"
+        reason:     "Artifact looks complete and confidence is high enough to advance."
+  host.agent.ask:
+    data:
+      ok: true
+      submitted:
+        summary_title:        "Confident artifact"
+        summary_markdown:     "An artifact body sufficient for state-machine testing."
+        bug_verified:         true
+        involved_components:  [{ name: "tui", reason: "the foyer renders here" }]
+        fix_description:      "Render the banner with `truncate=false`."
+        root_cause:           "renderWidth() returns terminal-width-2 instead of terminal-width."
+        affected_files:       ["internal/tui/foyer.go"]
+        confidence:           0.9
+        reasoning:            "Well-established fix pattern in this repo."
+        status:               "passed"
+        tests_run:            { passed: 4, failed: 0, log: "PASS 4 tests" }
+        outcome:              "pass"
+        evidence:             { build: "ok", api: "n/a", ui: "ok" }
+        lessons: []
+        verdict:    "pass"
+        intent:     "accept"
+        reason:     "Artifact looks complete and confidence is high enough to advance."
+  host.agent.decide:
+    data:
+      ok: true
+      submitted:
+        summary_title:        "Confident artifact"
+        summary_markdown:     "An artifact body sufficient for state-machine testing."
+        bug_verified:         true
+        involved_components:  [{ name: "tui", reason: "the foyer renders here" }]
+        fix_description:      "Render the banner with `truncate=false`."
+        root_cause:           "renderWidth() returns terminal-width-2 instead of terminal-width."
+        affected_files:       ["internal/tui/foyer.go"]
+        confidence:           0.9
+        reasoning:            "Well-established fix pattern in this repo."
+        status:               "passed"
+        tests_run:            { passed: 4, failed: 0, log: "PASS 4 tests" }
+        outcome:              "pass"
+        evidence:             { build: "ok", api: "n/a", ui: "ok" }
+        lessons: []
+        verdict:    "pass"
+        intent:     "accept"
+        reason:     "Artifact looks complete and confidence is high enough to advance."
+
+turns:
+  # restart_from bounces reproducing → idle (bf_autostart_attempted: false,
+  # reproduction_artifact cleared) → idle.on_enter fires FOR REAL: Step 0 derives
+  # `thread` from ticket_id (still empty at this point), Step 3 auto-emits `start`
+  # → reproducing (on_enter binds the artifact + fires the llm judge + auto-emits
+  # accept, POSTING to the transport with the just-derived thread) → proposing
+  # (same cascade, another post) → implementing (no judge; cascade stops). If the
+  # derivation hadn't run, every one of these posts would still carry thread="".
+  - intent: { name: restart_from, slots: { stage: reproducing } }
+    expect_state: implementing
+    expect_world:
+      thread: "issues/bugs/TKT-HEADLESS.md"
+    expect_host_calls:
+      - handler: host.append_to_file.post
+        args:
+          thread: "issues/bugs/TKT-HEADLESS.md"
+          title:  "Reproduction artifact: TKT-HEADLESS"
+
+  # implementing has no judge in on_enter; accept advances to testing → judge →
+  # emit accept → reviewing (no judge; cascade stops), posting the testing artifact.
+  - intent: { name: accept, slots: {} }
+    expect_state: reviewing
+    expect_host_calls:
+      - handler: host.append_to_file.post
+        args:
+          thread: "issues/bugs/TKT-HEADLESS.md"
+          title:  "Test review: TKT-HEADLESS"
+
+  # accept advances reviewing → validating → judge → emit accept → done → judge →
+  # emit accept → @exit:done. done's accept arc is the actual "reporting tail" this
+  # whole fixture is proving: it posts the close-out artifact to the transport with
+  # the derived, non-empty thread before firing @exit:done — no hard-fail, the tail
+  # actually records.
+  - intent: { name: accept, slots: {} }
+    expect_state: __exit__done
+    expect_world:
+      status: "fixed"
+    expect_host_calls:
+      - handler: host.append_to_file.post
+        args:
+          thread: "issues/bugs/TKT-HEADLESS.md"
+          title:  "Bug-fix done: TKT-HEADLESS"
+
+expect_terminal: true
+expect_no_errors: true

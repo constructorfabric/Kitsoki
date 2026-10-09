@@ -1,0 +1,56 @@
+# workflow_entry_routing — routing-tuning substrate for WS-C C2 (see
+# .context/dev-workflows-surface-matrix-plan.md WS-C). Mines real phrasing
+# for the "PRD / proposal" workflow's discovery-entry nuances at prd's
+# `idle` room: free-form idea discussion vs "ready to draft" vs pointing at
+# existing docs/code as reference.
+#
+# Run under `kitsoki test routing` (internal/testrunner/routing.go) — no
+# LLM, no recording, no harness:
+#
+#   go run ./cmd/kitsoki test routing stories/prd/app.yaml \
+#     --intents stories/prd/intents/workflow_entry_routing.yaml
+#
+# `discuss` and `capture_existing` both declare a REQUIRED free-text slot
+# (`message` / `paths`), so the deterministic tier resolves the intent NAME
+# on an example/synonym hit but does not extract the slot VALUE (that's the
+# host-side extract resolver's job, exercised live under `test intents`) —
+# these fixtures assert the routed intent only, not slot content.
+
+test_kind: intents
+app: ../app.yaml
+state: idle
+defaults:
+  runs: 1
+  min_pass_rate: 1.0
+
+fixtures:
+  - id: ready-to-draft
+    intent: { name: start }
+    inputs:
+      - "ready"
+      - "i'm ready"
+      - "build the prd"
+      - "let's go"
+
+  - id: capture-existing-reference
+    intent: { name: capture_existing }
+    inputs:
+      - "see docs/auth.md"
+      - "check ARCHITECTURE.md"
+
+  # A near-example phrasing of `discuss`'s own declared example resolves
+  # deterministically (a synonym/template hit, not a guess) — this is the
+  # correct positive, not a defer: the phrase IS the discovery conversation.
+  - id: discuss-idea-near-example
+    intent: { name: discuss }
+    inputs:
+      - "i want to build a CLI for reviewing PRs offline"
+
+  # A genuinely novel free-form idea pitch with no example/synonym overlap
+  # correctly defers past these tiers (the state's own default_intent sink —
+  # not modelled by Classify, see routing.go's docstring — or the LLM
+  # ultimately resolves it downstream).
+  - id: discuss-idea-novel-phrasing-defers
+    defers_to_interpreter: true
+    inputs:
+      - "our on-call rotation has no visibility into after-hours pages"

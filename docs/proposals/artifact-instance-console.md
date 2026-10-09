@@ -1,146 +1,148 @@
-# TUI: artifact instance console — resume picker + archive cleanup
+# TUI/Web: artifact job console
 
-**Status:** Draft v1. Nothing implemented yet.
+**Status:** Draft v2. Re-scoped from an instance-only console to the unified
+artifact-job console for durable runs, workspaces, sharing, and cleanup. Nothing
+implemented yet.
 **Kind:**   tui
 **Epic:**   ../artifact-driven-stories.md
-**Depends on:** slice 1 (`iface.instance.list` / re-join — [`artifact-instances.md`](artifact-instances.md)); slice 2 (`instance.gc` / disposition — [`artifact-publish-lifecycle.md`](artifact-publish-lifecycle.md)) for the warn/delete half
+**Depends on:** [`artifact-job-registry.md`](artifact-job-registry.md),
+[`trace-artifact-service.md`](trace-artifact-service.md),
+[`artifact-instances.md`](artifact-instances.md),
+[`artifact-publish-lifecycle.md`](artifact-publish-lifecycle.md), and
+[`dev-story-artifact-jobs.md`](dev-story-artifact-jobs.md)
 
 ## Why
 
-Slices 1–2 make a story's instances resumable and disposable, but the operator
-can't *see* them. The discovery machinery exists only as CLI shadows of meta-mode
-(`kitsoki chat list --room … --all-status --scope …`, `docs/stories/meta-mode.md`
-§8) — there is no visual "you have a half-finished draft for this — re-join it?"
-and no surface that says "these archived instances are big/old — delete them."
+The runtime slices can persist jobs, traces, artifacts, and workspaces, but an
+operator still needs a visible product surface:
 
-The `workspace_manager` room (`stories/dev-story/rooms/workspace_manager.yaml`) is
-an explicit Wave-2 stub: it renders the *current* workspace and calls
-`iface.workspace.list`, with cleanup deferred. The web home
-(`SessionRegistry`, `docs/web/README.md`) lists live sessions but knows nothing
-about an instance's lifecycle state or the archive that's accumulating behind it.
+- "What jobs are still running or awaiting me?"
+- "Can I resume the design I started yesterday?"
+- "Where is the run URL and artifact gallery?"
+- "Can I share this draft workspace with someone else?"
+- "Which archived workspaces are old or huge enough to clean up?"
 
-Without this surface, resume and GC are real in the engine but invisible in the
-product — the operator never re-joins a draft and never reclaims an archive.
+Current surfaces show fragments: `/work` shows active operation handles, the web
+Home shows live sessions, and workspace-manager is a dev-story stub. This slice
+turns those fragments into one artifact-job console across TUI and web.
 
 ## What changes
 
-One operator surface — rendered in the TUI and the web from the same typed-view
-data — that (1) on entering an artifact-driven story shows a **resume picker** of
-existing instances, and (2) provides an **instance manager** that lists
-draft/shared/archived instances with size + age, **warns** when archives breach
-the story's retention policy, and offers a guarded **delete**.
+Add a data-driven console backed by artifact-job registry, run/artifact index,
+and instance lifecycle calls.
+
+It appears in three places:
+
+- TUI `/work` gains persistent artifact-job rows, not just current in-session
+  operations.
+- Web Home lists artifact jobs across sessions with resume/open/share actions.
+- In-session dev-story views can open the scoped instance manager for the
+  current job.
+
+The console supports:
+
+- list/filter by `running`, `awaiting_input`, `interrupted`, `done`, `failed`,
+  `archived`;
+- resume/attach to a job;
+- open stable run URL;
+- browse emitted artifacts;
+- open workspace files;
+- promote draft to shared workspace;
+- publish canonical doc/report when the story declares publish policy;
+- warn and delete reclaimable archives after guarded confirmation.
 
 ## Impact
 
-- **Code:** promote `stories/dev-story/rooms/workspace_manager.yaml` from stub to a
-  real instance-manager room driven by `iface.instance.list` + `instance.gc`
-  (slices 1–2); a typed-view list element for instances; web renders the same view
-  via the existing `DataSource`/runstatus path (`docs/web/README.md`).
-- **Rendering:** a typed `instance_list` view element (rows: key, state badge,
-  phase, age, size, a "⚠ stale" flag when retention is breached) — rendered via
-  typed elements + pongo2, **never** hand-rolled Go strings. The resume picker is
-  the same element scoped to in-progress instances with a re-join action per row.
-- **Input:** intents `resume <key>` / `delete <key>` (typed-slot parsed); a
-  `/instances` slash command to open the manager from anywhere in an
-  artifact-driven story.
-- **Docs on ship:** the operator-surface section of
-  `docs/stories/artifact-driven-stories.md`; a note in `docs/tui/`.
-
-## Mental model
-
-"Your drafts and your archive, for this story." Entering the story is like opening
-a doc app that asks *resume where you left off, or start fresh?*; the manager is
-the "manage storage" screen that flags what's safe to clean up.
-
-## Layout
-
-```
-Resume picker (story entry):          Instance manager (/instances):
-┌──────────────────────────────┐      ┌───────────────────────────────────────┐
-│ Resume a draft?               │      │ Instances · line-channel-console        │
-│  ▸ line-channel-console       │      │  draft   line-channel-console  P3  2d   │
-│      phase 3 · 2 days ago     │      │  shared  web-bug-report        ✓   5d   │
-│  ▸ web-bug-report             │      │  archive q3-migration   ⚠ 90d · 240 MB  │
-│      phase 5 · 5 days ago     │      │  archive old-spike      ⚠ 120d · 1.1 GB │
-│  + start a new one            │      │                                         │
-└──────────────────────────────┘      │  ⚠ 2 archives past retention — delete?  │
-                                       └───────────────────────────────────────┘
-```
+- **TUI:** extend `/work`, add typed `artifact_job_list` rendering, preserve the
+  existing `/work drive`, `/work artifact`, and `/work summary` actions.
+- **Web:** Home artifact-job table, in-session job drawer/banner, artifact
+  gallery consuming `runstatus.run.artifacts`, and share/publish/archive
+  controls when policy allows them.
+- **Rendering:** typed elements and Vue components only; no hand-built table
+  strings for the new list.
+- **Docs on ship:** `docs/tui/web-ui.md` and
+  `docs/stories/artifact-driven-stories.md`.
 
 ## Rendering changes
 
-A single typed `instance_list` element backs both views; the picker is it scoped
-to non-terminal states with a per-row `resume` action, the manager is the full set
-with `state`, `age`, `size`, a retention `⚠` flag, and a per-row `delete` action.
-A summary banner ("N archives past retention — delete?") renders when
-`instance.gc` (dry-run) returns reclaimable instances. All of it is data from the
-host calls → typed elements → pongo2; no place builds layout with `fmt.Sprintf`.
+`artifact_job_list` rows:
+
+| Field | Notes |
+|---|---|
+| `job_id` / `title` | stable identity and display label |
+| `status` / `phase` | badge + compact phase |
+| `updated_at` / `age` | sorting and stale warnings |
+| `run_url` | open action |
+| `terminal_artifact_handle` | artifact action |
+| `workspace_instance_id` | workspace/share/publish actions |
+| `size_bytes` / `retention` | archive warning |
+| `actions` | resume, open, share, publish, delete when allowed |
+
+The web artifact gallery reuses the existing by-handle media rendering path so
+chat-bubble media and gallery media render from one MIME switch.
 
 ## Input & commands
 
-| Command / key | Does | Notes |
-|---|---|---|
-| `/instances` | open the instance manager | available in any artifact-driven story |
-| `resume <key>` | re-join that instance (`iface.instance.resolve`) | from the picker or the manager |
-| `delete <key>` | reclaim an archived instance (`instance.gc apply`) | guarded confirm; refuses non-archived without `--force` |
+| Command / control | Does |
+|---|---|
+| `/work` | list artifact jobs and current operations |
+| `/work resume <job_id>` | attach to a persisted job |
+| `/work open <job_id>` | open the run URL |
+| `/work artifact <job_id>` | open the terminal artifact or artifact gallery |
+| `/work share <job_id>` | promote the draft workspace when policy allows |
+| `/work publish <job_id>` | publish the canonical doc/report when policy allows |
+| `/work delete <job_id>` | guarded reclaim for archived instances only |
 
-## Rendering tests
+Web exposes the same actions as buttons/menus, authorized by the same registry
+and lifecycle policy.
 
-The resume picker and manager are pure render-from-host-data (no concurrent I/O of
-their own), so the bar is a typed-view golden, not a combined-I/O capture. But the
-**delete confirm** interleaves a host call (`instance.gc apply`), its slog, and the
-re-render — that path needs a `CapturedIO` test (per CLAUDE.md / the
-`rendering-tests` skill) asserting the list re-renders cleanly after a reclaim and
-the slog doesn't corrupt the frame. Confirm it fails without the change.
+## Tests
 
-- `instance_list` golden — list with mixed states + a retention-breaching archive,
-  asserts the `⚠` flag and summary banner render.
-- delete-reclaim CapturedIO — `delete <key>` → `instance.gc apply` → re-render;
-  asserts no frame corruption and the row is gone.
-
-## Migration plan
-
-`workspace_manager.yaml` is a stub today; this replaces its body rather than
-running in parallel. The current minimal `iface.workspace.list` render is
-superseded by `iface.instance.list`; the room keeps its navigation intents. No
-cutover risk — nothing depends on the stub's current output.
+- TUI golden for `artifact_job_list` with mixed states, terminal artifacts, and
+  stale archive warning.
+- TUI captured-IO test for guarded delete: host call, slog output, and re-render
+  do not corrupt the frame.
+- Web unit tests for Home job rows and in-session artifact-job drawer.
+- Playwright replay test for a stored run artifact gallery: image/video/PDF/deck
+  cards resolve by handle and the video poster route works.
+- Negative tests: share/publish/delete actions are absent or disabled when the
+  job lacks the required lifecycle policy.
 
 ## Tasks
 
 ```
 ## 1. Render
-- [ ] 1.1 instance_list typed element + pongo2 template (state badge, age, size, ⚠)
-- [ ] 1.2 Resume picker view (scoped to in-progress) + manager view (all states); wire into the room's View()
+- [ ] 1.1 `artifact_job_list` typed element + TUI renderer
+- [ ] 1.2 Web Home artifact-job table and in-session job drawer
+- [ ] 1.3 ArtifactGallery consumes `runstatus.run.artifacts`
+- [ ] 1.4 Resume/open/share/publish/delete actions render from policy data
 
 ## 2. Drive
-- [ ] 2.1 /instances command; resume/delete intents (typed-slot parsed); guarded delete confirm
+- [ ] 2.1 TUI `/work resume|open|artifact|share|publish|delete`
+- [ ] 2.2 Web RPC actions for the same commands
+- [ ] 2.3 Guarded delete confirmation refuses non-archived jobs without force
+- [ ] 2.4 Share/publish actions call lifecycle host surfaces and refresh the row
 
 ## 3. Prove + document
-- [ ] 3.1 instance_list golden + delete-reclaim CapturedIO test (verified to fail without the change)
-- [ ] 3.2 Manual run + web parity screenshot; document the operator surface in docs/stories/artifact-driven-stories.md
+- [ ] 3.1 TUI golden + captured-IO tests
+- [ ] 3.2 Web unit + Playwright replay tests
+- [ ] 3.3 Manual no-LLM dev-story artifact-job pass with screenshots
+- [ ] 3.4 Document the console in docs/tui/web-ui.md and docs/stories/artifact-driven-stories.md
 ```
-
-## What we lose, honestly
-
-The resume picker adds a step between "type the story name" and "start working":
-solo authors with no existing draft see one extra "start a new one" confirmation.
-Mitigate by auto-skipping the picker when `iface.instance.list` returns empty —
-the picker only interrupts when there's actually something to resume.
 
 ## Open questions
 
-1. **Web vs TUI parity depth.** Full manager (with delete) in both, or re-join in
-   both but cleanup web-only at first? *Lean: re-join in both immediately; ship
-   delete in both, since it's the same host call and typed view.*
-2. **Retention warning placement.** Only inside `/instances`, or also a passive
-   badge on story entry? *Lean: a quiet one-line banner on entry when archives
-   breach retention; full detail in the manager — don't nag.*
+1. **Home scope.** Show all artifact jobs by default or only active/recent ones.
+   *Lean: active/recent by default, archived behind a filter.*
+2. **Artifact gallery in TUI.** Terminal opener only vs a text gallery list.
+   *Lean: list handles and open via `/work artifact`; rich preview stays web.*
+3. **Share URL shape.** File path, run URL, or both. *Lean: both when available:
+   run URL for trace/media, shared workspace path for editable docs.*
 
 ## Non-goals
 
-- **No engine lifecycle here.** Discovery (`iface.instance.list`), GC
-  (`instance.gc`), and disposition come from slices 1–2; this slice only renders
-  and drives them.
-- **No live-session management.** The web home's `SessionRegistry` view
-  (`docs/web/README.md`) is a separate surface; this is about *instances/drafts*,
-  not running sessions.
+- **No new lifecycle semantics.** Runtime slices own registry, trace storage,
+  share/publish, and GC decisions.
+- **No GitHub OAuth drive gate.** GitHub hosted-run auth remains in the
+  GitHub-agent viewer slice; this console consumes resolved permissions.
+- **No real-time co-editing.**

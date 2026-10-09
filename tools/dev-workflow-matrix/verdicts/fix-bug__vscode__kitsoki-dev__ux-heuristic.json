@@ -1,0 +1,17 @@
+{
+  "axis": {
+    "surface": "vscode",
+    "workflow": "fix-bug"
+  },
+  "check_type": "ux-heuristic",
+  "evidence_refs": [
+    ".artifacts/dev-workflow-matrix/frames/fix-bug-vscode.png"
+  ],
+  "health": "infra:missing-evidence",
+  "job_type": "dev-workflow-matrix",
+  "metrics": {},
+  "schema_version": "1.1.0",
+  "summary": "captured frame(s) not found: .artifacts/dev-workflow-matrix/frames/fix-bug-vscode.png \u2014 run the surface's capture pipeline first",
+  "target_id": "kitsoki-dev",
+  "verdict": "blocked"
+}

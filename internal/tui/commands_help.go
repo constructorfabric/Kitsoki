@@ -27,6 +27,9 @@ func (HelpCommand) Run(m RootModel, _ []string) (string, RootModel, tea.Cmd) {
 	sections := []section{
 		{"chat blocks", []row{
 			{"/help", "this list"},
+			{"/stories", "open the story selector and launch another story"},
+			{"/bug [description]", "file a bug report with scrubbed TUI transcript evidence"},
+			{"/route up|down", "record a thumbs up/down verdict on the last routed turn"},
 			{"/ideas <text>", "jot an idea to ideas.md without interrupting the conversation"},
 			{"/chat show <id>", "show focused async chat context without attaching"},
 			{"/intents [<n>]", "print available intents; <n> dispatches by index"},
@@ -36,7 +39,7 @@ func (HelpCommand) Run(m RootModel, _ []string) (string, RootModel, tea.Cmd) {
 			{"/effort [<level|n>]", "list/switch the active profile's reasoning effort (where the model supports it)"},
 			{"/inbox [<n>]", "list recent notifications; <n> opens one"},
 			{"/inbox sync-github [repo]", "refresh assigned GitHub issues and requested PR reviews"},
-			{"/work [--all]", "list active async work; --all includes every session on this host"},
+			{"/work [--all|drive|artifact|summary]", "list active async work, drive the current operation, open its artifact, or show its summary"},
 			{"/workflow <cmd>", "create, validate, run, status, or export a workflow draft"},
 			{"/sessions attach <n> --dry-run", "show the cached chat target without attaching"},
 			{"/trace", "print the last turn's routing trace"},

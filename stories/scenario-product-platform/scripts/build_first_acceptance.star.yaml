@@ -1,0 +1,13 @@
+inputs:
+  feature_path: { type: string, required: true }
+  scenario_id:  { type: string, required: true }
+  persona_id:   { type: string, required: true }
+  target_arg:   { type: string, required: true }
+  run_id:       { type: string, required: true }
+  output_root:  { type: string, required: true }
+
+outputs:
+  pack_summary: { type: object }
+  run_bundle:   { type: object }
+  report_paths: { type: object }
+  site_path:    { type: string }

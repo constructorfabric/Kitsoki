@@ -1,10 +1,10 @@
 // Package app — provider declaration loader.
 //
-// See docs/architecture/agent-providers.md for the declaration format.
+// See docs/guide/agents/providers.md for the declaration format.
 //
 // resolveProviders is called after parseAndMerge / resolveImports to:
 //  1. Validate every ProviderDecl in def.Providers (non-empty name; a provider
-//     that sets neither model: nor env: is useless and rejected).
+//     that sets none of backend:, model:, effort:, or env: is useless and rejected).
 //  2. Perform single-pass ${VAR} substitution in each provider's Env map,
 //     reusing the same expandEnvVar contract as agent_plugins. Unset env vars
 //     are hard errors.
@@ -26,6 +26,10 @@ var validEffortLevels = map[string]struct{}{
 	"low": {}, "medium": {}, "high": {}, "xhigh": {}, "max": {},
 }
 
+var validProviderBackends = map[string]struct{}{
+	"claude": {}, "codex": {}, "copilot": {},
+}
+
 // validateEffort reports an error message when effort is non-empty and not one
 // of validEffortLevels, or "" when the value is acceptable. site prefixes the
 // message (e.g. `agent "judge"` or `providers.openrouter`).
@@ -36,6 +40,17 @@ func validateEffort(site, effort string) string {
 	}
 	if _, ok := validEffortLevels[e]; !ok {
 		return fmt.Sprintf("%s: effort %q is invalid (valid: low, medium, high, xhigh, max)", site, effort)
+	}
+	return ""
+}
+
+func validateProviderBackend(site, backend string) string {
+	b := strings.TrimSpace(backend)
+	if b == "" {
+		return ""
+	}
+	if _, ok := validProviderBackends[b]; !ok {
+		return fmt.Sprintf("%s: backend %q is invalid (valid: claude, codex, copilot)", site, backend)
 	}
 	return ""
 }
@@ -57,8 +72,12 @@ func resolveProviders(def *AppDef, file string) []error {
 			addErr(fmt.Sprintf("providers.%s: empty declaration", name))
 			continue
 		}
-		if strings.TrimSpace(decl.Model) == "" && len(decl.Env) == 0 && strings.TrimSpace(decl.Effort) == "" {
-			addErr(fmt.Sprintf("providers.%s: a provider must set model:, effort:, and/or env: (an empty provider has no effect)", name))
+		if strings.TrimSpace(decl.Backend) == "" && strings.TrimSpace(decl.Model) == "" && len(decl.Env) == 0 && strings.TrimSpace(decl.Effort) == "" {
+			addErr(fmt.Sprintf("providers.%s: a provider must set backend:, model:, effort:, and/or env: (an empty provider has no effect)", name))
+			continue
+		}
+		if msg := validateProviderBackend(fmt.Sprintf("providers.%s", name), decl.Backend); msg != "" {
+			addErr(msg)
 			continue
 		}
 		if msg := validateEffort(fmt.Sprintf("providers.%s", name), decl.Effort); msg != "" {

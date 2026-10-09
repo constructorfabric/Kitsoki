@@ -40,6 +40,8 @@ import (
 	"strings"
 
 	"golang.org/x/text/unicode/norm"
+
+	"kitsoki/internal/effect"
 )
 
 // scratchTarballCap is the maximum in-memory size of a Mode B scratch-dir
@@ -74,34 +76,39 @@ const (
 	ReplayModeExternalSideEffect ReplayMode = "external_side_effect"
 )
 
-// inferReplayMode determines the replay mode for a task call based on the
-// agent's ExternalSideEffect field and its declared tool surface.
+// inferReplayMode determines the replay mode for a task call from the
+// agent's effect classification (effect-taxonomy.md) and its declared tool
+// surface.
 //
-// If the agent has ExternalSideEffect == true (explicit or inferred), the
-// mode is ReplayModeExternalSideEffect. Otherwise, if any tool in the list
-// suggests sandboxed-write Bash, it is ReplayModeSandboxedWrite. Otherwise
-// ReplayModeFileDiff.
+// Precedence for the effect class: agent.Effect when the loader populated it
+// (see the Agent.Effect field doc in agents.go); otherwise the deprecated
+// agent.ExternalSideEffect mapped through effect.FromLegacyBool against
+// tools; otherwise effect.FromTools(tools) — infer directly from the
+// call-site tool list when the agent carries no classification at all.
+//
+// A class of effect.External yields ReplayModeExternalSideEffect. Otherwise,
+// if the agent's BashProfile suggests sandboxed-write Bash, it is
+// ReplayModeSandboxedWrite. Otherwise ReplayModeFileDiff.
 //
 // The caller is responsible for resolving the effective tool list before
 // calling this function.
 func inferReplayMode(agent Agent, tools []string) ReplayMode {
-	if agent.ExternalSideEffect != nil {
-		// Explicit declaration wins — never reclassify based on tool inference.
-		if *agent.ExternalSideEffect {
-			return ReplayModeExternalSideEffect
-		}
-		// ExternalSideEffect == false: skip tool inference entirely and fall
-		// through to the BashProfile-based Mode B / Mode A classification.
-		// This is the runtime safety-net behind the loader's hard-fail for
-		// agents that declare external_side_effect: false with WebFetch/WebSearch.
-	} else {
-		// Infer from tools when no explicit declaration.
-		for _, t := range tools {
-			switch strings.ToLower(t) {
-			case "webfetch", "websearch":
-				return ReplayModeExternalSideEffect
-			}
-		}
+	var class effect.Effect
+	switch {
+	case agent.Effect != "" && agent.Effect.Valid():
+		class = agent.Effect
+	case agent.ExternalSideEffect != nil:
+		// Explicit declaration wins — FromLegacyBool never reclassifies a
+		// false declaration to external based on tool inference (e.g.
+		// WebFetch/WebSearch in tools). This is the runtime safety-net
+		// behind the loader's hard-fail for agents that declare
+		// external_side_effect: false with a network tool in their surface.
+		class = effect.FromLegacyBool(*agent.ExternalSideEffect, tools)
+	default:
+		class = effect.FromTools(tools)
+	}
+	if class == effect.External {
+		return ReplayModeExternalSideEffect
 	}
 	// Mode B: agent has sandboxed-write BashProfile.
 	if agent.BashProfile != nil && agent.BashProfile.Kind == BashProfileSandboxWrite {

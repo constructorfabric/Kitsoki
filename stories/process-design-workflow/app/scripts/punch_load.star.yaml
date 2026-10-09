@@ -1,0 +1,10 @@
+inputs:
+  manifest_path: { type: string, required: true }
+  state_path:    { type: string }
+  run_id:        { type: string }
+outputs:
+  items:         { type: list }
+  item_count:    { type: string }
+  manifest_path: { type: string }
+  state_path:    { type: string }
+  error:         { type: string }

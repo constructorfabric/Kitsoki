@@ -61,7 +61,7 @@ environment variables; see the source file's package comment for the
 exact list.
 
 To add another transport, see
-[`developer-guide.md` §5.3](developer-guide.md#53-adding-a-new-transport).
+[`developer-guide.md` §5.3](../guide/development/developer-guide.md#53-adding-a-new-transport).
 
 ### 2.1 Bitbucket transport
 

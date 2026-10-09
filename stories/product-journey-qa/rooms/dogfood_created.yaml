@@ -1,7 +1,7 @@
 states:
   dogfood_created:
     description: "A deterministic product-journey dogfood smoke exists for review."
-    relevant_world: [seed, dogfood_id, dogfood_dir, dogfood_report_path, dogfood_deck_path, dogfood_matrix_deck_path, dogfood_run_deck_path, dogfood_rollup_deck_path, matrix_dir, run_dir, driver_replay_scenario, driver_replay_persona, driver_replay_attached_evidence_count, driver_replay_scenario_count, driver_replay_playback_scenarios, driver_replay_media_manifest_path, driver_replay_journal_path, driver_replay_handoff_path, corpus_validation_status, corpus_validation_errors, corpus_validation_warnings, review_status, review_summary, dogfood_review_passed, dogfood_review_total, dogfood_review_warnings, dogfood_review_failed, dogfood_review_backlog_summary, validation_status, dogfood_run_validation_warnings, dogfood_matrix_validation_warnings, dogfood_run_validation_issue_summary, dogfood_matrix_validation_issue_summary, status]
+    relevant_world: [seed, dogfood_id, dogfood_dir, dogfood_report_path, dogfood_deck_path, dogfood_matrix_deck_path, dogfood_run_deck_path, dogfood_rollup_deck_path, matrix_dir, run_dir, driver_replay_scenario, driver_replay_persona, driver_replay_attached_evidence_count, driver_replay_scenario_count, driver_replay_playback_scenarios, driver_replay_readiness_status, driver_replay_review_ready_count, driver_replay_review_needs_evidence_count, driver_replay_media_manifest_path, driver_replay_journal_path, driver_replay_handoff_path, corpus_validation_status, corpus_validation_errors, corpus_validation_warnings, review_status, review_summary, dogfood_review_passed, dogfood_review_total, dogfood_review_warnings, dogfood_review_failed, dogfood_review_backlog_summary, validation_status, dogfood_run_validation_warnings, dogfood_matrix_validation_warnings, dogfood_run_validation_issue_summary, dogfood_matrix_validation_issue_summary, status]
     view:
       - banner:
           text: "DOGFOOD SMOKE CREATED"
@@ -23,6 +23,7 @@ states:
             Driver replay persona: '{{ world.driver_replay_persona|default:"(not a replay smoke)" }}'
             Driver replay evidence: "{{ world.driver_replay_attached_evidence_count }}"
             Driver replay coverage: "{{ world.driver_replay_playback_scenarios }} / {{ world.driver_replay_scenario_count }} playback"
+            Driver replay readiness: '{{ world.driver_replay_readiness_status|default:"(pending)" }} ({{ world.driver_replay_review_ready_count }} ready, {{ world.driver_replay_review_needs_evidence_count }} need evidence)'
             Driver journal: '{{ world.driver_replay_journal_path|default:"(pending)" }}'
             Driver handoff: '{{ world.driver_replay_handoff_path|default:"(pending)" }}'
             Media manifest: '{{ world.driver_replay_media_manifest_path|default:"(pending)" }}'
@@ -81,7 +82,8 @@ states:
                 cmd: python3
                 args:
                   - tools/product-journey/run.py
-                  - --dogfood-smoke
+                  - --gate
+                  - dogfood
                   - --json-output
                   - --seed
                   - "{{ slots.seed ?? world.seed }}"
@@ -131,6 +133,9 @@ states:
                 validation_issue_summary: ""
                 review_status: ""
                 review_summary: ""
+                driver_replay_readiness_status: ""
+                driver_replay_review_ready_count: 0
+                driver_replay_review_needs_evidence_count: 0
                 status: "driver_replay_smoking"
             - invoke: host.run
               id: driver_replay_product_journey_smoke
@@ -138,7 +143,8 @@ states:
                 cmd: python3
                 args:
                   - tools/product-journey/run.py
-                  - --driver-replay-smoke
+                  - --gate
+                  - driver-replay
                   - --json-output
                   - --seed
                   - "{{ slots.seed ?? world.seed }}"
@@ -160,6 +166,9 @@ states:
                 driver_replay_media_manifest_path: "stdout_json.media_manifest_path"
                 driver_replay_journal_path: "stdout_json.driver_journal_path"
                 driver_replay_handoff_path: "stdout_json.driver_handoff_path"
+                driver_replay_readiness_status: "stdout_json.readiness_status"
+                driver_replay_review_ready_count: "stdout_json.review_ready"
+                driver_replay_review_needs_evidence_count: "stdout_json.review_needs_evidence"
                 review_status: "stdout_json.review_status"
                 review_summary: "stdout_json.review_summary"
                 dogfood_review_passed: "stdout_json.review_passed"
@@ -184,6 +193,9 @@ states:
                 validation_issue_summary: ""
                 review_status: ""
                 review_summary: ""
+                driver_replay_readiness_status: ""
+                driver_replay_review_ready_count: 0
+                driver_replay_review_needs_evidence_count: 0
                 status: "driver_replay_sweeping"
             - invoke: host.run
               id: driver_replay_product_journey_sweep
@@ -209,6 +221,9 @@ states:
                 driver_replay_persona: "stdout_json.persona"
                 driver_replay_scenario_count: "stdout_json.scenario_count"
                 driver_replay_playback_scenarios: "stdout_json.playback_scenarios"
+                driver_replay_readiness_status: "stdout_json.readiness_status"
+                driver_replay_review_ready_count: "stdout_json.review_ready"
+                driver_replay_review_needs_evidence_count: "stdout_json.review_needs_evidence"
                 driver_replay_attached_evidence_count: "stdout_json.attached_evidence_count"
                 validation_status: "stdout_json.status"
                 validation_errors: "stdout_json.validation_errors"
@@ -224,6 +239,8 @@ states:
                 project: "{{ slots.project ?? world.project }}"
                 persona: "{{ slots.persona ?? world.persona }}"
                 seed: "{{ slots.seed ?? world.seed }}"
+                scenario_scope: "{{ slots.scenarios ?? world.scenario_scope }}"
+                live_budget_minutes: "{{ slots.live_budget_minutes ?? world.live_budget_minutes }}"
                 validation_status: ""
                 validation_errors: 0
                 validation_warnings: 0
@@ -243,6 +260,10 @@ states:
                   - "{{ slots.persona ?? world.persona }}"
                   - --seed
                   - "{{ slots.seed ?? world.seed }}"
+                  - --scenarios
+                  - "{{ slots.scenarios ?? world.scenario_scope }}"
+                  - --live-budget-minutes
+                  - "{{ slots.live_budget_minutes ?? world.live_budget_minutes }}"
                 cwd: "."
               bind:
                 last_result: stdout_json
@@ -261,11 +282,15 @@ states:
                 persona_evidence_emphasis: "stdout_json.persona_evidence_emphasis"
                 persona_escalation_trigger: "stdout_json.persona_escalation_trigger"
                 persona_finding_bias: "stdout_json.persona_finding_bias"
+                live_budget_minutes: "stdout_json.live_budget_minutes"
+                run_scenario_count: "stdout_json.scenario_count"
                 proof_evidence_count: "stdout_json.proof_evidence_count"
                 demo_evidence_count: "stdout_json.demo_evidence_count"
                 finding_total_count: "stdout_json.finding_total_count"
                 strength_count: "stdout_json.strength_count"
                 weakness_count: "stdout_json.weakness_count"
+                weakness_route_count: "stdout_json.weakness_route_count"
+                weakness_route_summary: "stdout_json.weakness_route_summary"
                 issue_count: "stdout_json.issue_count"
                 fix_count: "stdout_json.fix_count"
                 blocked_count: "stdout_json.blocked_count"

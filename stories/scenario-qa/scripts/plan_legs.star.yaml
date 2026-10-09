@@ -1,0 +1,15 @@
+inputs:
+  mode:          { type: string, required: true }
+  run_id:        { type: string, required: true }
+  description:   { type: string, required: false }
+  primary_story: { type: string, required: false }
+  live_profile:  { type: string, required: false }
+  last_result:   { type: object, required: false }
+
+outputs:
+  legs:                        { type: object }
+  leg_count:                   { type: int }
+  driver_agent:                { type: string }
+  run_dir_rel:                 { type: string }
+  plan_status:                 { type: object }
+  live_authorization_summary:  { type: list }

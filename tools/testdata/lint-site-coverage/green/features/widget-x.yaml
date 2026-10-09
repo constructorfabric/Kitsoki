@@ -1,0 +1,6 @@
+# yaml-language-server: $schema=../../../../features/feature.schema.json
+id: widget-x
+kind: feature
+title: Widget X
+tagline: Widget X does one thing, honestly.
+summary: "Widget X ships today. It does exactly what the tagline says, no more."

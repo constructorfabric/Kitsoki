@@ -9,7 +9,7 @@
 #
 # Usage:
 #   ui-review.sh [--no-build] [--no-capture] [--viewports a,b,c]
-#                [--design-intent F] [--model M] [--jobs N]
+#                [--design-intent F] [--model M] [--reviewer auto|codex|claude|agy|ORDER] [--jobs N]
 #                [--shard step|viewport] [--no-adversary] [--strict]
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -17,7 +17,7 @@ repo="$(cd "$here/../../../.." && pwd)"
 art="$repo/.artifacts/ui-review"
 heur="$here/../heuristics.yaml"
 
-do_build=1 do_capture=1 viewports="" intent="" model="claude-opus-4-8"
+do_build=1 do_capture=1 viewports="" intent="" model="" reviewer=""
 jobs=4 shard="step" adversary="" strict=""
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -26,6 +26,7 @@ while [ $# -gt 0 ]; do
     --viewports)     viewports="$2"; shift 2 ;;
     --design-intent) intent="$2"; shift 2 ;;
     --model)         model="$2"; shift 2 ;;
+    --reviewer)      reviewer="$2"; shift 2 ;;
     --jobs)          jobs="$2"; shift 2 ;;
     --shard)         shard="$2"; shift 2 ;;
     --no-adversary)  adversary="--no-adversary"; shift ;;
@@ -44,11 +45,14 @@ fi
 
 intent_args=()
 [ -n "$intent" ] && intent_args+=(--design-intent "$intent")
+review_args=(--audit "$art/audit.json" --frames "$art/frames" --heuristics "$heur" \
+  --out "$art/vision.json" --jobs "$jobs" --shard "$shard")
+[ -n "$model" ] && review_args+=(--model "$model")
+[ -n "$reviewer" ] && review_args+=(--reviewer "$reviewer")
+[ -n "$adversary" ] && review_args+=("$adversary")
+[ "${#intent_args[@]}" -gt 0 ] && review_args+=("${intent_args[@]}")
 
-"$here/review.sh" \
-  --audit "$art/audit.json" --frames "$art/frames" --heuristics "$heur" \
-  --out "$art/vision.json" --model "$model" --jobs "$jobs" --shard "$shard" \
-  $adversary "${intent_args[@]}" || { echo "review failed" >&2; exit 2; }
+"$here/review.sh" "${review_args[@]}" || { echo "review failed" >&2; exit 2; }
 
 "$here/report.sh" \
   --audit "$art/audit.json" --vision "$art/vision.json" \

@@ -17,8 +17,6 @@ host_handlers:
       verify_run:
         data: { exit_code: 1, ok: false, stdout: "FAIL (still)\n" }
         delay: "10ms"
-      write_report:
-        data: { exit_code: 0, ok: true, stdout: ".artifacts/fix-tests/report-exhausted.md" }
   host.agent.task:
     by_call:
       fix:
@@ -38,11 +36,15 @@ host_handlers:
 turns:
   - intent: { name: start }
     advance_clock: "5s"
-    expect_state: done_exhausted
+    expect_state: __exit__exhausted
     expect_world:
       tests_passed: false
       outcome:      "exhausted"
       cycle:        3
       report_path:  ".artifacts/fix-tests/report-exhausted.md"
 
+expect_terminal: true
+expect_operation_policy: fix_tests
+expect_operation_status: completed
+expect_terminal_artifact: report_path
 expect_no_errors: true

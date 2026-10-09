@@ -319,11 +319,11 @@ states:
           pairs:
             Ticket: '{{ world.ticket_id }} — {{ world.design_ticket_path }}'
         when: "world.ticket_id != ''"
-      - prose: "Feature ticket filed. Choose **implement** to drive it now, or **main** to return."
+      - prose: "Feature ticket filed. Choose **implement** to drive it now, **decompose** to fan it out as a briefs → fleet chain instead, or **main** to return."
         when: "world.ticket_id != ''"
       # External-target profile (design_ticket_dir=\"\"): no kitsoki ticket is
       # minted — the target tracks work in its own issues — so don't claim one.
-      - prose: "Published without filing a feature ticket."
+      - prose: "Published without filing a feature ticket. Choose **decompose** to fan the proposal out as a briefs → fleet chain, or **main** to return."
         when: "world.ticket_id == ''"
       - choice:
           mode: single
@@ -333,6 +333,9 @@ states:
               hint:   "drive the new feature ticket into the implementation pipeline"
               intent: go_implementation
               when: "world.ticket_id != ''"
+            - label:  "decompose"
+              hint:   "fan the proposal out into briefs, review, and fleet — the epic-sized alternative to implement"
+              intent: go_deliver
             - label:  "main"
               hint:   "back to the engineer's day landing"
               intent: go_main
@@ -358,6 +361,25 @@ states:
           effects:
             - set:
                 last_error: "design published but no ticket id — pick the feature from `tickets`"
+                prev_state: "landing"
+      # decompose-vs-direct (proposal deliver-canonical-decomposition.md, task
+      # B3, Open Question 3): operator choice, never an automatic size
+      # heuristic. deliver's world_in: reads design_file directly, so this arc
+      # needs no ticket at all — it works for both the ticketed and
+      # external-target (no-ticket) publish shapes above.
+      go_deliver:
+        - when: "world.design_file != ''"
+          target: deliver
+          effects:
+            - set:
+                last_error: ""
+                prev_state: "landing"
+        - default: true
+          target: landing
+          guard_hint: "No published proposal to decompose — publish a design first."
+          effects:
+            - set:
+                last_error: "no published proposal — publish a design before decomposing it"
                 prev_state: "landing"
       go_main:
         - target: landing

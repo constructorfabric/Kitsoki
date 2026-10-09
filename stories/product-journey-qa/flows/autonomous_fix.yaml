@@ -1,0 +1,240 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.run:
+    by_call:
+      load_product_journey_run:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: run_loaded
+            run_id: run-888
+            run_dir: .artifacts/product-journey/run-888
+            project: vscode
+            persona: ide-first-engineer
+            seed: autonomous-demo
+            gh_agent_public_base_url: https://agent.example
+            deck_path: .artifacts/product-journey/run-888/deck.slidey.json
+            execution_plan_path: .artifacts/product-journey/run-888/execution-plan.md
+            driver_plan_path: .artifacts/product-journey/run-888/driver-plan.md
+            driver_journal_path: .artifacts/product-journey/run-888/driver-journal.md
+            agent_brief_path: .artifacts/product-journey/run-888/agent-brief.md
+            driver_handoff_path: .artifacts/product-journey/run-888/driver-handoff.md
+            media_manifest_path: .artifacts/product-journey/run-888/media-manifest.json
+            scenario_outcomes_path: .artifacts/product-journey/run-888/scenario-outcomes.md
+            finding_total_count: 2
+            issue_count: 2
+            proof_evidence_count: 3
+            review_status: needs_evidence
+      autonomous_product_journey_marathon_watchdog:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            schema: kitsoki/product-journey-autonomous-marathon-watchdog/v1
+            status: autonomous_watchdog_ok
+            autonomous_watchdog_status: autonomous_watchdog_ok
+            autonomous_watchdog_summary: "heartbeat age 10m within watchdog=45m"
+            autonomous_watchdog_path: .artifacts/product-journey/run-888/autonomous-marathon-watchdog.json
+            autonomous_watchdog_markdown_path: .artifacts/product-journey/run-888/autonomous-marathon-watchdog.md
+            autonomous_watchdog_age_minutes: 10
+            driver_journal_path: .artifacts/product-journey/run-888/driver-journal.md
+      autonomous_product_journey_fix:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: autonomous_fix_valid
+            autonomous_fix_status: autonomous_fix_valid
+            autonomous_fix_report_path: .artifacts/product-journey/run-888/autonomous-fix-report.md
+            autonomous_watchdog_status: autonomous_watchdog_ok
+            autonomous_watchdog_summary: "heartbeat age 10m within watchdog=45m"
+            autonomous_watchdog_path: .artifacts/product-journey/run-888/autonomous-marathon-watchdog.json
+            autonomous_watchdog_markdown_path: .artifacts/product-journey/run-888/autonomous-marathon-watchdog.md
+            autonomous_watchdog_age_minutes: 10
+            filing_status: findings_filed
+            run_dir: .artifacts/product-journey/run-888
+            ticket_repo: bsacrobatix/Kitsoki
+            dry_run: "no"
+            findings_filed_count: 2
+            findings_skipped_count: 0
+            findings_failed_count: 0
+            findings_unfiled_count: 0
+            filed_issue_summary: "https://github.com/bsacrobatix/Kitsoki/issues/201; https://github.com/bsacrobatix/Kitsoki/issues/202"
+            filing_summary: "Filed findings to bsacrobatix/Kitsoki: 2 filed, 0 already filed, 0 failed; 0 credible finding(s) remain unfiled."
+            gh_agent_health_status: pass
+            gh_agent_health_summary: "https://agent.example/healthz: ok"
+            gh_agent_readiness_status: pass
+            gh_agent_readiness_summary: "https://agent.example/api/ready: ready for bsacrobatix/Kitsoki as test-worker"
+            gh_agent_enqueue_status: queued
+            gh_agent_enqueued_count: 2
+            gh_agent_skipped_count: 0
+            gh_agent_job_summary: "github:bsacrobatix/Kitsoki/issue/201; github:bsacrobatix/Kitsoki/issue/202"
+            gh_agent_claim_status: claimed
+            gh_agent_claim_count: 2
+            gh_agent_claim_summary: "https://github.com/bsacrobatix/Kitsoki/issues/201#issuecomment-claim; https://github.com/bsacrobatix/Kitsoki/issues/202#issuecomment-claim"
+            gh_agent_drain_status: drained
+            gh_agent_drained_count: 2
+            gh_agent_done_count: 2
+            gh_agent_failed_count: 0
+            gh_agent_active_count: 0
+            gh_agent_run_summary: "github:bsacrobatix/Kitsoki/issue/201=done https://agent.example/run/job-201 evidence=https://agent.example/api/run/job-201/assets/fix-report.md; github:bsacrobatix/Kitsoki/issue/202=done https://agent.example/run/job-202 evidence=https://agent.example/api/run/job-202/assets/fix-report.md"
+            gh_agent_fix_evidence_count: 4
+            gh_agent_missing_evidence_count: 0
+            gh_agent_triage_evidence_count: 2
+            gh_agent_missing_triage_count: 0
+            gh_agent_fix_evidence_summary: "https://agent.example/api/run/job-201/assets/fix-report.md; https://agent.example/api/run/job-201/assets/independent-verify.md; https://agent.example/api/run/job-202/assets/fix-report.md; https://agent.example/api/run/job-202/assets/independent-verify.md"
+            gh_agent_missing_evidence_summary: ""
+            gh_agent_triage_evidence_summary: "https://agent.example/api/run/job-201/assets/triage-verdict.md; https://agent.example/api/run/job-202/assets/triage-verdict.md"
+            gh_agent_missing_triage_summary: ""
+            gh_agent_independent_verify_count: 2
+            gh_agent_missing_verify_count: 0
+            gh_agent_independent_verify_summary: "https://agent.example/api/run/job-201/assets/independent-verify.md; https://agent.example/api/run/job-202/assets/independent-verify.md"
+            gh_agent_missing_verify_summary: ""
+            autonomous_gate_summary: "filing=pass, gh_agent=pass, independent_verify=pass, review=pass, validation=pass"
+            independent_verify_status: pass
+            independent_verify_summary: "verified=2/2"
+            issue_closeout_status: closed
+            issue_closeout_count: 2
+            issue_closeout_summary: "Closed 2 fixed GitHub issue(s)."
+            review_status: ready
+            review_summary: "ready: 25/25 checks passed, 0 warnings, 0 failures"
+            review_passed_count: 25
+            review_failed_count: 0
+            review_warning_count: 0
+            review_total_count: 25
+            review_backlog_summary: ""
+            validation_status: valid
+            validation_errors: 0
+            validation_warnings: 0
+            validation_issue_summary: ""
+            deck_path: .artifacts/product-journey/run-888/deck.slidey.json
+            execution_plan_path: .artifacts/product-journey/run-888/execution-plan.md
+            driver_plan_path: .artifacts/product-journey/run-888/driver-plan.md
+            driver_journal_path: .artifacts/product-journey/run-888/driver-journal.md
+            agent_brief_path: .artifacts/product-journey/run-888/agent-brief.md
+            driver_handoff_path: .artifacts/product-journey/run-888/driver-handoff.md
+            media_manifest_path: .artifacts/product-journey/run-888/media-manifest.json
+            scenario_outcomes_path: .artifacts/product-journey/run-888/scenario-outcomes.md
+            proof_evidence_count: 3
+            demo_evidence_count: 0
+            finding_total_count: 2
+            strength_count: 0
+            weakness_count: 0
+            issue_count: 2
+            fix_count: 0
+            blocked_count: 0
+            missing_evidence_count: 0
+            missing_proof_evidence_count: 0
+            proof_minimum_evidence_count: 3
+            minimum_evidence_count: 3
+            missing_proof_summary: ""
+            driver_contract_summary: "Driver contract: 1 scenarios (bugfix); 0 missing-proof rows; 4 final gates."
+            next_driver_capture: ""
+            next_driver_attach_command: ""
+            next_driver_blocker_command: ""
+
+turns:
+  - intent:
+      name: load
+      slots:
+        run_dir: .artifacts/product-journey/run-888
+    expect_state: run_created
+    expect_world:
+      status: run_loaded
+      run_id: run-888
+      run_dir: .artifacts/product-journey/run-888
+      gh_agent_public_base_url: https://agent.example
+    expect_view_matches: "RUN CREATED[\\s\\S]*autonomous_fix ticket_repo=owner/repo gh_agent_public_base_url=<url>[\\s\\S]*file_findings ticket_repo=owner/repo"
+    expect_host_calls:
+      - handler: host.run
+        args: { call: load_product_journey_run }
+
+  - intent:
+      name: autonomous_watchdog
+    expect_state: run_created
+    expect_world:
+      status: autonomous_watchdog_checked
+      autonomous_watchdog_status: autonomous_watchdog_ok
+      autonomous_watchdog_age_minutes: 10
+    expect_view_matches: "RUN CREATED[\\s\\S]*Marathon watchdog[\\s\\S]*autonomous_watchdog_ok[\\s\\S]*heartbeat age 10m"
+    expect_host_calls:
+      - handler: host.run
+        args: { call: autonomous_product_journey_marathon_watchdog }
+
+  - intent:
+      name: autonomous_fix
+      slots:
+        ticket_repo: bsacrobatix/Kitsoki
+        gh_agent_story: stories/bugfix
+    expect_state: run_created
+    expect_world:
+      status: autonomous_fix_complete
+      autonomous_fix_status: autonomous_fix_valid
+      autonomous_fix_report_path: .artifacts/product-journey/run-888/autonomous-fix-report.md
+      autonomous_watchdog_status: autonomous_watchdog_ok
+      autonomous_watchdog_age_minutes: 10
+      ticket_repo: bsacrobatix/Kitsoki
+      gh_agent_public_base_url: https://agent.example
+      filing_status: findings_filed
+      findings_filed_count: 2
+      findings_unfiled_count: 0
+      gh_agent_health_status: pass
+      gh_agent_readiness_status: pass
+      gh_agent_enqueue_status: queued
+      gh_agent_claim_status: claimed
+      gh_agent_claim_count: 2
+      gh_agent_drain_status: drained
+      gh_agent_done_count: 2
+      gh_agent_failed_count: 0
+      gh_agent_fix_evidence_count: 4
+      gh_agent_missing_evidence_count: 0
+      gh_agent_triage_evidence_count: 2
+      gh_agent_missing_triage_count: 0
+      gh_agent_independent_verify_count: 2
+      gh_agent_missing_verify_count: 0
+      autonomous_gate_summary: "filing=pass, gh_agent=pass, independent_verify=pass, review=pass, validation=pass"
+      independent_verify_status: pass
+      independent_verify_summary: "verified=2/2"
+      issue_closeout_status: closed
+      issue_closeout_count: 2
+      review_status: ready
+      review_failed_count: 0
+      validation_status: valid
+      validation_errors: 0
+    expect_view_matches: "RUN CREATED[\\s\\S]*Autonomous fix[\\s\\S]*autonomous_fix_valid[\\s\\S]*Autonomous report[\\s\\S]*autonomous-fix-report.md[\\s\\S]*Autonomous gates[\\s\\S]*filing=pass, gh_agent=pass, independent_verify=pass,[\\s\\S]*review=pass, validation=pass[\\s\\S]*Independent verify[\\s\\S]*pass: verified=2/2[\\s\\S]*Issue close-out[\\s\\S]*closed: closed 2[\\s\\S]*Marathon watchdog[\\s\\S]*autonomous_watchdog_ok[\\s\\S]*heartbeat age 10m[\\s\\S]*Issue filing[\\s\\S]*findings_filed: filed 2[\\s\\S]*GH-agent health[\\s\\S]*pass: https://agent.example/healthz[\\s\\S]*GH-agent readiness[\\s\\S]*pass: https://agent.example/api/ready[\\s\\S]*GH-agent claims[\\s\\S]*claimed: claimed 2[\\s\\S]*GH-agent drain[\\s\\S]*drained: drained 2, done 2, failed 0, active 0[\\s\\S]*GH-agent evidence[\\s\\S]*4 attached; 0 missing; triage 2 attached / 0 missing[\\s\\S]*triage-verdict.md[\\s\\S]*Review checks[\\s\\S]*25 / 25 passed[\\s\\S]*Validation[\\s\\S]*valid"
+    expect_host_calls:
+      - handler: host.run
+        args:
+          call: autonomous_product_journey_fix
+          cmd: go
+          args:
+            - run
+            - ./cmd/kitsoki
+            - gitops
+            - autonomous-fix
+            - --json
+            - --report-invalid-autonomous-fix
+            - --run-dir
+            - .artifacts/product-journey/run-888
+            - --ticket-repo
+            - bsacrobatix/Kitsoki
+            - --agent-db
+            - .artifacts/product-journey/run-888/gh-agent-jobs.sqlite
+            - --agent-story
+            - stories/bugfix
+            - --public-base-url
+            - https://agent.example
+            - --project-root
+            - ""
+            - --incident-repo
+            - ""
+            - --asset-dir
+            - ""
+            - --comment-mode
+            - none
+
+expect_no_errors: true

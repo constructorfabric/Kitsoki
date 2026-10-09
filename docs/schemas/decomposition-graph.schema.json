@@ -1,0 +1,110 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://kitsoki.local/schemas/decomposition-graph.schema.json",
+  "title": "Kitsoki decomposition graph",
+  "description": "Versioned graph shape for goal-seeker changes and deliver/work-decomposition briefs. Cross-node invariants such as unique IDs, acyclic dependencies, known gate classes, and scope overlap are checked by tools/validate-decomposition-graph.py.",
+  "type": "object",
+  "oneOf": [
+    { "required": ["changes"] },
+    { "required": ["briefs"] }
+  ],
+  "properties": {
+    "goal_slug": { "type": "string", "minLength": 1 },
+    "coverage_note": { "type": "string", "minLength": 20 },
+    "definition_of_done": { "type": "string" },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "base_branch": { "type": "string", "minLength": 1 },
+        "worktree_path": { "type": "string", "minLength": 1 }
+      }
+    },
+    "changes": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/definitions/node" }
+    },
+    "briefs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "allOf": [
+          { "$ref": "#/definitions/node" },
+          { "$ref": "#/definitions/deliverBrief" }
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "node": {
+      "type": "object",
+      "required": ["id", "wall", "goal_ref", "gate", "scope", "depends_on", "acceptance", "agent_brief"],
+      "additionalProperties": true,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"
+        },
+        "wall": { "type": "string", "minLength": 1 },
+        "goal_ref": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "pattern": "^G[0-9]+$" }
+        },
+        "title": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "minLength": 1 },
+        "pipeline": { "type": "string" },
+        "critical": { "type": "boolean" },
+        "demo_video": { "type": "string" },
+        "scope": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "depends_on": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "default": []
+        },
+        "acceptance": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "gate": {
+          "type": "object",
+          "required": ["class", "red_now", "green_when"],
+          "additionalProperties": true,
+          "properties": {
+            "class": { "type": "string", "minLength": 1 },
+            "red_now": { "type": "string", "minLength": 1 },
+            "green_when": { "type": "string", "minLength": 1 },
+            "cmd": { "type": "string", "minLength": 1 },
+            "replay_cmd": { "type": "string", "minLength": 1 }
+          },
+          "anyOf": [
+            { "required": ["cmd"] },
+            { "required": ["replay_cmd"] }
+          ]
+        },
+        "agent_brief": { "type": "string", "minLength": 1 }
+      }
+    },
+    "deliverBrief": {
+      "type": "object",
+      "required": ["brief", "gate_command"],
+      "additionalProperties": true,
+      "properties": {
+        "brief": { "type": "string", "minLength": 10 },
+        "gate_command": { "type": "string", "minLength": 1 },
+        "deps": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": []
+        }
+      }
+    }
+  }
+}

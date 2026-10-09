@@ -26,6 +26,7 @@ package host
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -45,6 +46,17 @@ type Result struct {
 	// Error is non-empty when the handler encountered an expected, domain-level error.
 	// Infra failures are returned as Go errors instead.
 	Error string
+	// FailureKind optionally classifies a non-empty Error for the harness
+	// ladder's routing decision (see ladder.go): FailureInfra rotates to the
+	// next provider/harness lane and backs the current lane off;
+	// FailureCapability escalates effort (same model) before trying a stronger
+	// model; FailureFatal (a config/argument error no rung can fix) stops the
+	// ladder immediately.
+	// Zero value (FailureNone) means "unclassified" — a handler that doesn't
+	// populate it is unaffected; the ladder falls back to a best-effort text
+	// heuristic over Error. Only host.agent.decide / host.agent.task populate
+	// this today.
+	FailureKind FailureKind
 }
 
 // Registry holds the set of registered Handler functions, keyed by name.
@@ -53,12 +65,14 @@ type Result struct {
 type Registry struct {
 	mu       sync.RWMutex
 	handlers map[string]Handler
+	secrets  map[string]string
 }
 
 // NewRegistry creates a new empty Registry.
 func NewRegistry() *Registry {
 	return &Registry{
 		handlers: make(map[string]Handler),
+		secrets:  LoadSecrets(),
 	}
 }
 
@@ -128,6 +142,21 @@ func (r *Registry) getWithName(name string) (Handler, string, bool) {
 	}
 }
 
+// Names returns the sorted set of verb names currently registered. Used by
+// the effect-taxonomy builtin-classification coverage test (handlers_test.go)
+// to assert every verb RegisterBuiltins registers has a default effect
+// classification in internal/effect, so a new verb can't ship unclassified.
+func (r *Registry) Names() []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := make([]string, 0, len(r.handlers))
+	for name := range r.handlers {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
+
 // lastDot returns the index of the last '.' in s, or -1 if absent.
 // Inlined to avoid importing strings into this file.
 func lastDot(s string) int {
@@ -172,6 +201,12 @@ func (r *Registry) Invoke(ctx context.Context, name string, args map[string]any)
 	h, registeredName, ok := r.getWithName(name)
 	if !ok {
 		return Result{}, fmt.Errorf("host: no handler registered for %q", name)
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if len(r.secrets) > 0 && len(SecretsFromContext(ctx)) == 0 {
+		ctx = WithSecrets(ctx, r.secrets)
 	}
 	if registeredName != name {
 		// Prefix-fallback hit: inject the trailing suffix as args["op"]

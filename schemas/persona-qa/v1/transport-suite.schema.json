@@ -1,0 +1,112 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://kitsoki.dev/schemas/persona-qa/v1/transport-suite.schema.json",
+  "title": "Persona QA Transport Suite",
+  "type": "object",
+  "required": ["schema", "status", "summary", "transport_profiles", "scenarios", "legs"],
+  "additionalProperties": true,
+  "properties": {
+    "schema": { "type": "string" },
+    "status": { "type": "string", "enum": ["ready"] },
+    "summary": {
+      "type": "object",
+      "required": ["scenario_count", "requested_transports", "transport_count", "leg_count", "skipped_count", "skipped_by_transport"],
+      "additionalProperties": true,
+      "properties": {
+        "scenario_count": { "type": "integer" },
+        "requested_transports": { "type": "array", "items": { "type": "string", "enum": ["tui", "web", "vscode", "cli"] } },
+        "transport_count": { "type": "integer" },
+        "leg_count": { "type": "integer" },
+        "skipped_count": { "type": "integer" },
+        "skipped_by_transport": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "transport_profiles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "label", "visual_surface", "primary_tool", "evidence_kind", "level", "preflight", "recording_rule"],
+        "additionalProperties": true,
+        "properties": {
+          "id": { "type": "string", "enum": ["tui", "web", "vscode", "cli"] },
+          "label": { "type": "string" },
+          "visual_surface": { "type": "string" },
+          "primary_tool": { "type": "string" },
+          "evidence_kind": { "type": "string" },
+          "level": { "type": "string", "enum": ["frame-level", "bridge-level", "terminal-level", "editor-level"] },
+          "preflight": { "type": "string" },
+          "recording_rule": { "type": "string" }
+        }
+      }
+    },
+    "scenarios": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["scenario", "label", "primary_story", "allowed_transports", "required_transports", "requested_transports", "applicable_transports", "skipped_transports", "leg_count", "legs"],
+        "additionalProperties": true,
+        "properties": {
+          "scenario": { "type": "string" },
+          "label": { "type": "string" },
+          "stage": { "type": "string" },
+          "primary_story": { "type": "string" },
+          "allowed_transports": { "type": "array", "items": { "type": "string", "enum": ["tui", "web", "vscode", "cli"] } },
+          "required_transports": { "type": "array", "items": { "type": "string", "enum": ["tui", "web", "vscode", "cli"] } },
+          "requested_transports": { "type": "array", "items": { "type": "string", "enum": ["tui", "web", "vscode", "cli"] } },
+          "applicable_transports": { "type": "array", "items": { "type": "string", "enum": ["tui", "web", "vscode", "cli"] } },
+          "skipped_transports": { "type": "array", "items": { "type": "string", "enum": ["tui", "web", "vscode", "cli"] } },
+          "leg_count": { "type": "integer" },
+          "legs": { "type": "array" }
+        }
+      }
+    },
+    "legs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["leg_id", "scenario", "transport", "transport_label", "visual_surface", "primary_story", "required", "required_mcp", "resolved_mcp_tools", "evidence", "evidence_contract", "quality_gate", "entrypoints", "preflight", "recording_rule", "capture_policy"],
+        "additionalProperties": true,
+        "properties": {
+          "leg_id": { "type": "string" },
+          "scenario": { "type": "string" },
+          "transport": { "type": "string", "enum": ["tui", "web", "vscode", "cli"] },
+          "transport_label": { "type": "string" },
+          "visual_surface": { "type": "string" },
+          "primary_story": { "type": "string" },
+          "required": { "type": "boolean" },
+          "required_mcp": { "type": "array", "items": { "type": "string" } },
+          "resolved_mcp_tools": { "type": "array", "items": { "type": "string" } },
+          "evidence": { "type": "array", "items": { "type": "string" } },
+          "evidence_contract": {
+            "type": "object",
+            "required": ["primary_tool", "evidence_kind", "level"],
+            "additionalProperties": true
+          },
+          "editor_evidence_contract": {
+            "description": "vscode legs only: the opportunistic editor-level tier reached via host.ide.* (see tools/persona_qa/transports.py). Absent for every other transport.",
+            "type": "object",
+            "required": ["primary_tool", "evidence_kind", "level"],
+            "additionalProperties": true
+          },
+          "quality_gate": {
+            "type": "object",
+            "required": ["minimum_evidence", "done_when", "block_if"],
+            "additionalProperties": true
+          },
+          "entrypoints": {
+            "type": "object",
+            "required": ["open", "observe", "act"],
+            "additionalProperties": true
+          },
+          "preflight": { "type": "string" },
+          "recording_rule": { "type": "string" },
+          "capture_policy": {
+            "type": "object",
+            "required": ["proof_source_required", "no_substitution"],
+            "additionalProperties": true
+          }
+        }
+      }
+    }
+  }
+}

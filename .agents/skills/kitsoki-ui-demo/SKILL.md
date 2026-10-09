@@ -1,49 +1,104 @@
 ---
 name: kitsoki-ui-demo
-description: 'Produce a deterministic, no-LLM demo / tour video of the kitsoki web UI (plus per-scene screenshots and a shareable MP4 / GIF / contact sheet) by driving a real `kitsoki web` server through Playwright. Use when asked to make, record, refresh, or author a tour demo video, feature-spotlight tour, walkthrough video, demo, or screen-capture of the kitsoki browser UI — whether a tour of one feature (golden example: agent-actions), the generic onboarding tour, or a full-product walkthrough. Also covers turning a REAL LLM-driven dogfood session into a deterministic demo: generating the no-LLM flow fixture + host cassette from a recorded trace via `kitsoki trace to-flow` (no hand-authoring, no LLM re-interpretation). Triggers on phrasings like "make a tour demo video", "record a demo of <feature>", "feature tour video", "walkthrough video", "turn this dogfood trace/session into a demo video".'
+description: 'Produce deterministic rrweb demos for Kitsoki web UI and real xterm.js TUI surfaces. Use when asked to make, capture, refresh, or author a product-site replay, feature-spotlight tour, walkthrough demo, terminal/TUI screen-capture, project onboarding run, or complete-product walkthrough. For browser UI, drive a real `kitsoki web` server through Playwright. For terminal/TUI demos, drive `tools/tui-bridge` and capture the live pty-over-xterm.js page with `KITSOKI_RRWEB_OUT`; never substitute `kitsoki record`, static flow frames, or GIF tooling for TUI proof. MP4 is a legacy fallback only for canvas, video, WebGL, or other surfaces rrweb cannot reconstruct, or when a rendered video export is explicitly requested. Also covers turning a REAL LLM-driven dogfood session into a deterministic demo by generating the no-LLM flow fixture + host cassette from a recorded trace via `kitsoki trace to-flow` (no hand-authoring, no LLM re-interpretation).'
 ---
 
-# Kitsoki UI demo videos
+# Kitsoki UI rrweb demos
 
-This skill records the **kitsoki web UI** as a deterministic, **no-LLM** video:
+This skill captures the **kitsoki web UI** as a deterministic, **no-LLM** rrweb
+replay:
 a Playwright spec spawns the real `kitsoki web` binary in the `--flow` /
 `--host-cassette` posture (nil harness — intents are submitted explicitly, host
 calls come from a cassette/stub), drives the SPA scene-by-scene at a
-human-watchable pace, and records a MacBook-resolution video + per-scene
-screenshots into `.artifacts/`. The recording is saved as a shareable **MP4**
-(never `.webm` — it must play inline in VS Code / Keynote / Slack); bundled
-scripts render an optional **GIF / contact-sheet** alongside it.
+human-watchable pace, and writes `.artifacts/<demo>/<videoBase>.rrweb.json`,
+`.artifacts/<demo>/<videoBase>.html`, and per-scene screenshots. The HTML viewer
+is a self-contained Slidey bundle over the raw rrweb log, so product-site
+iteration avoids the MP4 render step entirely.
 
-Why no-LLM: the recording must be **reproducible and free** — same input, same
+For **real terminal/TUI demos**, use `tools/tui-bridge`: a Playwright spec opens
+the xterm.js player, the bridge spawns a real pty-backed `kitsoki` TUI process,
+and `KITSOKI_RRWEB_OUT` records the browser DOM session as rrweb plus PNG
+checkpoints and a capture sidecar. This is the only proof-grade path for TUI
+behavior because it captures live keyboard input, the pty byte stream, and
+xterm rendering. Do not use `kitsoki record`, static flow-frame renderers,
+terminal GIF tools, or post-produced contact sheets as substitutes for a TUI
+demo.
+
+Use MP4 only as a fallback for surfaces rrweb cannot reconstruct (`<canvas>`,
+`<video>`, WebGL) or when a rendered video export is the explicit deliverable.
+
+If the demo claims coverage of a product-journey scenario, a transport, or a
+TUI/VS Code/browser scenario QA path, start from the universal scenario mechanism
+instead of a standalone recorder. Register/update the scenario in
+`tools/product-journey/scenarios.json`, emit a run with
+`tools/product-journey/run.py --emit-run --transport ...`, consume
+`driver-plan.json` capture routes, and attach the MP4/rrweb/frame evidence back
+to that same run. A Playwright, xterm.js, or rrweb spec may drive the pixels, but
+it must not own private case lists, evidence paths, or quality gates.
+
+Why no-LLM: the capture must be **reproducible and free** — same input, same
 frames, no API cost, no flakiness. This is the same posture the engine uses for
 flow tests (see [[feedback_no_llm_tests]] and `docs/web/README.md` →
 "Deterministic, no-LLM"). **Never** record against a live LLM.
 
+## Storyboard first — the plan is a validated artifact
+
+Before authoring any spec or manifest, write the demo's plan as a
+`*.storyboard.yaml` (drafts in `.context/storyboards/`; promote it beside the
+capture spec when the demo is committed) and keep it lint-clean. The storyboard
+is the single source the capture formats derive from — goal, no-LLM binding,
+and per scene: purpose, narration, drive actions (the tour `DriveAction`
+vocabulary verbatim), dwell, and the observable `expect` claims QA will gate
+on. Full format + design rationale: `docs/media/storyboard.md`; worked example:
+`templates/storyboard.example.yaml` in this skill (validated by a repo test).
+
+```bash
+go run ./cmd/kitsoki storyboard validate <demo>.storyboard.yaml   # lint: ids, pacing budgets, bindings, scenario refs
+go run ./cmd/kitsoki storyboard render   <demo>.storyboard.yaml --out plan.md        # the reviewable plan
+go run ./cmd/kitsoki storyboard emit tour <demo>.storyboard.yaml --out tour.yaml     # kitsoki tour --manifest / spec steps
+go run ./cmd/kitsoki storyboard emit qa   <demo>.storyboard.yaml --out scenarios.yaml # kitsoki-ui-qa --scenarios contract
+go run ./cmd/kitsoki storyboard check <demo>.storyboard.yaml --chapters <video>.mp4  # post-capture drift vs the plan
+```
+
+The lint enforces this skill's discipline up front: dwell must cover the
+narration reading budget (the rrweb pacing-scan floor), total screen time must
+clear the recorder's `MIN_DEMO_SECONDS` gate, no raw `__` intent names in
+viewer-facing text, and every scene must promise something observable. After
+capture, `storyboard check` diffs the `<video>.chapters.json` sidecar against
+the plan (missing/reordered scenes, under-dwelled windows). A storyboard does
+not replace the product-journey run bundle — when the demo claims scenario
+coverage, reference it via `scenario:` and keep the run bundle as the evidence
+source of truth.
+
 > **Pick the worked reference that matches the ask — copy it, don't start blank:**
-> - **A tour demo video of one feature** (the usual ask — "make a tour demo
->   video of X") → copy the **agent-actions** spec template
->   (`tools/runstatus/tests/playwright/agent-actions-video.spec.ts` +
->   `src/tour/agent-actions-manifest.ts`), which demonstrates the tour-narration
->   pattern: the *whole* video is tour-narrated — it opens on the home story
->   library, frames the demo story, drives home → new session → observer via
->   narrated action steps, then walks the feature. See **[Feature tour demo
->   video — the spec template](#feature-tour-demo-video--the-golden-example)**.
+> - **A product-site demo of one feature** → make the catalog entry
+>   `demo.format: rrweb`, reuse or add a deterministic Playwright tour spec,
+>   and run `make demo-feature-rrweb FEATURE=<id>`. Existing `*-video.spec.ts`
+>   specs can run in rrweb mode because the shared helpers disable
+>   `recordVideo` when `KITSOKI_RRWEB_OUT` is set; add a separate
+>   `*-rrweb-capture.spec.ts` only when the rrweb capture needs different
+>   behavior.
 > - **The golden example of conversation-driven development** (iterative
 >   clarification, brief refinement, multi-document publication in one session) →
->   the **dev-story PRD → Design** demo (`features/dev-story-prd-design.yaml` +
->   `stories/dev-story/flows/prd_to_design_full.yaml`). When slice 2 ships it
->   renders via `kitsoki tour --feature dev-story-prd-design` (binary-native, no
->   Playwright). See **[Dev-story PRD → Design](#dev-story-prd--design-golden-conversation-driven-example)**.
+>   the **dev-story PRD → Design** demo (de-listed from the feature catalog —
+>   the yaml is gone, but `stories/dev-story/flows/prd_to_design_full.yaml` and
+>   the stub spec remain; re-catalog it before capture). See
+>   **[Dev-story PRD → Design](#dev-story-prd--design-golden-conversation-driven-example)**.
 > - **The generic onboarding tour** → `tour-video.spec.ts` + `src/tour/manifest.ts`.
+> - **A real terminal/TUI demo or project onboarding proof** →
+>   `tools/tui-bridge`, `KITSOKI_RRWEB_OUT`, and a `*-real-tui.e2e.spec.ts`
+>   Playwright drive. Worked reference:
+>   `tools/tui-bridge/tests/presentation-onboarding-real-tui.e2e.spec.ts`.
+>   The artifact is `.rrweb.json` plus `.rrweb.capture.json`, chapters, PNGs,
+>   bridge logs, and any session DB evidence the scenario produces.
 > - **A full-product walkthrough** (home → new session → drive/observe → reload →
 >   active sessions) → `multi-story.spec.ts`. The single-purpose chat drive lives
 >   there too.
 >
-> **Two production modes** (both no-LLM): the **live screen-record** mode above
-> (screen-record a live `kitsoki web` drive — the default, and the ONLY option
-> for `<canvas>`/`<video>`/WebGL surfaces) and the **rrweb capture → replay-render**
-> mode (capture the DOM stream once, re-render server-free + offline, frame-exact)
-> — see **[rrweb capture → replay-render](#rrweb-capture--replay-render-deterministic-server-free-mode)**.
+> **Two production modes** (both no-LLM): the **rrweb capture → bundled replay**
+> mode is the default for product-site and Slidey work. The **live
+> screen-record** mode is the fallback for `<canvas>`/`<video>`/WebGL surfaces
+> or explicit video exports.
 >
 > **Composite deck rule:** if the deliverable is a **slidey deck** with embedded
 > acts, the primary artifact is the source deck named `*.slidey.json`, and it
@@ -138,9 +193,9 @@ kitsoki test flows stories/<story>/app.yaml --flows stories/<story>/flows/<scena
   --trace-out .artifacts/<scenario>/replay.jsonl
 ```
 
-The generated flow is exactly what the recording pipeline already consumes — point
-`kitsoki web --flow stories/<story>/flows/<scenario>.yaml` (or a `*-video.spec.ts`
-spec's `--flow` arg) at it and record as below. Two properties make this a clean
+The generated flow is exactly what the capture pipeline already consumes — point
+`kitsoki web --flow stories/<story>/flows/<scenario>.yaml` at the rrweb capture
+spec or legacy video fallback. Two properties make this a clean
 fit for demos:
 
 - **Each `machine.transition` → one turn** (resolved intent name + slots,
@@ -151,7 +206,7 @@ fit for demos:
   trace's `turn.input`), so a conversation demo's user bubbles — and the strings
   you type into the composer — are the operator's actual utterance, not a
   synthetic `[intent] <name>`. This is what makes a trace-derived conversation
-  video followable (see [Demoing human usage](#demoing-human-usage--the-conversation-must-be-followable)).
+  demo followable (see [Demoing human usage](#demoing-human-usage--the-conversation-must-be-followable)).
 
 **Caveats, all by design** (full discussion + the trace→fixture mapping table:
 [`docs/tracing/trace-format.md` §11](../../tracing/trace-format.md#11-kitsoki-trace-to-flow--trace--replayable-flow-fixture)):
@@ -167,73 +222,15 @@ fit for demos:
   has no episode for → a hard cassette miss / `on_error` bounce. That's honest
   drift, not a tooling fault: re-record the trace against the current story.
 
-Once the flow + cassette exist, everything below (spec, pacing, MP4) is unchanged
-— the source of the fixture (hand-authored vs trace-derived) is invisible to the
-recorder.
-
-## Start from a real dogfood trace (generate the flow + cassette — don't hand-author)
-
-A demo's no-LLM `--flow` fixture + `--host-cassette` do **not** have to be written
-by hand. If the scenario you want to film already happened as a **real,
-LLM-driven session** (a dogfood run, a bugfix pipeline, a live drive), convert
-its recorded trace into the replay artifacts deterministically — no LLM
-re-interpretation, no transcription by hand:
-
-```bash
-# 1. Find the recorded session trace (JSONL). Live/record sessions write one to:
-#      ~/.kitsoki/sessions/<app>/<session-id>.jsonl
-#    or capture a fresh one via the MCP `session.trace` tool / `--trace-out`.
-
-# 2. Convert the trace → a flow fixture (+ sibling host cassette) — a pure transform:
-kitsoki trace to-flow <trace.jsonl> \
-  --app ../app.yaml \
-  --out stories/<story>/flows/<scenario>.yaml
-#   → writes <scenario>.yaml and (when the trace had host calls)
-#     <scenario>.cassette.yaml beside it, referenced via host_cassette:.
-
-# 3. Verify it replays no-LLM and capture a fresh trace:
-kitsoki test flows stories/<story>/app.yaml --flows stories/<story>/flows/<scenario>.yaml \
-  --trace-out .artifacts/<scenario>/replay.jsonl
-```
-
-The generated flow is exactly what the recording pipeline already consumes — point
-`kitsoki web --flow stories/<story>/flows/<scenario>.yaml` (or a `*-video.spec.ts`
-spec's `--flow` arg) at it and record as below. Two properties make this a clean
-fit for demos:
-
-- **Each `machine.transition` → one turn** (resolved intent name + slots,
-  verbatim, in order). The LLM/semantic routing decision is *not* re-run on
-  replay — the resolved intent is re-driven directly, so it's deterministic and
-  free.
-- **`display_input:` preserves the operator's real free-text words** (from the
-  trace's `turn.input`), so a conversation demo's user bubbles — and the strings
-  you type into the composer — are the operator's actual utterance, not a
-  synthetic `[intent] <name>`. This is what makes a trace-derived conversation
-  video followable (see [Demoing human usage](#demoing-human-usage--the-conversation-must-be-followable)).
-
-**Caveats, all by design** (full discussion + the trace→fixture mapping table:
-[`docs/tracing/trace-format.md` §11](../../tracing/trace-format.md#11-kitsoki-trace-to-flow--trace--replayable-flow-fixture)):
-
-- The converter emits **no `expect_state` / `expect_world`** (story-drift
-  tolerance). Add expectations by hand only if you want to pin a known-drift-free
-  path.
-- Per-call-varying agent/host responses replay correctly because each recorded
-  call becomes one **ordered** cassette episode (not `replay:any`) — the i-th call
-  consumes the i-th episode.
-- If the *current* story routes a turn into a room that didn't exist when the
-  trace was recorded, that room's `on_enter` may need a host call the cassette
-  has no episode for → a hard cassette miss / `on_error` bounce. That's honest
-  drift, not a tooling fault: re-record the trace against the current story.
-
-Once the flow + cassette exist, everything below (spec, pacing, MP4) is unchanged
-— the source of the fixture (hand-authored vs trace-derived) is invisible to the
-recorder.
+Once the flow + cassette exist, the same fixture drives rrweb capture or the
+legacy MP4 fallback. The source of the fixture (hand-authored vs trace-derived)
+is invisible to the capture spec.
 
 ## Prerequisites (once)
 
 ```bash
 make build-bin                              # stage SPA/stories + build bin/kitsoki (the specs spawn it), ad-hoc signed
-pnpm -C tools/runstatus playwright:install  # chromium + ffmpeg for Playwright (once)
+pnpm -C tools/runstatus playwright:install  # chromium; ffmpeg only for legacy MP4 exports
 ```
 
 **Never `cp ./kitsoki bin/kitsoki`.** On macOS, copying a Go linker-signed
@@ -245,13 +242,39 @@ re-signs it, so the signature stays valid. (Plain `make build` produces the
 signed `./kitsoki`; it's `make build-bin` that yields the spawn binary the specs
 need.)
 
-`make build-bin` is **mandatory before every recording** — the SPA is `go:embed`'d
+`make build-bin` is **mandatory before every capture** — the SPA is `go:embed`'d
 into the binary, so an un-rebuilt binary serves a stale UI. Rebuild after any
 change under `tools/runstatus/src/`.
 
-## Deterministic recording (read this first)
+## Product-Site rrweb Runbook
 
-A demo recording has a few non-obvious traps. They're solved once, in
+For new product-site demos, keep the source and published artifact rrweb-native:
+
+1. Set `demo.format: rrweb` in the feature catalog source and use
+   `demo.rrwebSpec` when the capture spec name differs from the legacy
+   bijection anchor.
+   Existing `*-video.spec.ts` tours may be the rrweb capture spec; the shared
+   camera/server helpers suppress Playwright video output and write the rrweb
+   log when `KITSOKI_RRWEB_OUT` is set.
+2. Capture and bundle:
+   ```bash
+   make demo-feature-rrweb FEATURE=<id>
+   ```
+   This writes `<videoBase>.rrweb.json`, numbered step PNGs, and a
+   self-contained `<videoBase>.html` viewer under `.artifacts/<demo>/`.
+3. Build or preview the site:
+   ```bash
+   make site
+   ```
+   The staging pipeline publishes the viewer as
+   `/media/<feature>/demo.html` and the raw replay as `demo.rrweb.json`.
+
+Do not convert an rrweb replay to MP4 just to iterate on the product site. Render
+a video export only for a gated QA/share workflow that explicitly needs one.
+
+## Deterministic Capture Traps
+
+A demo capture has a few non-obvious traps. They're solved once, in
 `tests/playwright/_helpers/demo.ts` — **use those helpers; don't re-derive
 them.** The reference spec is `tests/playwright/diagram-showcase.spec.ts`.
 
@@ -277,7 +300,7 @@ them.** The reference spec is `tests/playwright/diagram-showcase.spec.ts`.
   missing/covered element hangs the whole run with no error. The config now caps
   it (15s); keep it. Don't write un-timeouted `.click()` in a loop.
 - **The Claude Code harness suppresses Playwright's stdout** — a failing
-  recording prints only "Exit code 1". `captureDiagnostics(page, artifactDir)`
+  capture prints only "Exit code 1". `captureDiagnostics(page, artifactDir)`
   writes the failure + a `mark(step)` breadcrumb to `<artifactDir>/ERROR.txt`;
   read that file and the `NN-*.png` screenshots after the run. (Run in the
   background and read the task-output file, or redirect to a repo file.)
@@ -287,7 +310,7 @@ them.** The reference spec is `tests/playwright/diagram-showcase.spec.ts`.
 
 The shared helpers (`_helpers/demo.ts`): `installCurtain` / `liftCurtain`,
 `makeCaption` → `beat`, `captureDiagnostics`, `dwell` (PACE-scaled),
-`DEMO_VIEWPORT`. For the recording lifecycle use `_helpers/server.ts`'s
+`DEMO_VIEWPORT`. For the legacy MP4 lifecycle use `_helpers/server.ts`'s
 `prepareVideoDir` (beforeAll) + `saveAndRemuxVideo` (after `context.close`) — the
 remux pattern documented below, **not** a plain copy from the video dir.
 
@@ -331,7 +354,7 @@ remux pattern documented below, **not** a plain copy from the video dir.
    - **Tour-driven intro (feature tours)** — for a feature tour, make the WHOLE
      video tour-narrated (including the opening) rather than silently
      `cinematicGoto`-ing into the observer. This is the golden pattern below —
-     see **[Feature tour demo video](#feature-tour-demo-video--the-golden-example)**.
+     see **[Legacy feature tour MP4 reference](#legacy-feature-tour-mp4-reference)**.
    - **Hash routing** — URLs are `#/`, `#/s/:id`, `#/s/:id/chat`.
 
 ## Demoing human usage — the conversation must be followable
@@ -371,7 +394,7 @@ conversation. `kitsoki-ui-qa` now **fails** a demo that breaks any of these
   document (the brief/PRD/diff via `host.ide.*`, or any file), it must appear
   BESIDE the conversation, not ON it. The extension already opens host.ide docs in
   the column beside the popped-out chat (`chatDocColumn` in
-  `tools/vscode-kitsoki/src/ide-tools.ts`); the recording must keep that
+  `tools/vscode-kitsoki/src/ide-tools.ts`); the capture must keep that
   split (chat in one editor column, docs in the next) and minimise the sidebar so
   both read clearly. Verify the chat transcript is visible in EVERY beat where a
   file is open.
@@ -452,7 +475,11 @@ conversation. `kitsoki-ui-qa` now **fails** a demo that breaks any of these
     in `tests/_helpers/launch.ts` now re-stages dist → media/spa at package time so
     the recording can't pick up a stale copy.)
 
-## Video recording — the correct pattern
+## Legacy MP4 Fallback
+
+Use this section only when rrweb cannot reconstruct the surface
+(`<canvas>`, `<video>`, WebGL) or when the deliverable is explicitly a rendered
+video export.
 
 **Always emit MP4, never `.webm`.** Playwright records VP8 `.webm`, which (a)
 omits the `DURATION`/`CUES` container atoms so most players show only the first
@@ -545,16 +572,12 @@ page's recording regardless of what else is in the dir.
    (the spec transcodes the raw webm away — never ship the webm) and numbered
    `NN-<scene>.png` screenshots.
 
-4. **(Optional) Render GIF + contact sheet.** The MP4 is already the shareable
-   deliverable; only run this if you also want a looping GIF or a storyboard.
-   All write to `.artifacts/`, never committed ([[feedback_artifacts_dir]]):
-   ```bash
-   S=.agents/skills/kitsoki-ui-demo/scripts
-   $S/render.sh .artifacts/<name>/<name>-demo.mp4    # gif + contact sheet (mp4 already made)
-   # …or individually:
-   $S/webm-to-gif.sh   .artifacts/<name>/<name>-demo.mp4 --width 900 # looping GIF for PRs/docs
-   $S/contact-sheet.sh .artifacts/<name>/                            # NN-*.png → one contact sheet
-   ```
+4. **Legacy post-production extras.** The MP4 is already the shareable
+   deliverable. GIF/contact-sheet helpers are legacy convenience tools and must
+   not be used for new rrweb or TUI proof. Prefer the rrweb log and its PNG
+   checkpoints; if a downstream markdown target explicitly requires a GIF, keep
+   the output in `.artifacts/` and do not treat it as the canonical demo.
+   Track removal/deprecation work under `.artifacts/issues/bugs/`.
 
 5. **Verify the frames.** Open a couple of the `NN-*.png` (or the contact sheet)
    and confirm each scene renders correctly. The kitsoki rule holds in video too
@@ -568,18 +591,18 @@ these are post-production extras, not part of the critical path.
 
 | Script | Does | Notes |
 |---|---|---|
-| `render.sh <demo.(mp4\|webm)>` | One-shot: GIF + contact sheet (the sibling `NN-*.png` from the video's dir); transcodes to MP4 first only if handed a legacy webm | Convenience wrapper over the two below |
+| `render.sh <demo.(mp4\|webm)>` | Legacy one-shot: GIF + contact sheet (the sibling `NN-*.png` from the video's dir); transcodes to MP4 first only if handed a legacy webm | Pending removal/quarantine; do not use for new rrweb or TUI proof |
 | `webm-to-mp4.sh <in.webm> [out.mp4] [--fps N] [--width W]` | H.264 + `yuv420p` + `+faststart` — the universally-playable share format | Only needed to convert a stray/legacy `.webm`; specs already emit MP4 |
-| `webm-to-gif.sh <in.(mp4\|webm)> [out.gif] [--fps N] [--width W]` | Two-pass palettegen/paletteuse high-quality looping GIF | For embedding in PRs / markdown; keep `--width ≤ 900` |
+| `webm-to-gif.sh <in.(mp4\|webm)> [out.gif] [--fps N] [--width W]` | Legacy two-pass palettegen/paletteuse looping GIF | Pending removal/quarantine; only for explicitly requested legacy markdown embeds |
 | `contact-sheet.sh <dir> [out.png] [--cols N] [--tile-width W]` | Tiles the numbered scene screenshots into one image | A storyboard for quick review / PR description |
 
 All require `ffmpeg` on PATH (Playwright's browser install or a system ffmpeg).
 
-## Feature tour demo video — the golden example
+## Legacy Feature Tour MP4 Reference
 
-When the ask is **"make a tour demo video"** of a specific feature (a drawer, a
-new panel, a capability), copy the **agent-actions** demo — it is the golden,
-maintained reference:
+For new feature demos, prefer the rrweb runbook above. When the surface requires
+the legacy MP4 fallback, or when you need a narration/pacing reference, use the
+**agent-actions** demo:
 
 - spec:     `tools/runstatus/tests/playwright/agent-actions-video.spec.ts`
 - manifest: `tools/runstatus/src/tour/agent-actions-manifest.ts`
@@ -609,10 +632,12 @@ What makes it the template:
   lives inside a drawer/pane, the spec opens that pane (e.g. `openDrawerForCall`,
   `openTaskDetail`) and `dwell(page, SETTLE_MS)` so the spotlight lands on a
   composed frame, not a half-rendered flicker.
-- **The single backdrop only blanks the page for anchorless (`center`) steps;**
-  targeted steps leave a click-through hole over the real control.
+- **No tour step dims the page.** The live overlay uses a popover plus a
+  highlight ring only; anchorless steps show just the popover. Do not add
+  backdrop strips, page-wide opacity, blur, or box-shadow masks to make a
+  spotlight hole — those obscure the video content we are trying to show.
 
-**Author + record** (the four commands — MP4 is the deliverable):
+**Author + record** (legacy fallback only):
 
 ```bash
 # 1. Rebuild the SPA into the binary (mandatory — go:embed)
@@ -623,29 +648,31 @@ cd tools/runstatus && WEB_CHAT_PACE=0 pnpm exec playwright test agent-actions-vi
 
 # 3. Record at watch-speed → .artifacts/agent-actions/agent-actions-demo.mp4
 cd tools/runstatus && pnpm exec playwright test agent-actions-video --project=chromium
-
-# 4. (optional) GIF + contact sheet from the MP4
-.agents/skills/kitsoki-ui-demo/scripts/render.sh .artifacts/agent-actions/agent-actions-demo.mp4
 ```
 
-**To make a tour demo video for a NEW feature:** copy `agent-actions-manifest.ts`
-→ `<feature>-manifest.ts` and rewrite the step `title`/`body`/`target` for your
-feature — **keep the four-step home → observer intro** so the whole video stays
-tour-narrated. Copy `agent-actions-video.spec.ts` → `<feature>-video.spec.ts`,
-point it at the new manifest and a fresh `ADDR` port, adjust the pre-step hooks
-to open your feature's surfaces, then run the four commands above with the new
-spec name. Anchor every `target` to a `data-testid` the feature actually ships.
+**To make a legacy fallback for a NEW feature:** copy
+`agent-actions-manifest.ts` → `<feature>-manifest.ts` and rewrite the step
+`title`/`body`/`target` for your feature. Copy
+`agent-actions-video.spec.ts` → `<feature>-video.spec.ts`, point it at the new
+manifest and a fresh `ADDR` port, adjust the pre-step hooks to open your
+feature's surfaces, then run the commands above with the new spec name. Anchor
+every `target` to a `data-testid` the feature actually ships.
 
 ## Dev-story PRD → Design (golden conversation-driven example)
 
 When the ask is **making a demo of conversation-driven development** (iterative
 clarification, brief refinement, multi-document publication in one session),
-copy the **dev-story PRD → Design** demo — it is the golden, maintained reference:
+copy the **dev-story PRD → Design** demo — it is the golden reference:
 
-- feature:  `features/dev-story-prd-design.yaml`
-- manifest: `tools/runstatus/src/tour/generated/dev-story-prd-design.ts` (generated — `make features`)
-- flow:     `stories/dev-story/flows/prd_to_design_full.yaml` (no-LLM, cassette-driven)
-- spec (Playwright, stub until slice 2):
+> **De-listed from the catalog.** `features/dev-story-prd-design.yaml` (and its
+> generated manifest) were removed — the binary tour renderer's chat surface
+> doesn't remount into the imported PRD room reliably enough for Pages CI, so
+> the site page shipped as a permanent placeholder. The flow and the stub spec
+> below remain; re-author the feature yaml (git history has the 11-step tour)
+> and run `make features` before recording.
+
+- flow: `stories/dev-story/flows/prd_to_design_full.yaml` (no-LLM, cassette-driven)
+- spec (Playwright, stub):
   `tools/runstatus/tests/playwright/dev-story-prd-design-video.spec.ts`
 
 What makes it the golden example:
@@ -664,12 +691,12 @@ What makes it the golden example:
   kitsoki itself — the cleanest proof that the system can improve itself.
 - **Binary-rendered.** This demo renders straight from the binary with
   `kitsoki tour --feature dev-story-prd-design` (no Playwright, no Node —
-  headless Chrome + ffmpeg alone), the proof that the binary-native tour renderer
-  works end-to-end. The flow fixture is no-LLM (cassette-driven) and passes under
+  headless Chrome + ffmpeg alone) once re-cataloged (see the de-listing note
+  above). The flow fixture is no-LLM (cassette-driven) and passes under
   `kitsoki test flows stories/dev-story/app.yaml`, so the *content* is verified
   independently of the recording.
 
-**Record via the binary:**
+**Record via the binary (after re-cataloging the feature):**
 
 ```bash
 kitsoki tour --feature dev-story-prd-design --out .artifacts/dev-story-prd-design/
@@ -685,28 +712,26 @@ This demo is the **proof that conversation-driven-development methodology** (the
 epic at `docs/proposals/conversation-driven-development.md`) works for kitsoki
 itself — and it runs no-LLM, deterministic, and verifiable.
 
-## rrweb capture → replay-render (deterministic, server-free mode)
+## rrweb capture → bundled replay (deterministic, server-free mode)
 
-The default mode above screen-records a **live** `kitsoki web` drive — the camera
-rolls against a running server, so timing varies run-to-run. The **rrweb mode**
-splits production into two deterministic halves so the video becomes a pure
-function of `(captured events, holds, viewport, DSF)`:
+The **rrweb mode** splits production into two deterministic halves so the viewer
+becomes a pure function of `(captured events, holds, viewport, DSF)`:
 
 1. **Capture (one live drive).** Drive the existing live tour ONCE with
    `installCapture(page)` attached, recording the session's **full** rrweb
    DOM-mutation stream, then `dumpCapture(page)` + `writeEvents(events, path,
    viewport)` to persist `<tour>.rrweb.json` **and** its `<tour>.rrweb.capture.json`
    viewport sidecar.
-2. **Render (server-free, re-runnable).** Replay that stream through an rrweb
-   `Replayer` while Playwright screen-records — no server, no story runtime, no
-   live-timing variance. Re-render frame-exact forever from the JSON + the pinned
-   local rrweb bundle, offline.
+2. **Bundle or replay (server-free, re-runnable).** Use Slidey to bundle the raw
+   log into a self-contained HTML viewer for the product site, or replay the
+   stream through an rrweb `Replayer` for explicit QA/export workflows — no
+   server, no story runtime, no live-timing variance.
 
 **The determinism win.** rrweb is the **local pinned bundle**
 (`node_modules/rrweb/dist/rrweb.umd.min.cjs`, injected via `page.addScriptTag({
 path })` — **never a CDN**), so the render depends only on the committed JSON +
-that pinned bundle: offline, reproducible, re-renderable without ever rebuilding
-or rerunning the server. Capture once live (the slow part); iterate the render
+that pinned bundle: offline, reproducible, viewable without ever rebuilding or
+rerunning the server. Capture once live (the slow part); iterate on the viewer
 fast and free.
 
 **⚠️ Canvas/video boundary — this mode does NOT cover every surface.** Capture
@@ -722,7 +747,7 @@ is clip-safe **only** when the render viewport/DSF equals the capture's;
 otherwise it silently clips to the top-left. `writeEvents(...viewport)` records
 the capture viewport/DSF in the sidecar and the render helpers
 (`assertViewportMatchesCapture`) **throw loudly** on any mismatch rather than
-ship a clipped video. (Guard test: `rrweb-replay-viewport-assert.spec.ts`.)
+ship a clipped replay/export. (Guard test: `rrweb-replay-viewport-assert.spec.ts`.)
 
 ### Worked reference specs
 
@@ -730,16 +755,16 @@ ship a clipped video. (Guard test: `rrweb-replay-viewport-assert.spec.ts`.)
 |---|---|
 | `tests/playwright/agent-actions-rrweb-capture.spec.ts` | **capture** — the simple all-DOM tour (forks the golden `agent-actions-video.spec.ts`; same live drive + baseline, plus the rrweb hooks). 1600×900, DSF 1. |
 | `tests/playwright/diagram-showcase-rrweb-capture.spec.ts` | **capture** — the complex view-dwell tour (SVG StateDiagram). 1600×900, DSF 1. |
-| `tests/playwright/rrweb-replay-render.spec.ts` | **render** — replays a captured stream (`RRWEB_TARGET=agent-actions\|diagram-showcase`, `RRWEB_HOLDS=1` for the held render). |
+| `tests/playwright/rrweb-replay-render.spec.ts` | **export/QA render** — replays a captured stream (`RRWEB_TARGET=agent-actions\|diagram-showcase`, `RRWEB_HOLDS=1` for the held render). |
 | `tests/playwright/rrweb-replay-smoke.spec.ts` | fast end-to-end smoke of the whole round-trip. |
 | `tests/playwright/_helpers/rrweb-replay.ts` | the harness: `installCapture` / `dumpCapture` / `writeEvents` / `renderReplayWithHolds` / `renderReplayToMp4` (+ `assertViewportMatchesCapture`). |
 
-These point at the rrweb path the same way the live-record sections point at
+These point at the rrweb path the same way the legacy live-record sections point at
 `agent-actions-video.spec.ts`.
 
 ### Chapter-keyed holds — render each view for its real dwell
 
-A straight-through replay (`renderReplayToMp4`) reproduces the DOM-mutation
+A straight-through export render (`renderReplayToMp4`) reproduces the DOM-mutation
 **timeline**, but during a multi-second dwell the reconstructed DOM is static, so
 the recorder drops frames and a view that held ~7s live collapses to ~1s in the
 extracted frames. The fix (`renderReplayWithHolds`) drives the Replayer **chapter
@@ -761,7 +786,10 @@ make build-bin   # stage + build bin/kitsoki (ad-hoc signed; NEVER cp — that S
 cd tools/runstatus && pnpm exec playwright test agent-actions-rrweb-capture --project=chromium
 #   diagram-showcase capture is LONG (~minutes) — run in the background and poll.
 
-# 2. RENDER (server-free; re-run as often as you like — no rebuild, offline)
+# 2. PRODUCT-SITE VIEWER (preferred; skips MP4 rendering)
+make demo-feature-rrweb FEATURE=<id>
+
+# 3. OPTIONAL EXPORT RENDER (only when an explicit video QA/share artifact is needed)
 cd tools/runstatus && RRWEB_TARGET=agent-actions \
   pnpm exec playwright test rrweb-replay-render --project=chromium
 #   view-dwell tours: add RRWEB_HOLDS=1 (needs <tour>/holds-chapters.json beside the events)
@@ -769,7 +797,7 @@ cd tools/runstatus && RRWEB_TARGET=diagram-showcase RRWEB_HOLDS=1 \
   pnpm exec playwright test rrweb-replay-render --project=chromium
 ```
 
-### QA the replay video at ≥2fps
+### QA an exported replay video at ≥2fps
 
 When handing a replay-rendered video to `kitsoki-ui-qa`, **sample at ≥2fps**
 (`renderReplayWithHolds` extracts at fps=2 by default) — held views make a
@@ -789,10 +817,10 @@ shared with the live baseline**, not an rrweb defect. Fix in the tour (give
 `aa-rollup` an expand action) or set the scenario step `required:false` — a minor
 follow-up, not a blocker for adopting rrweb mode.
 
-## Onboarding tour recording
+## Legacy Onboarding MP4 Recording
 
-The generic onboarding tour has a dedicated, maintained spec that records it as a
-first-class demo mode:
+The generic onboarding tour still has a dedicated maintained MP4 spec. Treat it
+as the legacy fallback/export path until it is cataloged as an rrweb replay:
 
 ```
 tools/runstatus/tests/playwright/tour-video.spec.ts
@@ -804,7 +832,7 @@ step — a drift guard baked into the recording. It drives all 13 tour steps in
 Oregon Trail no-LLM mode, submits one intent during the input-bar step so the
 trace lights up, and captures a labeled `NN-<step-id>.png` per step.
 
-**One-liner record** (rebuild + record + render MP4/GIF/contact-sheet):
+**One-liner record** (legacy MP4 export):
 
 ```bash
 make demo-tour
@@ -831,13 +859,12 @@ cd tools/runstatus && WEB_CHAT_PACE=0 pnpm exec playwright test tour-video --pro
 # 2. Record at watch-speed
 cd tools/runstatus && pnpm exec playwright test tour-video --project=chromium
 
-# 3. (optional) GIF + contact sheet — the MP4 is already produced by step 2
-S=.agents/skills/kitsoki-ui-demo/scripts
-$S/render.sh .artifacts/tour-video/tour-video-demo.mp4
+# 3. Do not render GIF/contact-sheet output unless a legacy downstream target
+#    explicitly asks for it; the MP4 is already produced by step 2.
 ```
 
-Output lands in `.artifacts/tour-video/`: the canonical `tour-video-demo.mp4`,
-an optional `.gif` + contact sheet, and numbered `NN-<step-id>.png` screenshots.
+Output lands in `.artifacts/tour-video/`: the canonical `tour-video-demo.mp4`
+and numbered `NN-<step-id>.png` screenshots.
 
 To QA the recording against the tour scenarios:
 
@@ -1105,8 +1132,8 @@ It mirrors this skill's patterns, adapted to VS Code:
 - **Watch-speed staging tips proven here:** widen the Kitsoki sidebar (drag the
   vertical sash) AFTER the lobby submit so the report renders legibly without
   tripping the side-by-side breakpoint; clear the narration overlay
-  (`__tourSkip`) before any SPA interaction or editor beat (its backdrop
-  intercepts clicks); keep the leading `>` when filling the Command Palette
+  (`__tourSkip`) before any SPA interaction or editor beat (its popover can
+  cover controls); keep the leading `>` when filling the Command Palette
   (replacing it searches files, not commands); suppress VS Code chrome noise in
   the throwaway workspace settings (`git.enabled:false`,
   `editor.minimap.enabled:false`) so frames stay clean.
@@ -1123,6 +1150,14 @@ Then QA the produced MP4 — see [[kitsoki-ui-qa]] → "Full-editor (VS Code)
 evidence" (pass the labeled `NN-*.png` via `--frames`).
 
 ## Terminal surface (MCP / coding-agent demos)
+
+A terminal demo can still be scenario evidence. When the terminal clip is proving
+a catalog scenario (for example a TUI dogfood marathon), use `tools/tui-bridge`
+or a termcast player only as the capture adapter for the emitted scenario run:
+read `driver-plan.json`, drive the named TUI leg, write video/frames under that
+leg's evidence directory, then `--attach-evidence` and `--record-driver-event`.
+If the terminal spec has its own hard-coded backlog or pass criteria, it is a
+demo of the bridge, not scenario QA evidence.
 
 A demo where an *external coding agent* drives kitsoki over the **MCP** server
 (`kitsoki mcp`) is recorded on a **terminal** surface, not the web SPA: an xterm.js
@@ -1170,9 +1205,16 @@ make mcp-qa           # vision QA gate (GATED: local claude CLI)
 - **rrweb capture → replay-render (deterministic, server-free):**
   `tests/playwright/_helpers/rrweb-replay.ts` + `agent-actions-rrweb-capture.spec.ts`
   (simple) / `diagram-showcase-rrweb-capture.spec.ts` (complex view-dwell) /
-  `rrweb-replay-render.spec.ts` (render) / `rrweb-replay-smoke.spec.ts` (smoke) /
+  existing `*-video.spec.ts` tours in `KITSOKI_RRWEB_OUT` mode /
+  `rrweb-replay-smoke.spec.ts` (smoke) /
   `rrweb-replay-viewport-assert.spec.ts` (viewport-match guard). Canvas/video
-  surfaces stay on the live `*-video.spec.ts` path.
+  surfaces stay on the legacy MP4 export path only when rrweb cannot reconstruct
+  the actual user-visible content.
+- **Real xterm.js TUI capture:** `tools/tui-bridge`, especially
+  `tools/tui-bridge/tests/presentation-onboarding-real-tui.e2e.spec.ts` and
+  `tools/tui-bridge/README.md`'s project-onboarding rrweb runbook. Use this for
+  onboarding demos and other terminal proof; do not route these through
+  `kitsoki record` or GIF tooling.
 - Sibling feature tour: `trace-features-video.spec.ts` + `src/tour/trace-manifest.ts`
 - Sibling feature tour (cassette slow-play streaming): `chat-stream-video.spec.ts` +
   `src/tour/chat-stream-manifest.ts` — films the live turn-stream in the MAIN

@@ -137,6 +137,31 @@ describe("installKitsokiVisualHelper", () => {
     });
   });
 
+  it("exposes Report bug through the visible Meta launcher even when the menu is closed", () => {
+    document.body.innerHTML = `
+      <div data-testid="meta-launcher">
+        <button data-testid="meta-button" title="Meta mode">Meta</button>
+      </div>
+    `;
+    visible("[data-testid='meta-launcher']", { x: 1200, y: 820, width: 180, height: 48 });
+    visible("[data-testid='meta-button']", { x: 1210, y: 830, width: 110, height: 36 });
+
+    const got = installKitsokiVisualHelper()!.observe();
+    expect(got.actions).toEqual(
+      expect.arrayContaining([
+        {
+          handle: "testid:meta-report-bug",
+          selector: '[data-testid="meta-report-bug"]',
+          testid: "meta-report-bug",
+          role: "button",
+          label: "Report bug",
+          disabled: false,
+          bbox: { x: 1210, y: 830, width: 110, height: 36 },
+        },
+      ])
+    );
+  });
+
   it("exposes a Slidey-compatible rrweb envelope from the rolling capture buffer", () => {
     let emit!: (event: RrwebEvent) => void;
     startSessionCapture((opts) => {

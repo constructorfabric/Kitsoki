@@ -216,6 +216,7 @@ func runInterceptEngine(ctx context.Context, in interceptEngineInput) (intercept
 
 	hostReg := host.NewRegistry()
 	host.RegisterBuiltins(hostReg)
+	host.RegisterStarlarkBindings(hostReg, def.StarlarkHostBindings)
 	if err := hostReg.ValidateAllowList(def.Hosts); err != nil {
 		return interceptResult{}, infraError("validate hosts: %v", err)
 	}

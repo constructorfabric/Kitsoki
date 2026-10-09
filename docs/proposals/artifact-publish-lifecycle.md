@@ -3,11 +3,13 @@
 **Status:** Draft v1. Nothing implemented yet.
 **Kind:**   runtime
 **Epic:**   ../artifact-driven-stories.md
-**Depends on:** slice 1 (the keyed instance + workspace — [`artifact-instances.md`](artifact-instances.md))
+**Depends on:** [`artifact-instances.md`](artifact-instances.md) for the keyed
+workspace and [`artifact-job-registry.md`](artifact-job-registry.md) for the
+durable job identity.
 
 ## Why
 
-[Slice 1](artifact-instances.md) gives a story a resumable **draft** instance in a
+[`artifact-instances.md`](artifact-instances.md) gives a story a resumable **draft** instance in a
 gitignored workspace. The back half of the lifecycle — making the work shareable,
 publishing the canonical doc, and then disposing of the artifacts — exists today
 only as the design pipeline's bespoke `publish_design.py`:
@@ -36,8 +38,9 @@ Three gaps follow:
    but has no mechanism to enact it.
 
 3. **Nothing reclaims archives.** Kept artifacts accrue forever with no retention
-   policy and no way to enumerate-and-reclaim — the data [slice 3](artifact-instance-console.md)
-   needs to warn on.
+   policy and no way to enumerate-and-reclaim — the data
+   [`artifact-instance-console.md`](artifact-instance-console.md) needs to warn
+   on.
 
 ## What changes
 
@@ -108,7 +111,7 @@ Promotion, publish, and disposition are deterministic — record them as
 `instance.lifecycle` datapoints (the event slice 1 introduces), carrying
 `{instance_id, action: share|publish|dispose, paths, disposition}` so a run's
 "where did the artifacts go" is reconstructable from the trace. GC reclaim is an
-operator action ([slice 3](artifact-instance-console.md)); record the
+operator action ([artifact-instance-console.md](artifact-instance-console.md)); record the
 enumerate-and-reclaim as a lifecycle datapoint too. No new interpretive decision.
 
 ## Engine seams & invariants
@@ -179,10 +182,11 @@ room is covered by the existing publish fixture (agent phases mocked).
 
 ## Non-goals
 
-- **No instance/resume substrate here.** That's [slice 1](artifact-instances.md);
-  this slice consumes its instance concept.
+- **No instance/resume substrate here.** That's
+  [`artifact-instances.md`](artifact-instances.md); this slice consumes its
+  instance concept.
 - **No operator surface here.** The warn/delete UI is
-  [slice 3](artifact-instance-console.md); this slice provides the `instance.gc`
+  [`artifact-instance-console.md`](artifact-instance-console.md); this slice provides the `instance.gc`
   data it renders.
 - **No artifact file format.** Rendering on publish reuses
   [artifact-format](artifact-format.md)'s `Render`; this slice doesn't define it.

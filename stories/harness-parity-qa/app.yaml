@@ -7,6 +7,7 @@ app:
 
 hosts:
   - host.run
+  - host.starlark.run
 
 world:
   question:       { type: string, default: "" }
@@ -16,6 +17,18 @@ world:
   markdown_path:  { type: string, default: ".context/harness-parity-qa.md" }
   visual_policy:  { type: string, default: "deterministic" }
   parity_result:  { type: object, default: {} }
+  provider_stdout:    { type: string, default: "" }
+  provider_exit_code: { type: int, default: 0 }
+  provider_ok:        { type: bool, default: false }
+  tui_stdout:         { type: string, default: "" }
+  tui_exit_code:      { type: int, default: 0 }
+  tui_ok:             { type: bool, default: false }
+  web_stdout:         { type: string, default: "" }
+  web_exit_code:      { type: int, default: 0 }
+  web_ok:             { type: bool, default: false }
+  vscode_stdout:      { type: string, default: "" }
+  vscode_exit_code:   { type: int, default: 0 }
+  vscode_ok:          { type: bool, default: false }
   status:         { type: string, default: "idle" }
 
 intents:

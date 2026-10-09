@@ -1,0 +1,213 @@
+# check_parallel_legs_via_arena — P2.10 "parallel legs via arena": `check ...
+# parallel=true` routes plan -> rooms/parallel.yaml instead of rooms/
+# execute.yaml. This fixture stubs the arena host.run call
+# (run_arena_persona_qa_legs) with a canned set of two cell "completion
+# states" already folded into drive_result/judge_result pairs (the shape
+# tools/persona_qa/completion.py::to_scenario_qa_leg_result produces from a
+# real CompletionState -- see tools/persona_qa/tests/test_completion.py for
+# that mapping proved directly).
+#
+# host.starlark.run is left ENTIRELY UNSTUBBED (no by_call entry, no
+# host.starlark.run: key at all -- registering a stub for a handler NAME
+# replaces it wholesale, so scripts/plan_legs.star, scripts/
+# record_leg_result.star, and scripts/build_report.star all run for REAL,
+# mirroring check_degraded_leg_carries_cause.yaml's / plan_legs_reads_real_
+# run_bundle.yaml's established "leave host.starlark.run real" pattern (a
+# PARTIAL host.starlark.run: block, stubbing only SOME call ids, does NOT
+# leave the rest real -- RegisterHostStubs (internal/testrunner/hoststubs.go)
+# calls reg.Replace per handler NAME, not per call id, so an unmatched call
+# id under a declared host.starlark.run: block silently falls through to an
+# EMPTY successful no-op instead of the real script; this fixture hit exactly
+# that trap during authoring). plan_legs.star's real ctx.fs.read is served,
+# via starlark_inspect_cassette, from a driver-plan.json fixture with two
+# transport legs, mirroring tools/product-journey/run.py's real --transport
+# output shape.
+#
+# This proves the fold-back produces the SAME report shape (verdict + cause
+# columns, pass/degraded counts) a serial run produces -- record_leg_result.
+# star's REAL batch-mode logic and build_report.star's REAL summary
+# computation both run against the canned arena records below, not a
+# stand-in.
+#
+# Two legs, one of each outcome, to exercise both columns:
+#   - bugfix::tui: the arena cell's CompletionState was "solved" -> judge
+#     verdict "pass", drive status "captured", real evidence_refs -- proves a
+#     genuine pass can come out of the parallel path, not just degrades.
+#   - bugfix::web: the arena cell's CompletionState was "blocked" (a real
+#     missing-proof blocker, mirroring the shape
+#     tools/arena/scripts/run_scenario_qa_legs_parallel.py reports for a
+#     replay-smoke run bundle that never printed a run_dir) -> judge verdict
+#     "degraded-evidence" with record_leg_result.star's REAL _cause() logic
+#     computing "blocker: missing proof: bugfix" -- proves the fail-closed
+#     cause column survives the arena fold unchanged.
+#
+# Neither leg's cassette fixture declares natural_utterances, so this
+# fixture does not also re-prove the live-authorization backstop -- that is
+# already covered end-to-end (serial path) by
+# check_live_authorization_warning_no_profile.yaml /
+# check_degraded_leg_carries_cause.yaml; this one is scoped to proving the
+# PARALLEL fold-back specifically.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+starlark_inspect_cassette: ../cassettes/check_parallel_legs_via_arena.inspect.yaml
+
+host_handlers:
+  host.run:
+    by_call:
+      emit_scenario_qa_run:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            run_id: scenario-qa-parallel-run
+            run_dir: /repo/.artifacts/product-journey/scenario-qa-parallel-run
+            driver_plan_path: /repo/.artifacts/product-journey/scenario-qa-parallel-run/driver-plan.md
+            execution_plan_path: /repo/.artifacts/product-journey/scenario-qa-parallel-run/execution-plan.md
+            agent_brief_path: /repo/.artifacts/product-journey/scenario-qa-parallel-run/agent-brief.md
+      run_arena_persona_qa_legs:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: ok
+            leg_count: 2
+            records:
+              - leg:
+                  leg_id: "bugfix::tui"
+                  scenario: "bugfix"
+                  transport: "tui"
+                  transport_evidence_contract:
+                    primary_tool: "render.tui_png"
+                    evidence_kind: "rendered_tui_frame"
+                    level: "frame-level"
+                drive_result:
+                  status: "captured"
+                  evidence_refs: ["cassette://bugfix/tui/trace"]
+                  blockers: []
+                  harness_used: "replay"
+                  summary: "29/29 checks passed"
+                judge_result:
+                  verdict: "pass"
+                  summary: "29/29 checks passed"
+                  cited_frames: []
+              - leg:
+                  leg_id: "bugfix::web"
+                  scenario: "bugfix"
+                  transport: "web"
+                  transport_evidence_contract:
+                    primary_tool: "visual.snapshot"
+                    evidence_kind: "browser_screenshot"
+                    level: "frame-level"
+                drive_result:
+                  status: "blocked"
+                  evidence_refs: []
+                  blockers: ["missing proof: bugfix"]
+                  harness_used: "replay"
+                  summary: "no run bundle produced by the parallel replay-smoke cell"
+                judge_result:
+                  verdict: "degraded-evidence"
+                  summary: "no run bundle produced by the parallel replay-smoke cell"
+                  cited_frames: []
+      build_scenario_qa_deck:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: scenario_qa_deck_built
+            run_dir: /repo/.artifacts/product-journey/scenario-qa-parallel-run
+            deck_path: /repo/.artifacts/product-journey/scenario-qa-parallel-run/deck.slidey.json
+            leg_count: 2
+            pass_count: 1
+            fail_count: 0
+            degraded_count: 1
+            summary: "1 / 2 transport checks passed, 1 degraded-evidence."
+
+turns:
+  - intent:
+      name: check
+      slots:
+        scenario: bugfix
+        transport: tui,web
+        persona: core-maintainer
+        target: gears-rust
+        seed: story-flow-parallel
+        parallel: "true"
+    expect_state: report
+    expect_world:
+      mode: catalog
+      parallel: "true"
+      run_id: scenario-qa-parallel-run
+      leg_count: 2
+      pass_count: 1
+      fail_count: 0
+      degraded_count: 1
+      # build_report.star (real -- see header comment) computes this from
+      # world.run_dir, which this fixture's emit_scenario_qa_run stub sets to
+      # an ABSOLUTE path (mirroring a real run bundle location); build_
+      # scenario_qa_deck's stub deliberately omits report_path so this real,
+      # absolute guess stays authoritative (a missing bind source key leaves
+      # the prior value in place -- other fixtures avoid this by stubbing
+      # build_report directly with a repo-relative value; this one leaves it
+      # real on purpose, per the header comment).
+      report_path: "/repo/.artifacts/product-journey/scenario-qa-parallel-run/report.md"
+      report_summary: "1 / 2 transport checks passed, 1 degraded-evidence."
+      deck_path: "/repo/.artifacts/product-journey/scenario-qa-parallel-run/deck.slidey.json"
+      leg_results:
+        items:
+          - leg_id: "bugfix::tui"
+            scenario: "bugfix"
+            transport: "tui"
+            visual_surface: ""
+            evidence_level: "frame-level"
+            natural_utterance_count: 0
+            natural_utterance_example: ""
+            natural_utterance_sources: []
+            driver_status: "captured"
+            evidence_refs: ["cassette://bugfix/tui/trace"]
+            post_drive_evidence_ref: ""
+            post_drive_editor_evidence_ref: ""
+            harness_used: "replay"
+            playback_path: ""
+            playback_caption: ""
+            verdict: "pass"
+            verdict_summary: "29/29 checks passed"
+            cause: ""
+            frames_dir: ""
+          - leg_id: "bugfix::web"
+            scenario: "bugfix"
+            transport: "web"
+            visual_surface: ""
+            evidence_level: "frame-level"
+            natural_utterance_count: 0
+            natural_utterance_example: ""
+            natural_utterance_sources: []
+            driver_status: "blocked"
+            evidence_refs: []
+            post_drive_evidence_ref: ""
+            post_drive_editor_evidence_ref: ""
+            harness_used: "replay"
+            playback_path: ""
+            playback_caption: ""
+            verdict: "degraded-evidence"
+            verdict_summary: "no run bundle produced by the parallel replay-smoke cell"
+            cause: "blocker: missing proof: bugfix"
+            frames_dir: ""
+    expect_host_calls:
+      - handler: host.run
+        args: { call: emit_scenario_qa_run }
+      - handler: host.starlark.run
+        args: { call: plan_legs }
+      - handler: host.run
+        args: { call: run_arena_persona_qa_legs }
+      - handler: host.starlark.run
+        args: { call: record_leg_result }
+      - handler: host.starlark.run
+        args: { call: build_report }
+      - handler: host.run
+        args: { call: build_scenario_qa_deck }
+    expect_view_matches: "SCENARIO QA REPORT[\\s\\S]*1 / 2 transport checks passed, 1 degraded-evidence[\\s\\S]*tui \\[frame-level\\][^\\n]*verdict=pass driver=captured[\\s\\S]*web \\[frame-level\\][^\\n]*verdict=degraded-evidence driver=blocked"
+
+expect_no_errors: true

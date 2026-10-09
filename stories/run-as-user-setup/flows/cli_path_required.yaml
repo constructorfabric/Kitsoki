@@ -1,0 +1,38 @@
+test_kind: flow
+app: ../app.yaml
+use_orchestrator: true
+initial_state: details
+initial_world:
+  operator_user: Brad.Smith
+  protected_root: /Users/Brad.Smith/code/kitsoki
+  codex_bin: /opt/homebrew/bin/codex
+  claude_bin: auto
+  setup_summary: "ready to apply"
+
+host_handlers:
+  host.run:
+    data:
+      ok: false
+      exit_code: 78
+      stdout: |
+        CLI_PATH_REQUIRED: configured codex path is not executable: /opt/homebrew/bin/codex
+        Set codex_bin to an absolute executable path, or set it to auto and make codex available on PATH.
+
+turns:
+  - intent:
+      name: apply
+      slots: {}
+    expect_state: needs_cli_paths
+    expect_world:
+      apply_ok: false
+      apply_exit_code: 78
+      status: "cli path required"
+      last_error: |
+        CLI_PATH_REQUIRED: configured codex path is not executable: /opt/homebrew/bin/codex
+        Set codex_bin to an absolute executable path, or set it to auto and make codex available on PATH.
+    expect_host_calls:
+      - handler: host.run
+        args: { call: apply_run_as_user_setup }
+    expect_view_matches: "codex_bin"
+
+expect_no_errors: true

@@ -1,0 +1,131 @@
+# resume_journal_checkpoint — resume loads a durable journal and autonomously
+# continues from the saved index.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  run_id: "resume-demo"
+  journal_path: ".artifacts/dogfood-marathon/resume-demo/journal.json"
+  autonomous: false
+
+host_handlers:
+  host.starlark.run:
+    by_call:
+      load_backlog:
+        data:
+          backlog:
+            items:
+              - { id: "case-1", title: "Recorded case" }
+              - { id: "case-2", title: "Next case" }
+          run_id: "resume-demo"
+          run_dir: ".artifacts/dogfood-marathon/resume-demo"
+          journal_path: ".artifacts/dogfood-marathon/resume-demo/journal.json"
+          journal_markdown_path: ".artifacts/dogfood-marathon/resume-demo/journal.md"
+          results: { items: [ { case_id: "case-1", exit: "shipped", verify_status: "solved" } ] }
+          last_result: { case_id: "case-1", title: "Recorded case", source_url: "https://example.test/case-1", exit: "shipped", verify_status: "solved", tokens: 1000, tokens_display: "1000", wall_s: 12, wall_s_display: "12", trace: ".artifacts/dogfood-marathon/resume-demo/traces/case-1.jsonl" }
+          findings: { items: [] }
+          exceptions: { items: [] }
+          case_index: 1
+          cases_processed: 1
+          loaded_journal: true
+          journal_status: "resumed"
+          journal_summary: "resumed"
+          last_checkpoint: "recorded"
+      persist_journal:
+        data:
+          run_id: "resume-demo"
+          run_dir: ".artifacts/dogfood-marathon/resume-demo"
+          journal_path: ".artifacts/dogfood-marathon/resume-demo/journal.json"
+          journal_markdown_path: ".artifacts/dogfood-marathon/resume-demo/journal.md"
+          journal_status: "written"
+          journal_summary: "checkpoint written"
+          last_checkpoint: "intake"
+      pick_case:
+        data:
+          current_case: { id: "case-2", title: "Next case", baseline: "def456^", repro_command: "go test ./pkg/b" }
+          current_case_id: "case-2"
+          current_case_json: "{\"id\":\"case-2\",\"title\":\"Next case\",\"baseline\":\"def456^\",\"repro_command\":\"go test ./pkg/b\"}"
+      verify_case:
+        data:
+          verify_result: { status: "solved", how: "independent oracle passed on the resumed worktree" }
+      record_case:
+        data:
+          results:
+            items:
+              - { case_id: "case-1", exit: "shipped", verify_status: "solved" }
+              - { case_id: "case-2", exit: "shipped", verify_status: "solved" }
+          last_result: { case_id: "case-2", title: "Next case", source_url: "https://example.test/case-2", exit: "shipped", verify_status: "solved", tokens: 2000, tokens_display: "2000", wall_s: 24, wall_s_display: "24", trace: ".artifacts/dogfood-marathon/resume-demo/traces/case-2.jsonl" }
+          findings: { items: [] }
+          exceptions: { items: [] }
+          exception_pending: ""
+          exception_summary: ""
+          record_status: "recorded"
+      aggregate_run:
+        data:
+          rollup:
+            counts: { processed: 2, solved: 2, partial: 0, failed: 0, skipped: 0, shipped: 2, needs_human: 0 }
+            totals: { cost_usd: 2.25, tokens: 3000, wall_s: 36 }
+            worked: ["2 cases independently verified solved"]
+            didnt: []
+            headline: "Processed 2 cases: 2 solved."
+      build_deck:
+        data:
+          deck_spec:
+            spec_path: "stories/dogfood-marathon/baked/report.deck.json"
+            summary: "Dogfood marathon report — 2 cases, 2 solved."
+            case_decks: []
+
+  host.agent.task:
+    by_call:
+      triage_case:
+        data:
+          ok: true
+          submitted: { verdict: "STILL-LIVE", evidence: "pkg/b/bar.go:42", note: "bug reproduces at resume baseline" }
+      drive_case:
+        data:
+          ok: true
+          submitted:
+            exit: "shipped"
+            worktree: ".worktrees/case-2"
+            branch: "fix/case-2"
+            deliverable_present: true
+            oracle_pass: true
+            trace: ".artifacts/dogfood-marathon/resume-demo/traces/case-2.jsonl"
+            cost_usd: 1.25
+            tokens: 2000
+            wall_s: 24
+            findings: []
+        delay: "20ms"
+
+  host.slidey.render:
+    by_call:
+      render_report:
+        data:
+          ok: true
+          path: "stories/dogfood-marathon/baked/report.deck.json"
+
+  host.artifacts_dir:
+    by_call:
+      emit_report:
+        data:
+          ok: true
+          handle: { id: "dogfood-marathon#resume", kind: "slideshow", mime: "text/html" }
+          path: "stories/dogfood-marathon/baked/report.deck.json"
+
+turns:
+  - intent: { name: resume, slots: {} }
+    advance_clock: "2s"
+    expect_state: done
+    expect_world:
+      loaded_journal: true
+      case_index: 2
+      cases_processed: 2
+      report_handle: "dogfood-marathon#resume"
+      results:
+        items:
+          - { case_id: "case-1", exit: "shipped", verify_status: "solved" }
+          - { case_id: "case-2", exit: "shipped", verify_status: "solved" }
+
+expect_terminal: false
+expect_no_errors: true

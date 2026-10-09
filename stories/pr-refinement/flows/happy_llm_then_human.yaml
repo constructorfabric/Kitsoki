@@ -49,7 +49,7 @@ host_handlers:
         affected_files:   ["internal/tui/foyer.go"]
         failing_checks:   ["go-test"]
         confidence:       0.92
-        reasoning:        "Trace shows the off-by-one; same pattern as the cyber-repo TUI fix from last week."
+        reasoning:        "Trace shows the off-by-one; same pattern as the focused-engineering TUI fix from last week."
         # Judge fields piggy-backed on the same envelope; confidence is
         # shared so a single value satisfies both schemas at 0.92 (>
         # judge_confidence_threshold so the emit_intent auto-fires).

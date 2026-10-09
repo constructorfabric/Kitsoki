@@ -44,6 +44,8 @@ func (d *stubDrafter) Draft(_ context.Context, _ Recipe, rung int) (DraftResult,
 func goodAuthorArtifact() json.RawMessage {
 	return json.RawMessage(`{
 		"files_changed": ["app.yaml"],
+		"files_changed_display": "1 file: app.yaml",
+		"diff_path": ".artifacts/mining/r-bind/author.diff",
 		"flows_green": true,
 		"summary_markdown": "Bind iface.ticket to host.local_files.ticket so the repeated free-form ticket lookup routes deterministically."
 	}`)

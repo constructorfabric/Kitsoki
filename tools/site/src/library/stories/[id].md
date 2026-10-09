@@ -1,0 +1,1 @@
+<ExtensionStory :story="$params.story" />

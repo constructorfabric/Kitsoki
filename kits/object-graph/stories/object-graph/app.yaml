@@ -1,0 +1,108 @@
+# object-graph — @kitsoki/object-graph's sole provided story. Declares the
+# kit's one host_interfaces surface, "graph": load/lint/diff/apply/project
+# default straight to the engine's generic host.graph.* verbs (D1 — no Go in
+# the kit, the substrate is engine infrastructure); "presentation" resolves
+# to the SAME "host.graph" Go entry point, which for that one op delegates to
+# this kit's own scripts/presentation.star (D2.1 — see
+# internal/host/graph_handlers.go's package doc for exactly how).
+#
+# This story is a thin, standalone-loadable shell around that interface: it
+# has no UI of its own (the kit's Vue viewer lives under ui/, served at
+# /kit/kitsoki/object-graph/ui/graph.mjs and calling this same interface over
+# JSON-RPC/kit_call) and exists mainly so
+# internal/kitendpoint.Dispatcher.resolveInterface has a provided story to
+# find "graph" declared on, and so the kit has something
+# `kitsoki kit verify`'s conformance flows can exercise end to end (see
+# flows/basic.yaml, which drives it against example/catalog.yaml, the kit's
+# own small seed catalog).
+app:
+  id: kit-object-graph-viewer
+  version: 0.1.0
+
+host_interfaces:
+  graph:
+    description: "The project object graph engine substrate (internal/graph), exposed generically."
+    operations:
+      load:
+        input: { catalog_path: string, overlay_path: string }
+        output: { node_count: int, node_ids: list, warnings: list }
+      lint:
+        input: { catalog_path: string }
+        output: { issues: list, issue_count: int, clean: bool }
+      diff:
+        input: { catalog_path: string, overlay_path: string }
+        output: { nodes: list }
+      apply:
+        input: { catalog_path: string, changeset_id: string, dry_run: bool }
+        output: { rejected: bool, reject_reasons: list, lint_issues: list, changed_files: list }
+      project:
+        input: { catalog_path: string, overlay_path: string, graph_id: string }
+        output: { graph: object }
+      presentation:
+        input: {}
+        output: { layers: list }
+    default: host.graph
+
+world:
+  catalog_path: { type: string, default: "" }
+  node_count: { type: int, default: 0 }
+  lint_clean: { type: bool, default: false }
+  issue_count: { type: int, default: 0 }
+
+intents:
+  start:
+    description: "Load the catalog at world.catalog_path."
+    examples: ["start", "load"]
+  lint:
+    description: "Lint the loaded catalog."
+    examples: ["lint"]
+  finish:
+    description: "Finish."
+    examples: ["finish", "done"]
+
+exports:
+  intents: [start]
+
+exits:
+  done:
+    description: "Loaded and linted the catalog."
+    requires: [node_count]
+
+root: idle
+
+states:
+  idle:
+    description: "Ready. catalog_path={{ world.catalog_path }}"
+    view: "Ready."
+    on:
+      start:
+        - target: loaded
+
+  loaded:
+    description: "Catalog loaded: {{ world.node_count }} node(s)."
+    view: "Loaded {{ world.node_count ?? \"(pending)\" }} node(s)."
+    on_enter:
+      - invoke: iface.graph.load
+        with:
+          catalog_path: "{{ world.catalog_path }}"
+        bind:
+          node_count: node_count
+        on_error: idle
+    on:
+      lint:
+        - target: linted
+
+  linted:
+    description: "Lint: clean={{ world.lint_clean }}, issues={{ world.issue_count }}."
+    view: "Lint clean={{ world.lint_clean ?? \"(pending)\" }}."
+    on_enter:
+      - invoke: iface.graph.lint
+        with:
+          catalog_path: "{{ world.catalog_path }}"
+        bind:
+          lint_clean: clean
+          issue_count: issue_count
+        on_error: idle
+    on:
+      finish:
+        - target: "@exit:done"

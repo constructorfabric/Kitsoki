@@ -1,0 +1,10 @@
+app:
+  id: story-authoring-builtin
+  version: 0.1.0
+
+root: start
+
+states:
+  start:
+    view:
+      - prose: "Start"

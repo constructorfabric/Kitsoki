@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Ground a vision QA review of a UI demo against a feature description + usage
-# scenarios. Spawns the local `claude` CLI (no API key, no per-call cost —
-# see memory project_oracle_uses_claude_cli) as a READ-ONLY agent that reads the
-# extracted frame PNGs with its Read tool and emits a structured verdict.json.
+# scenarios. Spawns the first available READ-ONLY vision reviewer from the local
+# agent CLIs (Codex, Claude, or agy) over the extracted frame PNGs and emits
+# verdict.json.
 #
 # Reliability is NOT from the model being deterministic — it comes from:
 #   • a fixed, deterministic frame set (extract-frames.sh) as the ONLY evidence;
@@ -24,10 +24,14 @@
 # deterministic pieces (extract-frames.sh, report.sh) are testable without an LLM.
 #
 # Usage: qa-review.sh --frames <dir> --feature <file> --scenarios <file>
-#                     --out <verdict.json> [--model M] [--no-adversary]
+#                     --out <verdict.json> [--model M]
+#                     [--reviewer auto|codex|claude|agy|ORDER] [--no-adversary]
 set -euo pipefail
 
-frames="" feature="" scenarios="" out="" model="claude-opus-4-8" adversary=1
+frames="" feature="" scenarios="" out=""
+model="${KITSOKI_UI_QA_MODEL:-}"
+reviewer="${KITSOKI_UI_QA_REVIEWER:-auto}"
+adversary=1
 while [ $# -gt 0 ]; do
   case "$1" in
     --frames)       frames="$2"; shift 2 ;;
@@ -35,6 +39,7 @@ while [ $# -gt 0 ]; do
     --scenarios)    scenarios="$2"; shift 2 ;;
     --out)          out="$2"; shift 2 ;;
     --model)        model="$2"; shift 2 ;;
+    --reviewer)     reviewer="$2"; shift 2 ;;
     --no-adversary) adversary=0; shift ;;
     *) echo "unknown arg: $1" >&2; exit 1 ;;
   esac
@@ -42,14 +47,6 @@ done
 
 command -v jq     >/dev/null 2>&1 || { echo "jq not on PATH" >&2; exit 1; }
 command -v python3 >/dev/null 2>&1 || { echo "python3 not on PATH" >&2; exit 1; }
-case "$model" in
-  gpt*|o*)
-    command -v codex >/dev/null 2>&1 || { echo "codex CLI not on PATH for GPT QA model: $model" >&2; exit 1; }
-    ;;
-  *)
-    command -v claude >/dev/null 2>&1 || { echo "claude CLI not on PATH" >&2; exit 1; }
-    ;;
-esac
 [ -d "$frames" ]      || { echo "no such frames dir: $frames" >&2; exit 1; }
 [ -f "$feature" ]     || { echo "no such feature file: $feature" >&2; exit 1; }
 [ -f "$scenarios" ]   || { echo "no such scenarios file: $scenarios" >&2; exit 1; }
@@ -58,6 +55,60 @@ esac
 frames="$(cd "$frames" && pwd)"           # absolute, for --add-dir
 mkdir -p "$(dirname "$out")"
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
+
+append_unique_reviewer() { # <current-list> <candidate>
+  local current="$1" cand="$2"
+  case " $current " in
+    *" $cand "*) printf '%s' "$current" ;;
+    *) [ -n "$current" ] && printf '%s %s' "$current" "$cand" || printf '%s' "$cand" ;;
+  esac
+}
+
+default_reviewers_for_model() {
+  case "$model" in
+    claude*|opus*|sonnet*|haiku*) printf '%s' "claude codex agy" ;;
+    gemini*)                      printf '%s' "agy codex claude" ;;
+    gpt*|codex*|o[0-9]*)          printf '%s' "codex claude agy" ;;
+    *)                            printf '%s' "codex claude agy" ;;
+  esac
+}
+
+resolve_reviewers() {
+  local requested token out defaults
+  out=""
+  requested="$(printf '%s' "${reviewer:-auto}" | tr ',' ' ')"
+  defaults="$(default_reviewers_for_model)"
+  for token in $requested; do
+    case "$token" in
+      auto) for token in $defaults; do out="$(append_unique_reviewer "$out" "$token")"; done ;;
+      codex|claude|agy) out="$(append_unique_reviewer "$out" "$token")" ;;
+      *) echo "unknown reviewer '$token' (want auto, codex, claude, agy, or a comma-separated order)" >&2; return 2 ;;
+    esac
+  done
+  # An explicit reviewer is a preference, not a hard dependency: append the
+  # standard fallbacks so one unavailable local harness does not sink the gate.
+  for token in codex claude agy; do out="$(append_unique_reviewer "$out" "$token")"; done
+  printf '%s' "$out"
+}
+
+reviewer_candidates="$(resolve_reviewers)"
+[ -n "$reviewer_candidates" ] || { echo "no reviewer candidates resolved" >&2; exit 1; }
+
+model_for_reviewer() { # <reviewer>
+  local r="$1" m="$model"
+  case "$r" in
+    codex)  [ -n "${KITSOKI_UI_QA_CODEX_MODEL:-}" ]  && { printf '%s' "$KITSOKI_UI_QA_CODEX_MODEL"; return 0; } ;;
+    claude) [ -n "${KITSOKI_UI_QA_CLAUDE_MODEL:-}" ] && { printf '%s' "$KITSOKI_UI_QA_CLAUDE_MODEL"; return 0; } ;;
+    agy)    [ -n "${KITSOKI_UI_QA_AGY_MODEL:-}" ]    && { printf '%s' "$KITSOKI_UI_QA_AGY_MODEL"; return 0; } ;;
+  esac
+  [ -n "$m" ] || return 0
+  case "$r:$m" in
+    codex:claude*|codex:opus*|codex:sonnet*|codex:haiku*) return 0 ;;
+    claude:gpt*|claude:codex*|claude:o[0-9]*|claude:gemini*) return 0 ;;
+    agy:claude*|agy:opus*|agy:sonnet*|agy:haiku*|agy:gpt*|agy:codex*|agy:o[0-9]*) return 0 ;;
+    *) printf '%s' "$m" ;;
+  esac
+}
 
 frame_list="$(cd "$frames" && ls -1 [0-9]*.png 2>/dev/null | sort || ls -1 *.png | sort)"
 [ -n "$frame_list" ] || { echo "no PNG frames in $frames" >&2; exit 1; }
@@ -104,49 +155,212 @@ sys.stdout.write(obj)
 PY
 extract_json() { python3 "$tmp/extract_json.py"; }
 
-# call_claude_json: run one read-only claude call from a prompt file and print
-# the extracted verdict JSON. Retries once on a transient non-JSON / invocation
+cat > "$tmp/review.schema.json" <<'JSON'
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["overall", "summary", "frames_reviewed", "visual_issues", "annotation_issues", "scenarios"],
+  "properties": {
+    "overall": {"type": "string", "enum": ["pass", "fail"]},
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scenarios_total", "passed", "failed", "unsupported"],
+      "properties": {
+        "scenarios_total": {"type": "integer"},
+        "passed": {"type": "integer"},
+        "failed": {"type": "integer"},
+        "unsupported": {"type": "integer"}
+      }
+    },
+    "frames_reviewed": {"type": "array", "items": {"type": "string"}},
+    "visual_issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["frame", "region", "issue"],
+        "properties": {
+          "frame": {"type": "string"},
+          "region": {"type": "string"},
+          "issue": {"type": "string"}
+        }
+      }
+    },
+    "annotation_issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["frame", "styles_seen", "issue"],
+        "properties": {
+          "frame": {"type": "string"},
+          "styles_seen": {"type": "array", "items": {"type": "string"}},
+          "issue": {"type": "string"}
+        }
+      }
+    },
+    "scenarios": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "title", "required", "status", "steps"],
+        "properties": {
+          "id": {"type": "string"},
+          "title": {"type": "string"},
+          "required": {"type": "boolean"},
+          "status": {"type": "string", "enum": ["pass", "fail", "unsupported"]},
+          "steps": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["text", "status", "evidence", "confidence"],
+              "properties": {
+                "text": {"type": "string"},
+                "status": {"type": "string", "enum": ["pass", "fail", "unsupported"]},
+                "evidence": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["frame", "observation"],
+                    "properties": {
+                      "frame": {"type": "string"},
+                      "observation": {"type": "string"}
+                    }
+                  }
+                },
+                "confidence": {"type": "number"}
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+JSON
+cat > "$tmp/adversary.schema.json" <<'JSON'
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["downgrades"],
+  "properties": {
+    "downgrades": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["scenario_id", "step_index", "new_status", "observation"],
+        "properties": {
+          "scenario_id": {"type": "string"},
+          "step_index": {"type": "integer"},
+          "new_status": {"type": "string", "enum": ["fail", "unsupported"]},
+          "observation": {"type": "string"}
+        }
+      }
+    }
+  }
+}
+JSON
+
+# call_vision_json: run one read-only vision-reviewer call from a prompt file and
+# print the extracted JSON. Retries once on a transient non-JSON / invocation
 # blip before giving up (exit 2). label is for diagnostics.
-call_claude_json() { # <promptfile> <label>
-  local pf="$1" label="$2" attempt raw result json
+call_vision_json() { # <promptfile> <label>
+  local pf="$1" label="$2" attempt selected raw result json
   for attempt in 1 2; do
-    case "$model" in
-      gpt*|o*)
+    for selected in $reviewer_candidates; do
+      if ! command -v "$selected" >/dev/null 2>&1; then
+        echo "  ($label) skipping $selected: CLI not on PATH" >&2
+        continue
+      fi
+      result=""
+      case "$selected" in
+      codex)
         local codex_out="$tmp/codex-${label}-${attempt}.txt"
+        local codex_err="${out%.json}.${label}.codex.stderr.txt"
+        local schema="$tmp/review.schema.json"
+        [ "$label" = "adversary" ] && schema="$tmp/adversary.schema.json"
         local image_args=()
+        local cmd=(codex exec)
+        local model_arg
+        model_arg="$(model_for_reviewer codex || true)"
+        [ -n "$model_arg" ] && cmd+=( --model "$model_arg" )
         while IFS= read -r frame; do
           [ -n "$frame" ] && image_args+=( --image "$frames/$frame" )
         done <<< "$frame_list"
-        if ! codex exec \
-              --model "$model" \
+        if ! "${cmd[@]}" \
               --cd "$(pwd)" \
               --sandbox read-only \
+              --ephemeral \
+              --output-schema "$schema" \
               --output-last-message "$codex_out" \
               "${image_args[@]}" \
-              - < "$pf" >/dev/null 2>"${out%.json}.${label}.codex.stderr.txt"; then
+              - < "$pf" >/dev/null 2>"$codex_err"; then
+          cp "$codex_out" "${out%.json}.${label}.codex.raw.txt" 2>/dev/null || true
           echo "  ($label) codex invocation failed (attempt $attempt)" >&2
           continue
         fi
         result="$(cat "$codex_out" 2>/dev/null || true)"
         ;;
-      *)
-        raw="$(claude -p \
-                --output-format json \
-                --model "$model" \
+      claude)
+        local claude_err="${out%.json}.${label}.claude.stderr.txt"
+        local claude_status=0
+        local cmd=(claude -p --output-format json)
+        local model_arg
+        model_arg="$(model_for_reviewer claude || true)"
+        [ -n "$model_arg" ] && cmd+=( --model "$model_arg" )
+        raw="$("${cmd[@]}" \
                 --permission-mode bypassPermissions \
                 --allowedTools "Read" \
                 --add-dir "$frames" \
-                < "$pf" 2>/dev/null)" || { echo "  ($label) claude invocation failed (attempt $attempt)" >&2; continue; }
+                < "$pf" 2>"$claude_err")" || claude_status=$?
+        if [ "$claude_status" -ne 0 ]; then
+          printf '%s' "$raw" > "${out%.json}.${label}.claude.raw.json" 2>/dev/null || true
+          local claude_msg
+          claude_msg="$(printf '%s' "$raw" | jq -r '.result // .error.message // empty' 2>/dev/null || true)"
+          [ -n "$claude_msg" ] || claude_msg="$(cat "$claude_err" 2>/dev/null || true)"
+          [ -n "$claude_msg" ] || claude_msg="exit $claude_status"
+          echo "  ($label) claude invocation failed (attempt $attempt): $claude_msg" >&2
+          continue
+        fi
         result="$(printf '%s' "$raw" | jq -r '.result // .text // empty')"
         [ -n "$result" ] || result="$raw"          # tolerate a bare-JSON CLI build
         ;;
-    esac
-    if json="$(printf '%s' "$result" | extract_json)"; then
-      printf '%s' "$json"
-      return 0
-    fi
-    echo "  ($label) no parseable JSON in model output (attempt $attempt); retrying…" >&2
-    printf '%s' "$result" > "${out%.json}.${label}.raw.txt" 2>/dev/null || true
+      agy)
+        local agy_err="${out%.json}.${label}.agy.stderr.txt"
+        local agy_status=0
+        local prompt_text
+        prompt_text="$(cat "$pf")"
+        local cmd=(agy --print "$prompt_text" --output-format json --dangerously-skip-permissions --add-dir "$frames")
+        local model_arg
+        model_arg="$(model_for_reviewer agy || true)"
+        [ -n "$model_arg" ] && cmd+=( --model "$model_arg" )
+        raw="$("${cmd[@]}" 2>"$agy_err")" || agy_status=$?
+        if [ "$agy_status" -ne 0 ]; then
+          printf '%s' "$raw" > "${out%.json}.${label}.agy.raw.json" 2>/dev/null || true
+          local agy_msg
+          agy_msg="$(printf '%s' "$raw" | jq -r '.response // .result // .text // .error.message // empty' 2>/dev/null || true)"
+          [ -n "$agy_msg" ] || agy_msg="$(cat "$agy_err" 2>/dev/null || true)"
+          [ -n "$agy_msg" ] || agy_msg="exit $agy_status"
+          echo "  ($label) agy invocation failed (attempt $attempt): $agy_msg" >&2
+          continue
+        fi
+        result="$(printf '%s' "$raw" | jq -r '.response // .result // .text // empty' 2>/dev/null || true)"
+        [ -n "$result" ] || result="$raw"
+        ;;
+      esac
+      if json="$(printf '%s' "$result" | extract_json)"; then
+        echo "  ($label) reviewer: $selected" >&2
+        printf '%s' "$json"
+        return 0
+      fi
+      echo "  ($label) no parseable JSON from $selected (attempt $attempt); trying next reviewer…" >&2
+      printf '%s' "$result" > "${out%.json}.${label}.${selected}.raw.txt" 2>/dev/null || true
+    done
   done
   return 2
 }
@@ -164,8 +378,10 @@ relevant and complete for the stated bug/plan (evidence that never exercises the
 changed behaviour cannot prove it — its steps are `unsupported`, not `pass`).
 
 EVIDENCE RULES (these make the review trustworthy — follow them exactly):
-1. The frame PNG files are the ONLY admissible evidence. Use the Read tool to
-   open the specific frames you need. Read enough frames to judge every step.
+1. The frame PNG files are the ONLY admissible evidence. The images are attached
+   to this review in the sorted filename order listed below; if your runtime
+   also exposes a file-read/image-read tool, you may open the same PNGs by
+   filename. Read enough frames to judge every step.
 2. For every step you mark `pass`, you MUST cite at least one frame filename and
    quote what is LITERALLY visible in it that demonstrates the step (visible text,
    a button, a state badge, a list, etc.). Do not infer beyond the pixels.
@@ -325,16 +541,18 @@ HEAD
   echo; echo "## FEATURE DESCRIPTION"; echo; cat "$feature"
   echo; echo "## USAGE SCENARIOS (YAML)"; echo; echo '```yaml'; cat "$scenarios"; echo '```'
   echo; echo "## AVAILABLE FRAMES"
-  echo "Located in: $frames (Read them by filename)."
+  echo "Located in: $frames. The images are attached to the reviewer in this sorted filename order; cite by these exact filenames."
   echo "$frame_list" | sed 's/^/  - /'
 } > "$review_prompt"
 
-echo "▸ grounded review ($model, $(echo "$frame_list" | wc -l | tr -d ' ') frames)…" >&2
+display_model="$model"
+[ -n "$display_model" ] || display_model="configured-default"
+echo "▸ grounded review (reviewers: $reviewer_candidates; model: $display_model; $(echo "$frame_list" | wc -l | tr -d ' ') frames)…" >&2
 # Write atomically (temp on the SAME filesystem as $out, then mv) so a concurrent
 # reader — e.g. report.sh, or a watcher — never observes a truncated or partial
 # verdict, only the previous file or the complete new one.
 out_tmp="$(mktemp "$(dirname "$out")/.verdict.XXXXXX")"
-if ! call_claude_json "$review_prompt" review > "$out_tmp"; then
+if ! call_vision_json "$review_prompt" review > "$out_tmp"; then
   rm -f "$out_tmp"
   echo "grounded review did not produce parseable JSON after retries" >&2
   exit 2
@@ -350,10 +568,10 @@ You are an adversarial verifier. Below is a prior QA verdict (JSON) for a demo
 video. Your ONLY job is to catch OVER-CLAIMS in the steps currently marked
 `pass`.
 
-For each `pass` step: Read its cited frame(s) with the Read tool and confirm the
-quoted observation is ACTUALLY, LITERALLY visible there. If the cited frame does
-not clearly show it — wrong frame, the element is absent, the text differs, or it
-was inferred beyond the pixels — it must be downgraded:
+For each `pass` step: inspect its cited frame(s) and confirm the quoted
+observation is ACTUALLY, LITERALLY visible there. If the cited frame does not
+clearly show it — wrong frame, the element is absent, the text differs, or it was
+inferred beyond the pixels — it must be downgraded:
   • `fail`        — the frame actively contradicts the claim.
   • `unsupported` — the frame simply doesn't show it.
 
@@ -390,12 +608,12 @@ OUTPUT: print ONLY a single raw JSON object (no prose, no ``` fences):
 HEAD
     echo; echo "## PRIOR VERDICT"; echo; echo '```json'; cat "$out"; echo '```'
     echo; echo "## AVAILABLE FRAMES"
-    echo "Located in: $frames (Read them by filename)."
+    echo "Located in: $frames. The images are attached to the reviewer in this sorted filename order; cite by these exact filenames."
     echo "$frame_list" | sed 's/^/  - /'
   } > "$adv_prompt"
 
   echo "▸ adversarial verification (downgrade-only)…" >&2
-  if call_claude_json "$adv_prompt" adversary > "$tmp/downgrades.json"; then
+  if call_vision_json "$adv_prompt" adversary > "$tmp/downgrades.json"; then
     # Apply the downgrades deterministically: lower-only, then recompute every
     # scenario status (worst of steps), overall (all required pass), and counts.
     python3 - "$out" "$tmp/downgrades.json" <<'PY'

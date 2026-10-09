@@ -60,4 +60,13 @@ const (
 	//   new_class         string  — the replacement routing class
 	//   reason            string  — operator-supplied reason for the override
 	EvTurnContextRouteOverridden = "turn.context_route_overridden"
+
+	// EvTurnRoutingFeedback fires when an operator records an up/down verdict
+	// on a routed turn's outcome (WS-C C4: routing-dissatisfaction substrate;
+	// see docs/testing/routing-tuning.md). Mirrors the standalone
+	// journal.KindRoutingFeedback write. Fields: phrase, state, intent, tier,
+	// verdict ("up"|"down"). Emitted by
+	// Orchestrator.RecordRoutingFeedback — never part of a machine
+	// transition, so it carries no world/state effect.
+	EvTurnRoutingFeedback = "turn.routing_feedback"
 )

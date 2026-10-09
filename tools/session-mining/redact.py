@@ -2,18 +2,29 @@
 """Deterministic redactor for session-mining.
 
 Jobs:
-  (default)  read text on stdin, write redacted text on stdout, print a
-             per-category redaction tally to stderr (a safety signal — you can
-             see what was scrubbed). Used on the distilled TRACE (keeps path
-             tails so the extractor can still see structure).
-  --report   read a report JSON on stdin, GENERICIZE its free-text fields
-             (example_signatures + decision_points) and write clean JSON on
-             stdout. This is the share-boundary scrub: it does NOT trust the
-             extractor to have genericized — it collapses path tails to <path>,
-             filenames to <file>, and (with --names) known project words to
-             <name>. Run this before --scan.
-  --scan     read text on stdin, exit 1 (and list hits on stderr) if any
-             HIGH-RISK pattern survives. The share-gate: run on the final report.
+  (default)   read text on stdin, write redacted text on stdout, print a
+              per-category redaction tally to stderr (a safety signal — you can
+              see what was scrubbed). Used on the distilled TRACE (keeps path
+              tails so the extractor can still see structure).
+  --report    read a report JSON on stdin, GENERICIZE its free-text fields
+              (example_signatures + decision_points) and write clean JSON on
+              stdout. This is the share-boundary scrub: it does NOT trust the
+              extractor to have genericized — it collapses path tails to <path>,
+              filenames to <file>, and (with --names) known project words to
+              <name>. Run this before --scan.
+  --scenario  read a `kind: conversation` scenario IR document (schema/
+              scenario_ir.schema.json) on stdin, redact + genericize its
+              free-text fields (goal, turns[].text, turns[].corrective_ops[],
+              turns[].followup_text_head, expected_effects[]) and write clean
+              JSON to stdout. THIS IS A GATE, not just a scrub: it re-runs the
+              HIGH-RISK --scan check over the fully-redacted document and
+              EXITS 1 (emitting nothing on stdout) if any secret-shaped content
+              survives — so a caller can safely treat "exit 0" as "safe to
+              write to a committable path" and must route "exit 1" to a
+              gitignored local dir instead. See docs/proposals/
+              scenario-foundry.md task 2.3 (the mined-IR redaction gate).
+  --scan      read text on stdin, exit 1 (and list hits on stderr) if any
+              HIGH-RISK pattern survives. The share-gate: run on the final report.
 
 Design stance: redaction of free-form prose is never fully reliable, so the
 shareable report should carry *genericized signatures*, not verbatim quotes.
@@ -128,6 +139,55 @@ def clean_report(obj, names_rx=None):
     return changed
 
 
+_SCENARIO_TEXT_FIELDS = ("goal",)
+_SCENARIO_TURN_TEXT_FIELDS = ("text", "followup_text_head")
+
+
+def clean_scenario(obj, names_rx=None):
+    """Genericize the free-text fields of a `kind: conversation` scenario IR
+    document (schema/scenario_ir.schema.json) IN PLACE. Same two-pass scrub as
+    clean_report (secrets/home/url first, then structural genericization), but
+    with an allowlist scoped to the IR's actual free-text shape instead of
+    reusing clean_report's report-only field names.
+
+    Returns the count of strings changed. Does NOT itself gate on --scan
+    (main() does that) — callers that want the redact.py fixture without the
+    subprocess CLI can call this directly and run scan() themselves.
+    """
+    changed = 0
+
+    def scrub_str(s):
+        nonlocal changed
+        red, _ = redact(s)
+        new = genericize(red, names_rx)
+        if new != s:
+            changed += 1
+        return new
+
+    def scrub_list(lst):
+        for i, s in enumerate(lst):
+            if isinstance(s, str):
+                lst[i] = scrub_str(s)
+
+    for field in _SCENARIO_TEXT_FIELDS:
+        if isinstance(obj.get(field), str):
+            obj[field] = scrub_str(obj[field])
+
+    for turn in obj.get("turns", []) or []:
+        if not isinstance(turn, dict):
+            continue
+        for field in _SCENARIO_TURN_TEXT_FIELDS:
+            if isinstance(turn.get(field), str):
+                turn[field] = scrub_str(turn[field])
+        if isinstance(turn.get("corrective_ops"), list):
+            scrub_list(turn["corrective_ops"])
+
+    if isinstance(obj.get("expected_effects"), list):
+        scrub_list(obj["expected_effects"])
+
+    return changed
+
+
 def scan(text):
     hits = {}
     for label, rx, _, is_secret in RULES:
@@ -150,6 +210,28 @@ def main():
         json.dump(obj, sys.stdout, indent=2)
         sys.stdout.write("\n")
         sys.stderr.write(f"report scrub: genericized {changed} free-text field(s)\n")
+        return
+    if "--scenario" in argv:
+        names_rx = None
+        if "--names" in argv:
+            names_rx = build_names_rx(argv[argv.index("--names") + 1])
+        obj = json.load(sys.stdin)
+        changed = clean_scenario(obj, names_rx)
+        serialized = json.dumps(obj, indent=2)
+        hits = scan(serialized)
+        if hits:
+            sys.stderr.write(
+                "SCENARIO REDACTION GATE FAIL — secret-shaped content survives "
+                "genericization (this document must NOT be written to a "
+                "committable path; keep it in the gitignored local dir):\n")
+            for k, v in sorted(hits.items()):
+                sys.stderr.write(f"  {k}: {v}\n")
+            sys.exit(1)
+        sys.stdout.write(serialized)
+        sys.stdout.write("\n")
+        sys.stderr.write(
+            f"scenario redaction gate PASS: genericized {changed} free-text "
+            f"field(s), no secret-shaped content survives\n")
         return
     data = sys.stdin.read()
     if "--scan" in argv:

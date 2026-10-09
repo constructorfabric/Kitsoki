@@ -1,0 +1,16 @@
+kind: host_cassette
+app_id: scenario-foundry-harness
+app_version: "0.1.0"
+match_on: [handler]
+
+episodes:
+  - id: converse_1
+    match: { handler: host.agent.converse }
+    response:
+      data:
+        answer: "smoke answer 1"
+  - id: converse_2
+    match: { handler: host.agent.converse }
+    response:
+      data:
+        answer: "smoke answer 2"

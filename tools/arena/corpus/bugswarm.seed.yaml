@@ -1,0 +1,34 @@
+kind: arena_bugswarm_source
+version: 1
+source: bugswarm
+generated_from: tools/arena/corpus/bugswarm.seed-artifacts.json
+task_count: 1
+tasks:
+- id: bugswarm-square-okio-140452393
+  repo: okio
+  repo_label: square/okio
+  archetype: bugfix_test_repair
+  source: bugswarm
+  image_tag: square-okio-140452393
+  failed_job_id: '140452393'
+  passed_job_id: '140452394'
+  ticket: 'Repair BugSwarm artifact square-okio-140452393: CI job 140452393 fails
+    and job 140452394 passes.'
+  split: heldout
+  verified_red: false
+  verified_green: false
+  oracle:
+    kind: bugswarm_fail_pass_pair
+    image_tag: square-okio-140452393
+    failed_job_id: '140452393'
+    passed_job_id: '140452394'
+    red_rule: failed job script exits non-zero inside the BugSwarm artifact
+    green_rule: passed job script exits zero inside the same BugSwarm artifact
+  meta:
+    language: Java
+    build_system: Maven
+    classification: tutorial-seed
+    reproducibility: reproducible
+    source_url: https://www.bugswarm.org/docs/tutorials/setting-up-an-experiment/
+    selection_note: Official BugSwarm tutorial artifact; the tutorial documents run_failed.sh
+      and run_passed.sh execution in fresh containers.

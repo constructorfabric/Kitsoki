@@ -2,7 +2,7 @@
 # verdict that keeps emitting `refine`. The L2 budget gate catches the
 # runaway and routes to @exit:abandoned at the (budget+1)-th cycle.
 #
-# Mirrors cyber-repo's cycle_budget_exhaust.yaml scenario 1, but in the
+# Mirrors focused-engineering's cycle_budget_exhaust.yaml scenario 1, but in the
 # autonomous llm_then_human path. Proves that LLM-driven refines are
 # bounded by the same world.<phase>_budget as human-driven ones — a
 # misbehaving LLM cannot pin the pipeline forever.

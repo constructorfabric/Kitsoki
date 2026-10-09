@@ -180,6 +180,7 @@ func (m *Matcher) matchBare(allow map[string]struct{}, input string) (Verdict, b
 	// (see Compile). Subsequent matches on the same intent are
 	// folded — semroute reports one MatchReason per intent.
 	matched := make(map[string]int)
+	exactMatched := make(map[string]int)
 	intentOrder := make([]string, 0)
 	for _, eid := range ids {
 		entry := m.idx.entries[eid]
@@ -198,6 +199,9 @@ func (m *Matcher) matchBare(allow map[string]struct{}, input string) (Verdict, b
 		// in a long paste is not a command. See bareMaxUncoveredDefault.
 		if maxUncov := m.idx.bareMaxUncovered; maxUncov > 0 && len(inputSet)-len(entry.stemSet) > maxUncov {
 			continue
+		}
+		if exactSourceMatch(entry.Source, input) {
+			exactMatched[entry.Intent] = eid
 		}
 		if _, exists := matched[entry.Intent]; exists {
 			continue
@@ -221,6 +225,25 @@ func (m *Matcher) matchBare(allow map[string]struct{}, input string) (Verdict, b
 			MatchKind:    entry.Kind.cacheKind(),
 		}, true
 	default:
+		// Exact authored examples/synonyms outrank shorter subset hits.
+		// Without this, an input like "start the marathon" ties the exact
+		// example on one intent against a generic "start" example on a sibling
+		// intent because both stem sets are subsets of the input. The exact
+		// command text is the stronger authorial signal.
+		if len(exactMatched) == 1 {
+			for intentID, eid := range exactMatched {
+				entry := m.idx.entries[eid]
+				return Verdict{
+					Intent:       intentID,
+					Slots:        map[string]any{},
+					Confidence:   ConfidenceWholeSynonym,
+					MatchReason:  formatReason(entry),
+					MatchPattern: entry.Source,
+					MatchKind:    entry.Kind.cacheKind(),
+				}, true
+			}
+		}
+
 		// Leading-verb tie-break. Bag-of-stems subset matching ignores word
 		// order, so an imperative like "commit the staged fix" ties commit
 		// (via "commit") against stage (via the "staged"→stage stem) even
@@ -272,6 +295,10 @@ func (m *Matcher) matchBare(allow map[string]struct{}, input string) (Verdict, b
 			MatchReason: fmt.Sprintf("ambiguous:%d", len(cands)),
 		}, true
 	}
+}
+
+func exactSourceMatch(source, input string) bool {
+	return strings.EqualFold(strings.Join(strings.Fields(source), " "), strings.Join(strings.Fields(input), " "))
 }
 
 // leadingContentStem returns the Norm (Porter2 stem) of the first

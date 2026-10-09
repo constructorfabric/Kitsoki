@@ -1,6 +1,17 @@
 # Runtime: Job dispatch & orchestration
 
-**Status:** Draft v1. Nothing implemented yet.
+**Status:** Draft v1 design; **shipped for issue routes to `stories/bugfix`**.
+`internal/ghagent/dispatch.go` claims a mention as a job, classifies its
+label against a route table (`internal/ghagent/router.go`), spawns a
+per-job `.worktrees/gh-job-<id>` worktree, and — for routes with a
+registered `internal/ghagent/realdispatch.go` plan (bugfix only today) —
+drives the real story end to end through a live-or-replay harness
+(replay by default; `live` is an explicit operator opt-in, never
+ambient-credential-sniffed). Routes without a plan (`stories/dev-story`,
+all PR routes) still run the honest stub path and never claim "Done." See
+`docs/architecture/github-agent.md` for the full dispatch write-up; the
+`host.git`/`host.gh` gaps for PR autopilot (wait-for-checks, `rebase`,
+force-push, thread `resolve`) listed below remain unaddressed.
 **Kind:**   runtime
 **Epic:**   kitsoki-github-agent.md
 
@@ -30,13 +41,14 @@ inserts) a row in a **Postgres `jobs` table** keyed on the mention's origin ref,
 creates an isolated worktree + per-job `KITSOKI_APP_DIR`, spawns the selected
 story's session seeded with world keys derived from the mention, and acks back
 to the thread with the run URL. Job **state and the concurrency lock live in
-Postgres** ("State in PostgreSQL, artifacts on the filesystem" — epic round-1
-decision); a `SELECT … FOR UPDATE SKIP LOCKED` claim ensures exactly one worker
-owns a job, so re-mentioning an active job ATTACHES to its existing row rather
-than forking a second run (idempotency keyed on issue/PR + comment thread, epic
-shared decision #3). Trace + artifact blobs stay on the filesystem (slice #4);
-Postgres holds only the index/state pointing at the on-disk run. A mention it
-can't classify confidently posts a guidance comment and parks.
+Postgres** (epic round-1 decision: GitHub dispatch state in PostgreSQL,
+artifacts on the filesystem); a `SELECT … FOR UPDATE SKIP LOCKED` claim ensures
+exactly one worker owns a job, so re-mentioning an active job ATTACHES to its
+existing row rather than forking a second run (idempotency keyed on issue/PR +
+comment thread, epic shared decision #3). Trace + artifact registration is
+handed to the shared artifact-job substrate; blobs stay on the filesystem and
+hosted index rows point at the on-disk run. A mention it can't classify
+confidently posts a guidance comment and parks.
 
 One sentence: *every accepted mention resolves through one interpretive
 label-routing decision to exactly one deterministically-spawned, isolated run,
@@ -49,7 +61,7 @@ serialized by a Postgres row lock.*
   a `jobs` table + claim/attach query in a new `internal/ghagent/jobstore/`
   (Postgres, `database/sql` + `pgx`, no ORM); spawn reuses `loadAppWithEnv` +
   the session launcher path that backs `kitsoki run` (`cmd/kitsoki/main.go:282`);
-  run registration calls into `internal/runstatus/server/` (slice #4 owns the URL).
+  run registration calls into the shared artifact-job substrate.
 - **Vocabulary:** a `label_story_map` config key, a `KITSOKI_PG_DSN` config key,
   the Postgres `jobs` table, job-id world keys (`gh_job_id`, `gh_origin_ref`,
   `gh_run_url`), and a `host.gh.dispatch` host call / `kitsoki gh-agent dispatch`
@@ -70,7 +82,7 @@ serialized by a Postgres row lock.*
 | db table | `jobs` | (see DDL below) | holds job state + the claim lock; row-per-job keyed on `origin_ref` |
 | world key | `gh_job_id` | `string` | the `jobs.job_id` for this run; seeded into the spawned session's world |
 | world key | `gh_origin_ref` | `string` | the slice-#1 dedupe ref (`GitHubOriginRef`, `internal/inbox/github.go:48`); the `jobs` row's natural key |
-| world key | `gh_run_url` | `string` | consumed from slice #4 (`…/run/<job-id>`); stored on the row, echoed in the ack |
+| world key | `gh_run_url` | `string` | consumed from the shared artifact-job substrate (`…/run/<job-id>`); stored on the row, echoed in the ack |
 | host call | `host.gh.dispatch` | `{mention} → {job_id, story, run_url}` | classify → claim/insert → spawn → register; idempotent on `gh_origin_ref` |
 | command | `kitsoki gh-agent dispatch` | `--mention @m.json` | CLI/test entry that runs one dispatch turn against fixtures + a local Postgres |
 
@@ -140,7 +152,7 @@ hard-wired in-story `drive` arc.
   │ (engine)    │   {gh_job_id, gh_origin_ref, ticket_id, ...map.world}      │  (replayable)
   └─────────────┘                                                            ┘
         ▼
-  REGISTER run (slice #4, on-disk) → gh_run_url = …/run/<job_id>; persist run_id/run_url/state on the jobs row
+  REGISTER run (shared artifact-job substrate) → gh_run_url = …/run/<job_id>; persist run_id/run_url/state on the jobs row
         ▼
   ACK back to thread (slice #1 substrate): "running <story>, watch at <run_url>"
 ```
@@ -176,8 +188,9 @@ can reconstruct *why* a given story ran. The dispatch turn emits a
   `ambiguous:no-type-label`, `ambiguous:conflicting[bug,feature]`)
 
 This mirrors how every interpretive arc records a verdict (the moat). A new
-event type is a `tracing.md` concern — coordinate the schema with slice #4's
-run index. The trace event is the per-run datapoint; the `jobs` table is the
+event type is a `tracing.md` concern — coordinate the schema with the shared
+artifact-job run index. The trace event is the per-run datapoint; the `jobs`
+table is the
 durable cross-run index, and the dispatch event's `gh_job_id` is the foreign key
 joining them (the run-list view reads `jobs`, not the trace ring).
 
@@ -235,7 +248,7 @@ service's own migration on first start.
 - [ ] 2.2 label_story_map config (default map) + load-time validation: every mapped story loads, world keys accepted, pull_request present
 - [ ] 2.3 job-id = hash(gh_origin_ref); claim wins → spawn, claim attaches → return existing run_url (idempotency)
 - [ ] 2.4 Worktree-per-job + per-job KITSOKI_APP_DIR lifecycle (create on dispatch, clean on job end)
-- [ ] 2.5 gh.dispatch decision event wired into the trace; run_id/run_url/state persisted on the jobs row (coordinate schema with slice #4)
+- [ ] 2.5 gh.dispatch decision event wired into the trace; run_id/run_url/state persisted on the jobs row (coordinate schema with the shared artifact-job run index)
 - [ ] 2.6 Ambiguous (zero/conflicting label) → guidance comment via slice-#1 substrate → row state awaiting_guidance → park
 - [ ] 2.7 host.gh.dispatch + `kitsoki gh-agent dispatch` entry over the cliExec/substrate seams + injected JobStore
 
@@ -247,7 +260,7 @@ service's own migration on first start.
 - [ ] 3.5 Load-time invariants: missing story OR unreachable/unmigrated DSN fails startup with a clear message
 
 ## 4. Adopt + document
-- [ ] 4.1 Compose the dispatcher with slice #1 ingress + slice #4 run registration end to end (gh cassettes, local Postgres)
+- [ ] 4.1 Compose the dispatcher with slice #1 ingress + shared artifact-job run registration end to end (gh cassettes, local Postgres)
 - [ ] 4.2 Write docs/architecture/github-agent.md dispatch + jobs-table section; trim/delete this proposal
 ```
 
@@ -298,12 +311,15 @@ test needs a real LLM or real GitHub (epic shared decision #6); none is added.
   resolve-parent-comment). The dispatcher only *selects and spawns* it — slice
   #3 (`pr-autopilot-story.md`) owns what it does.
 - **The run URL scheme and the serving/persistence of traces + artifacts.**
-  Slice #4 (`trace-artifact-service.md`) owns `…/run/<job-id>` and the on-disk
-  trace/artifact blobs; this slice owns only the `jobs` state table that points
-  at them, and is the producer of the `<job-id>` the URL embeds.
+  The shared artifact-job epic (`artifact-driven-stories.md`, especially
+  `trace-artifact-service.md`) owns `…/run/<job-id>` and the on-disk
+  trace/artifact blobs; this slice owns only the GitHub dispatch/claim state
+  that points at them, and is the producer of the GitHub origin reference the
+  artifact job embeds.
 - **Postgres provisioning / deployment.** Where the DB runs and how it's hosted
-  is operational; this slice only owns the `jobs` schema + the claim query and
-  takes a DSN. Durable run-blob storage is slice #4's cross-cutting question #2.
+  is operational; this slice only owns the GitHub `jobs` schema + the claim
+  query and takes a DSN. Durable run-blob storage is owned by the shared
+  artifact-job epic.
 - **The web viewer + operator-drive surface.** Slice #5
   (`gh-web-operator-viewer.md`).
 - **Webhook vs poll ingress, App auth, and comment formatting.** Slice #1

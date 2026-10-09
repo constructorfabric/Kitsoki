@@ -85,8 +85,8 @@ export const DEMO_VIDEO_LOOP_TOUR_STEPS: readonly TourStep[] = [
   },
 
   // ── The loop, narrated on the CONVERSATION (the chat transcript) ────────────
-  // Narration sits OFF to the right with no dimming backdrop (dim: false) so the
-  // left "Conversation" column stays fully visible and readable. There is NO
+  // Narration sits OFF to the right so the left "Conversation" column stays
+  // fully visible and readable. There is NO
   // drive here — the run already completed autonomously on session entry, and
   // each step surfaced as a "Loop" conversation bubble.
   {

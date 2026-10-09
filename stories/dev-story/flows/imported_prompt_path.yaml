@@ -1,0 +1,181 @@
+# imported_prompt_path — no-LLM coverage flow for a two-level TRANSITIVE
+# import chain reaching a `prompt:`-bearing host.agent.decide effect
+# (issue #32's shape): dev-story imports `impl` (../implementation), which
+# ITSELF imports `pr` (../pr-refinement); pr-refinement's diagnose_executing
+# room fires `host.agent.decide` with a relative `prompt:
+# prompts/diagnose_executing.md`. This proves the fold/alias/rebase pipeline
+# (imports.go foldChild + imports_overrides.go rebaseEffectPaths) still walks
+# a 2-level-deep import correctly end to end: the agent name comes out
+# properly aliased (`impl__pr__diagnoser`) and the room advances cleanly
+# through ci_monitoring's failure branch into diagnose_executing with no
+# on_error bounce.
+#
+# SCOPE NOTE — what this flow does NOT reproduce: issue #32's actual live
+# trigger is NOT a plain relative `source: ../x` chain like this one. Loading
+# any app via `app.Load` ALWAYS absolutizes its top-level baseDir first
+# (internal/app/loader.go), so a relative-import-only chain (this fixture,
+# and stories/dev-story/app.yaml's own `../implementation` / `../prd` imports)
+# never actually hands rebaseEffectPaths a non-absolute childDir — it is
+# already immune regardless of the 4180bb51 fix. The REAL trigger is the
+# `@kitsoki/<name>` OVERRIDE-RESOLVER branch (cmd/kitsoki/resolver.go's
+# buildImportResolver joins `$KITSOKI_REPO` onto the story name without
+# calling filepath.Abs), which only fires for `@kitsoki/`-sourced imports —
+# e.g. pets-dev importing `@kitsoki/dev-story` with a relative
+# $KITSOKI_REPO. dev-story's own app.yaml has no `@kitsoki/` imports, so no
+# flow driven through `stories/dev-story/app.yaml` can exercise that branch.
+# The authoritative RED/GREEN regression proof for the real trigger is
+# internal/app/imports_overrides_rebase_test.go's
+# TestImports_KitsokiRepoOverrideRelativeNoDoublePrefix, which reproduces the
+# override-resolver path directly (confirmed to fail without the
+# rebaseEffectPaths absolutize step, and pass with it).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world:
+  ticket_id:      "F-2026-06-30-transitive-import"
+  ticket_title:   "Transitive import prompt_path regression"
+  ticket_type:    "feature"
+  ticket_url:     "issues/features/F-2026-06-30-transitive-import.md"
+  thread:         "F-2026-06-30-transitive-import"
+  workdir:        "testdata/projects/cake"
+  workspace_id:   "ws-transitive-import"
+  base_branch:    "main"
+  feature_branch: "task/F-2026-06-30-transitive-import"
+  judge_mode:     "human"
+  judge_confidence_threshold: 0.8
+  merge_strategy:  "squash"
+  # ci_log primed so the diagnose prompt has something to chew on (mirrors
+  # stories/pr-refinement/flows/ci_fails_diagnose.yaml).
+  ci_log:         "FAIL: TestExportCSV (unexpected 500)"
+
+host_handlers:
+  host.append_to_file:
+    data: { ok: true, message_id: "msg-1" }
+  host.inbox.add:
+    data: { ok: true, id: "ib-1" }
+  host.artifacts_dir:
+    data: { ok: true, path: ".artifacts/implementation-flow-artifact.md", message_id: "artifact-1" }
+  host.git_worktree:
+    data: { ok: true, log: "synced", path: "testdata/projects/cake" }
+  host.local_files.ticket:
+    by_op:
+      get:
+        data:
+          ok:    true
+          id:    "F-2026-06-30-transitive-import"
+          title: "Transitive import prompt_path regression"
+          body:  "Reach the doubly-nested pr-refinement import via implementation."
+          url:   "issues/features/F-2026-06-30-transitive-import.md"
+          status: "open"
+      transition:
+        data: { ok: true }
+  # host.git drives both implementation's own review/write/test/review rooms
+  # AND (once folded) the nested pr-refinement's open_pr / ci poll. The CI
+  # poll returns "failure" so `proceed` branches into diagnose_executing —
+  # the room whose on_enter fires the prompt_path-bearing host.agent.decide
+  # this fixture is regression-testing.
+  host.git:
+    data:
+      ok:       true
+      sha:      "cafebabe"
+      diff:     ""
+      url:      "https://example/pr/F-2026-06-30-transitive-import"
+      pr_id:    "404"
+      state:    "failure"
+      checks:   "go-test"
+      comments: ""
+  host.local:
+    data: { ok: true, state: "failure", checks: "go-test", log: "FAIL: 1 test", passed: 4, failed: 1 }
+  host.agent.decide:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Transitive import prompt_path regression"
+        summary_markdown: "Adds the endpoint + tests."
+        scope:            "Endpoint + handler + test."
+        acceptance_criteria: ["GET /notes.csv returns 200 with text/csv."]
+        involved_components: [{ name: "backend/routes/notes.go", reason: "new endpoint" }]
+        affected_files:   ["backend/routes/notes.go"]
+        confidence:       0.9
+        reasoning:        "Endpoint follows the existing handler pattern."
+        tests_planned:    ["TestExportCSV"]
+        patch_summary:    "Adds the endpoint + tests."
+        status:           "passed"
+        tests_run:        { passed: 4, failed: 1, log: "FAIL: 1 test" }
+        nits:             []
+        blockers:         []
+        # diagnose_executing's own schema fields (shares the envelope, as
+        # stories/pr-refinement/flows/ci_fails_diagnose.yaml does):
+        root_cause:       "Concurrent write to the CSV buffer without a lock."
+        fix_description:  "Wrap the buffer write in the existing bufMu lock."
+        verdict:          "pass"
+        intent:           "accept"
+        reason:           "Diagnosis is concrete and the fix targets the root cause."
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Transitive import prompt_path regression"
+        summary_markdown: "Adds the endpoint + tests."
+        scope:            "Endpoint + handler + test."
+        acceptance_criteria: ["GET /notes.csv returns 200 with text/csv."]
+        involved_components: [{ name: "backend/routes/notes.go", reason: "new endpoint" }]
+        affected_files:   ["backend/routes/notes.go"]
+        confidence:       0.9
+        reasoning:        "Endpoint follows the existing handler pattern."
+        tests_planned:    ["TestExportCSV"]
+        patch_summary:    "Adds the endpoint + tests."
+        status:           "passed"
+        tests_run:        { passed: 4, failed: 1, log: "FAIL: 1 test" }
+        nits:             []
+        blockers:         []
+        verdict:          "pass"
+        intent:           "accept"
+        reason:           "Stub artifact passes."
+
+turns:
+  # landing → impl.idle → (auto-provision + auto-start, impl/rooms/idle.yaml
+  # Step 3) → impl.review_task_awaiting_reply. impl.idle's on_enter self-provisions
+  # the worktree and auto-fires `start` once a ticket_id is present, so
+  # go_implementation lands straight past idle (mirrors the current runtime
+  # behaviour of stories/dev-story/flows/cake_feature_walk.yaml, which this
+  # fixture is a sibling of).
+  - intent: { name: go_implementation, slots: {} }
+    expect_state: impl.review_task_awaiting_reply
+  - intent: { name: impl__accept, slots: {} }
+    expect_state: impl.write_code_awaiting_reply
+  - intent: { name: impl__accept, slots: {} }
+    expect_state: impl.test_awaiting_reply
+  - intent: { name: impl__accept, slots: {} }
+    expect_state: impl.review_awaiting_reply
+  - intent: { name: impl__accept, slots: {} }
+    expect_state: impl.handoff
+
+  # impl.handoff → impl.pr.open_pr — the TRANSITIVELY-imported pr-refinement
+  # compound (dev-story → impl → pr, two fold levels).
+  - intent: { name: impl__proceed, slots: {} }
+    expect_state: impl.pr.open_pr
+
+  # open_pr → ci_monitoring; the stubbed CI poll returns state=failure.
+  - intent: { name: impl__pr__proceed, slots: {} }
+    expect_state: impl.pr.ci_monitoring
+    expect_world:
+      impl__pr__ci_state: "failure"
+
+  # ci_monitoring → diagnose_executing (the failure branch). Its on_enter
+  # fires host.agent.decide with the transitively-imported, relative
+  # `prompt: prompts/diagnose_executing.md` effect arg. The `agent:` value
+  # coming out DOUBLE-aliased (`impl__pr__diagnoser`) proves the two-level
+  # fold's namespace rewriting held end to end — see the SCOPE NOTE above
+  # for why the prompt PATH itself isn't asserted here.
+  - intent: { name: impl__pr__proceed, slots: {} }
+    expect_state: impl.pr.diagnose_executing
+    expect_host_calls:
+      - handler: host.agent.decide
+        args: { agent: "impl__pr__diagnoser" }
+        times: 1
+
+expect_no_errors: true
+expect_no_host_calls:
+  - host.cypilot_artifacts

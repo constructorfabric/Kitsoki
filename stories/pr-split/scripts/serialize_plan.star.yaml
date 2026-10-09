@@ -1,0 +1,7 @@
+# Sidecar for serialize_plan.star — the typed I/O contract the engine enforces.
+# The script reads `buckets` from the world snapshot (ctx.world.get), so it takes
+# no declared inputs; it returns the plan as a JSON string.
+inputs: {}
+
+outputs:
+  buckets_json: { type: string }

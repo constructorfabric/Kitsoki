@@ -116,8 +116,12 @@ offer the operator a **one-click bail onto that path** (it is offered,
 never forced — they can ignore it and keep working here):
 
 - `route.intent` — the pipeline entry: `go_bugfix`, `go_implementation`,
-  `go_cypilot`, `go_pr_refinement`, `go_code_review_story`, `go_prd`,
-  `go_idea`, or `drive` (auto-routes a picked ticket by its type).
+  `go_cypilot`, `go_gitops`, `go_pr_refinement`, `go_code_review_story`,
+  `go_prd`, `go_idea`, or `drive` (auto-routes a picked ticket by its type).
+- Use `go_gitops` for repository/git operations or questions the git command
+  hub already answers, including status, local main vs origin, sync, pull,
+  rebase, commit, merge, undo, cleanup, and worktree operations. Do not answer
+  those by running ad hoc shell here.
 - `route.ticket_id` / `route.ticket_type` — set these if you identified an
   existing ticket the pipeline should pick up. The bugfix / implementation
   / cypilot / drive paths need a ticket to proceed; without one they bounce

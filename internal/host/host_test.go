@@ -153,6 +153,24 @@ func TestSecretsContext(t *testing.T) {
 	}
 }
 
+func TestRegistry_InvokeInjectsLoadedSecrets(t *testing.T) {
+	t.Setenv("KITSOKI_TEST_SECRET", "abc123")
+	r := host.NewRegistry()
+	r.Register("host.secret_probe", func(ctx context.Context, args map[string]any) (host.Result, error) {
+		return host.Result{Data: map[string]any{
+			"secret": host.SecretsFromContext(ctx)["KITSOKI_TEST_SECRET"],
+		}}, nil
+	})
+
+	res, err := r.Invoke(context.Background(), "host.secret_probe", nil)
+	if err != nil {
+		t.Fatalf("invoke: %v", err)
+	}
+	if res.Data["secret"] != "abc123" {
+		t.Fatalf("secret = %v, want abc123", res.Data["secret"])
+	}
+}
+
 func TestRunHandler(t *testing.T) {
 	r := host.NewRegistry()
 	host.RegisterBuiltins(r)

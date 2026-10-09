@@ -55,6 +55,9 @@ func (d *supplementCaptureDriver) Teleport(context.Context, string) (*orchestrat
 func (d *supplementCaptureDriver) RewindRoute(context.Context, string, orchestrator.ContextRouteClass, string) (*orchestrator.TurnOutcome, error) {
 	return &orchestrator.TurnOutcome{}, nil
 }
+func (d *supplementCaptureDriver) RecordRoutingFeedback(context.Context, string, string, string, string, orchestrator.RoutingFeedbackVerdict) error {
+	return nil
+}
 
 func TestTurnStream_FreeTextLiftsViewSlots(t *testing.T) {
 	drv := &supplementCaptureDriver{}

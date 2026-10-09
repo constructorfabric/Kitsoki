@@ -1,0 +1,164 @@
+# check_tui_slash_commands — docs-minded persona reads external Codex/Claude
+# slash-command docs, then tries the same behavior in the Kitsoki TUI.
+#
+# Every host call is stubbed by invoke id (no real run.py / LLM / MCP call
+# runs here). The fixture pins the product-journey scenario contract and the
+# scenario-qa driver/judge loop for the TUI transport.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.run:
+    by_call:
+      emit_scenario_qa_run:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            run_id: scenario-qa-run-tui-slash
+            run_dir: /repo/.artifacts/product-journey/scenario-qa-run-tui-slash
+            driver_plan_path: /repo/.artifacts/product-journey/scenario-qa-run-tui-slash/driver-plan.md
+            execution_plan_path: /repo/.artifacts/product-journey/scenario-qa-run-tui-slash/execution-plan.md
+            agent_brief_path: /repo/.artifacts/product-journey/scenario-qa-run-tui-slash/agent-brief.md
+      build_scenario_qa_deck:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: scenario_qa_deck_built
+            run_dir: /repo/.artifacts/product-journey/scenario-qa-run-tui-slash
+            deck_path: /repo/.artifacts/product-journey/scenario-qa-run-tui-slash/deck.slidey.json
+            leg_count: 1
+            pass_count: 1
+            fail_count: 0
+            degraded_count: 0
+            summary: "1 / 1 transport checks passed."
+
+  host.starlark.run:
+    by_call:
+      plan_legs:
+        data:
+          legs:
+            items:
+              - leg_id: "tui-slash-commands::tui"
+                scenario: "tui-slash-commands"
+                label: "TUI slash command discovery"
+                transport: "tui"
+                visual_surface: "tui"
+                evidence_dir: "evidence/gears-rust--docs-minded-contributor/tui-slash-commands"
+                primary_story: "testdata/apps/cloak/app.yaml"
+                success_criteria:
+                  - "Typing / at the beginning of the TUI prompt shows available slash commands without requiring Kitsoki-specific docs."
+                  - "Typing letters after / filters the visible command list to likely matches."
+                  - "The primary suggestion is visually marked as the Tab completion target."
+                  - "Pressing Tab accepts the primary suggestion and Enter executes the completed command."
+                transport_evidence_contract:
+                  primary_tool: "render.tui_png"
+                  evidence_kind: "rendered_tui_frame"
+                  level: "frame-level"
+          leg_count: 1
+          driver_agent: ".agents/agents/product-journey-qa-driver.md"
+          run_dir_rel: ".artifacts/product-journey/scenario-qa-run-tui-slash"
+          plan_status: { resolved: true }
+      pick_leg:
+        data:
+          current_leg:
+            leg_id: "tui-slash-commands::tui"
+            scenario: "tui-slash-commands"
+            label: "TUI slash command discovery"
+            transport: "tui"
+            visual_surface: "tui"
+            evidence_dir: "evidence/gears-rust--docs-minded-contributor/tui-slash-commands"
+          current_leg_id: "tui-slash-commands::tui"
+      record_leg_result:
+        data:
+          leg_results:
+            items:
+              - leg_id: "tui-slash-commands::tui"
+                scenario: "tui-slash-commands"
+                transport: "tui"
+                visual_surface: "tui"
+                driver_status: "captured"
+                evidence_refs:
+                  - "render_tui_png:slash-menu-open"
+                  - "render_tui_png:slash-menu-filtered"
+                  - "session_trace:tab-complete-help"
+                verdict: "pass"
+                verdict_summary: "Docs-trained slash flow passed: / opens the command menu, /he filters it, Tab accepts /help, and Enter runs /help."
+                frames_dir: "evidence/gears-rust--docs-minded-contributor/tui-slash-commands"
+          pass_count: 1
+          fail_count: 0
+          degraded_count: 0
+      build_report:
+        data:
+          report_path: ".artifacts/product-journey/scenario-qa-run-tui-slash/report.md"
+          report_summary: "1 / 1 transport checks passed."
+
+  host.agent.task:
+    by_call:
+      drive_leg:
+        data:
+          ok: true
+          submitted:
+            status: "captured"
+            evidence_refs:
+              - "render_tui_png:slash-menu-open"
+              - "render_tui_png:slash-menu-filtered"
+              - "session_trace:tab-complete-help"
+            frames_dir: "evidence/gears-rust--docs-minded-contributor/tui-slash-commands"
+            blockers: []
+            summary: "Read external Codex/Claude slash-command behavior, then captured the Kitsoki TUI showing / menu discovery, /he filtering, Tab completion to /help, and /help execution."
+      judge_leg:
+        data:
+          ok: true
+          submitted:
+            verdict: "pass"
+            summary: "The cited TUI frames and trace prove the docs-trained slash command path succeeds on the TUI transport."
+            cited_frames:
+              - "slash-menu-open.png"
+              - "slash-menu-filtered.png"
+            frames_dir: "evidence/gears-rust--docs-minded-contributor/tui-slash-commands"
+
+turns:
+  - intent:
+      name: check
+      slots:
+        scenario: tui-slash-commands
+        transport: tui
+        persona: docs-minded-contributor
+        target: gears-rust
+        seed: slash-docs-user
+    expect_state: report
+    expect_world:
+      mode: catalog
+      run_id: scenario-qa-run-tui-slash
+      leg_count: 1
+      leg_index: 0
+      pass_count: 1
+      fail_count: 0
+      degraded_count: 0
+      report_path: ".artifacts/product-journey/scenario-qa-run-tui-slash/report.md"
+      report_summary: "1 / 1 transport checks passed."
+      deck_path: "/repo/.artifacts/product-journey/scenario-qa-run-tui-slash/deck.slidey.json"
+    expect_host_calls:
+      - handler: host.run
+        args: { call: emit_scenario_qa_run }
+      - handler: host.starlark.run
+        args: { call: plan_legs }
+      - handler: host.starlark.run
+        args: { call: pick_leg }
+      - handler: host.agent.task
+        args: { call: drive_leg }
+      - handler: host.agent.task
+        args: { call: judge_leg }
+      - handler: host.starlark.run
+        args: { call: record_leg_result }
+      - handler: host.starlark.run
+        args: { call: build_report }
+      - handler: host.run
+        args: { call: build_scenario_qa_deck }
+    expect_view_matches: "SCENARIO QA REPORT[\\s\\S]*1 / 1 transport checks passed[\\s\\S]*Scenario:[\\s\\S]*tui-slash-commands[\\s\\S]*Summary report:[\\s\\S]*report.md[\\s\\S]*tui \\[\\] verdict=pass driver=captured"
+
+expect_no_errors: true

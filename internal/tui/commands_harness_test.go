@@ -4,7 +4,11 @@ import (
 	"strings"
 	"testing"
 
+	"kitsoki/internal/app"
+	"kitsoki/internal/harness"
+	"kitsoki/internal/machine"
 	"kitsoki/internal/orchestrator"
+	"kitsoki/internal/store"
 )
 
 func sampleProfiles() []orchestrator.ProfileInfo {
@@ -14,6 +18,47 @@ func sampleProfiles() []orchestrator.ProfileInfo {
 			Models: []string{"hf:Qwen/Qwen2.5-Coder-32B-Instruct", "hf:meta-llama/Llama-3.3-70B-Instruct"}, Active: true},
 		{Name: "synthetic-codex", Backend: "codex"},
 	}
+}
+
+func sampleHarnessProfiles() map[string]orchestrator.HarnessProfile {
+	return map[string]orchestrator.HarnessProfile{
+		"claude-native": {Name: "claude-native", Backend: "claude"},
+		"synthetic-claude": {
+			Name:    "synthetic-claude",
+			Backend: "claude",
+			Model:   "hf:Qwen/Qwen2.5-Coder-32B-Instruct",
+			Models:  []string{"hf:Qwen/Qwen2.5-Coder-32B-Instruct", "hf:meta-llama/Llama-3.3-70B-Instruct"},
+			Effort:  "medium",
+			Efforts: []string{"low", "medium", "high"},
+		},
+		"synthetic-codex": {Name: "synthetic-codex", Backend: "codex"},
+	}
+}
+
+func newHarnessPickerModel(t *testing.T) RootModel {
+	t.Helper()
+	def, err := app.Load("../../testdata/apps/cloak/app.yaml")
+	if err != nil {
+		t.Fatalf("load cloak fixture: %v", err)
+	}
+	mach, err := machine.New(def)
+	if err != nil {
+		t.Fatalf("build machine: %v", err)
+	}
+	mem, err := store.OpenMemory()
+	if err != nil {
+		t.Fatalf("open memory store: %v", err)
+	}
+	t.Cleanup(func() { _ = mem.Close() })
+	replay, err := harness.NewReplay("../../testdata/apps/cloak/recording.yaml")
+	if err != nil {
+		t.Fatalf("open replay harness: %v", err)
+	}
+	orch := orchestrator.New(def, mach, mem, replay,
+		orchestrator.WithHarnessProfiles(sampleHarnessProfiles(), "synthetic-claude"))
+	m := RootModel{orch: orch}
+	m.transcript = newTranscriptModel(80, 24)
+	return m
 }
 
 // renderProviderBlock lists every profile as a numbered menu row and marks the
@@ -88,5 +133,74 @@ func TestActiveProfile(t *testing.T) {
 	none := []orchestrator.ProfileInfo{{Name: "x"}}
 	if got := activeProfile(none); got.Name != "" {
 		t.Errorf("activeProfile with none active should be zero, got %q", got.Name)
+	}
+}
+
+func TestHarnessPickerFollowUpNumberSelectsProvider(t *testing.T) {
+	m := newHarnessPickerModel(t)
+
+	updated, cmd := m.handleSlashCommand("/provider")
+	if cmd != nil {
+		t.Fatalf("/provider should not return async command")
+	}
+	m = updated.(RootModel)
+	if m.pendingHarnessPick != "provider" {
+		t.Fatalf("pendingHarnessPick = %q, want provider", m.pendingHarnessPick)
+	}
+
+	updated, cmd = m.dispatchInput("3")
+	if cmd != nil {
+		t.Fatalf("provider follow-up number must not start semantic/LLM routing")
+	}
+	m = updated.(RootModel)
+	if got := m.orch.Selection().Profile; got != "synthetic-codex" {
+		t.Fatalf("selected profile = %q, want synthetic-codex", got)
+	}
+	if m.pendingHarnessPick != "" {
+		t.Fatalf("pendingHarnessPick should clear after selection, got %q", m.pendingHarnessPick)
+	}
+}
+
+func TestHarnessPickerFollowUpNumberSelectsModel(t *testing.T) {
+	m := newHarnessPickerModel(t)
+
+	updated, cmd := m.handleSlashCommand("/model")
+	if cmd != nil {
+		t.Fatalf("/model should not return async command")
+	}
+	m = updated.(RootModel)
+	if m.pendingHarnessPick != "model" {
+		t.Fatalf("pendingHarnessPick = %q, want model", m.pendingHarnessPick)
+	}
+
+	updated, cmd = m.dispatchInput("2")
+	if cmd != nil {
+		t.Fatalf("model follow-up number must not start semantic/LLM routing")
+	}
+	m = updated.(RootModel)
+	if got := m.orch.Selection().Model; got != "hf:meta-llama/Llama-3.3-70B-Instruct" {
+		t.Fatalf("selected model = %q, want hf:meta-llama/Llama-3.3-70B-Instruct", got)
+	}
+}
+
+func TestHarnessPickerFollowUpNumberSelectsEffort(t *testing.T) {
+	m := newHarnessPickerModel(t)
+
+	updated, cmd := m.handleSlashCommand("/effort")
+	if cmd != nil {
+		t.Fatalf("/effort should not return async command")
+	}
+	m = updated.(RootModel)
+	if m.pendingHarnessPick != "effort" {
+		t.Fatalf("pendingHarnessPick = %q, want effort", m.pendingHarnessPick)
+	}
+
+	updated, cmd = m.dispatchInput("3")
+	if cmd != nil {
+		t.Fatalf("effort follow-up number must not start semantic/LLM routing")
+	}
+	m = updated.(RootModel)
+	if got := m.orch.Selection().Effort; got != "high" {
+		t.Fatalf("selected effort = %q, want high", got)
 	}
 }

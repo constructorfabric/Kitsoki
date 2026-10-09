@@ -1,0 +1,78 @@
+# triage_github_issue_prefetch — GitHub issue ids fetch their body before triage.
+#
+# Persona-QA and GitHub-agent runs hand bugfix GitHub issue numbers, not local
+# issues/bugs/<id>.md files. The triaging room must fetch the GitHub issue body
+# itself so the triager's primary evidence source is the filed issue body.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  ticket_id:     "119"
+  ticket_title:  "bugfix story assumes local issues"
+  ticket_repo:   "bsacrobatix/Kitsoki"
+  thread:        "https://github.com/bsacrobatix/Kitsoki/issues/119"
+  workdir:       "."
+  bugfix_mode:   "triage"
+  judge_mode:    "human"
+
+host_handlers:
+  host.gh.ticket.get:
+    data:
+      id: "119"
+      title: "bugfix story: triaging prompt assumes local issues/bugs/<id>.md"
+      body: |
+        EXPECTED: triage works equally for local ticket files and GitHub-issue tickets.
+        ACTUAL: the triager assumes issues/bugs/119.md exists.
+        SUGGESTED FIX: fetch the GitHub issue body before the triager prompt renders.
+      status: "open"
+      url: "https://github.com/bsacrobatix/Kitsoki/issues/119"
+  host.agent.codeact:
+    data:
+      ok: true
+      terminated: "done"
+      payload:
+        verdict: "STILL-LIVE"
+        confidence: 0.82
+        summary_title: "STILL-LIVE — GitHub issue body was fetched"
+        evidence: "The prompt received the GitHub issue body instead of issues/bugs/119.md."
+        summary_markdown: "The triager used the fetched GitHub issue body."
+        suggested_action: "drive the full bugfix pipeline"
+        fixed_in_ref: null
+        involved_components: ["stories/bugfix/rooms/triaging.yaml"]
+      steps:
+        - snippet: "def main(ctx):\n    return {'seen': ctx.world.get('ticket_body')}"
+          observation: { seen: "fetched" }
+
+turns:
+  - intent: { name: triage, slots: {} }
+    expect_state: triaging
+    expect_host_calls:
+      - handler: host.gh.ticket.get
+        args:
+          repo: "bsacrobatix/Kitsoki"
+          id: "119"
+      - handler: host.agent.codeact
+        args:
+          agent: "triager"
+    expect_world:
+      ticket_source_mode: "remote"
+      ticket_source_ref: "https://github.com/bsacrobatix/Kitsoki/issues/119"
+      ticket_url: "https://github.com/bsacrobatix/Kitsoki/issues/119"
+      ticket_title: "bugfix story: triaging prompt assumes local issues/bugs/<id>.md"
+      ticket_body: |
+        EXPECTED: triage works equally for local ticket files and GitHub-issue tickets.
+        ACTUAL: the triager assumes issues/bugs/119.md exists.
+        SUGGESTED FIX: fetch the GitHub issue body before the triager prompt renders.
+      triage_verdict:
+        verdict: "STILL-LIVE"
+        confidence: 0.82
+        summary_title: "STILL-LIVE — GitHub issue body was fetched"
+        evidence: "The prompt received the GitHub issue body instead of issues/bugs/119.md."
+        summary_markdown: "The triager used the fetched GitHub issue body."
+        suggested_action: "drive the full bugfix pipeline"
+        fixed_in_ref: null
+        involved_components: ["stories/bugfix/rooms/triaging.yaml"]
+
+expect_terminal: false
+expect_no_errors: true

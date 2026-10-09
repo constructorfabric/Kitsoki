@@ -30,6 +30,9 @@ host_handlers:
             ok: true
             project: gears-rust
             status: complete-with-pending
+            completed: true
+            repairable: false
+            requires_drive: false
             checks:
               preflight_ok: true
               arming_verified: true
@@ -99,6 +102,12 @@ host_handlers:
               spec_path: .artifacts/external-bakeoff/report/deck.slidey.json
               summary: "gears-rust bake-off: 0/0 attempted solved; 1 pending"
             markdown: .artifacts/external-bakeoff/report/report.md
+  host.artifacts_dir:
+    by_call:
+      completion_state:
+        data:
+          ok: true
+          path: .artifacts/external-bakeoff/report/completion-state.json
 
 turns:
   - intent: { name: accept, slots: {} }
@@ -110,6 +119,9 @@ turns:
         ok: true
         project: gears-rust
         status: complete-with-pending
+        completed: true
+        repairable: false
+        requires_drive: false
         checks:
           preflight_ok: true
           arming_verified: true
@@ -179,6 +191,6 @@ turns:
           spec_path: .artifacts/external-bakeoff/report/deck.slidey.json
           summary: "gears-rust bake-off: 0/0 attempted solved; 1 pending"
         markdown: .artifacts/external-bakeoff/report/report.md
-    expect_view_matches: "Completion:         complete-with-pending"
+    expect_view_matches: "complete-with-pending"
 
 expect_no_errors: true

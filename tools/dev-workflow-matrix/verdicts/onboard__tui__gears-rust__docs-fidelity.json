@@ -1,0 +1,170 @@
+{
+  "axis": {
+    "surface": "tui",
+    "workflow": "onboard"
+  },
+  "check_type": "docs-fidelity",
+  "claims": [
+    {
+      "claim": "There is one front door: `onboard .` typed into `kitsoki run` drives the dev-story onboarding pipeline",
+      "note": "stories/dev-story/rooms/landing.yaml:347 has a deterministic escape hatch routing utterances starting with 'onboard'/'project onboarding'/'init project' into the onboarding flow; an 'onboard' quick-action label also exists (landing.yaml:285).",
+      "score": "truthful"
+    },
+    {
+      "claim": "From the project root, `kitsoki run` with no app path starts the embedded dev-story root for the current project",
+      "note": "cmd/kitsoki/main.go:327-356 \u2014 with no arg it synthesizes the implicit root from .kitsoki.yaml `root:`; internal/webconfig/webconfig.go:93-95 says a missing config \u21d2 a bare dev-story import (rung 0), resolved from the embedded library.",
+      "score": "truthful"
+    },
+    {
+      "claim": "You walk four onboarding rooms (review \u2192 apply)",
+      "note": "stories/dev-story/rooms/init.yaml:4 documents the pipeline landing \u2192 init_discover \u2192 init(review) \u2192 init_apply \u2192 init_done \u2014 four init rooms with the review checkpoint before apply.",
+      "score": "truthful"
+    },
+    {
+      "claim": "Onboarding writes `.kitsoki.yaml` with `story_dirs`, `project_profile`, `root.import: dev-story`, and a disabled `mining:` scope when transcripts are found",
+      "note": "init_apply.py:1070-1076 emits story_dirs/project_profile/root.import: dev-story; mining_config sets \"enabled\": False (init_apply.py:450) and is only added when transcripts were found (mining_config_yaml).",
+      "score": "truthful"
+    },
+    {
+      "claim": "Onboarding writes `.kitsoki/project-profile.yaml` (stack, commands, tracker, onboarding baseline, etc.)",
+      "note": "init_apply.py writes the profile including tracker.provider/tracker.repo (lines 789-791) and onboarding blocks; referenced throughout the apply plan.",
+      "score": "truthful"
+    },
+    {
+      "claim": "Onboarding writes `.kitsoki/check-readiness.py`, a verifier for the profile's setup_plan.verifications",
+      "note": "init_apply.py:687 writes .kitsoki/check-readiness.py; init_apply_test.py runs it with --list and --json.",
+      "score": "truthful"
+    },
+    {
+      "claim": "Onboarding writes `.kitsoki/promote-session-mining.py`, a promotion helper for mining recipes",
+      "note": "init_apply.py:692-694 writes it with summary 'Promote emitted session-mining recipes into pending profile customizations'.",
+      "score": "truthful"
+    },
+    {
+      "claim": "Onboarding materializes `.kitsoki/stories/<id>-dev/app.yaml` importing `@kitsoki/dev-story`, plus a README.md",
+      "note": "init_apply.py:677-684 writes .kitsoki/stories/<project_id>-dev/app.yaml and README.md; the generated wrapper imports @kitsoki/dev-story (line 533).",
+      "score": "truthful"
+    },
+    {
+      "claim": "Onboarding writes `.mcp.json` registering the kitsoki studio MCP server",
+      "note": "baseskills.Install writes/merges .mcp.json (internal/baseskills/install.go:35); the apply room invokes `kitsoki project-tools install` which does this (init.yaml:682-692).",
+      "score": "truthful"
+    },
+    {
+      "claim": "Toolkit lands in `.agents/skills/` + `.agents/agents/*.md` as source of truth with relative symlinks in `.claude/skills` / `.claude/agents`",
+      "note": "cmd/kitsoki/project_tools.go:23-27 and internal/baseskills/install.go:33-34 document/implement exactly this layout with relative symlinks.",
+      "score": "truthful"
+    },
+    {
+      "claim": "Onboarding appends kitsoki runtime entries to `.gitignore`",
+      "note": "init_apply.py:173 append_gitignore and gitignore_additions (line 717).",
+      "score": "truthful"
+    },
+    {
+      "claim": "Skills, agents, and base stories are embedded in the binary (`internal/baseskills`, `internal/basestories`) so no kitsoki checkout is needed",
+      "note": "Both packages exist with embedded assets (internal/baseskills/assets/**, internal/basestories/stories/** including dev-story).",
+      "score": "truthful"
+    },
+    {
+      "claim": "TUI sequence: `kitsoki run`, type `onboard .` (or an absolute path), then `continue` to review the discovered profile, then `continue` to confirm/apply",
+      "note": "The landing escape hatch accepts 'onboard <path>'; init.yaml choice arcs expose continue-style intents init_discovered (review) and confirm_init (apply checkpoint \u2014 'no files are written until confirm_init', init.yaml:10).",
+      "score": "truthful"
+    },
+    {
+      "claim": "`kitsoki run @kitsoki/dev-story` is an equivalent explicit invocation",
+      "note": "cmd/kitsoki/session.go:1395-1405 \u2014 a top-level @kitsoki/<name> arg resolves from the embedded story library, with `kitsoki run @kitsoki/dev-story` cited verbatim as the onboarding example.",
+      "score": "truthful"
+    },
+    {
+      "claim": "Harness auto-selection: with no `claude` binary or Anthropic credential, `kitsoki run` falls back to replay and errors without a `--recording`",
+      "note": "cmd/kitsoki/main.go:252-255 documents exactly this three-rung auto-selection (claude binary \u2192 live credential \u2192 replay requiring --recording).",
+      "score": "truthful"
+    },
+    {
+      "claim": "A failed toolkit + MCP install routes to a loud `init_tools_failed` read-out (never silent success), retryable or finishable later with `kitsoki project-tools install`",
+      "note": "init.yaml:698 `on_error: init_tools_failed` on the install_tools invoke (fail_on_error: true); the init_tools_failed room (init.yaml:790) offers retry arcs; project-tools install exists (cmd/kitsoki/project_tools.go:43).",
+      "score": "truthful"
+    },
+    {
+      "claim": "Headless equivalent: `kitsoki session create --app @kitsoki/dev-story --key local:onboard` then `session continue` with intents landing_capture (slots request), init_discovered, confirm_init, init_applied",
+      "note": "session create/continue with --app/--key/--intent/--slots exist (cmd/kitsoki/session.go:701,767); all four intents exist in stories/dev-story (landing.yaml, init.yaml); --app resolves @kitsoki/ names via loadAppWithEnv.",
+      "score": "truthful"
+    },
+    {
+      "claim": "`kitsoki init` is an alias for `kitsoki project-tools install`, installing embedded skills/agents and registering the studio MCP, printing 'skills: N linked\u2026/agents: N linked\u2026/mcp: registered\u2026'",
+      "note": "cmd/kitsoki/doctor.go:82-123 \u2014 initCmd is documented as the alias and prints exactly those three lines; supports --target.",
+      "score": "truthful"
+    },
+    {
+      "claim": "`kitsoki init` does not discover a profile, write .kitsoki.yaml, or materialize an instance; in a repo with no `.kitsoki.yaml` it prints a pointer back to `onboard .`",
+      "note": "doctor.go:87-88,115-117 \u2014 initOnboardPointer fires when hasProjectConfig (a .kitsoki.yaml stat) is false; the command only calls baseskills.Install.",
+      "score": "truthful"
+    },
+    {
+      "claim": "The install is idempotent: symlinks re-pointed, existing `.mcp.json` merged (other servers preserved), a real file at a link path left untouched; `--json` gives a machine-readable report",
+      "note": "internal/baseskills/install.go:35-39 and relink (:122-134) implement merge + skip-real-file; project_tools.go:72 defines the --json flag.",
+      "score": "truthful"
+    },
+    {
+      "claim": "`kitsoki doctor` flags a missing `.mcp.json`",
+      "note": "cmd/kitsoki/doctor.go:74 \u2014 'no .mcp.json here \u2014 run `kitsoki init`\u2026'; also flags a .mcp.json that doesn't register the kitsoki server (:79).",
+      "score": "truthful"
+    },
+    {
+      "claim": "After onboarding, `kitsoki run` uses the profile-driven implicit root and `kitsoki run .kitsoki/stories/<id>-dev/app.yaml` runs the materialized snapshot",
+      "note": "Implicit root synthesis from .kitsoki.yaml root: (main.go:317-321); the materialized instance is a normal app.yaml path arg.",
+      "score": "truthful"
+    },
+    {
+      "claim": "A GitHub `origin` remote (owner/repo slug) makes the instance bind `iface.ticket \u2192 host.gh.ticket` pinned via `world.ticket_repo`, recorded as `tracker.provider: github` + `tracker.repo`; other remotes keep local-file tickets under `issues/`",
+      "note": "init_apply.py:232-233,343-347,789-799 implement exactly this; init_discover_test.py:126-137 verifies the github_repo_slug classification (including gears-rust examples); hosts.md:1988 carries the linked anchor heading.",
+      "score": "truthful"
+    },
+    {
+      "claim": "The profile's `onboarding` block records `base_story`, `repo_patterns`, and `story_customizations`; transcripts also produce `.context/kitsoki-session-mining-seed.md` and `mining.enabled: false` prefill; `/mine resume` or `/mine now` is the explicit opt-in",
+      "note": "init_apply.py:424-483 (seed path, enabled: False, first-pass sample, transcript dirs); internal/tui/mine_command.go implements the /mine TUI command.",
+      "score": "truthful"
+    },
+    {
+      "claim": "When mining emits `.artifacts/mining/jobs/<job>/analysis.json`, the `customizations` action from `init_done` promotes pending customizations; the helper also runs standalone with --dry-run/--json/--accept-pending/--refine-pending",
+      "note": "init.yaml:932-934 (label 'customizations' \u2192 review_customizations from init_done \u2192 init_customizations room); init_apply.py:1284,1480-1486 implement the analysis.json glob and all four flags (tested in init_apply_test.py).",
+      "score": "truthful"
+    },
+    {
+      "claim": "From `init_done`, the `readiness` action runs the generated verifier; standalone `check-readiness.py --list / --json / --json --update-profile` works, report at `.artifacts/kitsoki-readiness.json`, `--update-profile` persists into the profile",
+      "note": "init.yaml:935-937 (label 'readiness' \u2192 run_readiness \u2192 init_readiness room); init_apply.py:1204-1208 define --list/--update-profile and default --out .artifacts/kitsoki-readiness.json.",
+      "score": "truthful"
+    },
+    {
+      "claim": "With `.mcp.json` registered, MCP clients get the studio tools; the `kitsoki-mcp-driver` agent is installed into `.claude/agents/` and adoptable via `claude --agent kitsoki-mcp-driver`; the kitsoki repo mirrors a `.codex/agents/kitsoki-mcp-driver.toml` not installed into targets",
+      "note": "docs/architecture/mcp-studio.md exists; internal/baseskills/assets/agents/kitsoki-mcp-driver.md is in the installed set; .codex/agents/kitsoki-mcp-driver.toml exists in-repo only; the studio-mcp-dogfood recipe heading 'Run A Pure Kitsoki Driver' matches the linked anchor.",
+      "score": "truthful"
+    },
+    {
+      "claim": "The VS Code extension is expected to auto-discover the onboarded `.kitsoki/stories/` instance, with `storiesDir` as an explicit override (documented contract, v0.2 work)",
+      "note": "tools/vscode-kitsoki/src/backend-resolve.ts:74-84 \u2014 explicit setting wins, otherwise discoverStoriesDir walks up for .kitsoki/stories / .kitsoki.yaml; matches the doc's stated contract.",
+      "score": "truthful"
+    },
+    {
+      "claim": "Linked references exist: getting-started.md, stories/dev-story-onboarding.md, ../stories/dev-story/README.md, workflows/README.md (five core workflows per TUI/web/VS Code/gh-agent surface), architecture/mcp-studio.md, recipes/studio-mcp-dogfood.md",
+      "note": "All six files exist at the linked paths; docs/workflows/README.md indeed indexes five workflows with per-surface truthful-state framing.",
+      "score": "truthful"
+    },
+    {
+      "claim": "Installed skills under `.claude/skills/` cover authoring, debugging, UI demos/QA, dogfooding, and more",
+      "note": "internal/baseskills/assets/skills/ includes kitsoki-story-authoring, kitsoki-debugging, kitsoki-ui-demo, kitsoki-ui-qa, dogfood-marathon, and many others.",
+      "score": "truthful"
+    }
+  ],
+  "evidence_refs": [
+    "docs/project-onboarding.md"
+  ],
+  "health": "model:result",
+  "job_type": "dev-workflow-matrix",
+  "metrics": {},
+  "overall_pass": true,
+  "schema_version": "1.1.0",
+  "summary": "All 30 actionable claims in docs/project-onboarding.md check out against the code \u2014 commands, flags, intents, rooms, generated files, and linked docs/anchors all exist as written; no stale claims found and no step needed for the TUI onboard walk was missing.",
+  "target_id": "gears-rust",
+  "verdict": "solved"
+}

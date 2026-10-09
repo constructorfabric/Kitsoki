@@ -10,6 +10,7 @@ app:
 
 hosts:
   - host.agent.ask
+  - host.starlark.run
 
 world:
   result: { type: string, default: "" }
@@ -43,3 +44,9 @@ states:
           schema: schemas/result.json
         bind:
           result: stdout
+      - invoke: host.starlark.run
+        with:
+          script: scripts/probe.star
+          inputs: {}
+        bind:
+          result: result

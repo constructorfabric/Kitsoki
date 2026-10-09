@@ -24,6 +24,18 @@ type HTTPClient interface {
 	Do(ctx context.Context, method, url string, headers map[string]string, body []byte) (*HTTPResponse, error)
 }
 
+// AuthHTTPClient is an optional extension implemented by transports that can
+// resolve symbolic auth policy names into concrete request credentials.
+//
+// Starlark scripts pass only names such as "jira" or "bitbucket_pat" through
+// ctx.http.get/post(auth=...). The transport resolves those names against env
+// or other host-side secret stores and mutates the request immediately before
+// dispatch. The resolved secret values are never materialized as Starlark
+// values.
+type AuthHTTPClient interface {
+	DoAuth(ctx context.Context, method, url string, headers map[string]string, body []byte, auth []string) (*HTTPResponse, error)
+}
+
 // HTTPResponse is the wire result handed back to a script. It is the Go-side
 // shape behind the Starlark response object (status / headers / text() / json()).
 // Body is the full response bytes; it stays in-process and, in production, is

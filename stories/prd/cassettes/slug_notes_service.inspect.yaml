@@ -1,0 +1,120 @@
+kind: inspect_cassette
+interactions:
+  - op: exists
+    target: .artifacts/prd/a-notes-service-so-every-note
+    out: "false"
+  - op: exists
+    target: /tmp/kitsoki-prd-fixtures/a-notes-service-so-every-note.md
+    out: "false"
+  - op: exists
+    target: .artifacts/prd/notes-service/004-prd.md
+    out: "true"
+  - op: read
+    target: .artifacts/prd/notes-service/004-prd.md
+    out: |
+      # PRD: Notes Service
+
+      ## Problem & Context
+      Teams capture notes across scattered tools; nothing ties a note to
+      the work it belongs to, so context is lost between sessions.
+
+      ## Target Users
+      Platform engineers and their teams who already live in the kitsoki
+      workspace.
+
+      ## Goals
+      - A first-class notes surface attached to sessions and tickets.
+      - Fast capture and retrieval with zero context switch.
+
+      ## Requirements
+      - Functional: create, edit, link, and search notes from any room.
+      - Non-functional: notes-saved-per-session is the headline metric.
+
+      ## Open Questions
+      - Should a note be private by default or shared with the room?
+  - op: exists
+    target: /tmp/kitsoki-prd-fixtures/notes-service.md
+    out: "false"
+  - op: write
+    target: /tmp/kitsoki-prd-fixtures/notes-service.md
+    out: |
+      # PRD: Notes Service
+
+      ## Problem & Context
+      Teams capture notes across scattered tools; nothing ties a note to
+      the work it belongs to, so context is lost between sessions.
+
+      ## Target Users
+      Platform engineers and their teams who already live in the kitsoki
+      workspace.
+
+      ## Goals
+      - A first-class notes surface attached to sessions and tickets.
+      - Fast capture and retrieval with zero context switch.
+
+      ## Requirements
+      - Functional: create, edit, link, and search notes from any room.
+      - Non-functional: notes-saved-per-session is the headline metric.
+
+      ## Open Questions
+      - Should a note be private by default or shared with the room?
+  - op: exists
+    target: .artifacts/prd/notes-service/004-prd.next.md
+    out: "true"
+  - op: read
+    target: .artifacts/prd/notes-service/004-prd.next.md
+    out: |
+      # PRD: Notes Service
+
+      ## Problem & Context
+      Teams capture notes across scattered tools; nothing ties a note to
+      the work it belongs to, so context is lost between sessions.
+
+      ## Target Users
+      Platform engineers and their teams who already live in the kitsoki
+      workspace.
+
+      ## Goals
+      - A first-class notes surface attached to sessions and tickets.
+      - Fast capture and retrieval with zero context switch.
+
+      ## Non-Goals
+      - Not a general-purpose wiki; notes are scoped to sessions and tickets.
+
+      ## Requirements
+      - Functional: create, edit, link, and search notes from any room.
+      - Non-functional: notes-saved-per-session is the headline metric.
+      - Security: tenant isolation is mandatory; admins see only aggregate metrics.
+
+      ## Open Questions
+      - Should a note be private by default or shared with the room?
+  - op: exists
+    target: /tmp/kitsoki-prd-fixtures/notes-service.md
+    out: "false"
+  - op: write
+    target: /tmp/kitsoki-prd-fixtures/notes-service.md
+    out: |
+      # PRD: Notes Service
+
+      ## Problem & Context
+      Teams capture notes across scattered tools; nothing ties a note to
+      the work it belongs to, so context is lost between sessions.
+
+      ## Target Users
+      Platform engineers and their teams who already live in the kitsoki
+      workspace.
+
+      ## Goals
+      - A first-class notes surface attached to sessions and tickets.
+      - Fast capture and retrieval with zero context switch.
+
+      ## Non-Goals
+      - Not a general-purpose wiki; notes are scoped to sessions and tickets.
+
+      ## Requirements
+      - Functional: create, edit, link, and search notes from any room.
+      - Non-functional: notes-saved-per-session is the headline metric.
+      - Security: tenant isolation is mandatory; admins see only aggregate metrics.
+
+      ## Open Questions
+      - Should a note be private by default or shared with the room?
