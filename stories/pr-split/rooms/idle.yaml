@@ -1,0 +1,105 @@
+# idle — list the commits ahead of integration and classify each by file path
+# (deterministic). Does NOT auto-advance: the operator drives `proceed`, which
+# puts list_commits's bind a TURN BOUNDARY before planning's agent runs — an
+# on_enter host.run bind is not visible to a same-turn on_enter agent, so the
+# agent would otherwise see zero commits.
+
+states:
+
+  idle:
+    description: "Detect the commits ahead of integration and classify them by concern."
+    relevant_world: [source_branch, integration_branch, commit_count, commits, dry_run]
+    view:
+      - kv:
+          pairs:
+            Source:      '{{ world.source_branch|default:"(detecting…)" }}'
+            Integration: '{{ world.integration_branch }}'
+            Commits:     '{{ world.commit_count }} ahead'
+            "Dry run":   '{% if world.dry_run %}yes (plan only){% else %}no{% endif %}'
+      - heading: "Commits"
+        when: "world.commit_count > 0"
+      - template: '{{ world.commits.rendered|default:"(none)" }}'
+        when: "world.commit_count > 0"
+      - prose: "No commits ahead of {{ world.integration_branch }} — nothing to split."
+        when: "world.commit_count == 0"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "proceed"
+              hint:  "group {{ world.commit_count }} commits into concern PRs"
+              intent: proceed
+              when:  "world.commit_count > 0"
+            - label: "quit"
+              intent: quit
+            - label: "look"
+              intent: look
+    on_enter:
+      - invoke: host.run
+        once: true
+        id: list_commits
+        with:
+          cmd: bash
+          args:
+            - "-c"
+            - |
+              set -e
+              export NO_COLOR=1 GIT_TERMINAL_PROMPT=0 GIT_PAGER=cat
+              INT="{{ world.integration_branch }}"
+              SRC=$(git rev-parse --abbrev-ref HEAD)
+              concern_for() {
+                case "$1" in
+                  internal/*)              echo core ;;
+                  tools/bugfix-bakeoff/*)  echo harness ;;
+                  tools/*)                 echo tooling ;;
+                  docs/*)                  echo docs ;;
+                  stories/*)               echo stories ;;
+                  *)                       echo misc ;;
+                esac
+              }
+              items=$(
+                for sha in $(git rev-list --reverse "$INT..HEAD"); do
+                  subj=$(git log -1 --format=%s "$sha")
+                  files=$(git show --name-only --format= "$sha" | sed '/^$/d')
+                  concerns=$(printf '%s\n' "$files" | while read -r f; do [ -n "$f" ] && concern_for "$f"; done | sort -u | sed '/^$/d')
+                  ncon=$(printf '%s\n' "$concerns" | sed '/^$/d' | grep -c . || true)
+                  primary=$(printf '%s\n' "$concerns" | head -1)
+                  amb=false; [ "${ncon:-0}" -gt 1 ] && amb=true
+                  jq -n --arg sha "$sha" --arg subj "$subj" \
+                        --arg files "$(printf '%s' "$files" | tr '\n' ',')" \
+                        --arg concern "${primary:-misc}" --argjson ambiguous "$amb" \
+                    '{sha:$sha,subject:$subj,files:$files,concern:$concern,ambiguous:$ambiguous}'
+                done | jq -s '.'
+              )
+              rendered=$(printf '%s' "$items" | jq -r '.[] | "- \(.sha[0:8]) [\(.concern)\(if .ambiguous then "/ambiguous" else "" end)] \(.subject)"')
+              # Write a self-contained briefing the bucketer READS (a Read tool),
+              # instead of passing commits through agent prompt ARGS — those render
+              # against a stale world snapshot and intermittently arrive empty
+              # (the on_enter host.run bind isn't reliably visible to the agent).
+              brief=".git/kitsoki-prsplit-input.txt"
+              {
+                echo "Source branch: $SRC"
+                echo "Integration branch: $INT"
+                echo ""
+                echo "Commits (oldest first) — sha [concern] subject:"
+                printf '%s\n' "$rendered"
+                echo ""
+                echo "Per-commit changed files:"
+                printf '%s' "$items" | jq -r '.[] | "\(.sha[0:8]): \(.files)"'
+              } > "$brief"
+              jq -n --arg sb "$SRC" --argjson items "$items" --arg rendered "$rendered" \
+                '{source_branch:$sb, commit_count:($items|length), commits:{items:$items, rendered:$rendered}}'
+          cwd: "{{ world.working_dir }}"
+        bind:
+          source_branch: "stdout_json.source_branch"
+          commit_count:  "stdout_json.commit_count"
+          commits:       "stdout_json.commits"
+          last_op_ok:    ok
+        on_error: idle
+    on:
+      proceed:
+        - target: planning
+      look:
+        - target: .
+      quit:
+        - target: done

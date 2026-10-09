@@ -49,6 +49,8 @@ func ExampleBuiltinNames() {
 	// default-agent
 	// story-author
 	// kitsoki-engineer
+	// story-improver
+	// kitsoki-improver
 	// story-bug-reporter
 	// kitsoki-bug-reporter
 	// story-explainer

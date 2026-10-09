@@ -1,45 +1,43 @@
-# map — phase 2/5. Cross-reference the brief's gates vs dev-story's inventory.
+# mapping/map — phase 3/6. Cross-reference the brief vs Kitsoki's story/script inventory.
 #
-# The `mapper` persona regenerates the existing-gate inventory (greps
+# The `mapping` checkpoint announces the work before MAP review. Its `mapper`
+# persona regenerates the existing-gate inventory (greps
 # host.agent.decide / .task across the target rooms — never from memory),
 # clusters the brief's in-scope gates into themes, and classifies each
-# ALREADY-MODELED / ENRICH / GAP. This is the previously-implicit step ②
-# made first-class.
+# opportunity classes such as ENRICH-STORY, NEW-STORY, STARLARK-SCRIPT,
+# HUB-ROUTE, SKILL-ONLY, and ENFORCEMENT-LIMIT.
 
 states:
 
-  map:
-    description: "Map the brief's decision themes against dev-story's existing gates."
+  mapping:
+    description: "Generate the opportunity map before showing the MAP review room."
     view:
       - banner:
-          text:     "MAP"
-          subtitle: "Phase 2 / 5  ·  classify each theme ALREADY / ENRICH / GAP"
-          color:    "#0EA5E9"
-      - prose: "{{ world.job }} · cycle {{ world.cycle }} · judge {{ world.judge_mode }} · tree {{ world.stories_dir }}"
-      - heading: "Enrichment map"
-      - code: '{{ world.map_artifact.summary_markdown|default:"(pending — mapper has not returned yet)" }}'
+          text:     "MAPPING"
+          subtitle: "Phase 3 / 6  -  write opportunity map before review"
+          color:    "#38BDF8"
+      - prose: "{{ world.job }} - judge {{ world.judge_mode }} - tree {{ world.stories_dir }}"
+      - heading: "Mapping opportunities"
+      - template: |
+          Brief accepted. Mapping opportunities against story rooms, Starlark scripts, hub routes, skills, and enforcement limits now.
+      - kv:
+          pairs:
+            Brief: '{{ world.mine_artifact.brief_path|default:"(pending)" }}'
+            Output: '{{ world.map_artifact.map_path|default:"(pending)" }}'
       - choice:
           mode: single
           prompt: "Actions"
           items:
             - label:  "continue"
-              hint:   "accept the map and decide what to ticket"
+              hint:   "review the opportunity map"
               intent: accept
-            - label:  "refine"
-              hint:   "re-map with feedback (e.g. wrong home room)"
-              intent: refine
-              param: { slot: feedback, type: string, placeholder: "what to redo", required: false }
-            - label:  "restart"
-              hint:   "go back and re-mine"
-              intent: restart_from
-              slots:  { stage: mine }
             - label:  "quit"
               hint:   "abandon the loop"
               intent: quit
             - label:  "look"
               hint:   "re-render"
               intent: look
-    relevant_world: [job, stories_dir, judge_mode, judge_confidence_threshold, mine_artifact, map_artifact, llm_verdict, refine_feedback, cycle]
+    relevant_world: [job, stories_dir, target_artifacts, source_plan_artifact, judge_mode, mine_artifact, map_artifact, refine_feedback]
     on_enter:
       - invoke: host.agent.task
         once: true
@@ -50,12 +48,67 @@ states:
           context:
             prompt: prompts/map_executing.md
             args:
+              job:             "{{ world.job }}"
               brief_path:      "{{ world.mine_artifact.brief_path }}"
+              source_plan:     "{{ world.source_plan_artifact }}"
               stories_dir:     "{{ world.stories_dir }}"
+              target_artifacts: "{{ world.target_artifacts }}"
               refine_feedback: "{{ world.refine_feedback }}"
         bind:
           map_artifact: submitted
         on_error: idle
+      - when: "world.judge_mode != 'human' && (world.map_artifact.map_path ?? '') != ''"
+        emit_intent: accept
+    on:
+      accept:
+        - target: map
+      quit:
+        - target: "@exit:abandoned"
+          effects:
+            - set: { abandon_reason: "quit_at_mapping", status: "abandoned" }
+      look:
+        - target: .
+
+  map:
+    description: "Map automation opportunities against Kitsoki's existing inventory."
+    view:
+      - banner:
+          text:     "MAP"
+          subtitle: "Phase 3 / 6  -  classify story/script/route opportunities"
+          color:    "#0EA5E9"
+      - prose: "{{ world.job }} - judge {{ world.judge_mode }} - tree {{ world.stories_dir }}"
+      - kv:
+          pairs:
+            Map: '{{ world.map_artifact.map_path|default:"(pending)" }}'
+            Opportunities: '{{ world.map_artifact.opportunity_count_display|default:"(pending)" }}'
+            Actionable: '{{ world.map_artifact.actionable_display|default:"(pending)" }}'
+            Limited: '{{ world.map_artifact.limited_display|default:"(pending)" }}'
+            "Already modeled": '{{ world.map_artifact.already_modeled_display|default:"(pending)" }}'
+      - heading: "Opportunity map"
+      - template: '{{ world.map_artifact.summary_markdown|default:"(pending - mapper has not returned yet)" }}'
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "continue"
+              hint:   "accept the map and decide what to apply"
+              intent: accept
+            - label:  "refine"
+              hint:   "re-map with feedback (e.g. wrong home room)"
+              intent: refine
+              param: { slot: feedback, type: string, placeholder: "what to redo", required: false }
+            - label:  "restart"
+              hint:   "go back and re-plan/re-mine"
+              intent: restart_from
+              slots:  { stage: mine }
+            - label:  "quit"
+              hint:   "abandon the loop"
+              intent: quit
+            - label:  "look"
+              hint:   "re-render"
+              intent: look
+    relevant_world: [job, stories_dir, target_artifacts, source_plan_artifact, judge_mode, judge_confidence_threshold, mine_artifact, map_artifact, llm_verdict, refine_feedback, cycle]
+    on_enter:
       - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
         invoke: host.agent.decide
         with:
@@ -66,7 +119,7 @@ states:
             phase:          "map"
             artifact_title: "enrichment map for {{ world.stories_dir }}"
             artifact_body:  "{{ world.map_artifact.summary_markdown }}"
-            criterion:      "Every in-scope theme is classified with a home_room file path and a validator; statuses are defensible against the actual gate inventory."
+            criterion:      "Every in-scope opportunity is classified with an artifact kind, target path, validator, and determinism rung; Codex/Claude enforcement limits are represented honestly."
             threshold:      "{{ world.judge_confidence_threshold }}"
         bind:
           llm_verdict: submitted
@@ -82,14 +135,14 @@ states:
       accept:
         - target: decide
           effects:
-            - say: "Map accepted — ranking ENRICH/GAP items to ticket."
+            - say: "Map accepted. Ranking actionable Kitsoki improvements by intent count, mechanicalness, and adoption leverage."
             - set: { refine_feedback: "", status: "mapped" }
       refine:
         - when: "world.map_cycle >= world.map_budget"
           target: "@exit:abandoned"
           effects:
             - set: { abandon_reason: "map_cycle_budget_exhausted", status: "abandoned" }
-        - target: map
+        - target: mapping
           effects:
             - set:
                 refine_feedback: "{{ slots.feedback ?? world.llm_verdict.reason }}"
@@ -97,9 +150,9 @@ states:
                 cycle:           "{{ world.cycle + 1 }}"
                 map_artifact:    {}
       restart_from:
-        - target: mine
+        - target: prepare
           effects:
-            - set: { refine_feedback: "", map_cycle: 0, mine_artifact: {}, map_artifact: {} }
+            - set: { refine_feedback: "", map_cycle: 0, prepare_cycle: 0, source_plan_artifact: {}, source_summary_markdown: "", mine_artifact: {}, map_artifact: {} }
       quit:
         - target: "@exit:abandoned"
           effects:

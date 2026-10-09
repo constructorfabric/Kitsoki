@@ -20,17 +20,34 @@ interpretation becomes slot templates. The trace records every
 decision, which is what makes the conversion incremental and
 auditable.
 
+Kitsoki does not bet against frontier agents. It makes them more
+productive by reserving their reasoning for oversight, synthesis, and
+long-horizon judgment, while high-leverage tools do the repeatable
+work: scripts execute checked actions, cheaper models handle narrow
+classification and extraction, and structured decomposition keeps long
+tasks moving through reviewable rooms, gates, artifacts, and handoffs.
+
 For the full thesis — control inversion, narrow LLM domains,
 progressive determinism, the spectrum from CLI wizards to free agent
 workflows — see [`docs/architecture/concept.md`](docs/architecture/concept.md).
 For a reader-specific path through the docs, start at
-[`docs/start-here.md`](docs/start-here.md).
+[`docs/README.md`](docs/README.md).
+
+Product site: [bsacrobatix.github.io/Kitsoki](https://bsacrobatix.github.io/Kitsoki/).
+
+Slidey is Kitsoki's sister project for evidence-first narrative decks. Kitsoki
+uses Slidey wherever reasonable: demos, QA/readiness reports, bug evidence,
+workflow walkthroughs, comparison studies, and product review artifacts should
+become shareable decks when the evidence is visual, temporal, or comparative.
+JSON and markdown remain useful for machines and quick audit, but Slidey is the
+preferred human review and presentation surface when it adds clarity.
 
 **Free-text in, deterministic transitions out.**
 
 ```sh
-go build -o kitsoki ./cmd/kitsoki
-./kitsoki run testdata/apps/cloak/app.yaml
+cd ~/code/my-project
+kitsoki run
+# > onboard .
 ```
 
 ## What kitsoki is good for
@@ -44,6 +61,10 @@ go build -o kitsoki ./cmd/kitsoki
   human reply and resumes, all from declarative YAML.
 - Replayable, testable, demo-able LLM-driven flows. Mode 2 flow tests
   run with zero LLM cost and exit non-zero on regression.
+- Higher leverage agent work: frontier models focus on reasoning,
+  oversight, and long-task coordination while scripts, cassettes,
+  cheaper models, and typed host calls multiply the amount of reliable
+  work each model turn can supervise.
 - Fast on the common case: a four-tier semantic-routing stack
   (synonyms, slot templates, a turncache, and the LLM) resolves
   most user input in microseconds without calling the LLM. On the
@@ -61,99 +82,113 @@ Prebuilt downloads are published on
 macOS, Linux, and Windows. The product site has the platform list at
 [Download Kitsoki](https://bsacrobatix.github.io/Kitsoki/download.html).
 
-### 1. Build
+### 1. Install
+
+Put the `kitsoki` binary somewhere on your `PATH`, then check it:
 
 ```sh
-go build -o kitsoki ./cmd/kitsoki
+kitsoki version
 ```
 
-Requires Go 1.25+. Single static binary; no CGO, no system libraries.
+Kitsoki is a single binary. It embeds the base stories, the web UI, and the
+skill/agent toolkit used during onboarding.
 
-### 2. Pick a harness
+### 2. Choose an agent backend
 
-`kitsoki run` auto-selects:
+Kitsoki auto-selects:
 
 | Available | Harness | What |
 |---|---|---|
-| `claude` CLI on `PATH` | `claude` | Shells out to `claude -p` using your existing Claude Code login. **Default.** |
+| `claude` CLI on `PATH` | `claude` | Uses your existing Claude Code login. |
 | `ANTHROPIC_API_KEY` set | `live` | Direct Anthropic SDK calls. |
-| Neither | `replay` | Deterministic; needs a recording (passed via `--recording`). |
+| Neither | `replay` | Deterministic replay; useful for fixtures, not fresh work. |
 
 Force one:
 
 ```sh
-./kitsoki run testdata/apps/cloak/app.yaml --harness claude
-./kitsoki run testdata/apps/cloak/app.yaml --harness live
-./kitsoki run testdata/apps/cloak/app.yaml \
-    --harness replay --recording testdata/apps/cloak/recording.yaml
+kitsoki run --harness claude
+kitsoki run --harness live
 ```
 
-### 3. Play
+### 3. Onboard your project
+
+Run Kitsoki from the repository you want to use it in:
 
 ```sh
-./kitsoki run testdata/apps/cloak/app.yaml
+cd ~/code/my-project
+kitsoki run
 ```
 
-The TUI opens with a transcript pane, action menu, and inbox panel.
-Type free text or pick an action. Sessions persist in
-`$XDG_DATA_HOME/kitsoki/sessions.db`.
+Then type:
 
-### 4. Test
+```text
+onboard .
+```
+
+Kitsoki discovers your project, shows the inferred profile for review, and only
+writes after you confirm. The normal path is:
+
+```text
+onboard .          # discover this repo
+continue           # review the discovered profile
+continue           # confirm apply
+```
+
+Onboarding writes a small checked-in setup: `.kitsoki.yaml`, a project profile,
+an editable dev-story instance, readiness checks, `.mcp.json`, and the
+skill/agent toolkit for your coding agent. The full walkthrough and the
+detailed onboarding contract are both in
+[`docs/getting-started.md`](docs/getting-started.md).
+
+### 4. Optional: GitHub auth for bug and PR workflows
+
+To file bugs or PRs directly to GitHub from local Kitsoki runs, use GitHub
+CLI's browser/PIN login:
 
 ```sh
-make test                                                  # full suite — what CI runs
-
-./kitsoki test flows testdata/apps/cloak/app.yaml          # deterministic, no LLM
-./kitsoki test intents testdata/apps/cloak/app.yaml \      # intent pass-rate (free w/ Claude Code)
-    --harness static
+kitsoki gh-agent login
+source ~/.config/kitsoki/github.env
 ```
 
-`make test` runs `go test ./...` plus every story's deterministic flow fixtures —
-it's the suite CI runs and the [pre-PR gate](CONTRIBUTING.md) runs. Open PRs with
-`make pr` (local gate) or `make pr-ci` (gate on real CI).
-
-### 5. Visualise
+For repo-limited permissions, set up a least-privilege GitHub App token. No
+public URL is required for local use:
 
 ```sh
-./kitsoki viz testdata/apps/cloak/app.yaml | dot -Tpng -o /tmp/cloak.png
-./kitsoki viz testdata/apps/cloak/app.yaml --mermaid > /tmp/cloak.mmd
+kitsoki gh-agent setup app --name <app-name> --local-only
+kitsoki gh-agent setup attach --repo owner/name
+kitsoki gh-agent token
+source ~/.config/kitsoki/github.env
 ```
 
-## Dogfood mode — fixing kitsoki with kitsoki
+Manual fine-grained PAT fallback is also supported with
+`kitsoki gh-agent token --from-env`. See
+[`docs/getting-started.md`](docs/getting-started.md#3-set-up-github-auth-for-local-issuepr-work).
 
-`.kitsoki/stories/kitsoki-dev/` is the dogfood instance: kitsoki working on
-kitsoki itself (and on each of its stories) through its own UI, with
-the bug file as both ticket and conversation log.
+### 5. Verify readiness
 
 ```sh
-./kitsoki run .kitsoki/stories/kitsoki-dev/app.yaml
+python3 .kitsoki/check-readiness.py --list
+python3 .kitsoki/check-readiness.py --json
 ```
 
-Lands at the engineer's-day landing room. From there: `tickets` to
-search `issues/bugs/`, `pick <id>` to pick a bug, `bugfix` to walk
-the supervised 8-room pipeline (idle → reproducing → proposing →
-implementing → testing → reviewing → validating → done). PR
-refinement is a separate story under `stories/pr-refinement/`.
-Every checkpoint appends a `## Comment <iso> by <author>` block to
-the bug file, so the file itself is the conversation log + audit
-trail.
-
-Autonomous variant (LLM-judge auto-fires confident verdicts, bails
-to human only on uncertainty):
+The report lands at `.artifacts/kitsoki-readiness.json`. To persist a summary
+back into `.kitsoki/project-profile.yaml`, run:
 
 ```sh
-./kitsoki run .kitsoki/stories/kitsoki-dev/app.yaml \
-    --warp scenarios/autonomous_ready.yaml
+python3 .kitsoki/check-readiness.py --json --update-profile
 ```
 
-See **[`.kitsoki/stories/kitsoki-dev/README.md`](.kitsoki/stories/kitsoki-dev/README.md)**
-for the full operator walkthrough, the
-**[`docs/case-studies/bug-fix.md`](docs/case-studies/bug-fix.md)**
-case study for the architecture, and
-**[`issues/README.md`](issues/README.md)** for the on-disk bug
-schema. The dogfood multi-glob covers both kitsoki-self bugs
-(`issues/bugs/*.md`) and per-story bugs
-(`stories/*/issues/bugs/*.md`) in one pipeline.
+### 5. Use it from your coding agent
+
+Onboarding registers the Kitsoki studio MCP server in your repo's `.mcp.json`.
+Claude Code can adopt the installed driver agent:
+
+```sh
+claude --agent kitsoki-mcp-driver
+```
+
+Full runbook, caveats, and the manual fallback:
+[`docs/recipes/studio-mcp-dogfood.md`](docs/recipes/studio-mcp-dogfood.md).
 
 ## Where to go next
 
@@ -164,13 +199,14 @@ promo landing + help docs with recorded feature demos, generated from the
 
 | You want to… | Start here |
 |---|---|
-| Pick the right docs path | [`docs/start-here.md`](docs/start-here.md) |
+| Use Kitsoki in your project | [`docs/getting-started.md`](docs/getting-started.md), then [`docs/workflows/`](docs/workflows/README.md) |
 | Understand the architecture | [`docs/architecture/concept.md`](docs/architecture/concept.md), then [`docs/architecture/overview.md`](docs/architecture/overview.md) |
+| Follow operational guides | [`docs/guide/`](docs/guide/README.md), especially [`docs/guide/agents/`](docs/guide/agents/README.md) |
 | Write a story | [`docs/stories/architecture.md`](docs/stories/architecture.md), then [`docs/recipes/`](docs/recipes/README.md) |
 | Look up story fields | `kitsoki docs app-schema` or [`docs/embedded/app-schema.md`](docs/embedded/app-schema.md) |
 | Debug or test a story | [`docs/tracing/README.md`](docs/tracing/README.md) and [`docs/tracing/testing.md`](docs/tracing/testing.md) |
 | Look up host handlers | [`docs/architecture/hosts/`](docs/architecture/hosts/README.md) and [`docs/architecture/hosts.md`](docs/architecture/hosts.md) |
-| Contribute code | [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`docs/architecture/developer-guide.md`](docs/architecture/developer-guide.md) |
+| Build or contribute to Kitsoki | [`docs/contributor-setup.md`](docs/contributor-setup.md), then [`CONTRIBUTING.md`](CONTRIBUTING.md) |
 
 ## Project layout
 
@@ -207,7 +243,7 @@ kitsoki/
 transient markdown (proposals, summaries) in `.context/` and any
 generated artifact for review in `.artifacts/`, so neither clutters the
 tracked tree. See the
-[developer guide](docs/architecture/developer-guide.md#7-coding-conventions).
+[developer guide](docs/guide/development/developer-guide.md#7-coding-conventions).
 
 ## Name and mark
 
@@ -220,7 +256,7 @@ sources, logo, palette, and usage.
 
 ## Status
 
-PoC. The core platform is stable: orchestrator, state machine, harness
+Beta. The core platform is stable and dogfooded daily: orchestrator, state machine, harness
 abstraction, persistent SQLite store, MCP server, multi-transport
 output, background jobs with mid-flight clarifications, persistent
 chat threads, virtual clock, deterministic flow tests, intent
@@ -230,11 +266,13 @@ under 10 seconds.
 
 Recent frontier work:
 
-- **Agent plugin system** (`docs/architecture/agent-plugin.md`,
-  `docs/architecture/agent-cli.md`) — pluggable agent transports declared under
-  `agent_plugins:`, dispatched through `host.agent.<verb>` effects
-  with schema validation, subprocess / MCP-over-HTTP transports, and
-  a registry/dispatch seam audited end-to-end.
+- **Agent plugin and launch system** (`docs/architecture/agent-plugin.md`,
+  `docs/guide/agents/cli.md`, `docs/guide/agents/launch.md`) —
+  pluggable agent transports declared under `agent_plugins:`, dispatched through
+  `host.agent.<verb>` effects with schema validation, subprocess /
+  MCP-over-HTTP transports, and a `kitsoki agent launch` dry-run resolver that
+  turns reusable story `agents:` entries plus harness profiles into concrete
+  Claude/Codex task-agent launch plans.
 - **JSONL trace as authoritative state**
   (`docs/tracing/trace-format.md`) — the unified event log (`agent.call.start`
   / `.complete` / `.error`, `EventSink`, deterministic `call_id`) is
@@ -250,3 +288,36 @@ Recent frontier work:
 ## License
 
 See [`LICENSE`](LICENSE).
+
+<!-- BEGIN kitsoki:launch-policy (managed by pack/launch-policy/install.sh; edits inside are overwritten on upgrade) -->
+## Agent operating principles (kitsoki launch policy)
+
+This repository is governed by the parallel-agent gitflow. The rules are
+mechanical, not advisory — the shims, hooks, and capsule CI enforce them:
+
+- **Launch through the shims.** `claude` and `codex` resolve to
+  `.kitsoki/bin/` wrappers (activate with `source .kitsoki/launch-policy.sh`;
+  interactive shells can hook this on `cd`). Every launch passes
+  `agent_launch_policy` preflight: this repo's root and its sibling repos
+  are protected roots; agent work happens in `.capsules/workspaces/`
+  (or legacy `.worktrees/`) via `kitsoki agent launch --exec`, with
+  `--profile pog-drive` as the sanctioned catalog-drive entry.
+- **Full-permissions agents are a last resort.** Use the sanctioned escape
+  hatch (the `claude superagent` / `codex superagent` aliases, or
+  `kitsoki agent launch --raw --interactive`) only when the governed path
+  cannot do the job — and file the gap that forced it (feedback or
+  requirement node) so the workaround becomes unnecessary next time.
+- **Never edit a sibling repo.** Anything this repo needs from another is
+  proposed as a typed requirement/bug node into that repo's federated
+  catalog via `graph_propose`; its own fleet prioritizes it.
+- **CI is capsule CI.** Run `kitsoki capsule ci doctor change --workspace
+  <id>` before claiming work; `kitsoki capsule ci run` produces the typed
+  verdict and receipt that admit a candidate to the merge queue
+  (`kitsoki queue submit`). Protected `main` is never committed to
+  directly — landings are fast-forward through the queue or the repo's
+  merge-to-main helper, gated on green.
+- **Disk is a first-class resource.** Workspaces have owners and get
+  reaped; when the doctor's disk-capacity floor trips, run
+  `kitsoki capsule cleanup plan` and apply a reviewed plan before
+  launching more work.
+<!-- END kitsoki:launch-policy -->

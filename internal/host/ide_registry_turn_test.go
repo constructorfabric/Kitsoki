@@ -55,12 +55,14 @@ func TestIDEGetDiagnostics_ThroughRegistry(t *testing.T) {
 	}
 
 	// The verb dispatched to the editor's getDiagnostics tool, forwarding
-	// path→uri (the TODO(schema) best-effort key).
+	// path→path (CONFIRMED wire shape — see IDEGetDiagnosticsHandler's doc
+	// comment; a real-socket capture against the vscode-kitsoki extension
+	// found it reads `args.path`, not `uri`).
 	if link.lastTool != "getDiagnostics" {
 		t.Fatalf("tool: want getDiagnostics, got %q", link.lastTool)
 	}
-	if link.lastArgs["uri"] != "/ws/a.go" {
-		t.Fatalf("path must be forwarded as uri, got %v", link.lastArgs)
+	if link.lastArgs["path"] != "/ws/a.go" {
+		t.Fatalf("path must be forwarded as path, got %v", link.lastArgs)
 	}
 
 	// connected:true is the universal signal a story branches on.

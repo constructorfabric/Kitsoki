@@ -1,0 +1,177 @@
+name: kit-update-pair
+source:
+  synthetic: true
+  default_branch: main
+  steps:
+    - action: write
+      path: README.md
+      content: |
+        # Kit Update Pair
+
+        Reproducible sandbox for the S7 kit lifecycle
+        (docs/proposals/kit-lifecycle.md): a consumer project shaped to be
+        locked at widget v1 while upstream ships v2 with a renamed exported
+        intent (`bump` -> `nudge`, declared under `compat.renamed`) and a new
+        required host (`host.local`). Exercise update -> trial -> accept by
+        hand:
+
+        ```sh
+        # 1. Lock v1 with a constraint that admits v2.
+        kitsoki kit add ./upstream/widget --name widget --version '^1.0.0'
+
+        # 2. Upstream ships v2 (renamed intent + compat hint + new host).
+        cp upstream/widget-next/app.yaml upstream/widget/app.yaml
+        cp upstream/widget-next/kit.yaml upstream/widget/kit.yaml
+
+        # 3. Stage the candidate. kits.lock is not touched.
+        kitsoki kit update widget
+
+        # 4. Judge it. Blocked: the worklist names both required edits
+        #    (.kitsoki/kit-update/widget/worklist.yaml).
+        kitsoki kit trial widget
+
+        # 5. Apply exactly the worklist edits to the consumer instance
+        #    (.kitsoki/stories/proj-dev/app.yaml): rename the imported
+        #    intent bump -> nudge and declare host.local. Apply the same
+        #    rename to the flow fixture evidence
+        #    (.kitsoki/stories/proj-dev/flows/bump_route.yaml).
+
+        # 6. Re-trial: ready. The stale locked-leg warning is advisory —
+        #    the fixture was migrated ahead of the accepted version.
+        kitsoki kit trial widget
+
+        # 7. Promote (or drop residue-free with `kit reject widget`).
+        kitsoki kit accept widget
+        ```
+
+        The baseline task case under .kitsoki/qa/taskcases/ rides along: its
+        no-cost flow-fixture oracle validates by replay during the green
+        trial and is SKIPPED via the validation ledger on any re-trial.
+    - action: write
+      path: upstream/widget/app.yaml
+      content: |
+        app: { id: widget, version: 1.2.0 }
+        hosts: [host.run]
+        world:
+          count: { type: int, default: 0 }
+        intents:
+          bump: { description: "bump count", examples: [bump] }
+        exports:
+          intents: [bump]
+        root: idle
+        states:
+          idle:
+            view: "idle"
+            on:
+              bump:
+                - target: .
+                  effects:
+                    - set: { count: 1 }
+    - action: write
+      path: upstream/widget-next/app.yaml
+      content: |
+        app: { id: widget, version: 1.3.0 }
+        hosts: [host.run, host.local]
+        world:
+          count: { type: int, default: 0 }
+        intents:
+          nudge: { description: "bump count (renamed from bump)", examples: [nudge] }
+        exports:
+          intents: [nudge]
+        root: idle
+        states:
+          idle:
+            view: "idle"
+            on:
+              nudge:
+                - target: .
+                  effects:
+                    - set: { count: 1 }
+    - action: write
+      path: upstream/widget-next/kit.yaml
+      content: |
+        schema: kit/v1
+        kit: widget
+        namespace: kitsoki
+        version: 1.3.0
+        provides:
+          stories: [widget]
+          story_dirs:
+            widget: "."
+        compat:
+          renamed:
+            intents:
+              bump: nudge
+    - action: write
+      path: .kitsoki/stories/proj-dev/app.yaml
+      content: |
+        app: { id: proj-dev, version: 0.1.0 }
+        hosts:
+          - host.run
+        imports:
+          core:
+            source: "@kitsoki/widget"
+            entry: idle
+            hosts: declared
+            intents:
+              import: [bump]
+        root: core
+    - action: write
+      path: .kitsoki/stories/proj-dev/flows/bump_route.yaml
+      content: |
+        test_kind: flow
+        app: ../app.yaml
+        initial_state: core.idle
+        turns:
+          - intent: { name: bump }
+            expect_state: core.idle
+            expect_world: { core__count: 1 }
+        expect_no_errors: true
+    - action: write
+      path: .kitsoki/qa/taskcases/bump-route.yaml
+      content: |
+        kind: history_task.v1
+        id: widget/bump-route
+        lane: routing
+        source:
+          corpus_ref: "capsule:kit-update-pair"
+          repo: kitsoki/kit-update-pair
+        story:
+          app: .kitsoki/stories/proj-dev/app.yaml
+          entrypoint: core.idle
+        trainable_surface:
+          weight_kind: fixture
+        input:
+          prompt_or_ticket: "bump the counter"
+        oracle:
+          kind: flow_fixture
+          comparator: .kitsoki/stories/proj-dev/flows/bump_route.yaml
+        cost_policy:
+          live_policy: no_cost
+        artifacts:
+          root: .artifacts/kit-trial/cases/bump-route
+    - action: commit
+      message: kit-update-pair fixture — widget v1 consumer + v2 upstream
+network: none
+verify:
+  probes:
+    - name: upstream-v1-present
+      run: test -f upstream/widget/app.yaml
+      expect: zero
+    - name: upstream-v2-present
+      run: test -f upstream/widget-next/app.yaml && test -f upstream/widget-next/kit.yaml
+      expect: zero
+    - name: consumer-instance-present
+      run: test -f .kitsoki/stories/proj-dev/app.yaml
+      expect: zero
+    - name: flow-fixture-present
+      run: test -f .kitsoki/stories/proj-dev/flows/bump_route.yaml
+      expect: zero
+    - name: taskcase-present
+      run: test -f .kitsoki/qa/taskcases/bump-route.yaml
+      expect: zero
+    - name: nothing-locked-or-staged-yet
+      run: test ! -f .kitsoki/kits.lock && test ! -f .kitsoki/kits.staged.lock
+      expect: zero
+scenario:
+  kind: kit-lifecycle

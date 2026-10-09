@@ -1,6 +1,11 @@
 # TUI: Web viewer — artifacts + operator drive
 
-**Status:** Draft v1. Nothing implemented yet.
+**Status:** Draft v1. Nothing implemented yet — confirmed on a re-audit
+alongside the shipped `docs/architecture/github-agent.md` dispatch write-up: no artifact gallery and no
+GitHub-OAuth-gated operator-drive surface exist. The gh-agent job list
+(`/runs`, `/run/<job-id>`) is a plain HTML table with no auth, no media
+rendering, and no drive affordance — it is the run-link target this slice
+would build *on top of*, not an implementation of it.
 **Kind:**   tui
 **Epic:**   kitsoki-github-agent.md
 
@@ -59,7 +64,7 @@ attributed and echoed to the thread.**
   methods; the chat-bubble `media` rendering and the trace timeline are
   unchanged.
 - **RPC:** one new read method `runstatus.run.artifacts` (the gallery's index,
-  fed by slice #4) and one new `runstatus.run.origin` (the GitHub thread
+  fed by the shared artifact-job substrate) and one new `runstatus.run.origin` (the GitHub thread
   linkage); the drive controls reuse `runstatus.session.submit` /
   `runstatus.session.continue` / `runstatus.session.answer_question`, gated by
   the OAuth identity already injected as `slots.author`.
@@ -117,10 +122,10 @@ markup, mirroring the template's "layout is data, not printf" rule.
   strip ("from issue #142 · repo/x ↗"). Absent origin (a local run) → the strip
   does not render, so the component is inert outside the GitHub loop.
 - `ArtifactGallery.vue` — reads `runstatus.run.artifacts` → an ordered list of
-  `{handle, mime, label, kind, poster?}` rows (the **Postgres-backed** run/
-  artifact index from **slice #4**, `trace-artifact-service.md` — index state in
-  Postgres, blobs on the filesystem, served by-handle unchanged). Lays out one
-  `ArtifactCard.vue`
+  `{handle, mime, label, kind, poster?}` rows from the shared artifact-job
+  trace/artifact service (`artifact-driven-stories.md` /
+  `trace-artifact-service.md` — hosted index state in Postgres, blobs on the
+  filesystem, served by-handle unchanged). Lays out one `ArtifactCard.vue`
   per row.
 - `ArtifactCard.vue` — renders one artifact inline by MIME, **reusing the exact
   by-handle substrate `ViewElement.vue` already uses** (`src=/artifact/<handle>`,
@@ -195,7 +200,7 @@ and click `.trace-timeline__row-main`, never the raw RPC return.
   a **200 + correct MIME** at the network layer (mirroring `media-artifact.spec.ts`'s
   `artifactImageOk`/`artifactVideoOk` assertions), and that the video card's
   `poster` hits `/artifact/<handle>/poster`. Fails without the gallery (no cards
-  render) or without slice #4 (index 404).
+  render) or without the shared artifact index (index 404).
 - `gh-thread-header.spec.ts` — asserts `GitHubThreadHeader.vue` renders the
   "from issue #N" strip with the right repo/number/link from
   `runstatus.run.origin`, and that on a run **without** origin the strip is
@@ -236,7 +241,7 @@ Purely additive to the shipped SPA — no surface is replaced or removed.
 ```
 ## 1. Render
 - [ ] 1.1 Extract MIME→media-substrate switch from ViewElement.vue into a shared composable; media-artifact.spec.ts still green
-- [ ] 1.2 ArtifactGallery.vue + ArtifactCard.vue, reading runstatus.run.artifacts (slice #4 index)
+- [ ] 1.2 ArtifactGallery.vue + ArtifactCard.vue, reading runstatus.run.artifacts (shared artifact-job index)
 - [ ] 1.3 GitHubThreadHeader.vue, reading runstatus.run.origin
 - [ ] 1.4 Wire both new regions into the SPA layout (additive)
 
@@ -285,15 +290,15 @@ Purely additive to the shipped SPA — no surface is replaced or removed.
 
 ## Non-goals
 
-- **The serving backend.** The Postgres-backed run/artifact index and the
-  by-handle blob serving the gallery consumes are **slice #4**
+- **The serving backend.** The run/artifact index and the by-handle blob serving
+  the gallery consumes are owned by the shared artifact-job epic
   (`trace-artifact-service.md`); this slice only *renders* them.
 - **Collaborator drive.** Round 1 authorizes the issue/PR **owner** only;
   extending drive to repo-write collaborators is **round 2**, out of scope here.
 - **The auth mechanism itself.** GitHub-App OAuth, installation tokens, and the
   comment substrate are **slice #1** (`gh-event-ingress.md`); this slice
   *consumes* the resolved identity and the substrate, and does not design either.
-- **The demo video.** The tour over the GitHub↔kitsoki loop is **slice #6**
+- **The demo video.** The tour over the GitHub↔kitsoki loop is **slice #5**
   (`kitsoki-github-demo.md`).
 - **The terminal TUI.** No `internal/tui/` changes; the terminal operator
   reaches a hosted run through the existing web link.

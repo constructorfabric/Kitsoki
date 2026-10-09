@@ -154,12 +154,12 @@ the slice; all run under `kitsoki test flows stories/dev-story/app.yaml`:
 | `plan_mutation_gate` | A red-path flow pinned tightly to the bound verdict: **breaking the `verify_ok: ok` bind** in `verifying.yaml` makes it fail (the room rests in `verifying` instead of routing to `landing`). Proves the gate is load-bearing, not decorative. |
 | `plan_apply_staged_livepath` | The live-shape regression: STAGED mode + a repo-relative `verify.script` path. **Fails if `decider: llm` is removed** from `verifying` (the emit chain stalls awaiting a human) or if the raw-path fallback is reverted (the script read misses). |
 
-## Dogfood findings
+## Live-run findings
 
 A real-backend run — real Claude proposing the plan, the operator accepting, the
 apply step creating **16 GitHub issues** on the fork, and the verify gate
 confirming them — exposed three live-only bugs (since fixed and guarded by the
-fixtures above). This is the dogfood story validating itself:
+fixtures above). This is the story validating its live-backend shape:
 
 1. **Apply step silently skipped** — `applying` bound `landing_note` with
    `once: true`, but `landing_note` already held the proposed plan, so `once:`

@@ -1,6 +1,16 @@
 # Runtime: GitHub ingress & comment substrate
 
-**Status:** Draft v1. Nothing implemented yet.
+**Status:** Draft v1 design; **substrate shipped**. `kitsoki gh-agent serve`
+(`cmd/kitsoki/gh_agent_serve.go`) runs a GitHub-App webhook listener with
+HMAC-SHA256 signature verification (`ghAgentWebhookHandler`,
+`internal/ghagent/githubapp.VerifyWebhookSignature`), installation-token
+minting from an App JWT (`internal/ghagent/githubapp.AppTokenSource`), a
+poll fallback over `internal/inbox/github.go`, idempotent job claim
+(`internal/jobs.GHJobStore`), and the rolling single-comment status
+substrate. What remains Draft: parent-comment `resolve` semantics (still a
+stub projection — see `gh-job-dispatch.md`'s open item on `host.gh`/`host.git`
+gaps) and PR-thread-specific ingress. See
+`docs/architecture/github-agent.md` for the authoritative shipped shape.
 **Kind:**   runtime
 **Epic:**   [kitsoki-github-agent.md](kitsoki-github-agent.md)
 
@@ -325,5 +335,5 @@ round-trip, run only on explicit request.
   collaborators — round 2; round 1 is owner-only. Mechanism only here;
   enforcement is slice #3 (epic decision #4).
 - **Other forges** (Jira / Linear / GitLab) — GitHub only (epic non-goal).
-- **The public web/trace serving surface** — slice #4; this slice only mints the
-  `gh.job_id` the link will later key on.
+- **The public web/trace serving surface** — the shared artifact-job epic; this
+  slice only mints the `gh.job_id` the link will later key on.

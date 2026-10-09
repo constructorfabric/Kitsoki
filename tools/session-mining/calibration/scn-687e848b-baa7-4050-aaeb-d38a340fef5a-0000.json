@@ -1,0 +1,38 @@
+{
+  "schema_version": "1.0",
+  "kind": "conversation",
+  "id": "scn-687e848b-baa7-4050-aaeb-d38a340fef5a-0000",
+  "source": "mined",
+  "provenance": {
+    "corpus": "claude-code",
+    "session_id": "687e848b-baa7-4050-aaeb-d38a340fef5a",
+    "span_idx": 0
+  },
+  "persona": "bugfix-contributor",
+  "goal": "why do we keep losing the mcp tools - i updated .<file> a few times an apparently it's gone again",
+  "turns": [
+    {
+      "role": "user",
+      "text": "why do we keep losing the mcp tools - i updated .<file> a few times an apparently it's gone again",
+      "corrected": true,
+      "corrective_ops": [
+        "Bash: cd <path> git add .<file> && git commit"
+      ],
+      "followup_text_head": "[Request interrupted by user]"
+    },
+    {
+      "role": "user",
+      "text": "commit it",
+      "corrected": false
+    }
+  ],
+  "expected_effects": [
+    "Bash: cat <path><file> 2>/dev/null; echo <va completed",
+    "Bash: cd <path> echo <val>; grep -nE <val> .git completed",
+    "Bash: cd <path> echo <val>; kitsoki mcp --help completed",
+    "Bash: cd <path> echo <val>; ls -la .<file> 2> completed",
+    "Bash: cd <path> git add .<file> && git commit completed",
+    "Write: <path><file> completed"
+  ],
+  "abandoned": false
+}

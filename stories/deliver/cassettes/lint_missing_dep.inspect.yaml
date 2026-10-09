@@ -1,0 +1,13 @@
+kind: inspect_cassette
+interactions:
+  - op: exists
+    target: .artifacts/deliver/decomposition.yaml
+    out: "false"
+  - op: read
+    target: .artifacts/deliver/decomposition.yaml
+    out: |
+      briefs:
+        - id: slice-1
+          brief: Implement slice 1 so that go test ./... passes.
+          gate_command: go test ./...
+          deps: [slice-0]

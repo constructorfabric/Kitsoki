@@ -1,14 +1,19 @@
 package app
 
-import "os"
+import (
+	"os"
+
+	"kitsoki/internal/agents"
+	"kitsoki/internal/reportcontract"
+)
 
 // builtinMetaModes returns the meta_modes that ship with kitsoki and are
 // available to every app without YAML declaration. An app declares a
 // meta_mode with the same `group.verb` key to override one — the
 // injection step only fills entries that aren't already present.
 //
-// Keys follow the `group.verb` convention: `story.{edit,ask,bug}` and
-// `kitsoki.{edit,ask,bug}`. Triggers stay scoped to their group, so
+// Keys follow the `group.verb` convention: `story.{edit,ask,improve,bug}` and
+// `kitsoki.{edit,ask,improve,bug}`. Triggers stay scoped to their group, so
 // `story.bug` Trigger=`bug` and `kitsoki.bug` Trigger=`bug` coexist.
 //
 // The keys are deliberately grouped rather than flat: the TUI resolver
@@ -47,7 +52,8 @@ import "os"
 // everywhere. Apps that want them regardless declare them explicitly.
 func builtinMetaModes() map[string]*MetaModeDef {
 	onpath := &MetaReturnDef{Intent: "onpath"}
-	roTools := []string{"Read", "Glob", "Grep"}
+	roTools := reportcontract.ReadOnlyTools()
+	bugTools := reportcontract.BugFilerTools()
 
 	out := map[string]*MetaModeDef{
 		"story.edit": {
@@ -56,7 +62,7 @@ func builtinMetaModes() map[string]*MetaModeDef {
 			Default: true,
 			Label:   "Edit story",
 			Banner:  "Editing this story's YAML — your changes affect the running app.",
-			Agent:   "story-author",
+			Agent:   agents.NameStoryAuthor,
 			Return:  onpath,
 		},
 		"story.ask": {
@@ -64,7 +70,16 @@ func builtinMetaModes() map[string]*MetaModeDef {
 			Trigger: "ask",
 			Label:   "Ask about story",
 			Banner:  "Asking about this story — read-only, no edits.",
-			Agent:   "story-explainer",
+			Agent:   agents.NameStoryExplainer,
+			Tools:   roTools,
+			Return:  onpath,
+		},
+		"story.improve": {
+			Group:   "story",
+			Trigger: "improve",
+			Label:   "Improve run",
+			Banner:  "Reviewing this run for story prompt, tool, and flow-test improvements — read-only.",
+			Agent:   agents.NameStoryImprover,
 			Tools:   roTools,
 			Return:  onpath,
 		},
@@ -73,7 +88,8 @@ func builtinMetaModes() map[string]*MetaModeDef {
 			Trigger: "bug",
 			Label:   "Story bug",
 			Banner:  "Filing a story bug — write it down and the agent files it under issues/bugs/.",
-			Agent:   "story-bug-reporter",
+			Agent:   agents.NameStoryBugReporter,
+			Tools:   bugTools,
 			Return:  onpath,
 		},
 	}
@@ -84,7 +100,7 @@ func builtinMetaModes() map[string]*MetaModeDef {
 			Default: true,
 			Label:   "Edit kitsoki",
 			Banner:  "Editing kitsoki itself — your changes affect the engine, not the running story.",
-			Agent:   "kitsoki-engineer",
+			Agent:   agents.NameKitsokiEngineer,
 			Cwd:     "${KITSOKI_REPO}",
 			Return:  onpath,
 		}
@@ -93,7 +109,17 @@ func builtinMetaModes() map[string]*MetaModeDef {
 			Trigger: "ask",
 			Label:   "Ask about kitsoki",
 			Banner:  "Asking about kitsoki source — read-only, no edits.",
-			Agent:   "kitsoki-explainer",
+			Agent:   agents.NameKitsokiExplainer,
+			Cwd:     "${KITSOKI_REPO}",
+			Tools:   roTools,
+			Return:  onpath,
+		}
+		out["kitsoki.improve"] = &MetaModeDef{
+			Group:   "kitsoki",
+			Trigger: "improve",
+			Label:   "Improve kitsoki",
+			Banner:  "Reviewing this run for reusable kitsoki engine, tool, and workflow improvements — read-only.",
+			Agent:   agents.NameKitsokiImprover,
 			Cwd:     "${KITSOKI_REPO}",
 			Tools:   roTools,
 			Return:  onpath,
@@ -103,8 +129,9 @@ func builtinMetaModes() map[string]*MetaModeDef {
 			Trigger: "bug",
 			Label:   "Kitsoki bug",
 			Banner:  "Filing a bug against kitsoki — write it down and the agent files it under issues/bugs/.",
-			Agent:   "kitsoki-bug-reporter",
+			Agent:   agents.NameKitsokiBugReporter,
 			Cwd:     "${KITSOKI_REPO}",
+			Tools:   bugTools,
 			Return:  onpath,
 		}
 	}

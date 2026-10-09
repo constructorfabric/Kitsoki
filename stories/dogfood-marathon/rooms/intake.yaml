@@ -1,42 +1,126 @@
-# intake — load the backlog of cases from the configured source. Deterministic.
+# intake — load queue cases from the configured source. Deterministic.
 #
-# host.starlark.run (load_backlog.star) reads the backlog source (a dir of tickets
-# / bugs) and projects a normalized {items:[{id,title,baseline,repro_command}]}.
-# Under flow tests the call is stubbed by id so the backlog is seeded directly.
-# Once the backlog is bound, route into the per-case dispatcher.
+# host.starlark.run (load_backlog.star) reads queue sources and projects a
+# normalized {items:[{id,title,baseline,repro_command}]}. The load and journal
+# checkpoint are separate background
+# completions so the per-case dispatcher always sees the committed backlog.
 
 states:
 
   intake:
-    description: "Loading the backlog of cases to process (deterministic)."
-    relevant_world: [backlog_source, backlog, backlog_limit, inner_pipeline]
+    description: "Loading the queue of cases to process (deterministic)."
+    relevant_world: [backlog_sources, backlog, backlog_limit, inner_pipeline, run_id, journal_path, loaded_journal, intake_job_id]
     view:
-      - heading: "Dogfood marathon · intake"
+      - heading: "Marathon · intake"
       - kv:
           pairs:
-            Source: '{{ world.backlog_source }}'
-            Loaded: '{{ world.backlog.items|length }}'
-            Limit:  '{{ world.backlog_limit }}'
-      - prose: "Loading the backlog. Each case carries its id, title, baseline (the buggy state the inner pipeline reproduces against), and any repro_command."
+            Sources: '{{ world.backlog_sources }}'
+            Loaded:  '{{ world.backlog.items|length }}'
+            Limit:   '{{ world.backlog_limit }}'
+            Run id:  '{{ world.run_id }}'
+            Journal: '{{ world.journal_path|default:"(pending)" }}'
+            Resume:  '{{ world.loaded_journal }}'
+            Job:     '{{ world.intake_job_id|default:"(starting)" }}'
+      - prose: "Loading the queue. Each case carries its id, title, baseline, and any repro_command or acceptance probe."
     on_enter:
       - invoke: host.starlark.run
         id: load_backlog
+        when: "world.intake_job_id == '' && len(world.backlog.items) == 0"
+        background: true
         with:
           script: scripts/load_backlog.star
+          capabilities:
+            fs:
+              read: ["**", ".artifacts/**"]
+              write: [".artifacts/dogfood-marathon/**"]
+            github:
+              issues: read
           inputs:
-            source:         "{{ world.backlog_source }}"
+            source:         "{{ world.backlog_sources != '' ? world.backlog_sources : world.backlog_source }}"
             limit:          "{{ world.backlog_limit }}"
             baseline_policy: "{{ world.baseline_policy }}"
+            run_id:         "{{ world.run_id }}"
+            run_dir:        "{{ world.run_dir }}"
+            journal_path:   "{{ world.journal_path }}"
+            resume:         "{{ world.resume_from_journal }}"
         bind:
-          backlog: backlog
+          intake_job_id: job_id
+        on_complete:
+          - set:
+              backlog:               "{{ world.last_job_result.backlog }}"
+              run_id:                "{{ world.last_job_result.run_id }}"
+              run_dir:               "{{ world.last_job_result.run_dir }}"
+              journal_path:          "{{ world.last_job_result.journal_path }}"
+              journal_markdown_path: "{{ world.last_job_result.journal_markdown_path }}"
+              results:               "{{ world.last_job_result.results ?? world.results }}"
+              last_result:           "{{ world.last_job_result.last_result ?? world.last_result }}"
+              findings:              "{{ world.last_job_result.findings ?? world.findings }}"
+              exceptions:            "{{ world.last_job_result.exceptions ?? world.exceptions }}"
+              case_index:            "{{ world.last_job_result.case_index ?? world.case_index }}"
+              cases_processed:       "{{ world.last_job_result.cases_processed ?? world.cases_processed }}"
+              loaded_journal:        "{{ world.last_job_result.loaded_journal }}"
+              journal_status:        "{{ world.last_job_result.journal_status }}"
+              journal_summary:       "{{ world.last_job_result.journal_summary }}"
+              last_checkpoint:       "{{ world.last_job_result.last_checkpoint }}"
+              intake_job_id:         ""
+          - target: intake_checkpointing
         on_error: idle
-      # Route unconditionally into the per-case dispatcher (processing). The
-      # dispatcher's pick_case handles an EMPTY backlog (it returns no case →
-      # backlog_drained → aggregating), so intake needs no fragile length guard
-      # here — the drain decision lives in one place (the dispatcher).
-      - emit_intent: enter_processing
     on:
       enter_processing:
         - target: processing
+      look:
+        - target: .
+
+  intake_checkpointing:
+    description: "Persisting the intake checkpoint."
+    relevant_world: [backlog, run_id, journal_path, loaded_journal, journal_job_id]
+    view:
+      - heading: "Marathon · intake checkpoint"
+      - kv:
+          pairs:
+            Loaded:  '{{ world.backlog.items|length }}'
+            Run id:  '{{ world.run_id }}'
+            Journal: '{{ world.journal_path|default:"(pending)" }}'
+            Resume:  '{{ world.loaded_journal }}'
+            Job:     '{{ world.journal_job_id|default:"(starting)" }}'
+      - prose: "Writing the intake checkpoint before dispatching the first case."
+    on_enter:
+      - invoke: host.starlark.run
+        id: persist_journal
+        when: "world.journal_job_id == ''"
+        background: true
+        with:
+          script: scripts/persist_journal.star
+          capabilities:
+            fs:
+              write: [".artifacts/dogfood-marathon/**"]
+          inputs:
+            stage:                 "intake"
+            run_id:                "{{ world.run_id }}"
+            run_dir:               "{{ world.run_dir }}"
+            journal_path:          "{{ world.journal_path }}"
+            journal_markdown_path: "{{ world.journal_markdown_path }}"
+            backlog:               "{{ world.backlog }}"
+            results:               "{{ world.results }}"
+            findings:              "{{ world.findings }}"
+            exceptions:            "{{ world.exceptions }}"
+            current_case:          "{{ world.current_case }}"
+            case_index:            "{{ world.case_index }}"
+            cases_processed:       "{{ world.cases_processed }}"
+        bind:
+          journal_job_id: job_id
+        on_complete:
+          - set:
+              run_id:                "{{ world.last_job_result.run_id }}"
+              run_dir:               "{{ world.last_job_result.run_dir }}"
+              journal_path:          "{{ world.last_job_result.journal_path }}"
+              journal_markdown_path: "{{ world.last_job_result.journal_markdown_path }}"
+              journal_status:        "{{ world.last_job_result.journal_status }}"
+              journal_summary:       "{{ world.last_job_result.journal_summary }}"
+              last_checkpoint:       "{{ world.last_job_result.last_checkpoint }}"
+              journal_job_id:        ""
+          - target: processing
+        on_error: idle
+    on:
       look:
         - target: .

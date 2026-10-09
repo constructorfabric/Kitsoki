@@ -142,7 +142,7 @@ async function driveAccept(page: Page, fromState: string, toState: string): Prom
  * room renders: an optional composer-select (present only when >1 text intent),
  * a composer-input textarea, and composer-send. We set the select (if any),
  * fill the textarea (firing input so v-model picks it up), and submit the
- * composer form. DOM-level so the tour overlay backdrop never intercepts.
+ * composer form. DOM-level so the tour popover never intercepts.
  */
 async function driveComposer(
   page: Page,
@@ -168,8 +168,8 @@ async function driveComposer(
     ta.dispatchEvent(new Event("input", { bubbles: true }));
   }, value);
   await dwell(page, 600);
-  // Submit via the form so the @submit.prevent handler fires regardless of the
-  // overlay backdrop covering the Send button.
+  // Submit via the form so the @submit.prevent handler fires regardless of
+  // popover placement.
   const form = page.getByTestId("composer").first();
   await form.evaluate((el) => (el as HTMLFormElement).requestSubmit());
   await expectState(page, expectStateName);
@@ -183,7 +183,7 @@ async function driveComposer(
  * variants), `placeholderMatch` disambiguates by the input's placeholder text.
  * The Send button is disabled until the input has a value, so we fire the input
  * event first (enabling it) and then submit the form. DOM-level so the tour
- * overlay backdrop never intercepts.
+ * popover never intercepts.
  */
 async function driveParamForm(
   page: Page,

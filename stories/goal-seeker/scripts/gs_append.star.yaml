@@ -1,0 +1,13 @@
+inputs:
+  work_dir:  { type: string, required: true }   # .artifacts/goal/<slug>/ — holds log.jsonl
+  change_id: { type: string, required: true }   # the change this entry is about
+  state:       { type: string }                 # blocked|ready|...|integrated|parked (default: integrated)
+  park_reason: { type: string }                 # quota|conflict|escalation|gate_not_red (state=parked only)
+  sha:         { type: string }                 # merged commit sha (integration entries)
+  summary:     { type: string }                 # one-line note folded into the ledger row
+  kind:        { type: string }                 # entry kind (default: integration)
+  actor:       { type: string }                 # worker|reviewer|integrator (default worker); only reviewer/integrator flip green
+  gate_status: { type: string }                 # red|green|... ; integrated defaults green
+outputs:
+  seq:      { type: string }   # the assigned monotonic seq
+  log_path: { type: string }   # the log file written

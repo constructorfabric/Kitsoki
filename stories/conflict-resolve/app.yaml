@@ -53,7 +53,6 @@ agents:
       resolved=true.
     model: claude-sonnet-4-6
     tools: [Read, Edit]
-    external_side_effect: false
 
 world:
   # ── World-in (caller seeds these) ──────────────────────────────────────────

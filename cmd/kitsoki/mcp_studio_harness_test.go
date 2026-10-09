@@ -46,11 +46,19 @@ func TestStudioImportResolverStoriesDir(t *testing.T) {
 	require.NoError(t, os.WriteFile(appPath, []byte("app:\n  id: child\n  version: \"1\"\nroot: idle\nworld: {}\nstates:\n  idle:\n    description: Idle\n    terminal: true\n"), 0o644))
 
 	resolver := studioImportResolver(storiesDir)
+
+	// A story present in storiesDir resolves from there.
 	got, err := resolver("child", "", true)
 	require.NoError(t, err)
 	require.Equal(t, appPath, got)
 
-	_, err = resolver("missing", "", true)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "--stories-dir=")
+	// A story absent from storiesDir must NOT hard-error with a --stories-dir
+	// message; instead the resolver delegates to base so that $KITSOKI_REPO and
+	// the embedded library can satisfy @kitsoki/* imports (e.g. dev-story).
+	// Clear KITSOKI_REPO so the base returns ("",nil) — "no override set, fall
+	// through" — giving us a hermetic result independent of the local checkout.
+	t.Setenv("KITSOKI_REPO", "")
+	path, err := resolver("missing", "", true)
+	require.NoError(t, err, "absent story must not error with --stories-dir message; base says no override configured")
+	require.Empty(t, path, "base returns empty path when no override is configured")
 }

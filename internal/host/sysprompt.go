@@ -18,6 +18,7 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"kitsoki/internal/render/sourcecolor"
@@ -64,10 +65,28 @@ const projectConventionRef = "prompts/_project.md"
 // recompiling. Empty result → the embedded default is used.
 const kitsokiOverlayRef = "sysprompt/kitsoki.md"
 
+// projectSystemPromptRel is the transparent, project-owned Layer-1 source.
+// A story rooted below the project searches upward for this file before falling
+// back to the story prompt search path and finally the embedded default.
+const projectSystemPromptRel = ".kitsoki/system-prompt.md"
+
 // composeAgentSystemPrompt builds the layered system prompt for a verb and the
 // resolved Layer-3 persona, pulling Layer 2 (project) from ctx and Layer 1
 // (kitsoki) from the engine default (or a @shared overlay if the project ships
 // one). Pure assembly is delegated to sysprompt.Compose.
+//
+// Stable-prefix invariant (docs/architecture/system-prompt.md;
+// docs/architecture/hosts.md#cache-usage-visibility-and-the-pre-dispatch-budget-gate):
+// every
+// layer here is static for a given (verb, agent) pair — kitsoki is a compiled
+// constant, project is the app's declared context, and persona is the
+// author's declared agent.SystemPrompt / call-site system_prompt: override.
+// None of the three may carry per-call volatile data (turn numbers,
+// timestamps, artifact IDs, story/journey snapshots) — that data belongs in
+// the verb's PROMPT (the user message built by each handler's own
+// prompt/context resolution, e.g. resolveDecidePrompt), never in the system
+// prompt, so the composed prefix stays byte-identical (and thus
+// cache-eligible) across every call to the same agent.
 func composeAgentSystemPrompt(ctx context.Context, verb sysprompt.Verb, persona string) sysprompt.Composed {
 	return sysprompt.Compose(sysprompt.Spec{
 		Verb:    verb,
@@ -161,10 +180,19 @@ func renderProjectSource(ctx context.Context, src, ref string, warnOnError bool)
 	return strings.TrimSpace(sourcecolor.Strip(out))
 }
 
-// resolveKitsokiOverride returns a project's @shared override of the Layer-1
-// kitsoki fragment when one is on the search path, else "" (use the embedded
-// default). Cheap best-effort: any miss or error falls back to the default.
+// resolveKitsokiOverride returns a project-visible Layer-1 kitsoki fragment
+// when one is available, else "" (use the embedded default). Resolution order:
+// a nearest-upward .kitsoki/system-prompt.md from the story/project root, then
+// the legacy prompt-search-path sysprompt/kitsoki.md override. Both render
+// through the prompt TemplateSet, so {% include %} / {% extends %} keep the same
+// extension semantics as story prompts.
 func resolveKitsokiOverride(ctx context.Context) string {
+	if abs := findProjectSystemPrompt(ctx); abs != "" {
+		if rendered := renderProjectFile(ctx, abs, false); strings.TrimSpace(rendered) != "" {
+			return rendered
+		}
+	}
+
 	pr := PromptRendererFromCtx(ctx)
 	if pr == nil {
 		return ""
@@ -178,4 +206,53 @@ func resolveKitsokiOverride(ctx context.Context) string {
 		return ""
 	}
 	return renderProjectSource(ctx, string(body), kitsokiOverlayRef, false)
+}
+
+func findProjectSystemPrompt(ctx context.Context) string {
+	if pr := PromptRendererFromCtx(ctx); pr != nil && strings.TrimSpace(pr.RootDir()) != "" {
+		if abs, err := filepath.Abs(pr.RootDir()); err == nil {
+			return findUpward(abs, projectSystemPromptRel)
+		}
+		return ""
+	}
+	var starts []string
+	if cwd, err := os.Getwd(); err == nil {
+		starts = append(starts, cwd)
+	}
+	seen := map[string]bool{}
+	for _, start := range starts {
+		if start == "" {
+			continue
+		}
+		abs, err := filepath.Abs(start)
+		if err != nil {
+			continue
+		}
+		if seen[abs] {
+			continue
+		}
+		seen[abs] = true
+		if found := findUpward(abs, projectSystemPromptRel); found != "" {
+			return found
+		}
+	}
+	return ""
+}
+
+func findUpward(start, rel string) string {
+	dir := start
+	if info, err := os.Stat(dir); err == nil && !info.IsDir() {
+		dir = filepath.Dir(dir)
+	}
+	for {
+		candidate := filepath.Join(dir, rel)
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			return candidate
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return ""
+		}
+		dir = parent
+	}
 }

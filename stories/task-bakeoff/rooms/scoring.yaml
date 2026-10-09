@@ -1,5 +1,5 @@
-# scoring — DETERMINISTIC (no LLM). Aggregate the per-cell results into a summary
-# by calling the harness's FREE aggregate.py (no LLM, no cost — the skill's
+# scoring — DETERMINISTIC (no LLM). Aggregate the per-cell results through the
+# explicit native host boundary for the harness's FREE report tool (no LLM, no cost — the skill's
 # "Aggregation + offline regeneration" step). The committed cells/*.json the
 # manual run produced are merged into results/summary.json + the rollup.
 #
@@ -12,7 +12,7 @@
 states:
 
   scoring:
-    description: "Aggregating the cell results into a summary (deterministic, host.run → aggregate.py)."
+    description: "Aggregating the cell results into a summary (deterministic, host.starlark.run → host.bakeoff.run)."
     relevant_world: [summary, summary_path, generated_at, harness_dir]
     view:
       - heading: "Bake-off · scoring"
@@ -20,21 +20,23 @@ states:
           pairs:
             Summary: '{{ world.summary_path|default:"(aggregating…)" }}'
             Cells:   "{{ world.summary.cells|length }}"
-      - prose: "aggregate.py rolls the per-cell results up into a summary (by_treatment / by_candidate / by_cell_key). Deterministic — no LLM."
+      - prose: "The bakeoff report tool rolls the per-cell results up into a summary (by_treatment / by_candidate / by_cell_key). Deterministic — no LLM."
     on_enter:
-      - invoke: host.run
+      - invoke: host.starlark.run
         id: aggregate
         once: true
         with:
-          cmd: python3
-          args:
-            - "aggregate.py"
-            - "--generated-at"
-            - "{{ world.generated_at }}"
-          cwd: "{{ world.harness_dir }}"
+          script: scripts/bakeoff_run.star
+          inputs:
+            op: aggregate
+            cwd: "{{ world.harness_dir }}"
+            generated_at: "{{ world.generated_at }}"
+          capabilities:
+            host:
+              verbs: [host.bakeoff.run]
         bind:
-          summary:      stdout_json
-          summary_path: stdout_json.summary_path
+          summary:      "result.stdout_json"
+          summary_path: "result.stdout_json.summary_path"
         on_error: running
       - when: "world.summary.generated_at != nil && world.summary.generated_at != ''"
         emit_intent: accept

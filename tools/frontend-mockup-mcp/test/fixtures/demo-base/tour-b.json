@@ -1,0 +1,17 @@
+{
+  "_comment": "fixture tour: step 'b' matches deck scene B's chapter.",
+  "target": { "launch": "true", "addr": "127.0.0.1:7799", "readyPath": "/mockup.html", "cwd": ".", "timeoutMs": 5000 },
+  "startPath": "/mockup.html",
+  "viewport": { "width": 800, "height": 600 },
+  "deviceScaleFactor": 1,
+  "pace": 1,
+  "steps": [
+    {
+      "id": "b",
+      "label": "State B",
+      "before": [{ "eval": "window.storyboard.setStep('b')" }],
+      "dwellMs": 4000,
+      "kind": "explain"
+    }
+  ]
+}

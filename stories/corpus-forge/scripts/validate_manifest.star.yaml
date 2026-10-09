@@ -1,0 +1,5 @@
+inputs:
+  candidates: { type: list, required: true }
+outputs:
+  proofs: { type: list }
+  validation: { type: object }

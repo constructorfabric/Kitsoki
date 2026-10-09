@@ -100,6 +100,19 @@ func walkSteps(ctx context.Context, cfg Config, exec *executor, chapters *chapte
 			if err := exec.dwell(dwellMs); err != nil {
 				return shots, err
 			}
+		} else {
+			// Interactive scenes open their chapter before the drive so its
+			// window contains the conversation. They still owe their authored
+			// screen dwell before the poster is captured; otherwise their chapter
+			// only measures the fixed transition settle and QA correctly rejects
+			// the release as shorter than the storyboard contract.
+			dwellMs := step.DwellMs
+			if dwellMs == 0 {
+				dwellMs = 3000
+			}
+			if err := exec.dwell(dwellMs); err != nil {
+				return shots, err
+			}
 		}
 		pngIdx++
 		png, err := capturePNG(ctx, cfg.OutDir, pngIdx, step.ID)
@@ -131,9 +144,9 @@ func advance(ctx context.Context, exec *executor, step TourStep) error {
 		}
 		return exec.dwell(700)
 	}
-	// action: DOM-dispatch the click on the target so it fires through the
-	// overlay backdrop (spec pattern), then settle. route-match steps wait for
-	// the URL to change.
+	// action: DOM-dispatch the click on the target so it avoids tour popover
+	// hit-test flake (spec pattern), then settle. route-match steps wait for the
+	// URL to change.
 	if step.Target != "" {
 		js := fmt.Sprintf(`(() => { const t = document.querySelector(%q); if (!t) return false; t.scrollIntoView({block:'center'}); t.click(); return true; })()`, targetSelector(step.Target))
 		var ok bool
@@ -146,6 +159,27 @@ func advance(ctx context.Context, exec *executor, step TourStep) error {
 	}
 	if step.Advance == "route-match" {
 		if err := waitRouteChange(ctx, step.AdvanceRoute, 15*time.Second); err != nil {
+			// Session creation can finish after the first DOM click has returned
+			// (the button is disabled while the RPC is in flight). Retry the same
+			// explicit target once before declaring a navigation failure.
+			if step.Target != "" {
+				js := fmt.Sprintf(`(() => { const t = document.querySelector(%q); if (!t || t.disabled) return false; t.click(); return true; })()`, targetSelector(step.Target))
+				var retried bool
+				if retryErr := chromedp.Run(ctx, chromedp.Evaluate(js, &retried)); retryErr == nil && retried {
+					if retryWait := waitRouteChange(ctx, step.AdvanceRoute, 15*time.Second); retryWait == nil {
+						return exec.dwell(1000)
+					}
+				}
+			}
+			// HomeView exposes session-creation failures in place. Preserve that
+			// concrete cause instead of collapsing every failed new-session click
+			// into a route timeout, so storyboard authors can fix the real flow
+			// or cassette issue.
+			var startError string
+			const startErrorJS = `(() => { const e = document.querySelector('[data-testid="new-session-error"]'); return e ? (e.textContent || '').trim() : ''; })()`
+			if readErr := chromedp.Run(ctx, chromedp.Evaluate(startErrorJS, &startError)); readErr == nil && startError != "" {
+				return fmt.Errorf("new session failed: %s", startError)
+			}
 			return err
 		}
 	}

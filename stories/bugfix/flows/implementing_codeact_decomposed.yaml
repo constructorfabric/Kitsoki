@@ -1,0 +1,98 @@
+# The strict decomposed executor has no hidden fallback: an already-compiled
+# one-item plan selects its item, dispatches CodeAct with that exact grant, and
+# requires a host-owned deterministic gate before it can enter testing.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: implementing
+initial_world:
+  ticket_id: TKT-DECOMPOSED
+  ticket_title: Strict decomposed CodeAct fixture
+  thread: TKT-DECOMPOSED
+  workdir: .
+  feature_branch: paired-task-codeact-decomposed
+  bugfix_mode: quick
+  implementation_mode: codeact_decomposed
+  judge_mode: human
+  propose_fix_artifact:
+    summary_title: Apply the decomposed fixture edit
+  compiled_implementation_plan:
+    - id: update-readme
+      depends_on: []
+      objective: Add the missing README sentence.
+      evidence_refs: ["reproduction: README lacks the sentence"]
+      read_paths: [README.md]
+      write_paths: [README.md]
+      invariants: [Existing README text remains intact.]
+      acceptance_commands: [test -f README.md]
+      acceptance_command: (test -f README.md)
+      acceptance_gate_command: 'set +e; (test -f README.md); rc=$?; printf "{\\"ok\\":true,\\"exit_code\\":0}\\n"; exit 0'
+      expected_artifacts: [README.md]
+      max_steps: 3
+      fallback_reason_allowlist: []
+      capabilities:
+        world: read
+        fs: { read: [README.md], write: [README.md], max_bytes: 65536 }
+        vcs: read
+    - id: add-regression
+      depends_on: [update-readme]
+      objective: Add the focused README regression assertion.
+      evidence_refs: ["reproduction: README lacks the sentence"]
+      read_paths: [README.md]
+      write_paths: [README.md]
+      invariants: [Existing README text remains intact.]
+      acceptance_commands: [test -f README.md]
+      acceptance_command: (test -f README.md)
+      acceptance_gate_command: 'set +e; (test -f README.md); rc=$?; printf "{\\"ok\\":true,\\"exit_code\\":0}\\n"; exit 0'
+      expected_artifacts: [README.md]
+      max_steps: 3
+      fallback_reason_allowlist: []
+      capabilities:
+        world: read
+        fs: { read: [README.md], write: [README.md], max_bytes: 65536 }
+        vcs: read
+
+host_handlers:
+  host.agent.codeact:
+    data:
+      terminated: done
+      payload:
+        summary_title: Applied README item
+        summary_markdown: Updated README only under the selected capability grant.
+        files_changed: [README.md]
+        applied: true
+      steps: [{ observation: { changed: README.md } }]
+  host.run:
+    data:
+      ok: true
+      exit_code: 0
+      stdout_json: { ok: true, exit_code: 0 }
+  host.local.run_tests:
+    data: { log: "focused test passed" }
+  host.agent.task:
+    data:
+      submitted:
+        summary_title: Focused test review passed
+        summary_markdown: "This deterministic fixture supplies the testing-room artifact after the two decomposed CodeAct items have each passed their own host-owned acceptance gate. It is intentionally long enough to satisfy the normal testing artifact schema without calling an LLM. The final test phase remains a separate broader suite boundary."
+        status: passed
+        tests_added: []
+        tests_run: { passed: 1, failed: 0, skipped: 0, log: "focused test passed" }
+  host.git:
+    data: { ok: true, sha: decomposed123, diff: README.md }
+
+turns:
+  - intent: { name: refine, slots: { feedback: start the strict item } }
+    expect_state: implementing
+  - intent: { name: accept, slots: {} }
+    expect_state: implementation_gating
+  - intent: { name: accept, slots: {} }
+    expect_state: implementing
+    expect_world: { decomposed_implementation_index: 1 }
+  - intent: { name: accept, slots: {} }
+    expect_state: implementation_gating
+  - intent: { name: accept, slots: {} }
+    expect_state: testing
+    expect_world:
+      decomposed_implementation_index: 1
+
+expect_no_errors: true

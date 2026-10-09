@@ -1,0 +1,22 @@
+{
+  "schema_version": "1.0",
+  "kind": "conversation",
+  "id": "scn-rollout-2026-06-22t17-54-26-019eeef7-9fdf-7060-86d0-1b1c25348cd5-0000",
+  "source": "mined",
+  "provenance": {
+    "corpus": "codex",
+    "session_id": "rollout-2026-06-22T17-54-26-019eeef7-9fdf-7060-86d0-1b1c25348cd5",
+    "span_idx": 0
+  },
+  "persona": "explorer",
+  "goal": "what does it take to get an extension uploaded to vs code marketplace?",
+  "turns": [
+    {
+      "role": "user",
+      "text": "what does it take to get an extension uploaded to vs code marketplace?",
+      "corrected": false
+    }
+  ],
+  "expected_effects": [],
+  "abandoned": false
+}

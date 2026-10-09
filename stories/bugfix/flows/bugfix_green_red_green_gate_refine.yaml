@@ -1,10 +1,9 @@
 # bugfix_green_red_green_gate_refine — the deterministic gate's FAILURE bounce.
 #
 # Same synthesis setup as bugfix_green_red_green_gate.yaml, but the deterministic
-# gate's host.run reports !ok (baseline NOT green — the branch was already failing
-# without the reproducer's test, so the gate cannot trust it). implementing/on_enter
-# must restart_from reproducing with the verdict as feedback BEFORE the implementer
-# spends any maker budget — never fix on top of an untrustworthy reproducer.
+# gate reports that the branch was already failing without the reproducer's
+# test. Strict mode must stop at needs-human immediately after that evidence:
+# retrying cannot repair a contaminated baseline.
 
 test_kind: flow
 app: ../app.yaml
@@ -27,7 +26,7 @@ initial_world:
 host_handlers:
   host.append_to_file: { data: { ok: true } }
   host.inbox.add:      { data: { ok: true } }
-  host.git_worktree:   { data: { ok: true, log: "", path: ".worktrees/grg2-fix" } }
+  host.capsule_workspace:   { data: { ok: true, log: "", path: ".worktrees/grg2-fix" } }
   host.git:            { data: { ok: true, sha: "abc", diff: "" } }
   host.local:          { data: { ok: true, log: "PASS", passed: 1, failed: 0 } }
   host.agent.task:
@@ -50,9 +49,6 @@ host_handlers:
     data: { ok: true, submitted: { summary_title: "ok", summary_markdown: "ok", outcome: "pass", status: "passed", verdict: "accept", intent: "accept", confidence: 0.9 } }
   host.run:
     by_call:
-      commit_repro_test:
-        data: { ok: true, exit_code: 0, stdout_json: { sha: "deadbeef", committed: true } }
-      # The gate FAILS: baseline NOT green ⇒ ok=false ⇒ restart_from reproducing.
       repro_det_gate:
         data:
           ok: true
@@ -66,13 +62,14 @@ host_handlers:
             log:            "baseline(GREEN) test_cmd exit=2 on HEAD~1 | reproducer(RED) repro_command exit=101"
 
 turns:
-  # start → reproducing on_enter: reproducer authors a test, then the DETERMINISTIC
-  # gate runs FIRST and FAILS (baseline not green) → emit refine → re-author →
-  # gate fails again → … until the reproducing budget is exhausted → abandon. The
-  # deterministic gate NEVER lets an untrustworthy reproducer reach proposing/maker.
+  # start → reproducer runs once; the deterministic gate finds the red clean
+  # baseline → needs-human. No judge, implementer, or retry may spend budget.
   - intent: { name: start, slots: {} }
-    expect_state: __exit__abandoned
+    expect_state: __exit__needs-human
+    expect_host_calls:
+      - handler: host.agent.task
+        times: 1
     expect_world:
-      abandon_reason: "reproducing_cycle_budget_exhausted"
+      status: "needs-human"
 
 expect_no_errors: true

@@ -1,0 +1,8 @@
+{% comment %}
+idea-implementation — standalone intake base view.
+{% endcomment %}
+{% block status %}idea-implementation · {{ world.status }}{% endblock %}
+{% block heading %}{{ state.description }}{% endblock %}
+{% block body %}{% endblock %}
+{% block choices %}{% endblock %}
+{% block footer %}{% endblock %}

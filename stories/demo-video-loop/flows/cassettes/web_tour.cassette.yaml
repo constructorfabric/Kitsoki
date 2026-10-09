@@ -65,11 +65,13 @@ episodes:
         exit_code: 0
         stdout: "video gate PASS (round 1) — canonical demo-video-loop-demo.mp4, 58.3s ≥ 25s, 8 frames, no ERROR.txt, written this turn"
   - id: qa-1
-    match: { handler: host.run, call: qa-1 }
+    match: { handler: host.ui_qa.run, call: qa-1 }
     response:
       data:
         ok: false
         exit_code: 1
+        qa_ok: false
+        qa_exit_code: 1
         stdout: |-
           QA FAIL: scenario 'verdict-pass' unsupported — no frame shows the kitsoki-ui-qa
           verdict surface reading overall: pass. overall: fail · 3/4 scenarios · 1 unsupported.
@@ -116,11 +118,13 @@ episodes:
         exit_code: 0
         stdout: "video gate PASS (round 2) — re-recorded demo-video-loop-demo.mp4, 58.3s ≥ 25s, 8 frames, no ERROR.txt, written this turn"
   - id: qa-2
-    match: { handler: host.run, call: qa-2 }
+    match: { handler: host.ui_qa.run, call: qa-2 }
     response:
       data:
         ok: true
         exit_code: 0
+        qa_ok: true
+        qa_exit_code: 0
         stdout: "QA PASS 4/4 — overall: pass · adversary: ok (0 downgrades) · the passing verdict now appears on screen."
 
   # ── Per-iteration artifact write (host.artifacts_dir; fires every turn) ──────

@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "drive_leg_result",
+  "description": "One transport leg's driver dispatch outcome -- REPORTED, not self-graded. The judge room independently grades the captured evidence.",
+  "type": "object",
+  "required": ["status"],
+  "properties": {
+    "status": {
+      "type": "string",
+      "description": "attempted | captured | blocked | degraded-evidence"
+    },
+    "evidence_refs": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Paths or retained ids for the captured evidence (frames/screenshots/traces)."
+    },
+    "frames_dir": {
+      "type": "string",
+      "description": "Directory of captured frames/screenshots for this leg, if any."
+    },
+    "blockers": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Honest blockers if evidence could not be captured (e.g. a JSON-degraded visual surface)."
+    },
+    "post_drive_evidence_ref": {
+      "type": "string",
+      "description": "vscode legs only: path or retained id for a SECOND vscode bridge capture (visual.open kind=vscode + visual.observe/snapshot) taken AFTER driving the live session to its target state -- not the preflight capture. Required before a vscode leg can be scored anything other than degraded-evidence; leave empty and report the blocker honestly if the post-drive capture could not be taken."
+    },
+    "post_drive_session_handle": {
+      "type": "string",
+      "description": "vscode legs only: the live session_handle the post-drive capture was taken against (e.g. \"s2\"). Should match the session handle the scenario was actually driven to, proving the capture reflects the driven-forward state rather than the original preflight session."
+    },
+    "post_drive_editor_evidence_ref": {
+      "type": "string",
+      "description": "vscode legs only: path or retained id for a POST-drive host.ide.* `ide.context_captured` trace event (the opportunistic editor-level tier -- see tools/persona_qa/transports.py's editor_evidence_contract), whose payload has connected:true. Only ever set when a REAL VS Code + kitsoki extension was linked AND the leg's driven primary_story issued a host.ide.get_open_editors/get_diagnostics/get_selection call during or after the drive; leave empty and report honestly otherwise -- do not fabricate one. Distinct from post_drive_evidence_ref (the mandatory bridge-level visual.open kind=vscode recapture): this field is additive and opportunistic, never a substitute for it."
+    },
+    "post_drive_editor_trace_ref": {
+      "type": "string",
+      "description": "vscode legs only: the session_handle/turn post_drive_editor_evidence_ref's ide.context_captured event was read from (via session.trace), so the caller can independently re-open the trace and confirm the event."
+    },
+    "harness_used": {
+      "type": "string",
+      "description": "replay | live | (empty if no primary_story session.new call was needed). The harness this leg's PRIMARY session.new call actually used -- report honestly even when it differs from what args.live_profile implied. The story's record_leg_result.star deterministically forces the verdict to degraded-evidence, with an explicit policy-violation cause, if this is \"live\" while args.live_profile was empty: an explicit profile= is the ONLY live authorization, and a replay-miss (a session.new(harness=\"replay\") call that hits a host.agent.* call with no matching cassette episode) is a hard MCP error to report as the blocker, never a signal to open a new session live on your own initiative."
+    },
+    "profile_used": {
+      "type": "string",
+      "description": "The harness profile actually passed to this leg's primary session.new call when harness_used is \"live\" (should equal args.live_profile -- report honestly if it does not)."
+    },
+    "summary": {
+      "type": "string",
+      "description": "What the driver actually attempted for this leg."
+    }
+  },
+  "additionalProperties": true
+}

@@ -165,6 +165,34 @@ func TestServer_UnknownMethod(t *testing.T) {
 	assert.Equal(t, -32601, frame.Error.Code)
 }
 
+func TestServer_FileReadAllowsMarkdownAndDiffArtifacts(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	files := map[string]string{
+		"brief.md":    "# Brief\n",
+		"change.diff": "diff --git a/a b/a\n",
+		"fix.patch":   "diff --git a/b b/b\n",
+	}
+	for name, content := range files {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644))
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "secret.txt"), []byte("nope"), 0o644))
+
+	ts := httptest.NewServer(server.New(twoTurnTrace(t), testDef()).Handler())
+	defer ts.Close()
+
+	for name, want := range files {
+		var out struct {
+			Content string `json:"content"`
+		}
+		rpcCall(t, ts, "runstatus.file.read", map[string]any{"path": filepath.Join(dir, name)}, &out)
+		assert.Equal(t, want, out.Content)
+	}
+
+	_, msg := rpcCallExpectError(t, ts, "runstatus.file.read", map[string]any{"path": filepath.Join(dir, "secret.txt")})
+	assert.Contains(t, msg, "only .md, .diff, and .patch files are served")
+}
+
 // TestServer_SubscribeAndStream verifies the subscribe → SSE flow: a
 // subscription streams only events appended *after* subscribe, as
 // runstatus.event notifications, preserving full-fidelity fields.

@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0",
+  "kind": "conversation",
+  "id": "scn-1b4ace86-f192-43b0-ab86-16142fec0079-0001",
+  "source": "mined",
+  "provenance": {
+    "corpus": "claude-code",
+    "session_id": "1b4ace86-f192-43b0-ab86-16142fec0079",
+    "span_idx": 1
+  },
+  "persona": "verifier",
+  "goal": "resolve the red gate test that's already written but not committed",
+  "turns": [
+    {
+      "role": "user",
+      "text": "resolve the red gate test that's already written but not committed",
+      "corrected": false
+    }
+  ],
+  "expected_effects": [
+    "Bash: echo <val> && git ls-files internal/mcp/studio/session_live_ completed",
+    "Bash: echo <val> && git status --short && echo <val> && for wt in completed"
+  ],
+  "abandoned": false
+}

@@ -1,6 +1,6 @@
 ---
 name: kitsoki-ui-qa
-description: Validate UI evidence (a screenshot for simple cases, a video for complex flows) against the bug or plan being verified plus usage scenarios — the inverse of kitsoki-ui-demo. Picks the evidence form by complexity, extracts deterministic frames, has a read-only `claude` vision agent judge each scenario against cited frames AND whether the evidence is complete for the stated bug/plan, adversarially re-checks every pass, and emits a gated qa-report.md + verdict.json. Use when asked to QA / review / validate / sign off on a demo, walkthrough, screenshot, or bug-fix proof, or to gate one in CI.
+description: Validate UI evidence (a screenshot for simple cases, a video for complex flows) against the bug or plan being verified plus usage scenarios — the inverse of kitsoki-ui-demo. Picks the evidence form by complexity, extracts deterministic frames, has the first available local vision reviewer (Codex, Claude, or agy) judge each scenario against cited frames AND whether the evidence is complete for the stated bug/plan, adversarially re-checks every pass, and emits a gated qa-report.md + verdict.json. Use when asked to QA / review / validate / sign off on a demo, walkthrough, screenshot, or bug-fix proof, or to gate one in CI.
 ---
 
 # Kitsoki UI demo QA
@@ -58,12 +58,23 @@ implemented or the bug being fixed** — drive the specific room/intent/state th
 bug/plan names, not a generic onboarding tour. Evidence that doesn't touch the
 changed behaviour will be flagged `unsupported` by the review above.
 
+When the evidence claims coverage of a product-journey scenario or transport,
+the product-journey run bundle is part of the evidence. Prefer [[scenario-qa]]
+for a single scenario/transport check. If you are handed a standalone MP4,
+rrweb log, or screenshot set, first verify that it was produced from
+`tools/product-journey/run.py --emit-run --transport ...`, consumed
+`driver-plan.json` capture routes, and attached the artifacts back to the same
+run. A bridge-local video with private cases or paths is incomplete scenario
+evidence even if the pixels look plausible.
+
 > This is an **LLM-driven review tool by design** (it needs vision). It is *not*
 > a no-LLM flow test and must never be wired into the automated test suite
-> (CLAUDE.md, [[feedback_no_llm_tests]]). It uses the local `claude` CLI, so —
-> like the engine's oracle — there's no API key and no per-call cost
-> ([[project_oracle_uses_claude_cli]]). The two deterministic stages
-> (`extract-frames.sh`, `report.sh`) are testable on their own without any LLM.
+> (CLAUDE.md, [[feedback_no_llm_tests]]). It uses the first available local
+> agent CLI from `codex`, `claude`, and `agy` (`--reviewer auto` by default).
+> An explicit `--reviewer claude` / `codex` / `agy` is treated as a preference
+> and still falls back to the others if that harness is unavailable or fails.
+> The deterministic stages (`extract-frames.sh`, `report.sh`) are testable on
+> their own without any LLM.
 
 ## Why it's reliable (read this first)
 
@@ -77,7 +88,7 @@ pipeline removes that failure mode structurally, not by hoping the model behaves
 2. **Grounded verdicts.** Every `pass` MUST cite a frame filename and quote what
    is **literally visible**. A claim with no citable frame is `unsupported`
    (never silently `pass`); a frame that contradicts it is `fail`.
-3. **Adversarial re-check (interpretive ÷ deterministic).** A second `claude`
+3. **Adversarial re-check (interpretive ÷ deterministic).** A second vision
    pass plays skeptic: it re-reads each `pass` step's cited frame and emits only a
    small **list of downgrades** (which step, to `fail`/`unsupported`, and what the
    frame really shows). `qa-review.sh` then **applies them deterministically** — it
@@ -246,8 +257,11 @@ pipeline removes that failure mode structurally, not by hoping the model behaves
 
 ## Prerequisites
 
-`ffmpeg`, `jq`, and the `claude` CLI on PATH (all already present in this repo's
-dev env). No `make build` needed — this consumes an existing video/frames.
+`ffmpeg`, `jq`, and at least one local reviewer CLI on PATH: `codex`, `claude`,
+or `agy`. No `make build` needed — this consumes an existing video/frames.
+`--reviewer auto` chooses the first compatible available harness; per-backend
+model overrides are `KITSOKI_UI_QA_CODEX_MODEL`,
+`KITSOKI_UI_QA_CLAUDE_MODEL`, and `KITSOKI_UI_QA_AGY_MODEL`.
 
 ## The loop
 
@@ -350,6 +364,124 @@ A ready-to-edit feature/scenarios pair for a VS Code embed lives at
 `templates/vscode-feature.md` + `templates/vscode-scenarios.yaml` (the worked
 example behind the `vscode-tour` gate above).
 
+## TUI (terminal) evidence
+
+QA'ing a **TUI** scenario ("check this in the TUI") uses the exact same
+frame-based pipeline — there is no separate DOM/axe path for the terminal, and
+none is needed: the pipeline never inspected the DOM to begin with, it always
+judged pixels. The only TUI-specific work is *producing* the right frames and
+tuning the deterministic scans for a character grid instead of a browser
+viewport.
+
+- **Capture is single-frame, so build a labeled sequence yourself — same shape
+  as the recorder's `NN-<scene>.png`.** `render.tui_png` (studio MCP) rasterises
+  ANSI to one PNG per call — it re-renders a live `handle`'s CURRENT state
+  (read-only) or a headless `{story_path, state, world?}` spec, never a video.
+  Drive the scenario (`session.drive`/`session.submit` per turn, or a spec
+  render per state) and save one PNG per meaningful state/turn, named
+  `NN-<state-or-scene>.png` in one directory — then point `qa.sh`/`qa-review.sh`
+  straight at that directory with `--frames`, exactly the existing
+  "ground-truth frames" path (no `extract-frames.sh` scene-detection involved,
+  since there's no video to slice):
+  ```bash
+  .agents/skills/kitsoki-ui-qa/scripts/qa.sh .artifacts/tui-scenario/00-idle.png \
+    --frames    .artifacts/tui-scenario \
+    --feature   .context/qa-tui-feature.md \
+    --scenarios .context/qa-tui-scenarios.yaml --strict
+  ```
+  If a scenario instead needs deterministic dwell timing across a driven
+  sequence (rare — most TUI scenarios are state-transition claims, not motion),
+  emit a `frames.json`/chapters sidecar next to the PNGs yourself, mirroring
+  `extract-frames.sh`'s shape, so `pacing-scan.sh` can run over it; otherwise
+  treat TUI like the screenshot path (no chapters, no pacing gate).
+- **Write TUI scenarios as observable terminal claims**, not DOM assertions:
+  "the state banner reads `CLOAKROOM`", "the allowed-intent list shows `go` and
+  `hang_cloak`", "the prose paragraph mentions the velvet cloak" — things a
+  vision reviewer can literally read off the character grid. There is no
+  clickable-element/axe-tree concept in a terminal frame; do not phrase a
+  scenario in terms of ARIA roles, hover states, or DOM structure.
+- **Blank-scan needs no special tuning for the common case.** A TUI frame is
+  legitimately mostly one flat dark background colour (the theme bg behind
+  sparse monospace glyphs) — `blank-scan.sh`'s background-bucket detection
+  already treats the most-common colour as the page background (the same logic
+  that keeps a sparse dark web/VS Code pane quiet), so a normal terminal frame
+  does not self-flag. It only fires when a *foreign*, high-contrast block
+  covers a large area with little text detail inside it — e.g. a panel that
+  should show rendered content but rasterised as a single solid colour (a
+  theme/rasteriser bug), or a video-recorder letterbox bar if the frames came
+  from a screen-recorded terminal rather than direct `render.tui_png` PNGs. If
+  a story's theme legitimately fills a large uniform panel (e.g. a full-width
+  status bar), the default `--min-coverage 0.10` / `--detail-min 0.015` may
+  need the same kind of loosening the VS Code editor-chrome strip needed above
+  (`--blank-min-coverage 0.15`); tune per-theme, not globally.
+- **Pixel regression across a change: `visual.tui_git_diff`.** The TUI
+  counterpart of `visual.git_diff` — renders the same `{story_path, state}`
+  scene at two git revisions via the in-process ANSI rasteriser (no
+  browser/webShot seam to wire, so it never degrades for want of one) and
+  returns a compact `changed`/`changed_bbox` diff over the retained
+  screenshots. Useful as a cheap non-vision pre-check before spending an LLM
+  review pass: a `same: true` result across a revision pair means the terminal
+  rendering didn't move at all for that scene.
+- **Live/interactive verification: the `tui-serve` bridge.** `render.tui_png`
+  only ever re-renders the studio's own regenerated `Frame` — a headless spec
+  teleport or a live handle's current `View()` — never an actual running pty.
+  If a scenario needs to prove real terminal mechanics render.tui_png can't
+  reach — resize reflow, raw keystroke sequences (arrows, Ctrl-C, paste
+  bursts), scrollback, or that the *actual bytes* a live `kitsoki` process
+  emits (not the studio's regenerated Frame) look right — drive it through
+  `tools/tui-bridge` instead (`kitsoki tui-serve` bridges a real pty over a
+  websocket; see its README for the full protocol):
+  ```bash
+  go run ./cmd/kitsoki tui-serve --addr 127.0.0.1:4700 \
+    -- run myapp.yaml --harness replay --recording rec.yaml   # never a live model — see below
+  cd tools/tui-bridge && pnpm install && pnpm run serve
+  # open http://localhost:4320/player/?ws=ws://127.0.0.1:4700/pty
+  ```
+  Capture evidence the same two ways the rest of this skill already uses: a
+  screenshot of the rendered player page is a normal PNG — feed it into
+  `qa.sh`/`qa-review.sh --frames` exactly like any other frame;
+  `window.__dump()` gives exact-text readback of the *visible viewport* (not
+  the full scrollback — buffer-API based, no vision needed) when a structural
+  check is all a step requires. Keep the spawned command deterministic and
+	  no-LLM (`--harness replay --recording ...`, or `--exec` pointed at a fixture
+	  binary) — never a live model, the same discipline `tools/mcp-demo` follows
+	  for the cassette-replay path above.
+	  If this bridge evidence is for a product-journey scenario, the bridge must
+	  consume the scenario run bundle and attach its video/frame artifacts back to
+	  that run; otherwise QA should classify the video as bridge-local evidence,
+	  not completed scenario coverage.
+	  - **Avoid readiness races.** The player retries the websocket until the first
+	    successful connection, so it is okay for Playwright to open the page before
+    `tui-serve` is listening. Still wait for both `window.__status() ===
+    "connected"` and the expected visible text in `window.__dump()` before
+    taking the first screenshot; a connected socket can arrive before the app's
+    initial frame is painted.
+  - **Use deterministic scroll helpers.** For scrollback evidence, prefer
+    `window.__scrollLines(n)`, `window.__scrollToTop()`, and
+    `window.__scrollToBottom()` over wheel deltas. Each helper returns the
+    visible viewport text after scrolling, so a capture script can assert the
+    exact screen it is about to screenshot.
+  - **claude-in-chrome needs no special wiring** — it's a plain page, so
+    `navigate` → `computer` (`left_click` on the terminal to focus it, then
+    `type`/`key` for input, `screenshot` for evidence) → `javascript_tool`
+    (`window.__dump()`) all work directly; verified end-to-end against a live
+    `kitsoki run` session (real keystrokes landed, `Escape` opened its menu).
+    See `tools/tui-bridge/README.md`'s "Driving it from claude-in-chrome"
+    section for the exact tool sequence.
+  - Playwright uses the same page (`page.click`, `page.keyboard.type/press`,
+    `page.screenshot()`) — see `tools/tui-bridge/tests/live-bridge.e2e.spec.ts`
+    for a worked example.
+- **This is pixel/vision QA, not [[rendering-tests]].** `rendering-tests`
+  asserts `View()`'s ANSI-text *structure* (line separation, no horizontal
+  concat) inside a `go test` — fast, no judge, catches layout regressions at
+  the unit level. This skill's frame-based pipeline is for evidence a human or
+  vision reviewer signs off on (does the screen show what the bug/plan
+  claims?). Use both; they check different things.
+- **Checking one scenario across TUI *and* other transports?** Use
+  [[scenario-qa]] rather than hand-driving this — it already wires
+  `render.tui_png` as the `tui` transport leg's evidence tool and produces a
+  single per-transport verdict table.
+
 ## rrweb-embedded slidey composite deck evidence
 
 A new reusable deliverable shape: a **slidey composite deck** — section/title
@@ -391,18 +523,22 @@ video — the gate is unchanged — but mind these composite-specific points:
 
 | Script | Does | LLM? |
 |---|---|---|
-| `qa.sh <video> --feature F --scenarios S [--frames D] [--out D] [--model M] [--max-frames N] [--scene TH] [--blank-min-coverage F] [--chapters F] [--pacing-min N] [--rrweb CLIP\|DIR] [--rrweb-min-dwell N] [--no-adversary] [--strict] [--blank-strict] [--pacing-strict] [--rrweb-strict] [--scroll-strict]` | One-shot wrapper; exit code is the gate. `--scene` / `--blank-min-coverage` pass through to extract-frames / blank-scan (tune for full-editor videos — see above); `--rrweb` runs BOTH the embedded-tour pacing scan AND the scroll-followability scan on the clip(s) | via review |
+| `qa.sh <video> --feature F --scenarios S [--frames D] [--out D] [--model M] [--reviewer auto\|codex\|claude\|agy\|ORDER] [--max-frames N] [--scene TH] [--blank-min-coverage F] [--chapters F] [--pacing-min N] [--rrweb CLIP\|DIR] [--rrweb-min-dwell N] [--no-adversary] [--strict] [--blank-strict] [--pacing-strict] [--rrweb-strict] [--scroll-strict]` | One-shot wrapper; exit code is the gate. `--scene` / `--blank-min-coverage` pass through to extract-frames / blank-scan (tune for full-editor videos — see above); `--rrweb` runs BOTH the embedded-tour pacing scan AND the scroll-followability scan on the clip(s) | via review |
 | `extract-frames.sh <video> <out-dir> [--scene TH] [--interval S] [--dedup MS] [--max N] [--width W]` | Deterministic scene-change + periodic-floor frames + `frames.json` | no |
 | `blank-scan.sh <frames-dir\|image> [--out scan.json] [--grid WxH] [--quant N] [--min-coverage F] [--empty-coverage F] [--fail-on-find]` | Deterministic monochrome-region detector → `blank-scan.json` (flags any large flat block of one colour, or a near-empty frame) | no |
 | `pacing-scan.sh <chapters.json> [--out scan.json] [--min-ms N] [--min-total-ms N] [--fail-on-find]` | Deterministic chapter-duration detector → `pacing-scan.json` (flags narrated moments that flash by below the readable-window floor) | no |
 | `rrweb-pacing-scan.mjs <clip.rrweb.json\|dir> [--out scan.json] [--min-dwell N] [--coalesce N] [--sig-min-adds N] [--sig-min-text N] [--tail-window N] [--fail-on-find]` | Deterministic embedded-rrweb timeline scan → `rrweb-pacing-scan.json` (flags content reveals crammed below the readable dwell — the rushed-last-messages defect a frame sampler / chapter scan can't see) | no |
 | `rrweb-scroll-scan.mjs <clip.rrweb.json\|dir> [--out scan.json] [--scroll-id N] [--snap-span N] [--snap-min-dy N] [--ease-min-events N] [--ease-min-ms N] [--min-snaps N] [--fail-on-find]` | Deterministic embedded-rrweb scroll-stream scan → `rrweb-scroll-scan.json` (flags a snap-to-bottom conversation capture where the transcript jumps past each message instead of easing through it — the "can't see the user inputs / it's jumpy" defect the time-only pacing scan and the frame sampler are blind to) | no |
 | `placeholder-scan.sh <frames-dir\|image\|video> [--out scan.json] [--pattern RE] [--min-fraction F] [--min-run N] [--fail-on-find]` | Deterministic OCR stuck-placeholder detector → flags a placeholder (default `\bloading\b`) that persists across a long unbroken run / large fraction of frames — a "Loading…" that never resolves. Skips (advisory) if `tesseract` is absent | no (OCR) |
-| `qa-review.sh --frames D --feature F --scenarios S --out V [--model M] [--no-adversary]` | Read-only vision agent → evidence-cited `verdict.json` + adversarial re-check | **yes** |
+| `qa-review.sh --frames D --feature F --scenarios S --out V [--model M] [--reviewer auto\|codex\|claude\|agy\|ORDER] [--no-adversary]` | Read-only vision reviewer → evidence-cited `verdict.json` + adversarial re-check | **yes** |
 | `report.sh <verdict.json> [--out report.md] [--strict] [--blank-scan scan.json] [--blank-strict] [--pacing-scan scan.json] [--pacing-strict] [--rrweb-scan scan.json] [--rrweb-strict] [--scroll-scan scan.json] [--scroll-strict]` | `verdict.json` (+ optional scans) → `qa-report.md`; recomputes the gate exit code | no |
 
-Defaults: review model `claude-opus-4-8` (override `--model claude-sonnet-4-6`
-for faster/cheaper); `--max-frames 48`; `--strict` makes every scenario blocking.
+Defaults: reviewer `auto` (`codex claude agy`, adjusted when the model name
+clearly targets Claude or Gemini), using each CLI's configured default model.
+Override the generic model with `KITSOKI_UI_QA_MODEL` / `--model`, or use
+per-backend overrides (`KITSOKI_UI_QA_CODEX_MODEL`,
+`KITSOKI_UI_QA_CLAUDE_MODEL`, `KITSOKI_UI_QA_AGY_MODEL`). `--max-frames 48`;
+`--strict` makes every scenario blocking.
 `qa.sh` always runs `blank-scan.sh` over the frames, and `pacing-scan.sh` over the
 chapter sidecar when one is present beside the MP4 (auto-detected, or `--chapters`);
 both scans' flags are **advisory** (surfaced in the report, never block) unless you
@@ -427,7 +563,13 @@ pass `--blank-strict` / `--pacing-strict`. The LLM `visual_issues` and
 - The recorder this inverts: [[kitsoki-ui-demo]] (`.agents/skills/kitsoki-ui-demo/`)
   — its `NN-<scene>.png` output is the ideal `--frames` input here, and its
   `contact-sheet.sh` is reused for the storyboard.
-- Oracle = local `claude` CLI: `internal/host/oracle_runner.go`.
+- Vision reviewer = first available local CLI from `codex`, `claude`, and `agy`.
+  Use `--reviewer claude,codex` or similar to prefer an order without making one
+  missing harness fatal.
+- TUI frame capture: `render.tui_png` (studio MCP, `internal/mcp/studio/session_tools.go`)
+  — one PNG per call, handle or headless spec. Pixel regression across a
+  revision pair: `visual.tui_git_diff` (`internal/mcp/studio/visual_tools.go`),
+  the TUI counterpart of `visual.git_diff`.
 
 ## Maintenance
 

@@ -1,0 +1,33 @@
+states:
+  # start — the entry landing. Its only job is to make `bootstrap` reachable via a
+  # TRANSITION so bootstrap's on_enter (lint + init) actually fires: a state machine's
+  # INITIAL-state on_enter is not re-run by the deterministic flow harness (seed-and-
+  # drive), and the same "run the first real gate" concern applies to reload. In a live
+  # `kitsoki run` the on_enter emit auto-advances immediately (no operator stop); the
+  # flow harness drives the same `advance`.
+  start:
+    description: "Goal-seeker — ready."
+    relevant_world: [goal_slug, goal_dir]
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "Goal-seeker ready for {{ world.goal_slug }}. Advance to lint + initialize."
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - { label: "advance", hint: "lint + initialize the goal" }
+                - { label: "look" }
+    on:
+      begin:
+        - target: bootstrap
+      advance:
+        - target: bootstrap
+      look:
+        - target: .
+      "*":
+        - default: true
+          target: .
+          effects:
+            - say: "Advance to begin."

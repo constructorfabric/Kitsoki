@@ -1,0 +1,764 @@
+states:
+  details:
+    description: "Run-as-user setup details"
+    relevant_world: [operator_user, agent_user, group_name, capsule_root, wrapper_bin, protected_root, setup_summary, status]
+    on_enter:
+      - invoke: host.starlark.run
+        id: plan_run_as_user_setup
+        with:
+          script: scripts/plan_setup.star
+          inputs:
+            platform: "{{ world.platform }}"
+            operator_user: "{{ world.operator_user }}"
+            agent_user: "{{ world.agent_user }}"
+            group_name: "{{ world.group_name }}"
+            capsule_root: "{{ world.capsule_root }}"
+            wrapper_bin: "{{ world.wrapper_bin }}"
+            protected_root: "{{ world.protected_root }}"
+            codex_bin: "{{ world.codex_bin }}"
+            claude_bin: "{{ world.claude_bin }}"
+            sample_capsule: "{{ world.sample_capsule }}"
+        bind:
+          setup_summary: setup_summary
+          config_snippet: config_snippet
+          account_steps: account_steps
+          group_commands: group_commands
+          wrapper_commands: wrapper_commands
+          sudoers_snippet: sudoers_snippet
+          assignment_commands: assignment_commands
+          validation_commands: validation_commands
+          receipt_markdown: receipt_markdown
+          security_notes: security_notes
+        once: true
+        on_error: failed
+      - set:
+          status: "details ready"
+    view:
+      - prose: "{{ world.setup_summary|default:'(pending)' }}"
+      - kv:
+          pairs:
+            Status: "{{ world.status }}"
+            Operator user: "{{ world.operator_user|default:'(current user)' }}"
+            Agent user: "{{ world.agent_user }}"
+            Agent group: "{{ world.group_name }}"
+            Capsule root: "{{ world.capsule_root }}"
+            Wrapper bin: "{{ world.wrapper_bin }}"
+            Protected root: "{{ world.protected_root }}"
+      - heading: "Deterministic apply path"
+      - list:
+          items:
+            - label: "account and group"
+              hint: "create or reuse {{ world.agent_user }} and {{ world.group_name }}"
+            - label: "wrappers and sudoers"
+              hint: "install root-owned codex/claude wrappers with narrow NOPASSWD delegation"
+            - label: "capsule assignment"
+              hint: "open {{ world.sample_capsule }} under {{ world.capsule_root }}"
+            - label: "validation"
+              hint: "prove delegated write, protected-root write denial, and wrapper smoke tests"
+      - heading: "Local receipt"
+      - code: "{{ world.receipt_markdown|default:'(pending)' }}"
+      - heading: "Security notes"
+      - code: "{{ world.security_notes|default:'(pending)' }}"
+      - prose: "The apply path uses non-interactive sudo. If sudo needs a password or an agent CLI needs a login, the story stops with command output instead of prompting invisibly."
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "apply"
+              intent: apply
+              hint: "create the account, install wrappers, and run probes"
+            - label: "edit values"
+              intent: edit
+              hint: "change users, paths, or CLI locations"
+            - label: "refresh details"
+              intent: plan
+            - label: "validated"
+              intent: validated
+              hint: "mark ready after applying outside this story"
+            - label: "back"
+              intent: back
+            - label: "quit"
+              intent: quit
+            - label: "look"
+              intent: look
+    on:
+      accept:
+        - target: applying
+          effects:
+            - set:
+                apply_ok: false
+                apply_exit_code: -1
+                apply_output: ""
+                last_error: ""
+                status: "applying"
+      apply:
+        - target: applying
+          effects:
+            - set:
+                apply_ok: false
+                apply_exit_code: -1
+                apply_output: ""
+                last_error: ""
+                status: "applying"
+      edit:
+        - target: configuring
+      validated:
+        - target: ready
+          effects:
+            - when: "world.setup_summary == ''"
+              invoke: host.starlark.run
+              id: plan_run_as_user_setup_validated
+              with:
+                script: scripts/plan_setup.star
+                inputs:
+                  platform: "{{ world.platform }}"
+                  operator_user: "{{ world.operator_user }}"
+                  agent_user: "{{ world.agent_user }}"
+                  group_name: "{{ world.group_name }}"
+                  capsule_root: "{{ world.capsule_root }}"
+                  wrapper_bin: "{{ world.wrapper_bin }}"
+                  protected_root: "{{ world.protected_root }}"
+                  codex_bin: "{{ world.codex_bin }}"
+                  claude_bin: "{{ world.claude_bin }}"
+                  sample_capsule: "{{ world.sample_capsule }}"
+              bind:
+                setup_summary: setup_summary
+                config_snippet: config_snippet
+                account_steps: account_steps
+                group_commands: group_commands
+                wrapper_commands: wrapper_commands
+                sudoers_snippet: sudoers_snippet
+                assignment_commands: assignment_commands
+                validation_commands: validation_commands
+                receipt_markdown: receipt_markdown
+                security_notes: security_notes
+              on_error: failed
+            - set:
+                status: "validated"
+      configure:
+        - target: details
+          effects:
+            - set:
+                platform: "{{ slots.platform ?? world.platform }}"
+                operator_user: "{{ slots.operator_user ?? world.operator_user }}"
+                agent_user: "{{ slots.agent_user ?? world.agent_user }}"
+                group_name: "{{ slots.group_name ?? world.group_name }}"
+                capsule_root: "{{ slots.capsule_root ?? world.capsule_root }}"
+                wrapper_bin: "{{ slots.wrapper_bin ?? world.wrapper_bin }}"
+                protected_root: "{{ slots.protected_root ?? world.protected_root }}"
+                codex_bin: "{{ slots.codex_bin ?? world.codex_bin }}"
+                claude_bin: "{{ slots.claude_bin ?? world.claude_bin }}"
+                sample_capsule: "{{ slots.sample_capsule ?? world.sample_capsule }}"
+                setup_summary: ""
+                config_snippet: ""
+                account_steps: ""
+                group_commands: ""
+                wrapper_commands: ""
+                sudoers_snippet: ""
+                assignment_commands: ""
+                validation_commands: ""
+                receipt_markdown: ""
+                security_notes: ""
+                apply_ok: false
+                apply_exit_code: -1
+                apply_output: ""
+                last_error: ""
+                status: "loading details"
+      plan:
+        - target: details
+          effects:
+            - set:
+                setup_summary: ""
+                config_snippet: ""
+                account_steps: ""
+                group_commands: ""
+                wrapper_commands: ""
+                sudoers_snippet: ""
+                assignment_commands: ""
+                validation_commands: ""
+                receipt_markdown: ""
+                security_notes: ""
+                apply_ok: false
+                apply_exit_code: -1
+                apply_output: ""
+                last_error: ""
+                status: "loading details"
+      back:
+        - target: lobby
+      look:
+        - target: .
+      quit:
+        - target: ended
+
+  applying:
+    description: "Applying run-as-user setup"
+    relevant_world: [agent_user, capsule_root, wrapper_bin, protected_root, apply_ok, apply_exit_code, apply_output, status]
+    on_enter:
+      - when: "world.setup_summary == ''"
+        invoke: host.starlark.run
+        id: plan_run_as_user_setup_before_apply
+        with:
+          script: scripts/plan_setup.star
+          inputs:
+            platform: "{{ world.platform }}"
+            operator_user: "{{ world.operator_user }}"
+            agent_user: "{{ world.agent_user }}"
+            group_name: "{{ world.group_name }}"
+            capsule_root: "{{ world.capsule_root }}"
+            wrapper_bin: "{{ world.wrapper_bin }}"
+            protected_root: "{{ world.protected_root }}"
+            codex_bin: "{{ world.codex_bin }}"
+            claude_bin: "{{ world.claude_bin }}"
+            sample_capsule: "{{ world.sample_capsule }}"
+        bind:
+          setup_summary: setup_summary
+          config_snippet: config_snippet
+          account_steps: account_steps
+          group_commands: group_commands
+          wrapper_commands: wrapper_commands
+          sudoers_snippet: sudoers_snippet
+          assignment_commands: assignment_commands
+          validation_commands: validation_commands
+          receipt_markdown: receipt_markdown
+          security_notes: security_notes
+        on_error: failed
+      - invoke: host.run
+        id: apply_run_as_user_setup
+        with:
+          cmd: bash
+          args:
+            - -c
+            - |
+              set -eu
+
+              platform=$1
+              operator_user=$2
+              agent_user=$3
+              group_name=$4
+              capsule_root=$5
+              wrapper_bin=$6
+              protected_root=$7
+              codex_bin=$8
+              claude_bin=$9
+              sample_capsule=${10}
+
+              log() {
+                printf '%s\n' "$*"
+              }
+
+              die() {
+                log "ERROR: $*"
+                exit 1
+              }
+
+              need() {
+                command -v "$1" >/dev/null 2>&1 || die "missing required command: $1"
+              }
+
+              sq() {
+                printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"
+              }
+
+              join_path() {
+                left=${1%/}
+                right=${2#/}
+                printf '%s/%s' "$left" "$right"
+              }
+
+              find_cli() {
+                cli_name=$1
+                resolved_cli=""
+                found=$(command -v "$cli_name" 2>/dev/null || true)
+                if [ -n "$found" ] && [ "${found#/}" != "$found" ] && [ -x "$found" ]; then
+                  resolved_cli=$found
+                  return 0
+                fi
+                for candidate in "/opt/homebrew/bin/$cli_name" "/usr/local/bin/$cli_name"; do
+                  if [ -x "$candidate" ]; then
+                    resolved_cli=$candidate
+                    return 0
+                  fi
+                done
+                if [ -n "${HOME:-}" ] && [ -x "$HOME/.local/bin/$cli_name" ]; then
+                  resolved_cli="$HOME/.local/bin/$cli_name"
+                  return 0
+                fi
+                return 1
+              }
+
+              resolve_cli() {
+                cli_name=$1
+                configured=$2
+                resolved_cli=""
+                if [ -z "$configured" ] || [ "$configured" = "auto" ]; then
+                  if find_cli "$cli_name"; then
+                    return 0
+                  fi
+                  log "CLI_PATH_REQUIRED: unable to find $cli_name executable."
+                  log "Set ${cli_name}_bin to an absolute path in edit values, or launch Kitsoki with $cli_name on PATH."
+                  return 78
+                fi
+
+                case "$configured" in
+                  /*)
+                    if [ -x "$configured" ]; then
+                      resolved_cli=$configured
+                      return 0
+                    fi
+                    case "$configured" in
+                      /opt/homebrew/bin/$cli_name|/usr/local/bin/$cli_name)
+                        if find_cli "$cli_name"; then
+                          log "resolved $cli_name from missing default $configured to $resolved_cli"
+                          return 0
+                        fi
+                        ;;
+                    esac
+                    log "CLI_PATH_REQUIRED: configured $cli_name path is not executable: $configured"
+                    log "Set ${cli_name}_bin to an absolute executable path, or set it to auto and make $cli_name available on PATH."
+                    return 78
+                    ;;
+                  *)
+                    found=$(command -v "$configured" 2>/dev/null || true)
+                    if [ -n "$found" ] && [ "${found#/}" != "$found" ] && [ -x "$found" ]; then
+                      resolved_cli=$found
+                      return 0
+                    fi
+                    log "CLI_PATH_REQUIRED: $cli_name command '$configured' did not resolve to an absolute executable path."
+                    log "Set ${cli_name}_bin to an absolute path in edit values, or use auto."
+                    return 78
+                    ;;
+                esac
+              }
+
+              [ "$platform" = "darwin" ] || die "run-as-user apply currently supports darwin only; got $platform"
+              [ -n "$agent_user" ] || die "agent_user is required"
+              [ -n "$group_name" ] || die "group_name is required"
+              [ -n "$capsule_root" ] || die "capsule_root is required"
+              [ -n "$wrapper_bin" ] || die "wrapper_bin is required"
+              [ -n "$protected_root" ] || die "protected_root is required"
+              [ -n "$codex_bin" ] || die "codex_bin is required"
+              [ -n "$claude_bin" ] || die "claude_bin is required"
+              [ -n "$sample_capsule" ] || die "sample_capsule is required"
+
+              if [ -z "$operator_user" ]; then
+                operator_user=$(id -un)
+              fi
+
+              need sudo
+              need dscl
+              need dseditgroup
+              need awk
+              need sed
+              need install
+              need visudo
+              need kitsoki
+
+              resolve_cli codex "$codex_bin" || exit $?
+              codex_bin=$resolved_cli
+              resolve_cli claude "$claude_bin" || exit $?
+              claude_bin=$resolved_cli
+              log "using codex executable: $codex_bin"
+              log "using claude executable: $claude_bin"
+
+              if ! sudo -n true >/dev/null 2>&1; then
+                log "AUTHORIZATION_REQUIRED: sudo is not authenticated for non-interactive apply."
+                log "Run 'sudo -v' in the terminal that launched Kitsoki, then retry apply."
+                exit 77
+              fi
+
+              if ! id -u "$agent_user" >/dev/null 2>&1; then
+                log "creating non-admin delegated account $agent_user"
+                next_uid=$(dscl . -list /Users UniqueID | awk '$2 >= 501 && $2 < 60000 { if ($2 > max) max = $2 } END { if (max == 0) print 502; else print max + 1 }')
+                sudo -n dscl . -create "/Users/$agent_user"
+                sudo -n dscl . -create "/Users/$agent_user" UserShell /bin/zsh
+                sudo -n dscl . -create "/Users/$agent_user" RealName "Kitsoki Agent"
+                sudo -n dscl . -create "/Users/$agent_user" UniqueID "$next_uid"
+                sudo -n dscl . -create "/Users/$agent_user" PrimaryGroupID 20
+                sudo -n dscl . -create "/Users/$agent_user" NFSHomeDirectory "/Users/$agent_user"
+                sudo -n createhomedir -c -u "$agent_user" >/dev/null 2>&1 || true
+              else
+                log "delegated account $agent_user already exists"
+              fi
+
+              sudo -n dseditgroup -o create "$group_name" >/dev/null 2>&1 || true
+              sudo -n dseditgroup -o edit -a "$agent_user" -t user "$group_name"
+              sudo -n mkdir -p "$capsule_root" "$wrapper_bin"
+              sudo -n chown "root:$group_name" "$capsule_root"
+              sudo -n chmod 0710 "$capsule_root"
+
+              sudo -n tee "$wrapper_bin/codex" >/dev/null <<SH
+              #!/bin/sh
+              umask 0002
+              exec /usr/bin/sudo -n -H -u $(sq "$agent_user") $(sq "$codex_bin") "\$@"
+              SH
+              sudo -n tee "$wrapper_bin/claude" >/dev/null <<SH
+              #!/bin/sh
+              umask 0002
+              exec /usr/bin/sudo -n -H -u $(sq "$agent_user") $(sq "$claude_bin") "\$@"
+              SH
+              sudo -n chmod 0755 "$wrapper_bin/codex" "$wrapper_bin/claude"
+
+              sudoers_tmp=$(mktemp)
+              trap 'rm -f "$sudoers_tmp"' EXIT
+              cat >"$sudoers_tmp" <<EOF
+              # Managed by kitsoki run-as-user-setup.
+              Cmnd_Alias KITSOKI_AGENT_CLIS = $codex_bin, $claude_bin
+              $operator_user ALL=($agent_user) NOPASSWD: KITSOKI_AGENT_CLIS
+              EOF
+              sudo -n visudo -cf "$sudoers_tmp" >/dev/null
+              sudo -n install -m 0440 -o root -g wheel "$sudoers_tmp" /private/etc/sudoers.d/kitsoki-agent
+              sudo -n visudo -cf /private/etc/sudoers.d/kitsoki-agent >/dev/null
+
+              sample_path=$(join_path "$capsule_root" "$sample_capsule")
+              if [ ! -e "$sample_path" ]; then
+                kitsoki capsule open clean-repo --dest "$sample_path"
+              else
+                log "sample capsule $sample_path already exists"
+              fi
+              sudo -n chgrp -R "$group_name" "$sample_path"
+              sudo -n chmod -R ug+rwX,o-rwx "$sample_path"
+              sudo -n find "$sample_path" -type d -exec chmod g+s {} +
+
+              sudo -n -H -u "$agent_user" touch "$(join_path "$sample_path" .agent-write-ok)"
+              protected_probe=$(join_path "$protected_root" .agent-should-fail)
+              if sudo -n -H -u "$agent_user" touch "$protected_probe" 2>/dev/null; then
+                rm -f "$protected_probe" 2>/dev/null || true
+                die "delegated account can write protected root $protected_root"
+              fi
+
+              PATH="$wrapper_bin:$PATH" command -v codex >/dev/null || die "codex wrapper is not resolvable"
+              PATH="$wrapper_bin:$PATH" command -v claude >/dev/null || die "claude wrapper is not resolvable"
+              PATH="$wrapper_bin:$PATH" codex --version >/dev/null || die "codex wrapper failed"
+              PATH="$wrapper_bin:$PATH" claude --version >/dev/null || die "claude wrapper failed"
+
+              log "ok: delegated account, wrappers, sudoers, capsule permissions, and write-deny probe passed"
+            - run-as-user-setup
+            - "{{ world.platform }}"
+            - "{{ world.operator_user }}"
+            - "{{ world.agent_user }}"
+            - "{{ world.group_name }}"
+            - "{{ world.capsule_root }}"
+            - "{{ world.wrapper_bin }}"
+            - "{{ world.protected_root }}"
+            - "{{ world.codex_bin }}"
+            - "{{ world.claude_bin }}"
+            - "{{ world.sample_capsule }}"
+          cwd: "."
+          timeout: 180s
+          fail_on_error: false
+        bind:
+          apply_ok: ok
+          apply_exit_code: exit_code
+          apply_output: stdout
+        on_error: apply_failed
+      - when: "world.apply_exit_code != -1"
+        emit_intent: apply_finished
+    view:
+      - prose: "Applying the delegated-user setup with non-interactive sudo."
+      - heading: "Output"
+      - code: "{{ world.apply_output|default:'(pending)' }}"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "look"
+              intent: look
+            - label: "back"
+              intent: back
+              hint: "return to setup details"
+            - label: "quit"
+              intent: quit
+    on:
+      apply_finished:
+        - when: "world.apply_ok == true"
+          target: ready
+          effects:
+            - set:
+                status: "applied successfully"
+        - when: "world.apply_exit_code == 77"
+          target: needs_authorization
+          effects:
+            - set:
+                status: "authorization required"
+                last_error: "{{ world.apply_output }}"
+        - when: "world.apply_exit_code == 78"
+          target: needs_cli_paths
+          effects:
+            - set:
+                status: "cli path required"
+                last_error: "{{ world.apply_output }}"
+        - target: apply_failed
+          effects:
+            - set:
+                status: "apply failed"
+                last_error: "run-as-user setup apply failed with exit {{ world.apply_exit_code }}\n{{ world.apply_output }}"
+      back:
+        - target: details
+      look:
+        - target: .
+      quit:
+        - target: ended
+
+  needs_authorization:
+    description: "Run-as-user setup needs sudo authorization"
+    relevant_world: [apply_output, status]
+    view:
+      - prose: "The deterministic apply step is ready, but macOS has not authorized sudo for this Kitsoki process."
+      - heading: "Authorize"
+      - code: "sudo -v"
+      - prose: "Run that command in the terminal that launched Kitsoki, then retry apply. The story will not collect or proxy your password."
+      - heading: "Command output"
+      - code: "{{ world.apply_output|default:'(none)' }}"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "apply"
+              intent: apply
+              hint: "retry after sudo authorization"
+            - label: "details"
+              intent: plan
+              hint: "return to setup details"
+            - label: "edit values"
+              intent: edit
+              hint: "change users, paths, or CLI locations"
+            - label: "back"
+              intent: back
+              hint: "return to setup"
+            - label: "quit"
+              intent: quit
+            - label: "look"
+              intent: look
+    on:
+      accept:
+        - target: applying
+          effects:
+            - set:
+                apply_ok: false
+                apply_exit_code: -1
+                apply_output: ""
+                last_error: ""
+                status: "applying"
+      apply:
+        - target: applying
+          effects:
+            - set:
+                apply_ok: false
+                apply_exit_code: -1
+                apply_output: ""
+                last_error: ""
+                status: "applying"
+      plan:
+        - target: details
+      edit:
+        - target: configuring
+      back:
+        - target: lobby
+      look:
+        - target: .
+      quit:
+        - target: ended
+
+  needs_cli_paths:
+    description: "Run-as-user setup needs backend CLI paths"
+    relevant_world: [codex_bin, claude_bin, apply_output, status]
+    view:
+      - prose: "The deterministic apply step could not resolve the backend CLI executable path before installing wrappers."
+      - kv:
+          pairs:
+            Codex executable: "{{ world.codex_bin }}"
+            Claude executable: "{{ world.claude_bin }}"
+      - heading: "Command output"
+      - code: "{{ world.last_error|default:'(none)' }}"
+      - prose: "Use edit values to set codex_bin or claude_bin to an absolute executable path, or set the field to auto and launch Kitsoki with the CLI on PATH."
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "edit values"
+              intent: edit
+              hint: "set the backend CLI executable paths"
+            - label: "apply"
+              intent: apply
+              hint: "retry after fixing the CLI path"
+            - label: "details"
+              intent: plan
+              hint: "return to setup details"
+            - label: "back"
+              intent: back
+              hint: "return to setup"
+            - label: "quit"
+              intent: quit
+            - label: "look"
+              intent: look
+    on:
+      accept:
+        - target: applying
+          effects:
+            - set:
+                apply_ok: false
+                apply_exit_code: -1
+                apply_output: ""
+                last_error: ""
+                status: "applying"
+      apply:
+        - target: applying
+          effects:
+            - set:
+                apply_ok: false
+                apply_exit_code: -1
+                apply_output: ""
+                last_error: ""
+                status: "applying"
+      plan:
+        - target: details
+      edit:
+        - target: configuring
+      back:
+        - target: lobby
+      look:
+        - target: .
+      quit:
+        - target: ended
+
+  apply_failed:
+    description: "Run-as-user setup apply failed"
+    relevant_world: [apply_exit_code, apply_output, last_error]
+    view:
+      - prose: "The automated apply step stopped before marking the setup ready."
+      - heading: "Command output"
+      - code: "{{ world.last_error|default:'(none)' }}"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "apply"
+              intent: apply
+              hint: "retry the automated setup"
+            - label: "validated"
+              intent: validated
+              hint: "mark ready after resolving the boundary outside the story"
+            - label: "edit values"
+              intent: edit
+              hint: "change users, paths, or CLI locations"
+            - label: "back"
+              intent: back
+              hint: "return to setup details"
+            - label: "quit"
+              intent: quit
+            - label: "look"
+              intent: look
+    on:
+      apply:
+        - target: applying
+          effects:
+            - set:
+                apply_ok: false
+                apply_exit_code: -1
+                apply_output: ""
+                last_error: ""
+                status: "applying"
+      validated:
+        - target: ready
+          effects:
+            - set:
+                status: "validated"
+      edit:
+        - target: configuring
+      back:
+        - target: details
+      look:
+        - target: .
+      quit:
+        - target: ended
+
+  failed:
+    description: "Setup details failed"
+    relevant_world: [last_error]
+    view:
+      - prose: "The deterministic setup details step failed."
+      - heading: "Error"
+      - code: "{{ world.last_error|default:'(none)' }}"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "back"
+              intent: back
+              hint: "return to setup values"
+            - label: "quit"
+              intent: quit
+    on:
+      back:
+        - target: lobby
+          effects:
+            - set:
+                last_error: ""
+                status: "ready to apply"
+      quit:
+        - target: ended
+
+  ready:
+    description: "Run-as-user setup ready"
+    relevant_world: [agent_user, group_name, capsule_root, wrapper_bin, protected_root, receipt_markdown, apply_output, status]
+    view:
+      - heading: "Setup complete"
+      - prose: "Run-as-user delegation is installed and the validation probes passed."
+        when: "world.apply_ok == true"
+      - prose: "Run-as-user delegation is marked ready. Keep the receipt with your machine-local notes."
+        when: "world.apply_ok == false"
+      - kv:
+          pairs:
+            Status: "{{ world.status }}"
+            Agent user: "{{ world.agent_user }}"
+            Agent group: "{{ world.group_name }}"
+            Capsule root: "{{ world.capsule_root }}"
+            Wrapper bin: "{{ world.wrapper_bin }}"
+            Protected root: "{{ world.protected_root }}"
+      - heading: "Installed and verified"
+      - list:
+          items:
+            - label: "delegated account"
+              hint: "{{ world.agent_user }} exists and belongs to {{ world.group_name }}"
+            - label: "PATH wrappers"
+              hint: "{{ world.wrapper_bin }}/codex and {{ world.wrapper_bin }}/claude invoke the backend CLIs as {{ world.agent_user }}"
+            - label: "capsule permissions"
+              hint: "{{ world.sample_capsule }} is writable by the delegated account under {{ world.capsule_root }}"
+            - label: "protected checkout probe"
+              hint: "{{ world.protected_root }} rejected a delegated-user write"
+      - heading: "Use wrappers"
+      - prose: "Start Kitsoki from a shell with the wrapper directory first in PATH when you want coding agents to run as the delegated account."
+      - code: "export PATH=\"{{ world.wrapper_bin }}:$PATH\"\ncommand -v codex\ncommand -v claude"
+      - heading: "Receipt"
+      - code: "{{ world.receipt_markdown|default:'(pending)' }}"
+      - heading: "Command transcript"
+        when: "world.apply_output != ''"
+      - code: "{{ world.apply_output }}"
+        when: "world.apply_output != ''"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "details"
+              intent: back
+              hint: "return to setup details"
+            - label: "quit"
+              intent: quit
+            - label: "look"
+              intent: look
+    on:
+      back:
+        - target: details
+      look:
+        - target: .
+      quit:
+        - target: ended
+
+  ended:
+    terminal: true
+    description: "Closed"
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "Done."

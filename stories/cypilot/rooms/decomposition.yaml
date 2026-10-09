@@ -16,13 +16,13 @@ states:
   decomposition_executing:
     description: "Decomposing the PRD via cpt plan."
     view:
-      - prose: '{{ world.ticket_id|default:"(no ticket)" }}  ·  {{ world.feature_slug|default:"(no feature)" }} ({{ world.feature_index }}/{{ world.feature_count }})  ·  cycle {{ world.cycle }}  ·  judge {{ world.judge_mode }}'
+      - prose: '{{ world.ticket_id|default:"(no ticket)" }}  ·  {{ world.feature_slug|default:"(no feature)" }} ({{ world.feature_index }}/{{ world.feature_count ?? 0 }})  ·  cycle {{ world.cycle }}  ·  judge {{ world.judge_mode }}'
       - heading: "{{ state.description }}"
       - kv:
           pairs:
             "Parent PRD":  '{{ world.prd_artifact.id|default:"(unknown)" }}'
             "Plan path":   '{{ world.decomposition_artifact.plan_path|default:"(pending)" }}'
-            "Phase count": '{{ world.decomposition_artifact.phase_count|default:0 }}'
+            "Phase count": '{{ world.feature_count ?? 0 }}'
       - choice:
           mode: single
           prompt: "Actions"

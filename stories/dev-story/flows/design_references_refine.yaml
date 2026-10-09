@@ -29,6 +29,8 @@ initial_world:
   design_references_path: "docs/proposals/.workspace/wf/003-references.json"
 
 host_handlers:
+  host.fs.writable_dir:
+    data: { path: "docs/proposals", used_fallback: false }
   host.agent.decide:
     by_call:
       existing_scan:

@@ -101,6 +101,9 @@ type TurnOutcome struct {
 	// ContextRoute is the routing receipt for a contextually-routed turn
 	// (nil for deterministic/semantic/LLM turns). Surfaced to TUI/web.
 	ContextRoute *ContextRouteReceipt
+	// ParkedWorkspace records an automatic fallback capsule created while
+	// rerouting or preserving dirty work. Nil when no parking was needed.
+	ParkedWorkspace *ParkedWorkspaceReceipt
 	// HarnessError is the (optional) human-readable description of an
 	// orchestrator-side dispatch loop failure that fired during this turn
 	// — e.g. settlePostBindEmits hit its recursion cap, or
@@ -110,6 +113,16 @@ type TurnOutcome struct {
 	// at the pre-emit resting place rather than vanishing into a
 	// half-bound limbo (P1-A/B in the dev-story-bugfix-unify code review).
 	HarnessError string
+}
+
+// ParkedWorkspaceReceipt records a fallback capsule created before a reroute.
+type ParkedWorkspaceReceipt struct {
+	SourceWorkspace   string `json:"source_workspace,omitempty"`
+	RecoveryWorkspace string `json:"recovery_workspace,omitempty"`
+	RecoveryBranch    string `json:"recovery_branch,omitempty"`
+	RecoveryCommit    string `json:"recovery_commit,omitempty"`
+	Cleaned           bool   `json:"cleaned,omitempty"`
+	Reason            string `json:"reason,omitempty"`
 }
 
 // OneShotInput configures a stateless one-shot turn (Orchestrator.OneShot).

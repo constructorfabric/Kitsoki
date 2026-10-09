@@ -6,15 +6,23 @@ proposal: the interpretive work (how to slice, is it feasible) is Claude's
 job, but the structural truth is mechanical and has teeth independent of any
 LLM. Exit code IS the gate — 0 clean, 1 on any error.
 
+schemas/decomposition.json here is a manual copy of stories/deliver's canonical
+schema (stories/deliver is the canonical decomposition story; this skill is its
+manual twin — see docs/proposals/deliver-canonical-decomposition.md). Field
+names converge: `deps`/`depends_on`, `brief`/`agent_brief`, and
+`gate_command`/`test_plan` are read as aliases of each other, matching
+stories/deliver/scripts/lint_decomposition.star.
+
 Checks, in order:
   1. JSON-schema shape          (schemas/decomposition.json)
   2. unique brief ids
-  3. depends_on references resolve (no dangling id)
+  3. deps/depends_on references resolve (no dangling id)
   4. dependency graph is acyclic (topological sort)
   5. every scope path is inside the repo and its parent dir exists
      (new-file briefs legitimately don't match an existing file yet, so we
      bound the path rather than require a match)
-  6. every brief has non-empty acceptance + a test_plan
+  6. when present, acceptance is non-empty; every brief has a non-empty
+     gate_command (or test_plan)
 
 Usage:
     validate_decomposition.py <manifest.yaml|.json> [--repo-root DIR] [--json]
@@ -73,6 +81,17 @@ def literal_prefix(glob):
     return "/".join(kept)
 
 
+def _deps(b):
+    deps = b.get("deps")
+    if deps is None:
+        deps = b.get("depends_on")
+    return deps or []
+
+
+def _gate_command(b):
+    return (b.get("gate_command") or b.get("test_plan") or "").strip()
+
+
 def cross_brief_errors(manifest, repo_root):
     errors = []
     briefs = manifest.get("briefs", []) if isinstance(manifest, dict) else []
@@ -88,16 +107,16 @@ def cross_brief_errors(manifest, repo_root):
 
     # 3. dangling deps
     for b in briefs:
-        for dep in b.get("depends_on", []) or []:
+        for dep in _deps(b):
             if dep not in idset:
-                errors.append(f"brief {b.get('id')!r} depends_on unknown id {dep!r}")
+                errors.append(f"brief {b.get('id')!r} deps/depends_on unknown id {dep!r}")
 
     # 4. acyclic — Kahn's algorithm over the resolvable edges
     indeg = {bid: 0 for bid in idset}
     adj = {bid: [] for bid in idset}
     for b in briefs:
         bid = b.get("id")
-        for dep in b.get("depends_on", []) or []:
+        for dep in _deps(b):
             if dep in idset and bid in idset:
                 adj[dep].append(bid)
                 indeg[bid] += 1
@@ -114,7 +133,8 @@ def cross_brief_errors(manifest, repo_root):
         stuck = sorted(n for n, d in indeg.items() if d > 0)
         errors.append(f"dependency cycle among briefs: {', '.join(stuck)}")
 
-    # 5. scope path bounds + 6. acceptance/test_plan
+    # 5. scope path bounds (when scope is present) + 6. acceptance (when
+    # present, non-empty) / gate_command (required, aliased from test_plan)
     repo_root = os.path.realpath(repo_root)
     for b in briefs:
         bid = b.get("id")
@@ -127,10 +147,10 @@ def cross_brief_errors(manifest, repo_root):
             parent = target if os.path.isdir(target) else os.path.dirname(target)
             if not os.path.isdir(parent):
                 errors.append(f"brief {bid!r} scope {glob!r}: parent dir {os.path.relpath(parent, repo_root)!r} does not exist")
-        if not (b.get("acceptance") or []):
-            errors.append(f"brief {bid!r} has no acceptance criteria")
-        if not (b.get("test_plan") or "").strip():
-            errors.append(f"brief {bid!r} has no test_plan")
+        if "acceptance" in b and not (b.get("acceptance") or []):
+            errors.append(f"brief {bid!r} has an empty acceptance list (omit the field if none apply)")
+        if not _gate_command(b):
+            errors.append(f"brief {bid!r} has no gate_command (or test_plan)")
 
     return errors
 
@@ -152,7 +172,7 @@ def main():
         print(json.dumps({"ok": ok, "errors": errors}, indent=2))
     elif ok:
         n = len(manifest.get("briefs", []))
-        print(f"OK — {n} brief(s), unique ids, acyclic deps, scope paths bounded, acceptance + test_plan present.")
+        print(f"OK — {n} brief(s), unique ids, acyclic deps, scope paths bounded, gate_command present.")
     else:
         print(f"FAIL — {len(errors)} error(s):")
         for e in errors:

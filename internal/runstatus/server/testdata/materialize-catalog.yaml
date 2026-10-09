@@ -1,0 +1,54 @@
+schema: project-object-graph/seed-catalog/v0
+catalog:
+  id: materialize-rpc-test-fixture-catalog
+type_registry:
+  - id: core-node
+    schema: graph-type/v0
+    extends: null
+    required_fields: [id, schema, title, status, visibility]
+  - id: phase
+    schema: graph-type/v0
+    extends: core-node
+  - id: changeset
+    schema: graph-type/v0
+    extends: core-node
+  - id: work-item
+    schema: graph-type/v0
+    extends: core-node
+    edge_fields:
+      - id: in_phase
+        target_type: phase
+        cardinality: one
+    artifact:
+      schema: pog/artifact/implementation-brief/v0
+      format: markdown
+      presentation: document
+    materialize:
+      story: stories/materialize-work-item
+      context_edges: [in_phase]
+      params:
+        - { id: depth, type: int, default: 2 }
+        - { id: audience, type: enum, values: [internal, public] }
+      gates: [gate, owner]
+nodes:
+  - schema: graph/phase/v0
+    id: phase-one
+    title: Phase one
+    status: active
+    visibility: internal
+  - schema: graph/work-item/v0
+    id: wi-ready
+    title: Ready work item
+    status: active
+    visibility: internal
+    gate: "reviewers assigned"
+    owner: brad
+    edges:
+      in_phase: [phase-one]
+  - schema: graph/work-item/v0
+    id: wi-not-ready
+    title: Not ready work item
+    status: active
+    visibility: internal
+    edges:
+      in_phase: [phase-one]

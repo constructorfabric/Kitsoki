@@ -1,0 +1,50 @@
+# Frozen matched comparison: raw Codex versus the normal Kitsoki Studio-MCP
+# bugfix workflow. Both arms declare the same GPT-5.4 model and medium effort;
+# only the operating surface differs. The two query-string tasks exercise a
+# public project and the Kitsoki task exercises a distinct runtime stack. The
+# held-out task is reported as held-out, not used for prompt or runner tuning.
+job_type: paired-task
+
+targets:
+  - id: gpt54-mcp-vs-raw
+    label: "GPT-5.4 raw Codex vs Kitsoki MCP"
+    image: kitsoki-arena/paired-task:latest
+    dockerfile: tools/arena/docker/Dockerfile.paired-task
+    corpus: tools/arena/corpus/cost-bench.manifest.yaml
+
+variants:
+  - id: raw-codex-gpt54-medium
+    treatment: raw-codex
+    backend: codex
+    model: gpt-5.4
+    effort: medium
+
+  - id: kitsoki-mcp-gpt54-medium
+    treatment: kitsoki-mcp
+    backend: codex
+    model: gpt-5.4
+    effort: medium
+    worker_profile: codex-gpt54
+    orchestrator_model: gpt-5.4
+
+axes:
+  task:
+    - query-string-qs1-bugfix-test-repair
+    - query-string-qs2-bugfix-test-repair
+    - query-string-qs3-bugfix-test-repair
+    - kitsoki-bug14-bugfix-test-repair
+
+options:
+  live_gate_env: ARENA_PAIRED_TASK_ENABLE_CODEX
+  study:
+    protocol: mcp-vs-raw/gpt54/v1
+    primary_metric: solved_count
+    superiority_rule: "Kitsoki must solve more of the four frozen tasks than raw Codex; a tie is not a superiority claim."
+    trace_rule: "Every non-blocked Kitsoki cell must retain a readable Studio trace with nonzero usage."
+    cost_rule: "Subscription providers have no authoritative USD measure; compare tokens and wall time, never a fabricated dollar total."
+    heldout_tasks: [query-string-qs3-bugfix-test-repair, kitsoki-bug14-bugfix-test-repair]
+
+placement:
+  hosts: [local]
+  concurrency: 1
+  retry: 0

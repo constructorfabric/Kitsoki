@@ -80,7 +80,7 @@ host_handlers:
               routing_eval_items: 461
               hard_correction_items: 47
             commands_run:
-              - "python3 tools/session-mining/prep.py <kitsoki-transcripts> --grep routing --grep model"
+              - "host.session_mining.run --op prep <kitsoki-transcripts> --grep routing --grep model"
               - "slidey docs/decks/routing-model-cost-study.json --validate"
             limitations:
               - "Live candidate routing sweep is allowed by policy but not represented in this deterministic fixture."

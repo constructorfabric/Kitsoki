@@ -1,7 +1,7 @@
 # Warp basis: lands at `core.landing` primed to pick up a story-bug from
 # `stories/oregon-trail/issues/bugs/`. Demonstrates the multi-glob
 # `ticket_globs:` covering BOTH kitsoki-self bugs and per-story bugs.
-# Same dogfood pipeline; only the file path is different.
+# Same self-hosted pipeline; only the file path is different.
 #
 # Usage (from kitsoki repo root):
 #
@@ -25,7 +25,7 @@ world:
   core__thread:         "stories/oregon-trail/issues/bugs/2026-05-14T120000Z-scenarios-readme-warp-flag-misnamed.md"
   core__base_branch:    "main"
   core__feature_branch: "docs/oregon-trail-warp-flag-readme"
-  core__workdir:        ".worktrees/oregon-trail-warp-flag-readme"
+  core__workdir:        ".capsules/workspaces/oregon-trail-warp-flag-readme"
   core__workspace_id:   "ws-ot-warp-readme"
   judge_mode:           "human"
   judge_confidence_threshold: 0.8

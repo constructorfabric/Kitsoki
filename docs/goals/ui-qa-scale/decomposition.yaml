@@ -1,0 +1,355 @@
+goal_slug: ui-qa-scale
+
+# The goal's execution context — the goal-seeker roots lint/dispatch/integrate here.
+runtime:
+  base_branch:   stabilize/ui-qa-scale
+  worktree_path: .worktrees/ui-qa-scale
+
+coverage_note: >
+  Three walls. WU (Unify) makes arena and product-journey share one contract:
+  completion-state/verdict schema, corpora, rollup — killing the drift between the
+  two matrix brains. WA (Arena persona-qa) lands persona journeys as a first-class
+  arena workload with real concurrency plus a browser-capable cell image. WS
+  (Swarm) builds the dozens-of-users harness against ONE shared `kitsoki web`
+  server — replay users first (pure no-LLM soak), then finding capture, then
+  cassette-agent and gated live explorer tiers, and finally the swarm as an arena
+  job type so placement scales it out. IMPORTANT provenance: the branch
+  `plan/persona-qa-arena-ui-scale` (worktree .worktrees/persona-qa-arena-ui-scale)
+  already carries a first cut of the unify-contract/arena-persona-qa territory — tools/persona_qa/
+  completion bridge, tools/arena/arena/plugins/persona_qa.py, tests, and a spec.
+  Changes in that territory START from that branch (rebase/cherry-pick onto this
+  base, verify, harden) — they do not reimplement it. Full analysis:
+  .context/persona-qa-arena-ui-scale-review.md.
+
+definition_of_done: >
+  A change counts as DONE only when its code + RED->GREEN deterministic gate are
+  green with zero LLM spend (G-LIVE+REPLAY gates stand on their replay_cmd; live
+  is manual acceptance only), its docs are updated in place (tools/arena/README.md,
+  tools/product-journey/README.md, or docs/ proper as applicable), and any
+  behavior it replaces (arena stdout-regex scoring, arena-local rollup) is deleted
+  in the same change, not left as a second path.
+
+changes:
+  # ---- WU — Unify the contracts (do first; everything else builds on these) ----
+  - id: "unify-contract"
+    wall: WU
+    goal: Arena and product-journey score from one structured completion-state file, never stdout regex
+    goal_ref: [G1, G2]
+    title: Shared completion-state/verdict schema; land the persona_qa bridge from the plan branch
+    kind: change
+    pipeline: implementation
+    critical: true
+    scope:
+      - "schemas/completion-state.schema.json"
+      - "tools/persona_qa/**"
+      - "tools/arena/arena/plugins/bugfix.py"
+      - "tools/arena/tests/test_completion_state.py"
+      - "tools/bugfix-bakeoff/external/bench.py"
+    depends_on: []
+    acceptance:
+      - "a versioned completion-state JSON schema exists at schemas/completion-state.schema.json covering verdict, health, metrics, evidence_refs for BOTH workloads (bugfix + persona-qa)"
+      - "the plan/persona-qa-arena-ui-scale branch's tools/persona_qa/completion.py bridge is landed on this base (cherry-picked/rebased, not reimplemented) and emits schema-conformant completion-state from a product-journey review.json"
+      - "arena's bugfix plugin scores from a completion-state file written by bench.py, and the stdout regex scoring in plugins/bugfix.py is deleted (infra-signal detection may remain as fallback for missing files only)"
+      - "tests cover: schema conformance both directions, the 19-check review gate mapping (ready->solved, needs_evidence->partial, blocker->failed, harness signals->blocked/infra:*), and a malformed-file rejection"
+    gate:
+      class: G-SMOKE
+      red_now: "no completion-state schema exists; arena scores via stdout regex (bugfix.py:64-83); the bridge lives only on the plan branch, not this base"
+      green_when: "the bridge + schema tests pass on this base with no LLM"
+      cmd: "python3 tools/persona_qa/tests/test_completion.py && python3 tools/arena/tests/test_completion_state.py"
+    agent_brief: >
+      Unify arena and product-journey on one completion-state contract. Start by
+      cherry-picking the tools/persona_qa/ package (completion bridge + tests) from
+      branch plan/persona-qa-arena-ui-scale onto this base — verify what landed,
+      do not rewrite it. Then: (1) formalize the contract as
+      schemas/change-node-style versioned JSON schema at
+      schemas/completion-state.schema.json (verdict/health/metrics/evidence_refs;
+      see docs/proposals/arena-comparison-runner.md completion-state section);
+      (2) make tools/bugfix-bakeoff/external/bench.py write a completion-state
+      file and switch tools/arena/arena/plugins/bugfix.py score() to read it,
+      deleting the stdout-regex path; (3) add tools/arena/tests/test_completion_state.py
+      covering conformance + the review-gate mapping + malformed input. No docker,
+      no LLM in any test.
+
+  - id: "unify-corpora"
+    wall: WU
+    goal: Arena consumes product-journey's corpora instead of duplicating a target/persona vocabulary
+    goal_ref: [G1]
+    title: Arena loads github-targets.json targets and personas.json axes
+    kind: change
+    pipeline: implementation
+    scope:
+      - "tools/arena/arena/model.py"
+      - "tools/arena/arena.py"
+      - "tools/arena/tests/test_corpus_loading.py"
+    depends_on: []
+    acceptance:
+      - "a JobSpec can declare targets_from: tools/product-journey/github-targets.json and arena materializes Targets from it (respecting target-proof metadata when present)"
+      - "a JobSpec can declare a persona axis loaded from tools/product-journey/personas.json (axis values = persona ids)"
+      - "hand-inlined targets/variants keep working unchanged (existing specs + test_arena_skeleton.py stay green)"
+    gate:
+      class: G-SMOKE
+      red_now: "arena's Target is documented as 'github-targets shape' but never reads the file; personas are unrepresentable as an axis without hand-copying ids"
+      green_when: "corpus-loading tests pass and the skeleton test still passes"
+      cmd: "python3 tools/arena/tests/test_corpus_loading.py && python3 tools/arena/tests/test_arena_skeleton.py"
+    agent_brief: >
+      Teach arena's JobSpec to load product-journey's corpora: targets from
+      github-targets.json (tools/arena/arena/model.py JobSpec.from_dict/load —
+      add a targets_from path field resolved relative to repo root) and a persona
+      axis from personas.json. Keep it read-only over those files; product-journey
+      remains their owner. Preserve full backward compatibility for inline
+      targets/variants. Add tools/arena/tests/test_corpus_loading.py (pure file
+      parsing, no docker/LLM). Update tools/arena/README.md spec examples.
+
+  - id: "unify-rollup"
+    wall: WU
+    goal: One rollup/deck implementation serves both tools; the drift-prone copy is deleted
+    goal_ref: [G1]
+    title: Shared rollup — arena imports the reporting module, arena/rollup.py's fork is retired
+    kind: change
+    pipeline: implementation
+    scope:
+      - "tools/arena/arena/rollup.py"
+      - "tools/persona_qa/reporting.py"
+      - "tools/persona_qa/tests/test_shared_rollup.py"
+    depends_on: ["unify-contract"]
+    acceptance:
+      - "a shared reporting module (tools/persona_qa/reporting.py) produces the verdict-bucket rollup (json+md) from completion-state records, extracted from — and byte-compatible with — arena's current rollup for the bugfix shape"
+      - "tools/arena/arena/rollup.py delegates to the shared module (thin re-export), its private duplicate logic deleted"
+      - "the shared module accepts persona-qa completion-states (persona/scenario buckets) — the deck swap noted at arena/rollup.py:6 has a data-complete input"
+    gate:
+      class: G-SMOKE
+      red_now: "arena/rollup.py mirrors product-journey's rollup without importing it; two rollup brains drift independently"
+      green_when: "shared-rollup tests pass and arena's skeleton test still passes through the delegating rollup"
+      cmd: "python3 tools/persona_qa/tests/test_shared_rollup.py && python3 tools/arena/tests/test_arena_skeleton.py"
+    agent_brief: >
+      Extract arena's rollup logic (tools/arena/arena/rollup.py _bucket/build_rollup/
+      write_rollup) into tools/persona_qa/reporting.py as the single shared
+      implementation over completion-state records (unify-contract's contract), generalized to
+      bucket by variant/target/persona/scenario. Make arena/rollup.py a thin
+      delegating shim. Golden-test byte-compatibility for the existing bugfix
+      rollup before deleting the private copy. No docker, no LLM.
+
+  # ---- WA — Persona QA through arena ----
+  - id: "arena-persona-qa"
+    wall: WA
+    goal: Persona journeys are a first-class arena workload with real cell concurrency
+    goal_ref: [G2, G5]
+    title: persona-qa arena plugin — emit-run, drive headless, score from review.json; no-LLM replay sweep proven
+    kind: change
+    pipeline: implementation
+    critical: true
+    scope:
+      - "tools/arena/arena/plugins/persona_qa.py"
+      - "tools/arena/arena/plugins/__init__.py"
+      - "tools/arena/tests/test_persona_qa_plugin.py"
+      - "tools/arena/specs/**"
+    depends_on: ["unify-contract", "unify-corpora"]
+    acceptance:
+      - "the plan/persona-qa-arena-ui-scale branch's plugins/persona_qa.py + tests + spec are landed on this base (verified, hardened), registered in plugins/__init__.py, and `arena plugins` lists persona-qa"
+      - "drive_command (non-live) runs product-journey's no-LLM path (emit-run + --gate driver-replay or equivalent) inside the cell; live mode dispatches the product-journey-qa-driver headlessly and is gated behind --live"
+      - "score() reads the bundle's review.json via the unify-contract bridge — never stdout"
+      - "a persona-qa JobSpec (targets_from + persona axis via unify-corpora) enumerates cells and completes a no-LLM sweep through `arena run` with concurrency >= 2 over FakeBackend in tests"
+    gate:
+      class: G-SMOKE
+      red_now: "only the bugfix plugin is registered on this base; product-journey is unreachable from `arena run` (its planner is fully serial)"
+      green_when: "persona-qa plugin tests pass over FakeBackend with no docker and no LLM"
+      cmd: "python3 tools/arena/tests/test_persona_qa_plugin.py"
+    agent_brief: >
+      Land persona QA as an arena workload. Start from branch
+      plan/persona-qa-arena-ui-scale (plugins/persona_qa.py, test_persona_qa_plugin.py,
+      specs/persona-qa-onboarding-kubernetes.yaml) — cherry-pick onto this base and
+      reconcile with unify-contract's landed bridge and unify-corpora's corpus loading (the branch
+      predates both). Ensure: registration in plugins/__init__.py; non-live
+      drive_command = product-journey no-LLM replay path; live path gated;
+      score() = review.json via tools/persona_qa/completion.py. Extend the tests
+      to cover a 2-concurrent FakeBackend sweep and axis coords carrying
+      persona/scenario. Update tools/arena/README.md P2 status.
+
+  - id: "arena-browser-image"
+    wall: WA
+    goal: Arena cells can run a browser, unblocking web-surface evidence and the swarm job type
+    goal_ref: [G2, G5]
+    title: Browser-capable cell image (Chromium + Playwright on the repo-runtime image)
+    kind: change
+    pipeline: implementation
+    scope:
+      - "tools/arena/Dockerfile.repo-runtime-browser"
+      - "tools/arena/README.md"
+    depends_on: []
+    acceptance:
+      - "Dockerfile.repo-runtime-browser layers Chromium + Playwright (pinned to tools/runstatus's playwright version) + required system deps on the repo-runtime image"
+      - "a build+smoke script (documented in README) proves `npx playwright --version` and a headless chromium launch inside the image; CI-runnable but docker-gated"
+      - "image naming/convention documented so plugins can request it via cell.target.meta or plugin image()"
+    gate:
+      class: G-LINT
+      red_now: "Dockerfile.repo-runtime installs Go/Node/Rust/Python only — no browser; the visual evidence path is unreachable from any cell"
+      green_when: "the browser Dockerfile exists and declares chromium/playwright layers (build smoke is the docker-gated acceptance, the lint is the standing check)"
+      cmd: "test -f tools/arena/Dockerfile.repo-runtime-browser && grep -qiE 'playwright' tools/arena/Dockerfile.repo-runtime-browser && grep -qiE 'chromium|chrome' tools/arena/Dockerfile.repo-runtime-browser"
+    agent_brief: >
+      Create tools/arena/Dockerfile.repo-runtime-browser FROM the repo-runtime
+      image, adding Chromium + Playwright (match tools/runstatus/package.json's
+      playwright version) and the Linux deps headless chromium needs. Keep the
+      base image untouched (bugfix cells shouldn't pay the browser weight). Add a
+      build+launch smoke script and document image selection conventions in
+      tools/arena/README.md. Do not wire any plugin to it here (swarm-arena-job does that).
+
+  # ---- WS — The swarm (dozens of users on one server) ----
+  - id: "swarm-tier1"
+    wall: WS
+    goal: N concurrent scripted users soak one shared kitsoki web server with per-user assertions
+    goal_ref: [G3, G5]
+    title: Swarm tier 1 — replay-user harness, 24+ Playwright contexts vs one server, no LLM
+    kind: change
+    pipeline: implementation
+    critical: true
+    scope:
+      - "tools/swarm/**"
+      - "tools/runstatus/tests/playwright/swarm-replay-users.spec.ts"
+    depends_on: []
+    acceptance:
+      - "tools/swarm/ provides a driver library: spawn one `kitsoki web` (reusing _helpers/server.ts patterns), launch N browser contexts, each runs a scripted persona journey derived from tools/product-journey/personas.json lenses over flow-fixture stories (--flow posture, zero LLM)"
+      - "per-user gates: journey completes; the session belongs to that user only (assert a user never sees another session's trace/turn content); zero console errors; the ui-audit.ts geometry+axe probe passes on each distinct page state reached"
+      - "the spec runs N>=24 users to completion on CI hardware (contexts may be staggered; all 24 concurrently live at peak) and emits a per-user results JSON under .artifacts/swarm/"
+      - "a seeded cross-talk fault (pointing two users at one session id in a fixture mode) is DETECTED by the isolation assertion — the gate can go red for the right reason"
+    gate:
+      class: G-SMOKE
+      red_now: "no harness anywhere puts N concurrent clients on one kitsoki web server; multi-session exists (cmd/kitsoki/registry.go) but has never been soaked"
+      green_when: "the swarm spec passes with 24+ users, isolation + console + audit gates green, no LLM"
+      cmd: "cd tools/runstatus && npx playwright test tests/playwright/swarm-replay-users.spec.ts"
+    agent_brief: >
+      Build the tier-1 swarm. One `kitsoki web --flow ...` server (reuse
+      tools/runstatus/tests/playwright/_helpers/server.ts startWebServer + port
+      discipline), N>=24 Playwright browser contexts, each executing a scripted
+      persona journey: journeys are small TS scripts keyed by persona id, actions
+      derived from personas.json surface_preference/risk_focus over existing flow
+      fixtures (session.new -> drive intents -> read views). Per-user assertions:
+      completion, strict session isolation, zero console errors, and the
+      geometry/axe probe from tools/runstatus/tests/playwright/lib/ui-audit.ts on
+      every distinct state. Write per-user results to .artifacts/swarm/. Include a
+      negative-control mode proving the isolation assertion can fire. Watch server
+      RSS across the run and record it in the results JSON (informational until
+      swarm-session-cap lands the cap).
+
+  - id: "swarm-session-cap"
+    wall: WS
+    goal: The web server survives swarm-scale session churn instead of leaking orchestrators forever
+    goal_ref: [G3]
+    title: Session cap + idle eviction in the web SessionRegistry
+    kind: runtime
+    pipeline: implementation
+    scope:
+      - "cmd/kitsoki/registry.go"
+      - "cmd/kitsoki/registry_swarm_test.go"
+    depends_on: []
+    acceptance:
+      - "SessionRegistry enforces a configurable max live-session count (flag/env, generous default) — session.new beyond the cap evicts the least-recently-active idle session (never one mid-turn) or errors clearly if none is evictable"
+      - "eviction unregisters the notification relay and releases the orchestrator (the leak at registry.go:368-380 is closed for evicted sessions)"
+      - "an evicted session's subsequent RPC returns a clear session-gone error, not a hang; SSE subscribers get a terminal event"
+      - "Go tests cover: cap enforcement, LRU-idle choice, mid-turn protection, relay cleanup"
+    gate:
+      class: G-GOTEST
+      red_now: "no cap, no eviction; every session.new leaks an in-memory orchestrator until process exit (decided lean at registry.go:17-19, revisited for swarm scale)"
+      green_when: "the registry cap/eviction tests exist and pass"
+      cmd: "grep -q TestSessionRegistry_CapAndEviction cmd/kitsoki/registry_swarm_test.go && go test ./cmd/kitsoki -run TestSessionRegistry_CapAndEviction -count=1"
+    agent_brief: >
+      Add a session cap + idle eviction to cmd/kitsoki/registry.go. Respect the
+      existing decided leans (in-memory, die-with-process) — this is a bound, not
+      persistence. Config via flag + env with a generous default so normal use
+      never notices. Evict least-recently-active sessions that are not mid-turn;
+      clean up the notification relay registration and SSE subscriptions;
+      subsequent RPCs on an evicted id must error crisply. Table-driven tests in
+      cmd/kitsoki/registry_swarm_test.go under the name
+      TestSessionRegistry_CapAndEviction (the gate greps for it — a bare `go test
+      -run` with no match would pass vacuously).
+
+  - id: "swarm-capture"
+    wall: WS
+    goal: Every swarm failure or finding is replayable without re-running the swarm
+    goal_ref: [G4]
+    title: Finding capture loop — assertion failures auto-bundle rrweb + console + HAR via the bug-report path
+    kind: change
+    pipeline: implementation
+    scope:
+      - "tools/swarm/capture/**"
+      - "tools/runstatus/tests/playwright/swarm-finding-capture.spec.ts"
+    depends_on: ["swarm-tier1"]
+    acceptance:
+      - "when a per-user gate fails (or a driver calls recordFinding), the swarm captures that user's rrweb events (window.__kitsokiVisual.recording()), console log, and scrubbed HAR through the existing bug-report capture path (runstatus.bug.preview/report seams), bundled under a capture id in .artifacts/swarm/findings/"
+      - "the bundle self-describes: persona, journey step, assertion, server build sha"
+      - "a spec forces a failure and asserts the bundle exists, the rrweb envelope replays (schema-valid per the existing replay specs' loader), and the HAR is scrubbed"
+    gate:
+      class: G-SMOKE
+      red_now: "a failed swarm assertion yields only a Playwright error message; reproducing requires re-running the whole swarm"
+      green_when: "the forced-failure spec produces a complete, replayable capture bundle"
+      cmd: "cd tools/runstatus && npx playwright test tests/playwright/swarm-finding-capture.spec.ts"
+    agent_brief: >
+      Wire swarm failures to the existing evidence machinery — do not invent a
+      capture format. On per-user gate failure or explicit finding, pull
+      window.__kitsokiVisual.recording() (tools/runstatus/src/lib/visualHelper.ts),
+      console via the Playwright context, and the scrubbed HAR via the bug-report
+      seams (internal/runstatus/harrec + harscrub through runstatus.bug.preview),
+      writing a capture-id bundle under .artifacts/swarm/findings/ with a manifest
+      (persona, step, assertion, sha). Forced-failure spec validates completeness
+      + rrweb replayability using the loader from the existing rrweb-replay specs.
+
+  - id: "swarm-arena-job"
+    wall: WS
+    goal: The swarm scales out through arena placement instead of being a one-machine spec
+    goal_ref: [G3, G5]
+    title: swarm as an arena job type in the browser image
+    demo_video: "FLAGSHIP — 24 simulated users live on one kitsoki web server: the swarm grid + a couple of per-user rrweb journeys; embed in the goal deck"
+    kind: change
+    pipeline: implementation
+    scope:
+      - "tools/arena/arena/plugins/swarm.py"
+      - "tools/arena/tests/test_swarm_plugin.py"
+    depends_on: ["arena-persona-qa", "arena-browser-image", "swarm-tier1", "unify-contract"]
+    acceptance:
+      - "a swarm plugin registers alongside bugfix/persona-qa: one cell = one swarm run (server + N drivers inside the browser image from arena-browser-image); axes can vary N, persona mix, and story fixture"
+      - "score() reads the swarm's per-user results JSON through the unify-contract completion-state contract (aggregate: all-journeys-complete, isolation clean, audit clean => solved; partial/failed otherwise; infra separation preserved)"
+      - "tests prove cell enumeration, image selection (browser image), argv composition, and scoring over FakeBackend — no docker, no LLM"
+    gate:
+      class: G-SMOKE
+      red_now: "the swarm (swarm-tier1) is a single-machine Playwright spec; arena has no job type for it and its image has no browser (pre-arena-browser-image)"
+      green_when: "swarm plugin tests pass over FakeBackend"
+      cmd: "python3 tools/arena/tests/test_swarm_plugin.py"
+    agent_brief: >
+      Add tools/arena/arena/plugins/swarm.py: image() returns the arena-browser-image browser
+      image; drive_command runs the swarm-tier1 harness entrypoint inside the cell with
+      axis-driven N/persona-mix/fixture; score() maps the harness's results JSON
+      to a completion-state record (unify-contract). One cell = one whole swarm — the swarm
+      is the unit, users are internal to it. FakeBackend tests only; a real
+      docker-gated run is manual acceptance. Update tools/arena/README.md and
+      record the demo per the demo_video field once a real run exists.
+
+  - id: "swarm-tiers23"
+    wall: WS
+    goal: Realistic free-text users and gated live explorers, still replayable in CI
+    goal_ref: [G5, G4]
+    title: Swarm tiers 2-3 — cassette-agent users + gated live explorer users with finding journaling
+    kind: change
+    pipeline: implementation
+    scope:
+      - "tools/swarm/tiers/**"
+      - "tools/runstatus/tests/playwright/swarm-cassette-users.spec.ts"
+    depends_on: ["swarm-tier1", "swarm-capture"]
+    acceptance:
+      - "tier 2: a swarm mix can include cassette-agent users whose journeys run through `--harness replay --recording` sessions (free-text realism, zero LLM), coexisting with tier-1 users on the same server"
+      - "tier 3: an explorer role dispatches a small number (<=3) of live persona agents (headless, briefed from product-journey's persona lens/agent-brief contract) that hold a browser context, explore, and journal findings through the swarm-capture capture loop plus product-journey --record-finding/--record-blocker; the tier is OFF by default and refuses to start without an explicit live flag"
+      - "the standing CI check is the tier-2 replay spec; the live tier's contract (dispatch, budget cap, finding journaling) is covered by a stubbed-agent test inside the same spec"
+    gate:
+      class: G-LIVE+REPLAY
+      red_now: "the swarm has only scripted tier-1 users; no free-text realism and no discovery-mode explorers exist"
+      green_when: "the tier-2 cassette spec (with stubbed tier-3 contract coverage) passes with no LLM; a manual gated live explorer run is acceptance evidence"
+      replay_cmd: "cd tools/runstatus && npx playwright test tests/playwright/swarm-cassette-users.spec.ts"
+    agent_brief: >
+      Extend the swarm mix model. Tier 2: users backed by `--harness replay
+      --recording` sessions (reuse the recording+cassette coexistence in
+      cmd/kitsoki/web.go) driving free-text journeys from recorded traces. Tier 3:
+      an explorer role — headless live persona agents (AskUserQuestion is
+      hard-denied headless; they proceed solo) briefed from the product-journey
+      persona lens, each owning one browser context, findings journaled via swarm-capture
+      bundles + product-journey --record-finding. Hard-gate tier 3 behind an
+      explicit --live-explorers flag + budget cap; default runs must be
+      token-free. CI stands on the tier-2 spec with a stubbed tier-3 contract
+      test; document the manual live acceptance procedure in tools/swarm/README.

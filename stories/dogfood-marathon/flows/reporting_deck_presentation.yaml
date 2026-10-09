@@ -1,0 +1,188 @@
+# reporting_deck_presentation — run the real deterministic deck builder over
+# solved / partial / failed records so the generated slidey spec keeps clear
+# before/after, result, and evidence affordances.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: aggregating
+initial_world:
+  run_id: "deck-presentation"
+  run_dir: ".artifacts/dogfood-marathon/deck-presentation-flow"
+  journal_path: ".artifacts/dogfood-marathon/deck-presentation-flow/journal.json"
+  journal_markdown_path: ".artifacts/dogfood-marathon/deck-presentation-flow/journal.md"
+  results:
+    items:
+      - case_id: "constructorfabric/Kitsoki#66"
+        title: "TUI bug reporter shows raw AskOffPath payload"
+        source_kind: "github"
+        source_repo: "constructorfabric/Kitsoki"
+        source_url: "https://github.com/constructorfabric/Kitsoki/issues/66"
+        issue_label: "Issue #66"
+        issue_url: "https://github.com/constructorfabric/Kitsoki/issues/66"
+        baseline: "issue-parent"
+        baseline_policy: "fix-parent"
+        repro_command: "go test ./internal/tui -run TestBugReporterFriendlyAskOffPath"
+        triage: "STILL-LIVE"
+        triage_evidence: "raw AskOffPath payload visible in the TUI error path"
+        exit: "shipped"
+        worktree: ".capsules/workspaces/deck-flow/case-01"
+        branch: "agent/deck-flow-case-01"
+        fix_ref: "agent/deck-flow-case-01"
+        deliverable_present: true
+        verify_status: "solved"
+        verify_how: "independent oracle passed on the produced worktree"
+        cost_usd: 0.74
+        cost_display: "0.74"
+        tokens: 188000
+        tokens_display: "188000"
+        wall_s: 326
+        wall_s_display: "326"
+        trace: ".artifacts/dogfood-marathon/deck-presentation-flow/traces/case-01.jsonl"
+        trace_label: "case-01 trace"
+        summary: "Converted the raw orchestration error into a concise operator-facing failure with trace reference."
+      - case_id: "constructorfabric/Kitsoki#61"
+        title: "First-run profile setup is feature-sized and needs scope"
+        source_kind: "github"
+        source_repo: "constructorfabric/Kitsoki"
+        source_url: "https://github.com/constructorfabric/Kitsoki/issues/61"
+        issue_label: "Kitsoku Issue #61"
+        issue_url: "https://github.com/constructorfabric/Kitsoki/issues/61"
+        baseline: "issue-parent"
+        baseline_policy: "fix-parent"
+        repro_command: "go test ./cmd/kitsoki -run TestProfileSetupScopeGate"
+        triage: "UNCLEAR"
+        triage_evidence: "provider setup touches credential UX and needs product scope"
+        exit: "needs-human"
+        worktree: ".capsules/workspaces/deck-flow/case-02"
+        branch: "agent/deck-flow-case-02"
+        fix_ref: "agent/deck-flow-case-02"
+        deliverable_present: true
+        verify_status: "partial"
+        verify_how: "operator review required before changing credential setup UX"
+        cost_usd: 0.81
+        cost_display: "0.81"
+        tokens: 196000
+        tokens_display: "196000"
+        wall_s: 412
+        wall_s_display: "412"
+        trace: ".artifacts/dogfood-marathon/deck-presentation-flow/traces/case-02.jsonl"
+        trace_label: "case-02 trace"
+        summary: "Drafted a scoped plan and stopped before changing credentials UX without operator approval."
+        operator_question: "Should this stay parked as a scoped product/design follow-up?"
+        operator_impact: "Answer decides whether this marathon may change first-run credential UX."
+      - case_id: "bsacrobatix/Kitsoki#1196"
+        title: "Observe-mode tour step dead-ends on mobile"
+        source_kind: "github"
+        source_repo: "bsacrobatix/Kitsoki"
+        source_url: "https://github.com/bsacrobatix/Kitsoki/issues/1196"
+        issue_label: "Issue #1196"
+        issue_url: "https://github.com/bsacrobatix/Kitsoki/issues/1196"
+        baseline: "issue-parent"
+        baseline_policy: "fix-parent"
+        repro_command: "pnpm -C tools/runstatus test -- observe-tour-mobile"
+        triage: "STILL-LIVE"
+        triage_evidence: "mobile tour target still dead-ends"
+        exit: "shipped"
+        worktree: ".capsules/workspaces/deck-flow/case-03"
+        branch: "agent/deck-flow-case-03"
+        fix_ref: "agent/deck-flow-case-03"
+        deliverable_present: true
+        verify_status: "failed"
+        verify_how: "mobile oracle still fails after the candidate padding change"
+        cost_usd: 0.66
+        cost_display: "0.66"
+        tokens: 161000
+        tokens_display: "161000"
+        wall_s: 253
+        wall_s_display: "253"
+        trace: ".artifacts/dogfood-marathon/deck-presentation-flow/traces/case-03.jsonl"
+        trace_label: "case-03 trace"
+        summary: "Candidate adjusted popover collision padding but failed the mobile tour oracle."
+  rollup:
+    counts:
+      processed: 3
+      solved: 1
+      partial: 1
+      failed: 1
+      skipped: 0
+      shipped: 2
+      needs_human: 1
+      not_reproducible: 0
+      abandoned: 0
+      github: 3
+      local: 0
+      exceptions: 1
+    totals: { cost_usd: 2.21, tokens: 545000, wall_s: 991 }
+    worked:
+      - "1 case independently verified solved"
+      - "2 fixes shipped through the inner pipeline"
+    didnt:
+      - "1 case parked at needs-human"
+      - "1 case failed the independent oracle"
+      - "1 serious exception raised to the operator"
+    headline: "Processed 3 case(s): 1 solved, 1 partial, 1 failed, 1 serious exception."
+  findings:
+    items:
+      - severity: "medium"
+        title: "Tour collision fix needs mobile oracle coverage"
+        detail: "Desktop improved; mobile still dead-ends."
+  exceptions:
+    items:
+      - case_id: "constructorfabric/Kitsoki#61"
+        severity: "serious"
+        status: "open"
+        question: "Should this stay parked as a scoped product/design follow-up?"
+        impact: "Answer decides whether this marathon may change first-run credential UX."
+        issue_label: "Kitsoku Issue #61"
+        issue_url: "https://github.com/constructorfabric/Kitsoki/issues/61"
+        trace: ".artifacts/dogfood-marathon/deck-presentation-flow/traces/case-02.jsonl"
+
+host_handlers:
+  host.slidey.render:
+    by_call:
+      render_report:
+        data:
+          ok: true
+          path: ".artifacts/dogfood-marathon/deck-presentation-flow/decks/aggregate.html"
+  host.artifacts_dir:
+    by_call:
+      emit_report:
+        data:
+          ok: true
+          handle: { id: "dogfood-marathon#deck-presentation", kind: "slideshow", mime: "text/html" }
+          path: ".artifacts/dogfood-marathon/deck-presentation-flow/decks/aggregate.html"
+
+turns:
+  - intent: { name: aggregated }
+    advance_clock: "2s"
+    expect_state: done
+    expect_world:
+      report_handle: "dogfood-marathon#deck-presentation"
+      deck_spec:
+        spec_path: ".artifacts/dogfood-marathon/deck-presentation-flow/decks/aggregate.slidey.json"
+        summary: "Dogfood marathon deck-presentation: ✅ 1 solved, ⚠ 1 partial, ❌ 1 failed across 3 case(s); 3 per-bug deck(s)."
+        case_decks:
+          - case_id: "constructorfabric/Kitsoki#66"
+            title: "TUI bug reporter shows raw AskOffPath payload"
+            path: ".artifacts/dogfood-marathon/deck-presentation-flow/decks/constructorfabric-kitsoki-66.slidey.json"
+            source: "https://github.com/constructorfabric/Kitsoki/issues/66"
+            result: "✅ solved"
+          - case_id: "constructorfabric/Kitsoki#61"
+            title: "First-run profile setup is feature-sized and needs scope"
+            path: ".artifacts/dogfood-marathon/deck-presentation-flow/decks/constructorfabric-kitsoki-61.slidey.json"
+            source: "https://github.com/constructorfabric/Kitsoki/issues/61"
+            result: "⚠ partial"
+          - case_id: "bsacrobatix/Kitsoki#1196"
+            title: "Observe-mode tour step dead-ends on mobile"
+            path: ".artifacts/dogfood-marathon/deck-presentation-flow/decks/bsacrobatix-kitsoki-1196.slidey.json"
+            source: "https://github.com/bsacrobatix/Kitsoki/issues/1196"
+            result: "❌ failed"
+        scenes_preview:
+          - "title: deck-presentation"
+          - "status: objectives with solved/partial/failed glyphs"
+          - "scoreboard: color-coded cards"
+          - "outcomes: before/after/result tables"
+          - "per-bug decks: before-after + objectives + evidence"
+
+expect_terminal: false
+expect_no_errors: true

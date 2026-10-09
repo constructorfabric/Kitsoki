@@ -5,7 +5,7 @@
 # starlark_http_cassette:). The testrunner builds a ReplayInspector from this
 # cassette and WRAPS the REAL host.starlark.run handler with it, so the actual
 # verify script runs (json.decode, len, the >= expected_min compare) but its one
-# allow-listed probe — gh.issue.list — is served from disk: no real `gh` call,
+# allow-listed probe — gh.issue.list — is served from disk: no live GitHub call,
 # no network, no cost (the no-LLM / no-cost test rule, AGENTS.md).
 #
 # The script calls ctx.probe("gh.issue.list", [repo]); the ReplayInspector

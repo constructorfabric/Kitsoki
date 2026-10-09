@@ -63,7 +63,7 @@ turns:
   # into landing_plan_prior (the value fed to the re-dispatched planner's prompt),
   # sets the new request, clears landing_note to re-arm, and the on_enter planner
   # re-dispatches with the prior plan as context and binds the revised plan.
-  - intent: { name: work, slots: { request: "dry-run first, don't write anything yet" } }
+  - intent: { name: landing_capture, slots: { request: "dry-run first, don't write anything yet" } }
     expect_state: landing
     # The dispatched planner turn fired (the prompt was rendered with prior_plan
     # = landing_plan_prior; see expect_world below for the prior-plan continuity).

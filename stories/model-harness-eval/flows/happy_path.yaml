@@ -86,7 +86,7 @@ host_handlers:
             commands_run:
               - "go run ./cmd/kitsoki test intents stories/oregon-trail/app.yaml --harness static --json .artifacts/model-harness-eval/intent-reports/oregon-trail.json"
               - "bash tools/session-mining/examples/git-ops/run.sh --keep .artifacts/model-harness-eval/git-ops-coverage"
-              - "python3 tools/session-mining/eval_pilot_report.py --root stories --intent-root .artifacts/model-harness-eval/intent-reports --coverage-root .artifacts/model-harness-eval --markdown .context/model-harness-eval.md --deck .artifacts/model-harness-eval/index.html --summary .artifacts/model-harness-eval/summary.json"
+              - "host.session_mining.run --op eval_pilot_report --root stories --intent-root .artifacts/model-harness-eval/intent-reports --coverage-root .artifacts/model-harness-eval --markdown .context/model-harness-eval.md --deck .artifacts/model-harness-eval/index.html --summary .artifacts/model-harness-eval/summary.json"
             evidence:
               eval_datasets: 1
               eval_reports: 3

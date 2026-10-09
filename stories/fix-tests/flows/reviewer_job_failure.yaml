@@ -1,0 +1,39 @@
+# reviewer_job_failure — a reviewer provider/login/validator error has no
+# submitted verdict. It must reach the ordinary blocked terminal rather than
+# dereferencing submitted.* and parking in reviewing_executing.
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  test_cmd: "make test"
+  max_cycles: 3
+
+host_handlers:
+  host.run:
+    by_call:
+      run_initial:
+        data: { exit_code: 0, ok: true, stdout: "ok\tquick suite\n" }
+        delay: "10ms"
+      full_verify_run:
+        data: { exit_code: 0, ok: true, stdout: "ok\tfull suite\n" }
+        delay: "10ms"
+  host.agent.decide:
+    by_call:
+      review-0:
+        infra_error: "review provider is not authenticated"
+  host.inbox.add:
+    data: { ok: true }
+
+turns:
+  - intent: { name: start }
+    advance_clock: "2s"
+    expect_state: __exit__needs-human
+    expect_world:
+      outcome: "blocked"
+      review_reason: "Review agent did not produce a verdict."
+      report_path: ".artifacts/fix-tests/report-blocked.md"
+
+expect_terminal: true
+expect_operation_policy: fix_tests
+expect_operation_status: waiting
+expect_no_errors: true

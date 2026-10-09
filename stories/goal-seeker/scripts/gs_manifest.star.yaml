@@ -1,0 +1,9 @@
+inputs:
+  goal_dir:  { type: string, required: true }   # docs/goals/<slug>/ — holds decomposition.yaml
+  work_dir:  { type: string, required: true }   # .artifacts/goal/<slug>/ — manifest is written under here
+  change_id: { type: string, required: true }   # the ledger id to dispatch (e.g. WM.0)
+outputs:
+  manifest_path: { type: string }   # path to the written single-item punch-list/v1 manifest
+  change:        { type: object }   # the resolved change object from the decomposition
+  gate_cmd:      { type: string }   # the change's deterministic gate command (for the RED-first check)
+  ticket_path:   { type: string }   # path to the synthetic file-backed ticket record written for ticket.get

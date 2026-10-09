@@ -40,10 +40,13 @@ Before submitting:
   best-practice. At minimum one lesson per non-trivial cycle.
 - Each lesson cites a category (e.g. `api-patterns`, `failure-patterns`,
   `judge-misclassification`) and a severity.
-- `summary_markdown` is the postmortem: what the bug was, what the fix
-  did, what cost the cycles (if any), and what changed about how we'd
-  approach a similar bug next time.
+- Write `.artifacts/bugfix/{{ args.ticket_id }}/postmortem.md` before the final
+  submission, and update it with the bug, fix, validation evidence, cycle cost,
+  and reusable lessons. Do this while closing out the run, not as a last-response
+  blob.
+- `summary_markdown` is only a compact close-out plus the `report_path`.
 
 ## Output
 
-Submit a `done_artifact` (see `schemas/done_artifact.json`).
+Submit a `done_artifact` (see `schemas/done_artifact.json`) with
+`report_path: .artifacts/bugfix/{{ args.ticket_id }}/postmortem.md`.

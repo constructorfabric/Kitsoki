@@ -1,0 +1,18 @@
+goal_slug: scope-test
+changes:
+  - id: "A"
+    wall: WT
+    title: "A"
+    pipeline: implementation
+    scope: ["internal/shared/**"]
+    depends_on: []
+    acceptance: ["x"]
+    gate: { class: G-FLOW, cmd: "true" }
+  - id: "B"
+    wall: WT
+    title: "B"
+    pipeline: implementation
+    scope: ["internal/shared/thing.go"]
+    depends_on: []
+    acceptance: ["x"]
+    gate: { class: G-FLOW, cmd: "true" }

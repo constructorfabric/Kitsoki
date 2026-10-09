@@ -1,0 +1,17 @@
+version: 1
+id: demo-artifact-review
+origin: https://demo.kitsoki.test
+bindings:
+  review-card:
+    target: { testid: demo-artifact-review }
+claims:
+  - id: independent-revisions
+    mustExpect: all-artifacts-recorded
+beats:
+  - id: review
+    binding: review-card
+    kind: gate
+    title: Review independent artifacts
+    narration: Record mockup, rrweb, and deck revisions separately before approval.
+    advanceOn: click
+    expect: [all-artifacts-recorded]

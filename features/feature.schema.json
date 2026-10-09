@@ -71,7 +71,18 @@
             "binary"
           ]
         },
+        "format": {
+          "type": "string",
+          "enum": [
+            "mp4",
+            "rrweb"
+          ]
+        },
         "spec": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rrwebSpec": {
           "type": "string",
           "minLength": 1
         },
@@ -113,6 +124,24 @@
               "mobile"
             ]
           }
+        },
+        "embed": {
+          "type": "object",
+          "properties": {
+            "deck": {
+              "type": "string",
+              "minLength": 1
+            },
+            "rrweb": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "deck",
+            "rrweb"
+          ],
+          "additionalProperties": false
         }
       },
       "required": [

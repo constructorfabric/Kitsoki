@@ -15,21 +15,42 @@ stack:
 commands:
   build: "go build ./..."
   test: "go test ./..."
+tracker:
+  sources:
+    - id: local
+      label: Local
+      provider: host.local_files.ticket
+      kind: local
+      mode: local
+      args:
+        root: .artifacts
+    - id: origin
+      label: bsacrobatix/Kitsoki
+      provider: host.gh.ticket
+      kind: github
+      mode: remote
+      args:
+        repo: bsacrobatix/Kitsoki
+    - id: upstream
+      label: constructorfabric/Kitsoki
+      provider: host.gh.ticket
+      kind: github
+      mode: remote
+      args:
+        repo: constructorfabric/Kitsoki
 kitsoki:
   story: dev-story
   instance:
     id: kitsoki-dev
     path: .kitsoki/stories/kitsoki-dev/app.yaml
     bindings:
-      ticket: host.gh.ticket
+      ticket: host.ticket_federation
       vcs: host.git
       ci: host.local
-      workspace: host.git_worktree
+      workspace: host.capsule_workspace
       transport: host.append_to_file
   judge_mode: human
 dev_story_profile:
-  docs:
-    ticket_repo: constructorfabric/Kitsoki
   bugfix:
     build_cmd: "go build ./..."
     test_cmd: "go test ./..."

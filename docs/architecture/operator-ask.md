@@ -226,9 +226,31 @@ single socket hit tagged with the sub-agent's question, and the sub-agent
 received the operator's answer back through the tool result. No special
 handling is required for the nested case.
 
-## Second consumer: the write-mode gate's action proposals
+## Story-level consumer: clarification gates
 
-The bridge is surface-agnostic, so a second caller reuses it without new wire:
+The same `OperatorPrompter` seam is also the right boundary for story-authored
+clarification gates. A story should not hide a question inside a dispatched
+agent and hope a live-only MCP tool is present; it should expose the ask as a
+normal host invocation whose input and output are visible in the state machine.
+
+That story-level host path has a different contract from the agent replacement
+tool:
+
+- It receives questions already produced by the story and forwards them through
+  the attached web, TUI, or MCP Studio prompter.
+- With no attached operator (flows, cassettes, headless replay), it returns a
+  stable "not answered" result rather than blocking. The room can then render
+  the same questions and collect typed answers through ordinary intents.
+- Flow fixtures and host cassettes stub or replay the same host call, so the
+  live surface is an acceleration path over the same story graph, not a second
+  behavior.
+
+For concrete authoring rules, see
+[`docs/stories/authoring.md`](../stories/authoring.md#55-operator-clarification-gates).
+
+## Other consumer: the write-mode gate's action proposals
+
+The bridge is surface-agnostic, so another caller reuses it without new wire:
 the **write-mode gate** for `write_mode: read_only` agent rooms (see
 [hosts.md](hosts.md#write-mode-gate) and
 [state-machine.md](../stories/state-machine.md#write_mode)). When the dispatched

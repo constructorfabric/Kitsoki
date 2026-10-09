@@ -3,7 +3,7 @@ app: ../app.yaml
 initial_state: idle
 
 host_handlers:
-  host.run:
+  host.product_journey.run:
     by_call:
       load_product_journey_run:
         data:
@@ -42,16 +42,16 @@ host_handlers:
             proof_minimum_evidence_count: 1
             minimum_evidence_count: 30
             missing_proof_summary: "product-discovery: checkpoint_rating, navigation_trace, page_url; project-onboarding: generated_config_diff, onboarding_smoke_result, rendered_tui_frame, session_trace"
-            driver_contract_summary: "Driver contract: 7 scenarios (product-discovery, project-onboarding, dependency-bugfix, prd-design, feature-implementation, +2 more); 7 missing-proof rows; 2 final gates. Inspect last_result.driver_scenarios, last_result.missing_proof_evidence, and last_result.driver_final_gates."
+            driver_contract_summary: "Driver contract: 7 scenarios (product-discovery, project-onboarding, dependency-bugfix, prd-design, feature-implementation, +2 more); 7 missing-proof rows; 4 final gates. Inspect last_result.driver_scenarios, last_result.missing_proof_evidence, and last_result.driver_final_gates."
             next_driver_capture: "Next capture: product-discovery/checkpoint_rating. Rate whether the persona could proceed without private context."
-            next_driver_attach_command: 'python3 tools/product-journey/run.py --attach-evidence --run-dir .artifacts/product-journey/run-123 --scenario product-discovery --evidence-kind checkpoint_rating --evidence-path <path-or-retained-id> --evidence-source <retained|external|local|cassette> --notes "Rate whether the persona could proceed without private context."'
-            next_driver_blocker_command: "python3 tools/product-journey/run.py --record-blocker --run-dir .artifacts/product-journey/run-123 --scenario product-discovery --title <blocker-title> --summary <why-this-scenario-could-not-be-captured> --evidence-path <trace-or-frame-path>"
+            next_driver_attach_command: 'host.product_journey.run --attach-evidence --run-dir .artifacts/product-journey/run-123 --scenario product-discovery --evidence-kind checkpoint_rating --evidence-path <path-or-retained-id> --evidence-source <retained|external|local|cassette> --notes "Rate whether the persona could proceed without private context."'
+            next_driver_blocker_command: "host.product_journey.run --record-blocker --run-dir .artifacts/product-journey/run-123 --scenario product-discovery --title <blocker-title> --summary <why-this-scenario-could-not-be-captured> --evidence-path <trace-or-frame-path>"
             review_status: needs_evidence
-            review_summary: "needs_evidence: 17/19 checks passed, 1 warnings, 1 failures"
-            review_passed_count: 17
+            review_summary: "needs_evidence: 18/20 checks passed, 1 warnings, 1 failures"
+            review_passed_count: 18
             review_failed_count: 1
             review_warning_count: 1
-            review_total_count: 19
+            review_total_count: 20
             review_backlog_summary: "fail: quality-gates (project-onboarding (0/4))"
 
 turns:
@@ -77,15 +77,15 @@ turns:
       proof_evidence_count: 1
       missing_proof_evidence_count: 29
       review_status: needs_evidence
-      review_passed_count: 17
-      review_total_count: 19
-      driver_contract_summary: "Driver contract: 7 scenarios (product-discovery, project-onboarding, dependency-bugfix, prd-design, feature-implementation, +2 more); 7 missing-proof rows; 2 final gates. Inspect last_result.driver_scenarios, last_result.missing_proof_evidence, and last_result.driver_final_gates."
+      review_passed_count: 18
+      review_total_count: 20
+      driver_contract_summary: "Driver contract: 7 scenarios (product-discovery, project-onboarding, dependency-bugfix, prd-design, feature-implementation, +2 more); 7 missing-proof rows; 4 final gates. Inspect last_result.driver_scenarios, last_result.missing_proof_evidence, and last_result.driver_final_gates."
       next_driver_capture: "Next capture: product-discovery/checkpoint_rating. Rate whether the persona could proceed without private context."
-      next_driver_attach_command: 'python3 tools/product-journey/run.py --attach-evidence --run-dir .artifacts/product-journey/run-123 --scenario product-discovery --evidence-kind checkpoint_rating --evidence-path <path-or-retained-id> --evidence-source <retained|external|local|cassette> --notes "Rate whether the persona could proceed without private context."'
-      next_driver_blocker_command: "python3 tools/product-journey/run.py --record-blocker --run-dir .artifacts/product-journey/run-123 --scenario product-discovery --title <blocker-title> --summary <why-this-scenario-could-not-be-captured> --evidence-path <trace-or-frame-path>"
-    expect_view_matches: "RUN CREATED[\\s\\S]*Driver handoff[\\s\\S]*driver-handoff.md[\\s\\S]*Starting surface[\\s\\S]*visual-first[\\s\\S]*Finding matrix[\\s\\S]*4 total; strength 1, weakness 1, issue 1, fix 1, blocked 0[\\s\\S]*Review checks[\\s\\S]*17 / 19 passed[\\s\\S]*Driver contract: 7 scenarios[\\s\\S]*last_result\\.driver_scenarios[\\s\\S]*last_result\\.driver_final_gates[\\s\\S]*Next capture: product-discovery/checkpoint_rating[\\s\\S]*--attach-evidence[\\s\\S]*--evidence-kind checkpoint_rating[\\s\\S]*--record-blocker[\\s\\S]*project-onboarding"
+      next_driver_attach_command: 'host.product_journey.run --attach-evidence --run-dir .artifacts/product-journey/run-123 --scenario product-discovery --evidence-kind checkpoint_rating --evidence-path <path-or-retained-id> --evidence-source <retained|external|local|cassette> --notes "Rate whether the persona could proceed without private context."'
+      next_driver_blocker_command: "host.product_journey.run --record-blocker --run-dir .artifacts/product-journey/run-123 --scenario product-discovery --title <blocker-title> --summary <why-this-scenario-could-not-be-captured> --evidence-path <trace-or-frame-path>"
+    expect_view_matches: "RUN CREATED[\\s\\S]*Driver handoff[\\s\\S]*driver-handoff.md[\\s\\S]*Starting surface[\\s\\S]*visual-first[\\s\\S]*Finding matrix[\\s\\S]*4 total; strength 1, weakness 1, issue 1, fix 1, blocked[\\s\\S]*0[\\s\\S]*Review checks[\\s\\S]*18 / 20 passed[\\s\\S]*Driver contract: 7 scenarios[\\s\\S]*last_result\\.driver_scenarios[\\s\\S]*last_result\\.driver_final_gates[\\s\\S]*Next capture: product-discovery/checkpoint_rating[\\s\\S]*--attach-evidence[\\s\\S]*--evidence-kind checkpoint_rating[\\s\\S]*--record-blocker[\\s\\S]*project-onboarding"
     expect_host_calls:
-      - handler: host.run
+      - handler: host.product_journey.run
         args: { call: load_product_journey_run }
 
 expect_no_errors: true

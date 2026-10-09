@@ -7,35 +7,47 @@ app:
 
 # A self-driving, operator-facing maintenance pipeline:
 #
-#   idle --start--> running --(red)--> fixing --> verifying --(red, retry)--> fixing
-#                      |                                |
-#                   (green)                          (green)
-#                      v                                v
-#                  done_clean <------------------- done_clean
+#   idle --start--> starting --> running quick --(red)--> fixing --> verifying quick --(red, retry)--> fixing
+#                                      |                                      |
+#                                   (green)                                (green)
+#                                      v                                      v
+#                               full verify <--------------------------- full verify
+#                                      | green full gate
+#                                      v
+#                                  reviewing
+#                                      | pass
+#                                      v
+#                                  done_clean
+#                      |
+#                    fail, budget left
+#                      v
+#                   fixing
 #
 #   fixing --(fixer needs a human decision)--> blocked
 #   verifying --(still red after max_cycles)--> done_exhausted
+#   reviewing --(review red after max_cycles)--> done_review_failed
 #
-# Every room auto-advances via a synthetic `route` intent emitted from
-# on_enter (post-bind), so `kitsoki session continue --intent start`
-# walks the whole pipeline to a terminal state in one turn — no human in
-# the loop. The fixer is an agentic `host.agent.task` pinned to
-# claude-sonnet-4-6 (which execs `claude -p --model sonnet`).
+# Background `*_executing` rooms auto-advance through `on_complete` guarded
+# targets, so `kitsoki session continue --intent start` drains the pipeline to
+# a terminal state in one invocation — no human in the loop unless the fixer
+# blocks or review/budget gates fail. The fixer is an agentic `host.agent.task`
+# pinned to claude-sonnet-4-6 (which execs `claude -p --model sonnet`).
 #
-# Depth note: the synthetic emit_intent chain is depth-capped at 8. The
-# worst path (max_cycles=3, always-red) emits `route` 7 times, so the
-# default max_cycles MUST stay <= 3. Raising it requires raising the
-# engine cap.
+# Drain note: `kitsoki session continue` drains background `_executing` chains
+# up to a bounded pass count. Keep max_cycles modest (default 3) unless the
+# runner's background drain budget is raised too.
 
 hosts:
   - host.run
+  - host.starlark.run
   - host.agent.task
+  - host.agent.decide
   - host.inbox.add
 
 # The fixer persona. Agentic write surface (Edit/Write) plus a bounded
 # bash allowlist so it can run the test/build commands to check its own
 # work. Model is sonnet — the verb at the call site is `task` because it
-# mutates files. external_side_effect:false — no network / no git push.
+# mutates files. effect: write — local file edits only; no network / no git push.
 agents:
   fixer:
     system_prompt: "You are a senior software engineer whose sole job is to make a project's failing tests pass with the minimal, correct change. You read the failure output, locate the root cause, and apply a focused fix to the source or the test. You never weaken or delete a test to make it pass, and you never invent behaviour the codebase doesn't have. When a fix would require a product/architecture decision you cannot make safely on your own, you stop and surface the question instead of guessing."
@@ -43,19 +55,32 @@ agents:
     tools: [Read, Grep, Glob, Edit, Write, Bash]
     bash_profile:
       commands: [go, make]
-    external_side_effect: false
+    effect: write
+
+  reviewer:
+    system_prompt: "You are a read-only adversarial reviewer for an autonomous test-fix loop. Pass only when the command is green and the diff preserves existing functionality, preserves intended new functionality, and does not weaken tests. Fail if tests were deleted, skipped, loosened, or made less meaningful to get green, or if source behavior was narrowed/regressed without clear justification."
+    model: claude-sonnet-4-6
+    tools: [Read, Grep, Glob, Bash]
+    bash_profile: read-only
 
 # Typed world. Every key read in a view, effect, or guard is declared here.
 world:
   # Configuration (defaults wired for this repo; overridable via the
   # `start` intent's slots).
-  test_cmd:       { type: string, default: "make test" }
-  workdir:        { type: string, default: "." }
-  max_cycles:     { type: int,    default: 3 }
+  # test_cmd is the authoritative full acceptance gate. quick_test_cmd is the
+  # bounded repair-loop gate; when empty it falls back to test_cmd.
+  test_cmd:                    { type: string, default: "make test" }
+  quick_test_cmd:              { type: string, default: "" }
+  quick_test_timeout_seconds:  { type: int,    default: 180 }
+  full_test_timeout_seconds:   { type: int,    default: 1200 }
+  workdir:                     { type: string, default: "." }
+  report_dir:                  { type: string, default: ".artifacts/fix-tests" }
+  max_cycles:                  { type: int,    default: 3 }
 
   # Run state.
   cycle:          { type: int,    default: 0 }
   tests_passed:   { type: bool,   default: false }
+  effective_quick_test_cmd: { type: string, default: "" }
 
   # Background-job bookkeeping. last_job_id is bound from each background
   # invoke; last_job_result is engine-injected into the world only inside an
@@ -70,6 +95,15 @@ world:
   # Fixer output (schemas/fix_artifact.json).
   fix_artifact:   { type: object, default: {} }
 
+  # Review gate output (schemas/review_verdict.json). review_ok is tri-state:
+  # "" before the current review binds, true/false after the adversarial gate
+  # returns. review_feedback is fed into the next fixer cycle when review fails
+  # even though the deterministic command is green.
+  review_artifact:  { type: object, default: {} }
+  review_ok:        { type: string, default: "" }
+  review_reason:    { type: string, default: "" }
+  review_feedback:  { type: string, default: "" }
+
   # Outcome.
   outcome:        { type: string, default: "" }
   report_path:    { type: string, default: "" }
@@ -81,11 +115,43 @@ intents:
     priority: 90
     slots:
       test_cmd:   { type: string, required: false }
+      quick_test_cmd: { type: string, required: false }
+      quick_test_timeout_seconds: { type: int, required: false }
+      full_test_timeout_seconds: { type: int, required: false }
+      report_dir: { type: string, required: false }
       max_cycles: { type: int,    required: false }
   look:
     description: "Re-render the current room."
     examples: ["look", "status"]
     priority: 5
+  finish:
+    description: "(internal) report written; exit successfully."
+    examples: []
+    priority: 1
+  bail:
+    description: "(internal) report written; exit needing human attention."
+    examples: []
+    priority: 1
+
+exits:
+  achieved:
+    requires: [outcome, report_path]
+  exhausted:
+    requires: [outcome, report_path]
+  needs-human:
+    requires: [outcome, report_path]
+
+operations:
+  fix_tests:
+    title: "Fix tests"
+    mode: autonomous
+    execution_mode: one-shot
+    run_in_background: true
+    stop_on: [needs-human, gate-failed, host-error, budget-exhausted, policy-denied]
+    pause_on: [operator-ask]
+    terminal_artifact: report_path
+    phase_summary:
+      from: [last_run, fix_artifact, review_artifact, report_path]
 
 root: idle
 

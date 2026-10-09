@@ -12,11 +12,14 @@ initial_state: search
 initial_world:
   workdir:    "."
   judge_mode: "human"
+  publish_durable_path: "/tmp/kitsoki-prd-fixtures"
   idea:       "A CLI for X that helps developers do Y."
   # No prior art — the expected greenfield answer.
   prd_existing_state:
     overlaps: []
     roadmap_fit: "Greenfield — no existing PRD covers this."
+
+starlark_inspect_cassette: ../cassettes/slug_a_cli_for_x_that_helps.inspect.yaml
 
 host_handlers:
   # Stubs for clarifying's on_enter analyst decide (advanced to by confirm).
@@ -29,14 +32,7 @@ host_handlers:
       submitted:
         questions:
           - { id: "q1", question: "Who is the primary user?", why: "scopes the persona" }
-  # confirm mints the per-PRD workspace via scripts/prd_slug.py (host.run).
-  host.run:
-    by_call:
-      mint_workspace:
-        data:
-          ok: true
-          exit_code: 0
-          stdout_json: { slug: "a-cli-for-x", workspace: ".artifacts/prd/a-cli-for-x" }
+  # confirm mints the per-PRD workspace via scripts/prd_slug.star.
 
 turns:
   # No overlap → confirm proceeds cleanly, recording the decision and minting
@@ -46,10 +42,10 @@ turns:
     expect_world:
       prd_overlap_decision: "new"
       prd_change_target:    ""
-      prd_slug:             "a-cli-for-x"
-      prd_workspace:        ".artifacts/prd/a-cli-for-x"
+      prd_slug:             "a-cli-for-x-that-helps"
+      prd_workspace:        ".artifacts/prd/a-cli-for-x-that-helps"
     expect_host_calls:
-      - handler: host.run
+      - handler: host.starlark.run
         args: { call: "mint_workspace" }
 
 expect_no_errors: true

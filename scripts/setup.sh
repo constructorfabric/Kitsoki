@@ -171,6 +171,37 @@ install_optional() {
 	done
 }
 
+# --- read-only guard helpers ------------------------------------------------
+# The primary checkout's read-only guard also strips write permission from
+# .claude/ — gitignored local state that this script owns and must rewrite on
+# every run. ensure_writable_dir lifts the owner write bit on the target dir
+# (and its parent, so mkdir works), creating it if absent, and prints the
+# newline-separated list of dirs whose guard it lifted so relock_dirs can
+# restore exactly those. On a fresh clone everything is already writable and
+# both are no-ops.
+ensure_writable_dir() {
+	local d="$1" parent relocks=""
+	parent="$(dirname "$d")"
+	if [ -d "$parent" ] && [ ! -w "$parent" ]; then
+		chmod u+w "$parent"
+		relocks="$parent"
+	fi
+	mkdir -p "$d"
+	if [ ! -w "$d" ]; then
+		chmod u+w "$d"
+		relocks="${relocks:+$relocks$'\n'}$d"
+	fi
+	printf '%s' "$relocks"
+}
+
+relock_dirs() {
+	local d
+	[ -n "$1" ] || return 0
+	while IFS= read -r d; do
+		[ -n "$d" ] && [ -e "$d" ] && chmod a-w "$d" || true
+	done <<<"$1"
+}
+
 # --- project skills --------------------------------------------------------
 # Link .agents/skills/<name> → .claude/skills/<name> (relative symlinks) so
 # Claude Code picks them up. Idempotent: refreshes our own symlinks, never
@@ -181,7 +212,8 @@ install_skills() {
 	src="$root/.agents/skills"
 	dst="$root/.claude/skills"
 	[ -d "$src" ] || { warn "no .agents/skills dir; skipping skill links"; return; }
-	mkdir -p "$dst"
+	local relocks
+	relocks="$(ensure_writable_dir "$dst")"
 	local n=0 name link
 	for dir in "$src"/*/; do
 		[ -f "${dir}SKILL.md" ] || continue
@@ -196,6 +228,7 @@ install_skills() {
 		ln -s "../../.agents/skills/$name" "$link"
 		n=$((n + 1))
 	done
+	relock_dirs "$relocks"
 	log "linked $n project skill(s) into .claude/skills/"
 }
 
@@ -210,7 +243,8 @@ install_agents() {
 	src="$root/.agents/agents"
 	dst="$root/.claude/agents"
 	[ -d "$src" ] || { warn "no .agents/agents dir; skipping agent links"; return; }
-	mkdir -p "$dst"
+	local relocks
+	relocks="$(ensure_writable_dir "$dst")"
 	local n=0 name link
 	for file in "$src"/*.md; do
 		[ -f "$file" ] || continue
@@ -227,6 +261,7 @@ install_agents() {
 		ln -s "../../.agents/agents/$name" "$link"
 		n=$((n + 1))
 	done
+	relock_dirs "$relocks"
 	log "linked $n project agent(s) into .claude/agents/"
 }
 

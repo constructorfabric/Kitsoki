@@ -14,7 +14,7 @@
 #
 # This flow drives the full intake → scan → amend path with the scout returning
 # overlaps, and asserts the side-effects that USED to leak now do not:
-#   turn 1: NO host.run uniquify, NO host.agent.search/references, NO
+#   turn 1: NO host.starlark.run uniquify, NO host.agent.search/references, NO
 #           002/003 artifact writes; design_workspace stays empty.
 #   turn 2: accidental confirm stays put and explains that overlap selection is required.
 #   turn 3: change_existing → design_refine pointing the workspace at the
@@ -26,7 +26,11 @@ initial_state: design
 initial_world:
   judge_mode: "human"
 
+starlark_inspect_cassette: ../cassettes/design_overlap_early_bail.inspect.yaml
+
 host_handlers:
+  host.fs.writable_dir:
+    data: { path: "docs/proposals", used_fallback: false }
   host.agent.decide:
     by_call:
       existing_scan:
@@ -38,16 +42,6 @@ host_handlers:
               - { path: "docs/proposals/.workspace/tamagotchi-web-pet/", kind: "in_progress", summary: "Second duplicate draft for the same idea; drop it.", recommendation: "supersede" }
             roadmap_fit: "Already in flight as two in-progress drafts — continue tamagotchi-pet-ui, do not start a third."
   # Stubs for design_refine on_enter (reached via change_existing).
-  host.run:
-    by_call:
-      name_slug:
-        data:
-          ok: true
-          exit_code: 0
-          stdout: '{"slug":"web-pixel-pet","workspace":"docs/proposals/.workspace/web-pixel-pet"}'
-          stdout_json: { slug: "web-pixel-pet", workspace: "docs/proposals/.workspace/web-pixel-pet" }
-      amend_workspace:
-        data: { ok: true, stdout_json: { slug: "tamagotchi-pet-ui", workspace: "docs/proposals/.workspace/tamagotchi-pet-ui/" } }
   host.artifacts_dir:
     data: { ok: true, path: "docs/proposals/.workspace/tamagotchi-pet-ui/001-brief.md", message_id: "out#1" }
   host.ide.open_file:
@@ -66,7 +60,7 @@ turns:
   - intent: { name: discuss, slots: { message: "tomogachi pets for web ui - pixel art creatures to keep the user company" } }
     expect_state: design_search
     expect_world:
-      design_slug: "web-pixel-pet"
+      design_slug: "tomogachi-pet-web-ui-pixel-art"
       # No folder created — the regression was a fresh folder appearing here.
       design_workspace: ""
       design_existing_state:
@@ -75,7 +69,7 @@ turns:
           - { path: "docs/proposals/.workspace/tamagotchi-web-pet/", kind: "in_progress", summary: "Second duplicate draft for the same idea; drop it.", recommendation: "supersede" }
         roadmap_fit: "Already in flight as two in-progress drafts — continue tamagotchi-pet-ui, do not start a third."
     expect_host_calls:
-      - handler: host.run
+      - handler: host.starlark.run
         args: { call: "name_slug" }
       - handler: host.agent.decide
         args: { call: "existing_scan" }
@@ -103,7 +97,7 @@ turns:
       design_workspace:        "docs/proposals/.workspace/tamagotchi-pet-ui/"
       last_error: ""
     expect_host_calls:
-      - handler: host.run
+      - handler: host.starlark.run
         args: { call: "amend_workspace" }
       - handler: host.agent.task
         args: { call: "refine_brief" }

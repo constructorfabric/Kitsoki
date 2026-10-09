@@ -51,6 +51,9 @@ states:
         when: "world.accepted_plan.verify.mode == 'script' || world.accepted_plan.verify.mode == 'hybrid'"
         with:
           script: "{{ world.accepted_plan.verify.script }}"
+          capabilities:
+            github:
+              issues: read
           inputs:
             expected_min: "{{ world.accepted_plan.verify.inputs.expected_min ?? 1 }}"
             repo: "{{ world.issue_source == 'upstream' ? world.upstream_repo : world.origin_repo }}"

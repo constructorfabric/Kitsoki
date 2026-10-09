@@ -27,6 +27,7 @@ package tui
 
 import (
 	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
 
@@ -715,7 +716,76 @@ func (m *choiceWidgetModel) View(width int) string {
 
 	sb.WriteString("\n\n")
 	sb.WriteString(m.renderFooter())
-	return sb.String()
+	return clampChoiceLines(sb.String(), width)
+}
+
+// ChromeView renders the active widget for RootModel.View()'s normal-screen
+// bottom chrome. The full widget can be taller than the terminal on hub rooms
+// such as dev-story's landing quick actions; Bubble Tea cannot repaint a
+// normal-screen live region that has scrolled off the visible viewport without
+// leaving old frames in scrollback. Keep the interactive chrome bounded and
+// cursor-centered while View() preserves the full body for committed transcript
+// entries.
+func (m *choiceWidgetModel) ChromeView(width, maxRows int) string {
+	full := m.View(width)
+	if full == "" {
+		return full
+	}
+	if maxRows <= 0 {
+		return ""
+	}
+	lines := strings.Split(full, "\n")
+	if len(lines) <= maxRows {
+		return full
+	}
+
+	footerRows := 1
+	if m.errMsg != "" {
+		footerRows = 2
+	}
+	if footerRows > len(lines) {
+		footerRows = len(lines)
+	}
+	body := append([]string(nil), lines[:len(lines)-footerRows]...)
+	footer := lines[len(lines)-footerRows:]
+	for len(body) > 0 && strings.TrimSpace(ansi.Strip(body[len(body)-1])) == "" {
+		body = body[:len(body)-1]
+	}
+
+	separatorRows := 0
+	if len(body) > 0 && maxRows > footerRows+1 {
+		separatorRows = 1
+	}
+	bodyBudget := maxRows - footerRows - separatorRows
+	if bodyBudget < 1 {
+		bodyBudget = maxRows
+		footer = nil
+		separatorRows = 0
+	}
+
+	cursor := choiceCursorLine(body)
+	if cursor < 0 {
+		cursor = len(body) - 1
+	}
+	body = windowLiveOverlayRows(clampLiveOverlayRows(body, width), cursor, bodyBudget, width)
+	out := append([]string(nil), body...)
+	if len(footer) > 0 {
+		if separatorRows > 0 {
+			out = append(out, "")
+		}
+		out = append(out, footer...)
+	}
+	return clampChoiceLines(strings.Join(out, "\n"), width)
+}
+
+func choiceCursorLine(lines []string) int {
+	for i, line := range lines {
+		plain := ansi.Strip(line)
+		if strings.Contains(plain, "▸") || strings.Contains(plain, "_") {
+			return i
+		}
+	}
+	return -1
 }
 
 func (m *choiceWidgetModel) renderSingleBody(width int) string {
@@ -729,10 +799,11 @@ func (m *choiceWidgetModel) renderSingleBody(width int) string {
 			sb.WriteByte('\n')
 		}
 		// Cursor gutter.
+		var prefix string
 		if i == m.cursor && !m.paramMode {
-			sb.WriteString(choiceCursorStyle.Render("▸ ")) // ▸
+			prefix = choiceCursorStyle.Render("▸ ") // ▸
 		} else {
-			sb.WriteString("  ")
+			prefix = "  "
 		}
 		// Display label: include the placeholder inline on rows that
 		// declare a `param:` (and not the one currently in paramMode —
@@ -740,25 +811,12 @@ func (m *choiceWidgetModel) renderSingleBody(width int) string {
 		// static renderer's column logic so users can SEE that a row
 		// accepts free-form input before they press Enter on it.
 		displayLabel := itemDisplayLabel(it, m.paramMode && i == m.paramItemIdx)
-		if anyHint {
-			pad := maxLabel - ansi.StringWidth(displayLabel)
-			if pad < 0 {
-				pad = 0
-			}
-			sb.WriteString(displayLabel)
-			sb.WriteString(strings.Repeat(" ", pad))
-			if it.hint != "" {
-				sb.WriteString("  ")
-				sb.WriteString(choiceHintStyle.Render(it.hint))
-			}
-		} else {
-			sb.WriteString(displayLabel)
-		}
+		sb.WriteString(renderChoiceRow(prefix, displayLabel, it.hint, width, maxLabel, anyHint))
 		// Param mode prompt rendered inline beneath the picked row.
 		if m.paramMode && i == m.paramItemIdx {
 			sb.WriteByte('\n')
 			sb.WriteString("    ")
-			sb.WriteString(m.renderParamPrompt(it))
+			sb.WriteString(truncateChoiceCell(m.renderParamPrompt(it), width-4))
 		}
 	}
 	return sb.String()
@@ -789,32 +847,19 @@ func (m *choiceWidgetModel) renderMultiBody(width int) string {
 			sb.WriteByte('\n')
 		}
 		// Cursor gutter.
+		var prefix string
 		if i == m.cursor {
-			sb.WriteString(choiceCursorStyle.Render("▸ ")) // ▸
+			prefix = choiceCursorStyle.Render("▸ ") // ▸
 		} else {
-			sb.WriteString("  ")
+			prefix = "  "
 		}
 		// Checkbox.
 		if m.selected[i] {
-			sb.WriteString(choiceCheckedStyle.Render("[x] "))
+			prefix += choiceCheckedStyle.Render("[x] ")
 		} else {
-			sb.WriteString("[ ] ")
+			prefix += "[ ] "
 		}
-		label := it.label
-		if anyHint {
-			pad := maxLabel - ansi.StringWidth(label)
-			if pad < 0 {
-				pad = 0
-			}
-			sb.WriteString(label)
-			sb.WriteString(strings.Repeat(" ", pad))
-			if it.hint != "" {
-				sb.WriteString("  ")
-				sb.WriteString(choiceHintStyle.Render(it.hint))
-			}
-		} else {
-			sb.WriteString(label)
-		}
+		sb.WriteString(renderChoiceRow(prefix, it.label, it.hint, width, maxLabel, anyHint))
 	}
 	return sb.String()
 }
@@ -1002,6 +1047,82 @@ func (m *choiceWidgetModel) measureItems() (int, bool) {
 	return maxLabel, anyHint
 }
 
+const (
+	choiceHintGutterWidth     = 2
+	choiceMinHintWidth        = 8
+	choiceMinLabelColumnWidth = 8
+)
+
+// renderChoiceRow keeps selectable rows to one terminal row. Bubble Tea's
+// normal-screen renderer counts rows before the terminal gets a chance to
+// soft-wrap; if a live choice row is wider than the terminal, later repaints can
+// stamp stale bottom chrome into scrollback.
+func renderChoiceRow(prefix, label, hint string, width, labelColumn int, alignHint bool) string {
+	if width < 1 {
+		width = 1
+	}
+	prefixWidth := ansi.StringWidth(prefix)
+	budget := width - prefixWidth
+	if budget <= 0 {
+		return truncateChoiceCell(prefix, width)
+	}
+	if hint == "" || !alignHint {
+		return prefix + truncateChoiceCell(label, budget)
+	}
+
+	column := labelColumn
+	maxColumn := budget - choiceHintGutterWidth - choiceMinHintWidth
+	if maxColumn >= choiceMinLabelColumnWidth && column > maxColumn {
+		column = maxColumn
+	}
+	if column < 1 {
+		column = 1
+	}
+
+	label = truncateChoiceCell(label, column)
+	labelWidth := ansi.StringWidth(label)
+	if labelWidth+choiceHintGutterWidth >= budget {
+		return prefix + truncateChoiceCell(label, budget)
+	}
+
+	pad := column - labelWidth
+	if pad < 0 {
+		pad = 0
+	}
+	hintBudget := budget - labelWidth - pad - choiceHintGutterWidth
+	if hintBudget <= 0 {
+		return prefix + truncateChoiceCell(label, budget)
+	}
+	return prefix +
+		label +
+		strings.Repeat(" ", pad+choiceHintGutterWidth) +
+		choiceHintStyle.Render(truncateChoiceCell(hint, hintBudget))
+}
+
+func clampChoiceLines(s string, width int) string {
+	if width < 1 {
+		width = 1
+	}
+	lines := strings.Split(s, "\n")
+	for i, line := range lines {
+		lines[i] = truncateChoiceCell(line, width)
+	}
+	return strings.Join(lines, "\n")
+}
+
+func truncateChoiceCell(s string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	if ansi.StringWidth(s) <= width {
+		return s
+	}
+	if width == 1 {
+		return ansi.Cut(s, 0, 1)
+	}
+	return ansi.Cut(s, 0, width-1) + "…"
+}
+
 // ---- helpers --------------------------------------------------------
 
 // printableRune extracts a single printable Unicode rune from a key
@@ -1041,20 +1162,47 @@ func renderPongo(rr *render.AppRenderer, src string, env expr.Env) (string, erro
 	return rr.Render(src, env)
 }
 
-// evalChoiceWhen evaluates an optional When guard; empty guard returns
-// true. Uses expr.CompileBool directly so the widget doesn't have to
-// route through the render/elements package (which would create a TUI
-// → render/elements ownership boundary issue).
+// evalChoiceWhen evaluates an optional When guard; empty guard returns true.
+// Runtime eval errors are treated as falsy, matching render/elements' `when:`
+// semantics for optional nested world paths.
 func evalChoiceWhen(src string, env expr.Env) (bool, error) {
 	src = strings.TrimSpace(src)
 	if src == "" {
 		return true, nil
 	}
-	p, err := expr.CompileBool(src)
+	p, err := expr.Compile(src)
 	if err != nil {
 		return false, err
 	}
-	return expr.EvalBool(p, env)
+	val, err := expr.EvalAny(p, env)
+	if err != nil {
+		return false, nil
+	}
+	return choiceTruthy(val), nil
+}
+
+func choiceTruthy(v any) bool {
+	switch t := v.(type) {
+	case nil:
+		return false
+	case bool:
+		return t
+	case string:
+		return t != ""
+	}
+	rv := reflect.ValueOf(v)
+	switch rv.Kind() {
+	case reflect.Array, reflect.Map, reflect.Slice:
+		return rv.Len() > 0
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return rv.Int() != 0
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		return rv.Uint() != 0
+	case reflect.Float32, reflect.Float64:
+		return rv.Float() != 0
+	default:
+		return true
+	}
 }
 
 // cloneSlots returns a shallow copy of slots so callers can mutate the

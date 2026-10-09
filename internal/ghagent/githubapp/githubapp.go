@@ -1,12 +1,12 @@
 // Package githubapp mints GitHub App installation tokens and exposes them to
-// the existing `gh` CLI path used by the @kitsoki agent.
+// the native GitHub host surfaces used by the @kitsoki agent.
 //
 // The cassette-backed @kitsoki loop (internal/ghagent + `kitsoki gh-agent
-// poll`) does all its live GitHub I/O by shelling `gh`/`git` through the
-// host.cliExec seam; `gh` reads its credential from the GH_TOKEN env var.
-// This package's only job is therefore to produce that credential when the
-// agent runs against LIVE GitHub as a GitHub App installation (rather than
-// from a personal `gh auth login`):
+// poll`) routes GitHub issue/PR I/O through host.gh.ticket and host.git. Those
+// providers use the native GitHub REST API for GitHub operations and read their
+// credential from GH_TOKEN / GITHUB_TOKEN. This package's only job is therefore
+// to produce that credential when the agent runs against LIVE GitHub as a
+// GitHub App installation:
 //
 //   - AppJWT signs a short-lived RS256 JWT as the App (iss=AppID) using the
 //     App's RSA private key (read from a FILE, never inlined in env).
@@ -14,15 +14,14 @@
 //     POST /app/installations/<id>/access_tokens, caching it until shortly
 //     before expiry.
 //   - WithGHToken resolves a token and runs a function with GH_TOKEN set, so
-//     every gh subprocess spawned underneath (which inherits os.Environ via
-//     host.runRealCommand's exec.Command) authenticates as the installation.
+//     host GitHub API calls authenticate as the installation.
 //
 // Crypto is stdlib only (crypto/rsa + crypto/sha256 + encoding/base64/json) —
 // no third-party JWT dependency. The HTTP client is an injected Doer so tests
 // run with ZERO network. VerifyWebhookSignature is shipped now for the
 // round-2 webhook ingress.
 //
-// See docs/architecture/github-app-setup.md for the operator runbook and
+// See docs/guide/integrations/github-app-setup.md for the operator runbook and
 // docs/proposals/kitsoki-github-agent.md (shared decision #1) for the auth
 // decision and permissions floor.
 package githubapp
@@ -356,9 +355,8 @@ func computeWebhookSignature(secret string, body []byte) string {
 
 // WithGHToken resolves an installation token from ts and runs fn with the
 // GH_TOKEN env var set to it, restoring the previous value afterward. This is
-// how the App credential reaches the `gh` subprocess: host.runRealCommand
-// builds its exec.Command without an explicit Env, so the child inherits the
-// parent's os.Environ — including the GH_TOKEN set here.
+// how the App credential reaches host GitHub API calls without requiring a
+// locally authenticated gh CLI.
 func WithGHToken(ctx context.Context, ts TokenSource, fn func() error) error {
 	token, _, err := ts.InstallationToken(ctx)
 	if err != nil {

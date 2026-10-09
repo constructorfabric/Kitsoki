@@ -1,0 +1,21 @@
+{
+  "run_id": "persona-qa-kitsoki-product-review",
+  "stage_count": 1,
+  "scenario_count": 2,
+  "validated_stage_count": 0,
+  "captured_stage_count": 0,
+  "planned_stage_count": 1,
+  "required_evidence_count": 5,
+  "present_evidence_count": 3,
+  "missing_evidence_count": 2,
+  "proof_evidence_count": 0,
+  "demo_evidence_count": 0,
+  "findings_count": 4,
+  "strength_count": 2,
+  "weakness_count": 1,
+  "issue_count": 0,
+  "fix_count": 1,
+  "blocked_count": 0,
+  "driver_event_count": 2,
+  "review_status": "needs_evidence"
+}

@@ -21,7 +21,7 @@ initial_world:
 host_handlers:
   host.append_to_file: { data: { ok: true } }
   host.inbox.add:      { data: { ok: true } }
-  host.git_worktree:   { data: { ok: true, log: "" } }
+  host.capsule_workspace:   { data: { ok: true, log: "" } }
   host.git:            { data: { ok: true, sha: "abc", diff: "@@ -1 +1 @@", files: ["internal/foo.go"] } }
   host.local:          { data: { ok: true, log: "PASS", passed: 1, failed: 0 } }
   host.diff.open:      { data: { verdict: "reject", reviewed: true, surface: "ide" } }

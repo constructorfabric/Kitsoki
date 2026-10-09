@@ -1,0 +1,9 @@
+# presentation.star.yaml — sidecar for presentation.star (S5, D2.1/D4).
+# No inputs are declared: the op is invoked with the kit-dispatch context
+# (op/_kit_dir/_kit_name — see internal/kitendpoint's withKitContext) but the
+# script doesn't need any of it; it just serves this kit's static layer
+# taxonomy as data, replacing the engine SPA's deleted hardcoded
+# catalog-model.ts `layers` constant.
+inputs: {}
+outputs:
+  layers: { type: list }

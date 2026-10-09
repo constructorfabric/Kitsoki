@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"kitsoki/internal/effect"
 	"kitsoki/internal/sysprompt"
 )
 
@@ -65,6 +66,70 @@ func TestConverseToolPolicy(t *testing.T) {
 		require.Equal(t, "default", mode)
 		require.Equal(t, withAlwaysDenied(readOnlyDeniedTools), disallowed)
 	})
+}
+
+func TestEnforceToolboxMatrix(t *testing.T) {
+	tests := []struct {
+		name       string
+		class      effect.Effect
+		fallback   string
+		wantMode   string
+		wantDenied []string
+	}{
+		{"ask pure", effect.Pure, "default", "default", withAlwaysDenied(readOnlyDeniedTools)},
+		{"decide read", effect.Read, "default", "default", withAlwaysDenied(readOnlyDeniedTools)},
+		{"converse write", effect.Write, "bypassPermissions", "bypassPermissions", alwaysDeniedTools},
+		{"task external", effect.External, "bypassPermissions", "bypassPermissions", alwaysDeniedTools},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			agent := Agent{
+				Toolbox: "box",
+				Effect:  tc.class,
+				Tools:   []string{"Read"},
+			}
+			if tc.class == effect.Pure {
+				agent.Tools = nil
+			}
+			if tc.class == effect.Write {
+				agent.Tools = []string{"Read", "Write"}
+			}
+			if tc.class == effect.External {
+				agent.Tools = []string{"Read", "WebFetch"}
+			}
+			got := enforceToolbox(t.Context(), nil, agent, tc.fallback)
+			require.Equal(t, tc.wantMode, got.CLIMode)
+			require.Equal(t, tc.wantDenied, got.DeniedTools)
+			require.Equal(t, "box", got.Toolbox)
+			require.Equal(t, tc.class, got.Effect)
+			if tc.class != effect.Pure {
+				require.NotEmpty(t, got.AllowedTools)
+			}
+
+			payload := got.AgentCalledFields(AgentCalledPayload{Verb: "task", Agent: "agent"})
+			require.Equal(t, "box", payload.Toolbox)
+			require.Equal(t, string(tc.class), payload.Effect)
+			require.Equal(t, got.AllowedTools, payload.AllowedTools)
+			require.Equal(t, got.DeniedTools, payload.DeniedTools)
+		})
+	}
+}
+
+func TestEnforceToolboxReadOnlyAgentVerbCeiling(t *testing.T) {
+	agent := Agent{
+		Effect: effect.Read,
+		Tools:  []string{"Read", "Bash", "Write"},
+	}
+	got := enforceToolbox(t.Context(), nil, agent, "default", ToolboxEnforcementOptions{
+		EffectCeiling:       effect.Read,
+		ReadOnlyDeniedTools: readOnlyAgentVerbDeniedTools,
+	})
+	require.Equal(t, "default", got.CLIMode)
+	require.Equal(t, effect.Read, got.Effect)
+	require.Equal(t, []string{"Read", "Bash", "Write"}, got.AllowedTools)
+	require.Contains(t, got.DeniedTools, "Write")
+	require.NotContains(t, got.DeniedTools, "Bash", "ask/decide may use Bash through a declared BashProfile")
+	require.Contains(t, got.DeniedTools, "AskUserQuestion")
 }
 
 // TestAlwaysDeniedTools_HeadlessAgents locks in the headless fix: tools that

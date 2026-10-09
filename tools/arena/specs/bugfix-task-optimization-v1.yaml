@@ -1,0 +1,61 @@
+# Stage-0 study declaration only. This is intentionally not a runnable live
+# sweep until the BugSwarm corpus is verified and its learning/confirmation
+# lock has been materialized.
+schema: task-optimization/v1
+study_id: bugfix-codeact-v1
+boundary: stories/bugfix
+corpus_source: tools/arena/corpus/bugswarm.seed.yaml
+corpus_lock: .artifacts/task-optimization/bugfix-codeact-v1/corpus.lock.json
+live_gate_env: KITSOKI_TASK_OPT_LIVE
+live_status: blocked
+blocked_by:
+  - "BugSwarm candidates require explicit Docker RED/GREEN verification; no live verification is authorized by this source."
+  - "A frozen learning/confirmation split and content-addressed corpus lock are required before planning cells."
+splits:
+  learning: bugswarm-learning
+  confirmation: bugswarm-confirmation
+treatments:
+  - raw-agent
+  - strict-mcp-current
+  - strict-mcp-direct-driver
+  - strict-mcp-codeact-broad
+  - strict-mcp-codeact-decomposed
+  - strict-mcp-decomposed-fallback
+repeats:
+  screening: 1
+  decision_boundary: 3
+stop:
+  max_versions: 4
+  plateau_rounds: 2
+  min_efficiency_delta: 0.10
+  promotion_policy: { primary: oracle_solve, secondary: [tokens_per_solve, wall_per_solve] }
+  retry_policy: { infrastructure_only: true, max_attempts: 2, bounded_backoff_seconds: [15, 60] }
+candidates:
+  - key: gpt54-mini
+    requested_model: gpt-5.4-mini
+    requested_effort: medium
+    profile: codex-gpt54-mini
+    preflight: require-local-resolution
+    note: "The shared profile catalog pins this exact model. Do not alias or fall back; mark the cell unsupported unless the native launch plan resolves it exactly."
+  - key: spark
+    requested_model: gpt-5.3-codex-spark
+    requested_effort: medium
+    profile: codex-spark
+    preflight: require-local-resolution
+    note: "This shared ambient-auth profile must resolve natively. Persist requested and effective model/effort; an ignored effort flag invalidates the cell."
+  - key: sonnet-low
+    requested_model: sonnet
+    requested_effort: low
+    profile: claude-sonnet-low
+    preflight: declared
+  - key: gpt-oss-120b
+    requested_model: hf:openai/gpt-oss-120b
+    requested_effort: n/a
+    profile: syn-gpt-oss-120b
+    preflight: require-local-resolution
+    note: "Synthetic endpoint credentials are local-only. This cohort is a hosted proxy and must not make GX10 hardware claims."
+preflight_contract:
+  required: [requested_model, effective_model, requested_effort, effective_effort, provider, backend, profile_hash, launch_plan_hash]
+  unsupported_result: unsupported
+  effort_mismatch_result: invalid
+  fallback_policy: forbidden

@@ -20,10 +20,37 @@ func (claudeBackend) ResolveBin(ctx context.Context) (string, error) {
 	return resolveClaudeBin(ctx)
 }
 
-// TranslateInvocation is the identity: the verb handlers already build claude
-// argv with the prompt on stdin, so there is nothing to rewrite.
+// TranslateInvocation optimizes caching on warm runs by stripping out system prompt flags if --resume is present.
 func (claudeBackend) TranslateInvocation(claudeArgs []string, stdin, workingDir string) Invocation {
-	return Invocation{Args: claudeArgs, Stdin: stdin, WorkingDir: workingDir}
+	hasResume := false
+	for _, arg := range claudeArgs {
+		if arg == "--resume" {
+			hasResume = true
+			break
+		}
+	}
+	if !hasResume {
+		return Invocation{Args: claudeArgs, Stdin: stdin, WorkingDir: workingDir}
+	}
+
+	var filtered []string
+	skipNext := false
+	for i := 0; i < len(claudeArgs); i++ {
+		if skipNext {
+			skipNext = false
+			continue
+		}
+		arg := claudeArgs[i]
+		if arg == "--system-prompt" || arg == "--append-system-prompt" {
+			skipNext = true
+			continue
+		}
+		if arg == "--exclude-dynamic-system-prompt-sections" {
+			continue
+		}
+		filtered = append(filtered, arg)
+	}
+	return Invocation{Args: filtered, Stdin: stdin, WorkingDir: workingDir}
 }
 
 // Classify reproduces the field extraction that emitStreamEvent + the scan

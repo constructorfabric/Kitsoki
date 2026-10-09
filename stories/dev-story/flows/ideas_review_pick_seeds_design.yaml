@@ -1,13 +1,12 @@
 # ideas_review_pick_seeds_proposal — the writer's-block handoff, intent-only.
 #
 # Entering `ideas` runs the reviewer (decide) which surfaces candidates. `pick 1`
-# seeds world.design_seed_idea from candidate 1 and jumps into the proposal
-# intake (proposal room). The operator then types a message in intake to mint
-# the slug + workspace and advance to search. Here we only assert the seed + the
-# jump — the discuss → search path is covered by design_happy_path.
+# seeds `design_seed_idea` from candidate 1, then enters the proposal intake and
+# immediately normalizes into the design-search phase where the seed is promoted to
+# `design_idea` and can be cleared.
 #
-# The intake room has no on_enter (no chat to resolve); no host stubs needed for
-# the proposal landing turn itself.
+# The intake room has no on_enter (no chat to resolve), but design-search uses
+# the writable-dir probe to choose a workspace root.
 
 test_kind: flow
 app: ../app.yaml
@@ -18,6 +17,8 @@ initial_world:
   judge_mode: "human"
 
 host_handlers:
+  host.fs.writable_dir:
+    data: { path: "docs/proposals", used_fallback: false }
   host.agent.decide:
     by_call:
       ideas_review:
@@ -37,10 +38,12 @@ turns:
   - intent: { name: go_ideas, slots: {} }
     expect_state: ideas
 
-  # Pick candidate 1 → seed the proposal pipeline and land in intake.
+# Pick candidate 1 → seed the proposal pipeline. Intake flow now promotes to
+# `design_search` where design is normalized and then refined.
   - intent: { name: pick, slots: { n: 1 } }
-    expect_state: design
+    expect_state: design_search
     expect_world:
-      design_seed_idea: "single LLM chat across rooms with scoped containment"
+      design_idea: "single LLM chat across rooms with scoped containment"
+      design_seed_idea: ""
 
 expect_no_errors: true

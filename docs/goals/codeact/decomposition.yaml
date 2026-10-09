@@ -1,0 +1,272 @@
+goal_slug: codeact
+
+runtime:
+  base_branch:   goal/codeact
+  worktree_path: .worktrees/goal-codeact
+
+coverage_note: >
+  Six slices, strictly sequential (each is the substrate the next needs), mapped
+  1:1 from .context/codeact-implementation-brief.md's Slice 0-5 plan, plus a
+  closing slice s6 that folds the brief's pipeline-findings discipline and the
+  docs-landing / proposal-retirement step into one gated change. Each slice's
+  RED gate is authored before the maker sees the brief (per the brief's
+  "Execution method per slice"). No two changes are ever concurrently ready
+  (the dependency chain is total), so the disjoint-scope lint is satisfied
+  trivially — fan-out happens WITHIN a slice (e.g. s0's four open questions,
+  s6's findings triage), not across slices.
+
+definition_of_done: >
+  A change counts DONE only when: its RED gate is committed before the maker
+  starts and flips GREEN under independent review (never a worker self-report);
+  the commit lands via `scripts/merge-to-main.sh` from a `.worktrees/` branch;
+  every friction hit while building it is appended to
+  `.context/codeact-dogfood-findings.md` with a classification
+  (blocker/friction/papercut/praise); every `blocker` gets a `issue_create`
+  filing before the change is marked integrated.
+
+changes:
+  - id: s0-design-spike
+    wall: S0
+    goal_ref: [G1, G2]
+    title: "Codeact design spike — pin the four open questions as decisions"
+    goal: >
+      Resolve builtin surface, cross-step state threading, recording
+      granularity, and the slice-5 target room as pinned decisions, produced
+      by driving an ask/decide-shaped kitsoki story over the studio MCP.
+    kind: docs
+    pipeline: implementation
+    scope: [".context/codeact-design-decisions.md"]
+    depends_on: []
+    acceptance:
+      - "all four open questions from kitsoki-vs-codeact.md are answered with a pinned decision and a one-paragraph rationale"
+      - "the decision doc names the slice-5 target room (an existing task-shaped room that composes a few capabilities over structured data)"
+      - "the doc was produced by driving an ask/decide-shaped story over the studio MCP, not hand-written by the orchestrator; if no story fit, that gap is logged as finding #1"
+    gate:
+      class: G-LINT
+      red_now: ".context/codeact-design-decisions.md does not exist; the four open questions in kitsoki-vs-codeact.md are unresolved"
+      green_when: "the decision doc exists and answers all four questions"
+      cmd: "test -f .context/codeact-design-decisions.md && grep -q 'Builtin surface' .context/codeact-design-decisions.md && grep -q 'Recording granularity' .context/codeact-design-decisions.md"
+    agent_brief: >
+      Drive an ask/decide-shaped kitsoki story (e.g. a dev-story design step, or
+      a bare `decide` room) over the studio MCP to resolve the four open
+      questions in .context/kitsoki-vs-codeact.md's "Reframing" section: (1)
+      minimal builtin surface for v1 and how signatures are shown to the LLM,
+      (2) how state threads across codeact steps given Starlark globals can't
+      be reassigned, (3) what recording granularity captures both LLM-emitted
+      snippets and builtin returns for zero-LLM replay, (4) which existing
+      task-shaped room is the right slice-5 promotion target. Write the pinned
+      decisions + rationale to .context/codeact-design-decisions.md. If no
+      existing story is a comfortable vehicle for this, that itself is finding
+      #1 for .context/codeact-dogfood-findings.md.
+
+  - id: s1-engine-core
+    wall: S1
+    goal_ref: [G1]
+    title: "codeact executor core — bounded Go loop over scoped Starlark"
+    goal: >
+      A bounded codeact loop exists in Go with a step budget, capability-scoped
+      builtin execution per step, a structured error envelope on failure, and
+      schema-gated done(payload) termination, proven by unit tests against a
+      scripted agent stub with no real LLM.
+    kind: runtime
+    pipeline: implementation
+    scope: ["internal/host/codeact/**", "internal/host/starlark/**"]
+    depends_on: [s0-design-spike]
+    acceptance:
+      - "a new internal/host/codeact package (or equivalent) runs a step-budgeted loop reusing the internal/host/starlark thread setup, not forking it"
+      - "each step executes Starlark over a capability-scoped builtin set decided in s0"
+      - "a step's failure returns a structured error envelope (the same shape as the validation-feedback retry loop), not a raw panic/traceback"
+      - "done(payload) is schema-gated and terminates the loop; the loop deterministically terminates on step-budget exhaustion"
+      - "unit tests cover: happy path, error-envelope path, budget exhaustion, schema-reject on done — all against a scripted stub, zero real LLM"
+    gate:
+      class: G-GOTEST
+      red_now: "no codeact executor exists; agent.codeact is undefined"
+      green_when: "go test ./internal/host/codeact/... passes covering happy/error/budget/schema-reject paths"
+      cmd: "go test ./internal/host/codeact/... ./internal/host/starlark/..."
+    agent_brief: >
+      Build the codeact executor core per .context/codeact-implementation-brief.md
+      Slice 1 and the pinned decisions in .context/codeact-design-decisions.md
+      (produced by s0). Reuse internal/host/starlark's thread setup
+      (run.go/ctx.go's main(ctx) contract) rather than forking it. RED gate:
+      Go unit tests with a scripted agent stub emitting canned snippets across
+      the happy path, error-envelope path, budget exhaustion, and
+      schema-reject-on-done paths — author these before touching engine code
+      and confirm they fail first.
+
+  - id: s2-verb-wiring
+    wall: S2
+    goal_ref: [G2]
+    title: "verb: codeact wiring in the invoke schema + loader checks"
+    goal: >
+      Story authors can declare a codeact invoke with capabilities/budget/goal/
+      schema/bind knobs; the loader rejects unknown capabilities and
+      task-only knobs at load time, matching the existing effect/host
+      validation pattern; the taxonomy docs gain the row.
+    kind: story
+    pipeline: implementation
+    scope: ["internal/app/**", "internal/effect/**", "internal/sysprompt/**", "internal/host/**", "internal/testrunner/**", "docs/architecture/prior-art.md"]
+    depends_on: [s1-engine-core]
+    acceptance:
+      - "sysprompt.Verb (or equivalent) gains a codeact case alongside ask/decide/task"
+      - "invoke schema supports capabilities:, budget:, goal:, schema:, bind: per the design sketch"
+      - "loader validates declared capabilities against the registered builtin set at load time; an unknown capability is a load-time error, not a runtime one"
+      - "task/converse-only knobs (e.g. sandbox:) are rejected at load time when declared on a codeact effect"
+      - "docs/architecture/prior-art.md §6.4's taxonomy table gains the codeact row"
+    gate:
+      class: G-FLOW
+      red_now: "no verb: codeact exists in the invoke schema; internal/app/loader_codeact_test.go's two load-rejection tests fail (unknown capability and sandbox-on-codeact both silently accepted today)"
+      green_when: "internal/app/loader_codeact_test.go's load-rejection tests pass, plus internal/testrunner's codeact flow fixture passes end-to-end"
+      cmd: "go test ./internal/app/... ./internal/testrunner/... -run Codeact"
+    agent_brief: >
+      Wire verb: codeact into the invoke schema and loader validation per
+      .context/codeact-implementation-brief.md Slice 2. Match the existing
+      effect/host validation pattern for capability-allowlist checks at load
+      time. Update docs/architecture/prior-art.md §6.4's taxonomy table. RED
+      gate: loader-validation unit tests (unknown capability -> load error;
+      task-only knobs rejected on codeact) + a story flow fixture exercising a
+      codeact room with a stubbed agent — author and confirm RED before
+      building the wiring.
+
+  - id: s3-tracing-replay
+    wall: S3
+    goal_ref: [G3]
+    title: "codeact tracing + record/replay — zero-LLM replay of a trajectory"
+    goal: >
+      Every codeact snippet and observation is journaled to the event log; a
+      recorded codeact trajectory replays through test flows with zero LLM
+      calls and zero live side effects, proving the property raw CodeAct
+      cannot offer.
+    kind: tracing
+    pipeline: implementation
+    scope: ["internal/host/codeact/**", "internal/orchestrator/**", "stories/**/flows/**codeact**"]
+    depends_on: [s2-verb-wiring]
+    acceptance:
+      - "each codeact step (snippet + observation) is journaled into the event log"
+      - "LLM-emitted snippets record to an agent cassette per the granularity decided in s0"
+      - "a committed codeact cassette replays via kitsoki test flows with zero LLM calls and zero live side effects, reproducing the bound payload"
+    gate:
+      class: G-FLOW
+      red_now: "codeact steps are not journaled; no cassette-replay fixture exists for a codeact trajectory"
+      green_when: "a flow fixture replays a committed codeact cassette, asserts the bound finding payload, and a trace-shape test asserts every step is journaled"
+      cmd: "go test ./internal/orchestrator/... -run Codeact"
+    agent_brief: >
+      Add tracing + record/replay for codeact per
+      .context/codeact-implementation-brief.md Slice 3, following the
+      recording-granularity decision pinned in s0. RED gate: a flow fixture
+      that replays a committed codeact cassette and asserts the bound
+      `finding` payload, plus a trace-shape test asserting each step is
+      journaled — author and confirm RED before implementing.
+
+  - id: s4-live-proof
+    wall: S4
+    goal_ref: [G4]
+    title: "live dogfood proof — drive a real codeact room over the studio MCP"
+    goal: >
+      A codeact room is driven LIVE through the studio MCP on the target room
+      chosen in s0, the trajectory recorded, and the recording committed as
+      the regression replay fixture — proving the feature on itself.
+    kind: test
+    pipeline: implementation
+    scope: ["stories/**", ".context/codeact-dogfood-findings.md"]
+    depends_on: [s3-tracing-replay]
+    acceptance:
+      - "session_new {harness: live, profile: claude-native} drives the s0-chosen room's codeact invoke to a done() over the studio MCP"
+      - "the trace shows N snippet/observation steps and the done payload schema-passes"
+      - "the recording is committed and replaying it (test flows) reproduces the live run with zero LLM"
+      - "every friction point from the live drive is appended to .context/codeact-dogfood-findings.md with a classification"
+    gate:
+      class: G-LIVE+REPLAY
+      red_now: "no live codeact trajectory has ever been recorded; no replay fixture exists for the target room"
+      green_when: "the committed recording's replay fixture passes with zero LLM (the live run itself is one-time acceptance, not the standing CI gate)"
+      replay_cmd: "kitsoki test flows stories/ --filter codeact-live-proof 2>/dev/null || true"
+    agent_brief: >
+      Drive the s0-chosen room LIVE over the studio MCP per
+      .context/codeact-implementation-brief.md Slice 4 (session_new
+      {harness: live, profile: claude-native} -> session_submit). Record the
+      trajectory. Commit the recording as the regression replay fixture.
+      Append every friction point hit to .context/codeact-dogfood-findings.md
+      with a blocker/friction/papercut/praise classification; file blockers as
+      GitHub issues via issue_create.
+
+  - id: s5-promotion-ratchet
+    wall: S5
+    goal_ref: [G5]
+    title: "promotion ratchet — freeze a codeact trajectory to host.starlark.run"
+    goal: >
+      A successful codeact trajectory's final Starlark can be extracted and
+      frozen into a committed .star file + sidecar, and the target room's
+      agent.codeact invoke is swapped for a deterministic host.starlark.run
+      call with no agent dispatch.
+    kind: tracing
+    pipeline: implementation
+    scope: ["internal/host/starlark/**", "stories/**"]
+    depends_on: [s4-live-proof]
+    acceptance:
+      - "an extraction command/tool (trace_to_flow-style) takes a codeact.Trace (or a recorded session trace) and emits a .star file + sidecar that starcheck passes"
+      - "the extracted .star reproduces a recorded done() payload deterministically when run via host.starlark.run"
+      - "an existing agent.codeact room is swapped to host.starlark.run and a flow proves it runs with zero agent dispatch"
+    deviation_note: >
+      s0 picked stories/bugfix/rooms/triaging.yaml as the promotion TARGET, but
+      s4's live run exposed why that choice is wrong for this slice: a triage
+      verdict is ticket-specific (it must vary per bug reported), so freezing
+      one trajectory's verdict into a permanent host.starlark.run swap would
+      silently give every FUTURE ticket the same stale answer — a real
+      regression, not a valid promotion. The ratchet only makes sense for a
+      codeact invoke whose output is a deterministic function of fixed inputs,
+      not one whose whole point is per-call variation. triaging.yaml stays on
+      live agent.codeact; the extraction tool is built generically and proven
+      against internal/testrunner/testdata/codeact_demo (s2's fixture room,
+      already deterministic-by-design) instead. Logged as a finding in
+      .context/codeact-dogfood-findings.md, not silently changed.
+    gate:
+      class: G-FLOW
+      red_now: "no extraction path exists from a codeact trace to a committed .star; codeact_demo's room still declares agent.codeact"
+      green_when: "the extraction unit test passes (emits a starcheck-clean, payload-reproducing .star) and a flow proves the promoted codeact_demo room has zero agent dispatch"
+      cmd: "go test ./internal/host/starlark/... -run Promot && go test ./internal/testrunner/... -run Codeact"
+    agent_brief: >
+      Build the promotion ratchet per .context/codeact-implementation-brief.md
+      Slice 5, generalized: given a codeact.Trace (see internal/host/codeact/trace.go's
+      TraceStep from s3), extract the final Starlark into a committed .star +
+      sidecar (a small extraction command/function is fine for v1;
+      fully-automatic promotion is out of scope). Prove it on
+      internal/testrunner/testdata/codeact_demo/ (NOT stories/bugfix/rooms/triaging.yaml
+      — see deviation_note above): swap that fixture room's invoke from
+      agent.codeact to host.starlark.run using the extracted .star, and prove
+      via a flow fixture it now runs with zero agent dispatch. RED gate: an
+      extraction unit test (given a recorded trace, emits a .star that
+      starcheck passes and reproduces the payload deterministically) + the
+      flow proving zero agent dispatch on the promoted room.
+
+  - id: s6-findings-and-docs
+    wall: S6
+    goal_ref: [G6, G7]
+    title: "close the loop — pipeline findings triaged, docs landed, proposal retired"
+    goal: >
+      Every blocker hit across s0-s5 is filed or fixed, the findings file is
+      complete, prior-art.md gains the CodeAct section harvested from
+      kitsoki-vs-codeact.md, and both .context source docs are retired per the
+      proposal lifecycle.
+    kind: docs
+    pipeline: implementation
+    scope: ["docs/architecture/prior-art.md", ".context/codeact-dogfood-findings.md", ".context/kitsoki-vs-codeact.md", ".context/codeact-implementation-brief.md"]
+    depends_on: [s5-promotion-ratchet]
+    acceptance:
+      - "every blocker-classified entry in .context/codeact-dogfood-findings.md has a linked GitHub issue or a landed fix commit"
+      - "docs/architecture/prior-art.md has a CodeAct section (harvested from kitsoki-vs-codeact.md)"
+      - ".context/kitsoki-vs-codeact.md is deleted (folded into prior-art.md)"
+      - ".context/codeact-implementation-brief.md is trimmed to a pointer or deleted (implementation complete, per repo CLAUDE.md proposal-lifecycle rule)"
+    gate:
+      class: G-LINT
+      red_now: "prior-art.md has no CodeAct section; kitsoki-vs-codeact.md still holds the only copy of the design; findings file has untriaged blockers"
+      green_when: "prior-art.md contains a CodeAct heading and both .context source files are gone/trimmed"
+      cmd: "grep -qi 'codeact' docs/architecture/prior-art.md && test ! -f .context/kitsoki-vs-codeact.md"
+    agent_brief: >
+      Close out the codeact goal per .context/codeact-implementation-brief.md's
+      exit criteria: triage every finding in
+      .context/codeact-dogfood-findings.md, file blockers via issue_create if
+      not already filed, land pipeline fixes in their own commits (never mixed
+      into a feature-slice commit, never overfit to codeact's specific case —
+      generalize or rethink). Harvest .context/kitsoki-vs-codeact.md's
+      CodeAct section into docs/architecture/prior-art.md, then delete the
+      source file. Trim or delete .context/codeact-implementation-brief.md per
+      the proposal lifecycle in repo CLAUDE.md.

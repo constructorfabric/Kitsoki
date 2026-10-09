@@ -21,8 +21,14 @@ Acceptance criteria:
 
 - `summary_title` is the commit-message-friendly one-line description of
   the change (under 72 chars).
-- `summary_markdown` is the structured rendering: what changed in each
-  file, the rationale, and the tests planned. Aim for 200–500 words.
+- After the first useful diagnosis, create
+  `.artifacts/implementation/{{ args.ticket_id }}/code-report.md` and update it
+  while you edit and verify. Include changed files, rationale, commands/results,
+  and remaining risk. This report must exist before the final response; do not
+  defer it to the end of the turn.
+- `summary_markdown` is a one- or two-sentence checkpoint note that points to
+  `report_path`, not a 200–500 word replacement for the report.
+- `report_path` is `.artifacts/implementation/{{ args.ticket_id }}/code-report.md`.
 - `affected_files` must be real, relative repo paths (no leading slash;
   must have an extension). At least one entry.
 - `confidence` is your own estimate in [0.0, 1.0]; under 0.5 is rejected
@@ -34,4 +40,4 @@ Acceptance criteria:
 
 ## Output
 
-Submit a `code_artifact` (`schemas/code_artifact.json`).
+Submit a `code_artifact` (`schemas/code_artifact.json`) including `report_path`.

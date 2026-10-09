@@ -50,6 +50,41 @@ candidates:
     model: gpt-5.5
     effort: medium
     metered: false
+  - key: gpt-5.6-sol
+    short: sol
+    profile: codex-native-5.6-sol
+    provider: openai-codex
+    model: gpt-5.6-sol
+    effort: high
+    metered: false
+  - key: gpt-5.6-terra
+    short: terra
+    profile: codex-native-5.6-terra
+    provider: openai-codex
+    model: gpt-5.6-terra
+    effort: medium
+    metered: false
+  - key: gpt-5.6-luna
+    short: luna
+    profile: codex-native-5.6-luna
+    provider: openai-codex
+    model: gpt-5.6-luna
+    effort: low
+    metered: false
+  - key: gpt-5.4
+    short: gpt54
+    profile: codex-native-5.4
+    provider: openai-codex
+    model: gpt-5.4
+    effort: medium
+    metered: false
+  - key: gpt-5.4-mini
+    short: gpt54mini
+    profile: codex-native-5.4-mini
+    provider: openai-codex
+    model: gpt-5.4-mini
+    effort: low
+    metered: false
   - key: opus-4.8
     short: opus
     profile: claude-native      # Anthropic Opus (native subscription auth)
@@ -57,6 +92,44 @@ candidates:
     model: opus
     effort: high
     metered: false
+  # GX10 small-model class (see .kitsoki.local.yaml's syn-* profiles): the
+  # candidates the GX10 purchase-feasibility question is actually about — open
+  # weights, quantized to fit a 128GB-unified-memory device.
+  - key: gpt-oss-120b
+    short: ossb120
+    profile: syn-gpt-oss-120b   # gpt-oss-120b (mxfp4) via synthetic.new
+    provider: synthetic.new
+    model: gpt-oss-120b
+    effort: medium
+    metered: true
+  - key: qwen3.6-27b
+    short: qwen27
+    profile: syn-qwen-27b       # Qwen3.6-27B via synthetic.new
+    provider: synthetic.new
+    model: Qwen3.6-27B
+    effort: medium
+    metered: true
+  - key: glm-4.7-flash
+    short: glmflash
+    profile: syn-glm-flash      # GLM-4.7-Flash via synthetic.new
+    provider: synthetic.new
+    model: GLM-4.7-Flash
+    effort: medium
+    metered: true
+  - key: nemotron-120b
+    short: nemo120
+    profile: syn-nemotron-120b  # Nemotron-3-Super-120B-A12B (nvfp4) via synthetic.new
+    provider: synthetic.new
+    model: Nemotron-3-Super-120B-A12B
+    effort: medium
+    metered: true
+  - key: minimax-m3
+    short: mmaxm3
+    profile: syn-minimax-m3     # MiniMax-M3 via synthetic.new
+    provider: synthetic.new
+    model: MiniMax-M3
+    effort: medium
+    metered: true
 
 # ── ESCALATION LADDERS ────────────────────────────────────────────────────────
 # An ordered list of candidate keys, CHEAPEST FIRST. escalate.sh runs each bug up
@@ -76,3 +149,5 @@ ladders:
   effort-only: [glm-5.2, glm-5.2-high]
   # Cheapest-viable open model only:
   open: [glm-5.2, glm-5.2-high]
+  # GX10 purchase-feasibility class: every quantized-to-fit candidate.
+  gx10: [gpt-oss-120b, qwen3.6-27b, glm-4.7-flash, nemotron-120b, minimax-m3]

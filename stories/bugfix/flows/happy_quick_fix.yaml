@@ -22,7 +22,7 @@ host_handlers:
     data: { ok: true, message_id: "msg-1" }
   host.inbox.add:
     data: { ok: true, id: "ib-1" }
-  host.git_worktree:
+  host.capsule_workspace:
     data: { ok: true, log: "synced" }
   host.git:
     data: { ok: true, sha: "abc123", diff: "" }
@@ -114,4 +114,7 @@ turns:
       bugfix_mode: "quick"
 
 expect_terminal: true
+expect_operation_policy: bugfix_quick
+expect_operation_status: completed
+expect_terminal_artifact: done_artifact
 expect_no_errors: true

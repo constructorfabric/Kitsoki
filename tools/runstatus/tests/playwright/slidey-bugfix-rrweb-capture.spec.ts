@@ -93,9 +93,10 @@ test.afterAll(() => server?.stop());
 
 // ── Drive-action executor — the TS port of internal/tour/drive.go ───────────
 //
-// Every gesture is an in-page evaluate() so it fires through the tour overlay's
-// hit-test backdrop regardless of paint order (the same reason the Go executor
-// and the video specs DOM-dispatch el.click() rather than a hit-test click).
+// Every gesture is an in-page evaluate() so it avoids browser hit-test flake
+// from the tour popover or transient layout shifts (the same reason the Go
+// executor and the video specs DOM-dispatch el.click() rather than a hit-test
+// click).
 
 const SCROLL_CONTROL = `(() => {
   const el = document.querySelector('[data-testid="chat-transcript"]');

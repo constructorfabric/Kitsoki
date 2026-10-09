@@ -1,0 +1,5 @@
+inputs:
+  goal_dir: { type: string, required: true }   # docs/goals/<slug>/ — holds decomposition.yaml
+outputs:
+  route: { type: string }   # ok | fail
+  error: { type: string }   # joined lint errors ("" when ok)

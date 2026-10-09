@@ -1,0 +1,47 @@
+# init_ticket_provider_menu -- first-run onboarding chooses ticket capability
+# explicitly before any files are written. No host calls or LLMs.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: init
+initial_world:
+  init_target_path: "/srv/repos/acme-api"
+  init_project_id: "acme-api"
+  init_project_title: "Acme Api"
+  init_stack: "go project"
+  init_profile_status: "draft"
+  init_tracker: "github"
+  init_ticket_provider: "github"
+  init_ticket_repo: "acme/api"
+  init_ticket_sources:
+    - { id: local, label: Local, provider: host.local_files.ticket, kind: local, mode: local, args: { root: ".artifacts" } }
+    - { id: github, label: acme/api, provider: host.gh.ticket, kind: github, mode: remote, args: { repo: acme/api } }
+
+turns:
+  - intent: { name: select_ticket_provider, slots: { provider: "review" } }
+    expect_state: init_ticket_provider
+    expect_view_matches: "Local artifact intake"
+
+  - intent: { name: select_ticket_provider, slots: { provider: "local" } }
+    expect_state: init
+    expect_world:
+      init_ticket_provider: "local"
+      init_ticket_repo: ""
+      init_ticket_sources:
+        - { id: local, label: Local, provider: host.local_files.ticket, kind: local, mode: local, args: { root: ".artifacts" } }
+    expect_view_matches: "1 configured[\\s\\S]*Local \\(local\\)"
+
+  - intent: { name: select_ticket_provider, slots: { provider: "review" } }
+    expect_state: init_ticket_provider
+
+  - intent: { name: select_ticket_provider, slots: { repo: "acme/api" } }
+    expect_state: init
+    expect_world:
+      init_ticket_provider: "github"
+      init_ticket_repo: "acme/api"
+      init_ticket_sources:
+        - { id: local, label: Local, provider: host.local_files.ticket, kind: local, mode: local, args: { root: ".artifacts" } }
+        - { id: github, label: acme/api, provider: host.gh.ticket, kind: github, mode: remote, args: { repo: acme/api } }
+    expect_view_matches: "2 configured[\\s\\S]*acme/api \\(github\\)"
+
+expect_no_errors: true

@@ -1,0 +1,5 @@
+inputs:
+  state_path: {type: string, required: true}
+  item_id: {type: string, required: true}
+outputs:
+  verify_result: {type: object}

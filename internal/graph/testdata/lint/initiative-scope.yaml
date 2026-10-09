@@ -1,0 +1,97 @@
+schema: project-object-graph/seed-catalog/v0
+type_registry:
+  - id: core-node
+    schema: graph-type/v0
+  - id: area
+    schema: graph-type/v0
+    extends: core-node
+  - id: feature
+    schema: graph-type/v0
+    extends: core-node
+    edge_fields:
+      - id: in_area
+        target_type: area
+        cardinality: many
+  - id: change
+    schema: graph-type/v0
+    extends: core-node
+    edge_fields:
+      - id: implements
+        target_type: feature
+        cardinality: many
+  - id: initiative
+    schema: graph-type/v0
+    extends: core-node
+    edge_fields:
+      - id: includes
+        target_type: change
+        cardinality: many
+      - id: targets
+        target_type: area
+        cardinality: many
+nodes:
+  - schema: graph/area/v0
+    id: area-a
+    title: Area A
+    status: active
+    visibility: internal
+  - schema: graph/area/v0
+    id: area-b
+    title: Area B
+    status: active
+    visibility: internal
+  - schema: graph/area/v0
+    id: area-c
+    title: Area C
+    status: active
+    visibility: internal
+  - schema: graph/feature/v0
+    id: feature-a
+    title: Feature A
+    status: active
+    visibility: internal
+    edges:
+      in_area: ["area-a"]
+  - schema: graph/feature/v0
+    id: feature-b
+    title: Feature B
+    status: active
+    visibility: internal
+    edges:
+      in_area: ["area-b"]
+  - schema: graph/change/v0
+    id: change-a
+    title: Change A
+    status: todo
+    visibility: internal
+    edges:
+      implements: ["feature-a"]
+  - schema: graph/change/v0
+    id: change-b
+    title: Change B
+    status: todo
+    visibility: internal
+    edges:
+      implements: ["feature-b"]
+  # Matches the derived set exactly: includes -> {change-a, change-b} ->
+  # implements -> {feature-a, feature-b} -> in_area -> {area-a, area-b},
+  # and targets declares exactly {area-a, area-b}.
+  - schema: graph/initiative/v0
+    id: initiative-match
+    title: Matching Initiative
+    status: active
+    visibility: internal
+    edges:
+      includes: ["change-a", "change-b"]
+      targets: ["area-a", "area-b"]
+  # Mismatches: includes -> {change-a} -> implements -> {feature-a} ->
+  # in_area -> {area-a}, but targets declares {area-a, area-c} — area-c is
+  # not reachable from any included change.
+  - schema: graph/initiative/v0
+    id: initiative-mismatch
+    title: Mismatched Initiative
+    status: active
+    visibility: internal
+    edges:
+      includes: ["change-a"]
+      targets: ["area-a", "area-c"]

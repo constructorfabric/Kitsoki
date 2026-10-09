@@ -1,0 +1,26 @@
+test_kind: flow
+app: capsule-ci
+initial_state: deterministic_checks
+initial_world:
+  ci_job_id: job-fail
+  ci_pipeline: change
+turns:
+  - intent: { name: checks_failed, slots: {} }
+    expect_state: failed
+    expect_world:
+      ci_outcome: failed
+      ci_verdict:
+        schema: capsule-ci-verdict/v1
+        pipeline: change
+        outcome: failed
+        summary: "A required deterministic check failed."
+        checks:
+          - id: deterministic
+            kind: deterministic
+            outcome: failed
+        promotion_eligible: false
+        source_digest: null
+        story_digest: null
+        environment_digest: null
+        envelope_digest: null
+expect_no_errors: true

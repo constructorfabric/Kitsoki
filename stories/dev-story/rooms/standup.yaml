@@ -57,7 +57,9 @@ states:
       - invoke: iface.ticket.list_mine
         with:
           filter: "assignee=me"
+          sources: "{{ world.ticket_sources }}"
           repo: "{{ world.ticket_repo }}"
+          root: "{{ world.repo_root }}"
         bind:
           standup_summary: tickets
         on_error: standup

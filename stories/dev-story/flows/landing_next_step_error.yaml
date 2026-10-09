@@ -1,0 +1,37 @@
+# landing_next_step_error — non-zero next-step exits default to error.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world: {}
+
+host_handlers:
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary: "Finished setup and suggested a required gate."
+        next_steps:
+          - label: "Run required gate"
+            command: "printf failed-gate"
+            description: "non-zero should be red by default"
+  host.run:
+    by_call:
+      landing-next-step:
+        data: { ok: false, stdout: "failed-gate", exit_code: 1 }
+
+turns:
+  - intent: { name: landing_capture, slots: { request: "check required gate" } }
+    expect_state: landing
+
+  - intent: { name: run_next_step, slots: { n: 1 } }
+    expect_state: landing
+    expect_view_matches: 'NEXT STEP ✗[\s\S]*exit 1[\s\S]*failed-gate'
+    expect_world:
+      landing_next_step_label: "Run required gate"
+      landing_next_step_severity: "error"
+      landing_next_step_stdout: "failed-gate"
+      landing_next_step_exit_code: 1
+      landing_next_step_ran: true
+
+expect_no_errors: true

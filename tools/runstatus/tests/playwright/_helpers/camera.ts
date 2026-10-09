@@ -98,12 +98,13 @@ export function cameraContext(
   p: CameraProfile = activeProfile(),
 ) {
   const size = { width: p.width, height: p.height };
+  const rrwebOut = process.env.KITSOKI_RRWEB_OUT;
   return {
     viewport: size,
     deviceScaleFactor: p.deviceScaleFactor,
     hasTouch: p.touch,
     isMobile: p.touch,
-    ...(opts.recordVideoDir
+    ...(opts.recordVideoDir && !rrwebOut
       ? { recordVideo: { dir: opts.recordVideoDir, size } }
       : {}),
   };

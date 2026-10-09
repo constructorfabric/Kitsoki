@@ -3,8 +3,9 @@ id: design-walkthrough
 kind: story-demo
 title: Design pipeline walkthrough
 tagline: From idea to published design doc — one conversation.
-summary: "The dev-story design pipeline end to end on a realistic idea: intake, the prior-art scout, the refined brief, the brief judge, the generated draft, and the published design document — every advancing turn visible on the interactive chat surface."
+summary: 'The dev-story design pipeline end to end on a realistic idea: intake, the prior-art scout, the refined brief, the brief judge, the generated draft, and the published design document — every advancing turn visible on the interactive chat surface.'
 demo:
+  format: rrweb
   spec: tests/playwright/design-walkthrough.spec.ts
   artifactDir: design-walkthrough
   videoBase: design-walkthrough
@@ -17,7 +18,7 @@ tour:
     - id: pw-intro-home
       route: home
       title: Start with an idea
-      body: "Every run begins here, in the story library. We'll walk the design pipeline on the dev-story: an idea becomes a scoped, scouted, brief-reviewed, and published design doc — all as one deterministic flow."
+      body: 'Every run begins here, in the story library. We''ll walk the design pipeline on the dev-story: an idea becomes a scoped, scouted, brief-reviewed, and published design doc — all as one deterministic flow.'
       placement: center
       kind: explain
       advance: next
@@ -27,7 +28,7 @@ tour:
       route: home
       target: story-card
       title: The dev-story pipeline
-      body: "This story takes a raw idea and runs it through scout search, brief refinement, a brief judge, draft authoring, and publishing. We'll demonstrate it with a realistic idea: tamagotchi-style virtual pets in the session UI."
+      body: 'This story takes a raw idea and runs it through scout search, brief refinement, a brief judge, draft authoring, and publishing. We''ll demonstrate it with a realistic idea: tamagotchi-style virtual pets in the session UI.'
       placement: right
       kind: explain
       advance: next
@@ -58,7 +59,7 @@ tour:
       route: interactive
       target: text-floor-input
       title: Entering the idea
-      body: "We type the idea into the chat composer: a tamagotchi-style virtual pet widget for the session UI. Submitting mints a slug and kicks off the scout search for overlapping work."
+      body: 'We type the idea into the chat composer: a tamagotchi-style virtual pet widget for the session UI. Submitting mints a slug and kicks off the scout search for overlapping work.'
       placement: top
       kind: explain
       advance: next
@@ -88,7 +89,7 @@ tour:
       route: interactive
       target: chat-section
       title: Step 2 of 4 — brief refinement
-      body: "The idea has been distilled into a structured brief, opened in the IDE for editing. A refiner agent read the idea and flagged the key gaps: the pet's lifetime scope, and which UI surface hosts the widget."
+      body: 'The idea has been distilled into a structured brief, opened in the IDE for editing. A refiner agent read the idea and flagged the key gaps: the pet''s lifetime scope, and which UI surface hosts the widget.'
       placement: right
       kind: explain
       advance: next
@@ -108,7 +109,7 @@ tour:
       route: interactive
       target: intent-actions
       title: Brief approved
-      body: "The brief judge's verdict is \"continue\": clear why, scoped change, kind is story. \"advance to draft\" is now the primary action — proceed to draft authoring."
+      body: 'The brief judge''s verdict is "continue": clear why, scoped change, kind is story. "advance to draft" is now the primary action — proceed to draft authoring.'
       placement: top
       kind: explain
       advance: next
@@ -118,7 +119,7 @@ tour:
       route: interactive
       target: chat-section
       title: Step 3 of 4 — design draft
-      body: "The brief was approved, so a draft author wrote the full design document: a persistent virtual-pet widget in the session header, its mood tracking the story phase, state persisted in world vars."
+      body: 'The brief was approved, so a draft author wrote the full design document: a persistent virtual-pet widget in the session header, its mood tracking the story phase, state persisted in world vars.'
       placement: right
       kind: explain
       advance: next
@@ -148,7 +149,7 @@ tour:
       route: interactive
       target: state-badge
       title: That's the design pipeline
-      body: "You've seen the whole flow on-camera: every input, button, and room view, with the live trace recording each stage. Hit '?' anytime to replay this tour."
+      body: 'You''ve seen the whole flow on-camera: every input, button, and room view, with the live trace recording each stage. Hit ''?'' anytime to replay this tour.'
       placement: bottom
       kind: explain
       advance: next

@@ -1,0 +1,3 @@
+schema: project-object-graph/catalog/v1
+catalog:
+  id: diff-fixture-current

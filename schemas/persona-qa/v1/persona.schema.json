@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://kitsoki.dev/schemas/persona-qa/v1/persona.schema.json",
+  "title": "Persona QA Persona",
+  "type": "object",
+  "required": ["id", "label", "description", "surface_preference", "risk_focus"],
+  "additionalProperties": true,
+  "properties": {
+    "id": { "type": "string" },
+    "label": { "type": "string" },
+    "description": { "type": "string" },
+    "surface_preference": { "type": "string" },
+    "risk_focus": { "type": "array", "items": { "type": "string" } },
+    "persona_lens": {
+      "type": "object",
+      "required": ["starting_surface", "first_question", "evidence_emphasis", "escalation_trigger", "finding_bias"],
+      "additionalProperties": true,
+      "properties": {
+        "starting_surface": { "type": "string" },
+        "first_question": { "type": "string" },
+        "evidence_emphasis": { "type": "string" },
+        "escalation_trigger": { "type": "string" },
+        "finding_bias": { "type": "string" }
+      }
+    }
+  }
+}

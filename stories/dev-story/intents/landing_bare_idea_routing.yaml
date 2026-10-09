@@ -1,0 +1,89 @@
+# landing_bare_idea_routing -- natural feature ideas must become design briefs,
+# never a workbench task or an implementation run without a ticket.
+
+test_kind: intents
+app: ../app.yaml
+state: landing
+defaults:
+  runs: 1
+  min_pass_rate: 1.0
+
+fixtures:
+  - id: make-feature
+    intent: { name: idea_brief, slots: { brief: "that lets operators compare two traces" } }
+    inputs: ["make a feature that lets operators compare two traces"]
+  - id: make-me-feature
+    intent: { name: idea_brief, slots: { brief: "for saving filtered run views" } }
+    inputs: ["make me a feature for saving filtered run views"]
+  - id: add-capability
+    intent: { name: idea_brief, slots: { brief: "to export a workflow receipt as markdown" } }
+    inputs: ["add a capability to export a workflow receipt as markdown"]
+  - id: add-new-capability
+    intent: { name: idea_brief, slots: { brief: "for replaying a failed session locally" } }
+    inputs: ["add a new capability for replaying a failed session locally"]
+  - id: build-feature
+    intent: { name: idea_brief, slots: { brief: "that groups related issue reports" } }
+    inputs: ["build a feature that groups related issue reports"]
+  - id: create-feature
+    intent: { name: idea_brief, slots: { brief: "to show which agent owns each step" } }
+    inputs: ["create a feature to show which agent owns each step"]
+  - id: ship-feature
+    intent: { name: idea_brief, slots: { brief: "for a guided first run checklist" } }
+    inputs: ["ship a feature for a guided first-run checklist"]
+  - id: need-feature
+    intent: { name: idea_brief, slots: { brief: "that highlights stale session evidence" } }
+    inputs: ["we need a feature that highlights stale session evidence"]
+  - id: need-capability
+    intent: { name: idea_brief, slots: { brief: "to import jira bug reports" } }
+    inputs: ["we need a capability to import Jira bug reports"]
+  - id: want-feature
+    intent: { name: idea_brief, slots: { brief: "for sharing a read only run link" } }
+    inputs: ["i want a feature for sharing a read-only run link"]
+  - id: want-capability
+    intent: { name: idea_brief, slots: { brief: "that summarizes workflow cost" } }
+    inputs: ["i want a capability that summarizes workflow cost"]
+  - id: lets-build-feature
+    intent: { name: idea_brief, slots: { brief: "to compare two implementation plans" } }
+    inputs: ["let's build a feature to compare two implementation plans"]
+  - id: please-add-capability
+    intent: { name: idea_brief, slots: { brief: "for attaching screenshots to local bugs" } }
+    inputs: ["please add a capability for attaching screenshots to local bugs"]
+  - id: make-feature-multiline
+    intent: { name: idea_brief, slots: { brief: "that finds duplicate ideas it should show the prior proposal before drafting" } }
+    inputs:
+      - |-
+        make a feature that finds duplicate ideas
+        It should show the prior proposal before drafting.
+  - id: build-feature-recovery
+    intent: { name: idea_brief, slots: { brief: "that gives a guided recovery checklist" } }
+    inputs: ["build a feature that gives a guided recovery checklist"]
+  - id: add-capability-audit
+    intent: { name: idea_brief, slots: { brief: "that audits a handoff before merge" } }
+    inputs: ["add a capability that audits a handoff before merge"]
+  - id: create-feature-discovery
+    intent: { name: idea_brief, slots: { brief: "for discovering repository conventions" } }
+    inputs: ["create a feature for discovering repository conventions"]
+  - id: ship-feature-notifications
+    intent: { name: idea_brief, slots: { brief: "that sends a clear completion notification" } }
+    inputs: ["ship a feature that sends a clear completion notification"]
+  - id: need-feature-review
+    intent: { name: idea_brief, slots: { brief: "to review a proposal before implementation" } }
+    inputs: ["we need a feature to review a proposal before implementation"]
+  - id: need-capability-link
+    intent: { name: idea_brief, slots: { brief: "for correlating a feature brief with its implementation work" } }
+    inputs: ["we need a capability for correlating a feature brief with its implementation work"]
+  - id: want-feature-dashboard
+    intent: { name: idea_brief, slots: { brief: "that gives a simple status dashboard" } }
+    inputs: ["i want a feature that gives a simple status dashboard"]
+  - id: want-capability-evidence
+    intent: { name: idea_brief, slots: { brief: "to retain validation evidence with a release" } }
+    inputs: ["i want a capability to retain validation evidence with a release"]
+  - id: lets-build-feature-visual
+    intent: { name: idea_brief, slots: { brief: "for visualizing the release path" } }
+    inputs: ["let's build a feature for visualizing the release path"]
+  - id: please-add-capability-search
+    intent: { name: idea_brief, slots: { brief: "to search archived conversations" } }
+    inputs: ["please add a capability to search archived conversations"]
+  - id: make-feature-metrics
+    intent: { name: idea_brief, slots: { brief: "that measures whether a task really finished" } }
+    inputs: ["make a feature that measures whether a task really finished"]

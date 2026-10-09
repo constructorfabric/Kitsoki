@@ -1,0 +1,190 @@
+kind: arena_cost_archetypes
+version: 1
+status: frozen_archetype_selection
+created_at: "2026-07-04"
+goal_change: WB.1
+
+provenance:
+  mining_job: cost-bench-20260704-codex
+  trace_source: ~/.claude/projects/-Users-brad-code-Kitsoki
+  prep_artifacts: .artifacts/session-mining/cost-bench-20260704-codex/
+  analysis_artifact: .artifacts/session-mining/cost-bench-20260704-codex/codex-analysis/archetype-evidence.json
+  trace_count: 79
+  total_cost_usd: 4255.730914
+  total_api_calls: 23536
+  live_claude_native_used: false
+  mining_method: codex_native_analysis_of_distilled_traces
+  note: >
+    WB.1 originally allowed a schema-constrained live mining pass. This frozen
+    selection was produced after operator approval to continue autonomously
+    while staying off claude-native; the evidence comes from deterministic trace
+    prep plus Codex-native synthesis over the distilled traces.
+
+selection_rule:
+  summary: >
+    Select 4-6 high-signal generalized software-work archetypes that recur in
+    mined Kitsoki development sessions and can be instantiated with deterministic
+    RED/GREEN oracles without requiring live LLMs during verification.
+  required_evidence:
+    min_trace_count: 30
+    min_user_hits: 25
+    deterministic_oracle_required: true
+    train_and_heldout_split_required: true
+  tie_breakers:
+    - coverage_across_distinct_workflows
+    - existing_kitsoki_story_or_harness_fit
+    - oracle_strength_over_prompt_similarity
+    - ability_to_run_with_codex_native_or_synthetic_profiles
+
+selected_archetypes:
+  - id: bugfix_test_repair
+    title: Failing-test bug repair
+    mined_signal:
+      session_count: 46
+      user_hits: 35
+      tool_calls_in_hit_sessions: 8303
+    why_selected: >
+      This is the strongest direct fit for existing benchmark infrastructure:
+      filed bugs, baseline regressions, hidden or replayable tests, and
+      deterministic RED/GREEN proof.
+    task_shape: >
+      Given a real issue and a baseline commit that fails the regression oracle,
+      repair the implementation while preserving unrelated behavior.
+    primary_oracles:
+      - external_repo_regression_test_red_at_baseline_green_at_fix
+      - focused_unit_or_integration_test
+      - patch_scope_review
+    suggested_harnesses:
+      - tools/bugfix-bakeoff/external/bench.py
+      - stories/bench-bugfix/app.yaml
+    evidence_examples:
+      - session: e1cf2547-4da1-4ac1-871c-3fdf5380c3cc
+        user: ok now use the bugfix story to fix the bug we just opened
+      - session: d41fcc36-f749-4e99-8edc-5a33aee868f9
+        user: ok - fix the bugs with bugfix
+
+  - id: docs_site_release
+    title: Documentation, site, and release repair
+    mined_signal:
+      session_count: 64
+      user_hits: 109
+      tool_calls_in_hit_sessions: 9938
+    why_selected: >
+      Docs, decks, product-site, and release-page work appears frequently and
+      exercises multi-file editing, build validation, link integrity, and
+      narrative consistency without depending on application runtime internals.
+    task_shape: >
+      Update docs/site/release artifacts so named anchors, generated outputs,
+      and build/link gates match a concrete requested change.
+    primary_oracles:
+      - static_site_or_docs_build
+      - link_anchor_or_schema_validator
+      - expected_file_content_or_snapshot_check
+    suggested_harnesses:
+      - make_site_or_docs_build
+      - deterministic_markdown_anchor_lint
+      - slidey_schema_validation
+    evidence_examples:
+      - session: 8be01fe3-9fdb-4b62-8a8e-62659798f6fe
+        user: do a deep review of the docs folder for consistency and opportunities for improvement
+      - session: 5b9ca472-0b68-404d-9dba-58bb60fad67e
+        user: write a report to docs/case-studies
+
+  - id: story_runtime
+    title: Story runtime and flow behavior
+    mined_signal:
+      session_count: 67
+      user_hits: 63
+      tool_calls_in_hit_sessions: 10076
+    why_selected: >
+      Generalized usage depends on editing stories, rooms, prompts, Starlark
+      scripts, and runtime behavior under no-LLM flow tests.
+    task_shape: >
+      Change a story/runtime behavior and prove it with deterministic flow
+      fixtures, cassettes, or replayed host-call evidence.
+    primary_oracles:
+      - kitsoki_flow_test
+      - host_call_trace_assertion
+      - starlark_script_fixture
+    suggested_harnesses:
+      - go_run_kitsoki_test_flows
+      - stories/*/flows/*.yaml
+      - host_starlark_run_fixtures
+    evidence_examples:
+      - session: 29ef1cc6-27c6-4cf9-afaf-a750b7ccaa7a
+        user: use kitsoki to refine and implement your ergonomics proposal with the stories
+      - session: 5b9ca472-0b68-404d-9dba-58bb60fad67e
+        user: make a tool and integrate it - i want as much INSIDE kitsoki stories as possible
+
+  - id: git_ops_landing
+    title: Worktree, git, and landing operations
+    mined_signal:
+      session_count: 73
+      user_hits: 82
+      tool_calls_in_hit_sessions: 10107
+    why_selected: >
+      The most common mined pattern is operational: inspect worktrees, preserve
+      unrelated dirt, commit coherent slices, merge or prove ancestry, and clean
+      up safely.
+    task_shape: >
+      Given a repo state with branches/worktrees/dirty files, perform or verify
+      a requested landing workflow without touching unrelated changes.
+    primary_oracles:
+      - git_status_cleanliness_for_touched_scope
+      - merge_base_ancestry_check
+      - expected_commit_or_branch_topology
+    suggested_harnesses:
+      - temporary_git_repo_fixture
+      - shell_or_go_git_state_assertions
+      - kitsoki_git_ops_story_flows
+    evidence_examples:
+      - session: 16a34822-60b9-407e-8b3d-ecdbc4812cd0
+        user: is this worktree merged to main
+      - session: b30773c4-630a-4bed-bd88-c734b4f52fb4
+        user: review git status, commit changes in logical groups and delete/gitignore garbage
+
+  - id: ui_visual_qa
+    title: UI and visual QA proof
+    mined_signal:
+      session_count: 65
+      user_hits: 68
+      tool_calls_in_hit_sessions: 10023
+    why_selected: >
+      UI/debug/demo work recurs across web, Slidey, rrweb, and screenshots, and
+      it forces agents to validate observable behavior rather than only compile.
+    task_shape: >
+      Fix or assess a visual/browser behavior and provide deterministic
+      screenshot, rrweb, geometry, or accessibility evidence.
+    primary_oracles:
+      - playwright_or_browser_screenshot_assertion
+      - rrweb_capture_presence_and_nonblank_check
+      - dom_geometry_or_accessibility_lint
+    suggested_harnesses:
+      - playwright
+      - kitsoki_ui_demo_or_qa_scripts
+      - axe_or_dom_geometry_audit
+    evidence_examples:
+      - session: b95d17e6-01d7-4d26-a7f0-3ff3f9029ab5
+        user: do we have an existing feature video showing the bug reporting in kitsoki?
+      - session: 462a0809-320b-476d-a814-102768a7ea29
+        user: try to use the slidey mcp to do visual qa on 2 or 3 slides from the deck
+
+deferred_archetypes:
+  - id: config_install
+    mined_signal:
+      session_count: 58
+      user_hits: 38
+      tool_calls_in_hit_sessions: 9714
+    defer_reason: >
+      Important, but overlaps with story runtime and git/landing operations for
+      the first corpus. Add later when config/install tasks have stronger
+      hermetic oracles.
+  - id: benchmark_eval
+    mined_signal:
+      session_count: 34
+      user_hits: 25
+      tool_calls_in_hit_sessions: 7306
+    defer_reason: >
+      Relevant to the cost-efficiency program, but using benchmark tasks inside
+      the first benchmark corpus risks self-reference. Keep it as a future
+      held-out expansion category.

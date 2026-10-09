@@ -99,6 +99,7 @@ func (s *fakeMetaChatStore) ResolveMeta(_ context.Context, appID, room, scopeKey
 			continue
 		}
 		if r.appID == appID && r.room == room && r.scopeKey == scopeKey {
+			s.chat = r
 			return r, nil
 		}
 	}
@@ -114,6 +115,7 @@ func (s *fakeMetaChatStore) ResolveMeta(_ context.Context, appID, room, scopeKey
 	id := fmt.Sprintf("chat-fresh-%d", s.counter)
 	fresh := &fakeMetaChat{id: id, appID: appID, room: room, scopeKey: scopeKey, title: title}
 	s.rows = append(s.rows, fresh)
+	s.chat = fresh
 	return fresh, nil
 }
 
@@ -227,6 +229,11 @@ func buildMetaModeModel(t *testing.T, metaModes map[string]*app.MetaModeDef, age
 			Name:         "story-author",
 			SystemPrompt: "you are the story author.",
 		},
+		"story-improver": {
+			Name:         "story-improver",
+			SystemPrompt: "you review the completed run.",
+			Tools:        []string{"Read", "Glob", "Grep"},
+		},
 		"story-bug-reporter": {
 			Name:         "story-bug-reporter",
 			SystemPrompt: "you file story bugs.",
@@ -257,6 +264,19 @@ func singleStoryMode() map[string]*app.MetaModeDef {
 			Label:   "improve the story",
 			Banner:  "*** meta:story — improving the story ***",
 			Agent:   "story-author",
+		},
+	}
+}
+
+func storyImproveMode() map[string]*app.MetaModeDef {
+	return map[string]*app.MetaModeDef{
+		"story.improve": {
+			Group:   "story",
+			Trigger: "improve",
+			Label:   "Improve run",
+			Banner:  "Reviewing this run for improvements.",
+			Agent:   "story-improver",
+			Tools:   []string{"Read", "Glob", "Grep"},
 		},
 	}
 }
@@ -298,6 +318,67 @@ func TestMetaMode_EnterViaSlash_NamedMode(t *testing.T) {
 	require.Equal(t, "meta:story.bug", store.chat.room,
 		"named /meta story bug should resolve story.bug, not story.edit")
 	require.Contains(t, extractTranscript(t, m), "*** story.bug ***")
+}
+
+func TestMetaMode_CompletionSuggestsImprove(t *testing.T) {
+	m, _, _ := buildMetaModeModel(t, storyImproveMode(), "improvement report")
+
+	for _, turn := range []string{
+		"go west",
+		"hang the cloak",
+		"go east",
+		"go south",
+		"read the message",
+	} {
+		m = runTurnBlocking(t, m, turn)
+	}
+
+	content := extractTranscript(t, m)
+	require.Contains(t, content, "Improve this run")
+	require.Contains(t, content, "/meta improve")
+	require.Contains(t, content, "Auto-run at completion")
+}
+
+func TestMetaMode_ImproveAutoRunsFirstTurn(t *testing.T) {
+	m, store, agent := buildMetaModeModel(t, storyImproveMode(), "improvement report")
+
+	m = runTurnBlocking(t, m, "/meta improve")
+
+	require.Equal(t, tuipkg.ModeMeta, extractMode(t, m),
+		"/meta improve should enter meta mode")
+	require.NotNil(t, store.chat)
+	require.Equal(t, "meta:story.improve", store.chat.room)
+	require.Len(t, store.chat.appends, 2,
+		"empty improve chat should record the auto prompt and assistant reply")
+	require.Equal(t, "user", store.chat.appends[0].Role)
+	require.Contains(t, store.chat.appends[0].Text, "Review this completed session")
+	require.Equal(t, "assistant", store.chat.appends[1].Role)
+	require.Contains(t, extractTranscript(t, m), "improvement report")
+	require.Contains(t, agent.gotInput.UserMessage, "Review this completed session")
+}
+
+func TestMetaMode_ImproveDoesNotAutoRunExistingChat(t *testing.T) {
+	m, store, _ := buildMetaModeModel(t, storyImproveMode(), "second report")
+
+	store.seedChat(&fakeMetaChat{
+		id:       "prior-improve",
+		appID:    "cloak-of-darkness",
+		room:     "meta:story.improve",
+		scopeKey: "foyer",
+		title:    "Improve run",
+		appends: []struct{ Role, Text string }{
+			{Role: "user", Text: "already reviewed"},
+			{Role: "assistant", Text: "prior report"},
+		},
+	})
+
+	m = runTurnBlocking(t, m, "/meta improve")
+
+	require.Equal(t, tuipkg.ModeMeta, extractMode(t, m))
+	require.Equal(t, "prior-improve", store.chat.ID(),
+		"existing improve chat should be reused")
+	require.Len(t, store.chat.appends, 2,
+		"existing improve chat must not get a duplicate auto prompt")
 }
 
 // TestMetaMode_EnterViaSlash_BareVerb dispatches `/meta bug` — a bare

@@ -24,6 +24,7 @@ package host
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"strings"
@@ -46,7 +47,11 @@ func (copilotBackend) ResolveBin(ctx context.Context) (string, error) {
 	}
 	path, err := exec.LookPath("copilot")
 	if err != nil {
-		return "", ErrAgentUnavailable
+		// See codexBackend.ResolveBin: wraps the shared sentinel so
+		// errors.Is(_, ErrAgentUnavailable) still holds, but names the
+		// backend that actually failed instead of the sentinel's
+		// hardcoded "claude" text.
+		return "", fmt.Errorf("host.agent.converse: `copilot` binary not found on PATH; install the GitHub Copilot CLI: %w", ErrAgentUnavailable)
 	}
 	return path, nil
 }
@@ -61,6 +66,7 @@ var claudeValueFlags = map[string]bool{
 	"--append-system-prompt": true,
 	"--mcp-config":           true,
 	"--setting-sources":      true,
+	"--settings":             true,
 	"--effort":               true,
 	"--output-format":        true,
 	"--session-id":           true,
@@ -108,7 +114,7 @@ func (copilotBackend) TranslateInvocation(claudeArgs []string, stdin, workingDir
 		case "-p", "--verbose", "--exclude-dynamic-system-prompt-sections", "--no-session-persistence",
 			"--disable-slash-commands":
 			// Dropped: no copilot equivalent (or supplied differently).
-		case "--permission-mode", "--setting-sources", "--effort",
+		case "--permission-mode", "--setting-sources", "--settings", "--effort",
 			"--allowedTools", "--disallowedTools":
 			// Dropped along with their value. (Tool-scoping is a parity gap;
 			// copilot uses --allow-all-tools.)
@@ -201,6 +207,13 @@ func isClaudeModelID(m string) bool {
 		return true
 	}
 	return false
+}
+
+// IsClaudeModelID is the exported form of isClaudeModelID for CLI planning
+// surfaces that build backend-specific argv directly instead of going through
+// TranslateInvocation.
+func IsClaudeModelID(m string) bool {
+	return isClaudeModelID(m)
 }
 
 func (copilotBackend) Classify(ev map[string]any) classifiedEvent {

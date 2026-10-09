@@ -29,8 +29,18 @@
 //
 // # Non-goals
 //
-//   - No remote/git fetch: the mechanism is embed + local-override, never a
-//     fetcher (see docs/proposals/kitsoki-as-dependency.md).
+//   - This package itself still does no remote/git fetch: it is embed +
+//     local-override, never a fetcher, for the embedded story library
+//     specifically (see stories/dev-story/README.md). That said, the
+//     broader "kitsoki never fetches" posture this non-goal used to imply
+//     no longer holds at the loader level: S2
+//     (.context/kits-implementation-plan.md) added a 4th `resolveImportSource`
+//     tier, `git+<url>@<ref>`, which DOES fetch over git into its own
+//     content-addressed cache (internal/kitgit) — deliberately, so a kit can
+//     be sourced from a real git remote rather than only the embedded
+//     library or an on-disk checkout. This package's own embed→cache
+//     mechanism is unchanged; only the universe of resolver tiers around it
+//     grew a fetching one.
 //   - No fs.FS plumbing through the loader/runtime: deliberately rejected in
 //     favour of the cache (above).
 //   - This package does NOT decide WHEN to fall back to the embedded library;

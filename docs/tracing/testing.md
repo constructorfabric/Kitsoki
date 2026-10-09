@@ -95,6 +95,37 @@ entries:
 Lookup is exact first, then case-insensitive. Missing entries cause
 the turn to fail with `UNKNOWN_INTENT`.
 
+### Paraphrase tier (2.5): a pre-recorded free-text pool
+
+An `input:` entry can carry an optional `paraphrases:` list — additional
+free-text strings that resolve identically to the same intent/slots:
+
+```yaml
+entries:
+  - state: foyer
+    input: "go south"
+    paraphrases:
+      - "head south"
+      - "walk south please"
+      - "I'd like to go toward the south exit"
+    intent: { name: go, slots: { direction: south } }
+    confidence: 0.9
+```
+
+Every pool member is indexed exactly like `input:` (exact match, then the
+same case-insensitive+trimmed fallback) — this is **not** a semantic/
+embedding matcher at replay time. It reuses the harness's existing
+exact-match discipline over a wider, *pre-recorded* set of strings, pinned
+once at record time (hand-authored, or generated once offline by a
+human/agent reviewing the paraphrases before they're committed — never a
+live model call during replay or in CI). An utterance that was never
+pinned into the pool still misses with `ErrRecordingMiss`, exactly like an
+unrecorded plain `input:` string — the pool is exhaustive, not fuzzy, so it
+never silently matches something nobody recorded. This is what lets
+free-text realism in flow fixtures / swarm tier 2 scale past a single
+exact string per intent without adding a live-model dependency anywhere in
+the replay path (see `docs/proposals/scenario-foundry.md` task 4.1).
+
 ### Asserting on chained `on_enter:` host calls
 
 When step N+1 of an `on_enter:` block references a slot bound by step

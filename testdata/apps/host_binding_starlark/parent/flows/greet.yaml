@@ -1,0 +1,32 @@
+# Exercises a starlark-form host_bindings entry end to end (S3a / D2.1): the
+# child's `greeter` host_interface is rebound onto scripts/greet.star, so
+# `iface.greeter.hello` resolves through the synthesized StarlarkBindingHandler
+# instead of a Go handler. No LLM, no HTTP — this is pure starlark glue, so no
+# cassette is needed (unlike testdata/apps/starlark_min, which fetches over
+# ctx.http).
+test_kind: flow
+app: host-binding-starlark-parent
+initial_state: main
+# host.starlark_binding.* handlers only actually dispatch through the
+# orchestrator-backed runner (buildOrchestratorRig owns the host.Registry);
+# the legacy machine-only path just collects pending HostCalls without
+# invoking them. Force it explicitly rather than relying on an incidental
+# host_handlers:/advance_clock: field to trip shouldUseOrchestrator.
+use_orchestrator: true
+
+turns:
+  # Enter the child (compound wrapper `core`, drills to its Initial=idle).
+  - intent: { name: begin, slots: {} }
+    expect_state: core.idle
+
+  # core__hi dispatches iface.greeter.hello, which the loader has already
+  # rewritten to the synthesized handler's concrete name. The bound
+  # `message` output ("Hello, Ada! (op=hello)") proves both that the
+  # `with: { name: "Ada" }` args reached ctx.inputs AND that the dispatched
+  # op ("hello") was injected into ctx.inputs.op.
+  - intent: { name: core__hi, slots: {} }
+    expect_state: core.greeted
+    expect_world:
+      core__greeting: "Hello, Ada! (op=hello)"
+
+expect_no_errors: true

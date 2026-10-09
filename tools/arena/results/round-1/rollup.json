@@ -1,0 +1,253 @@
+{
+  "by_job_type": {
+    "paired-task": {
+      "n": 8,
+      "avg_cost_usd": 1.082995,
+      "infra_failures": 0,
+      "verdicts": {
+        "solved": 4,
+        "failed": 4
+      },
+      "win_rate": 0.5
+    }
+  },
+  "by_target": {
+    "cost-bench-pilot": {
+      "n": 2,
+      "avg_cost_usd": 0.46259,
+      "infra_failures": 0,
+      "verdicts": {
+        "solved": 2
+      },
+      "win_rate": 1.0
+    },
+    "cost-bench-round1": {
+      "n": 6,
+      "avg_cost_usd": 1.289797,
+      "infra_failures": 0,
+      "verdicts": {
+        "solved": 2,
+        "failed": 4
+      },
+      "win_rate": 0.333333
+    }
+  },
+  "by_variant": {
+    "kitsoki-codex-native": {
+      "n": 4,
+      "avg_cost_usd": 1.40979,
+      "infra_failures": 0,
+      "verdicts": {
+        "solved": 2,
+        "failed": 2
+      },
+      "win_rate": 0.5
+    },
+    "single-briefed-codex-native": {
+      "n": 4,
+      "avg_cost_usd": 0.756201,
+      "infra_failures": 0,
+      "verdicts": {
+        "solved": 2,
+        "failed": 2
+      },
+      "win_rate": 0.5
+    }
+  },
+  "cells": [
+    {
+      "axis": {
+        "task": "query-string-qs1-bugfix-test-repair"
+      },
+      "cell_id": "cost-bench-pilot--kitsoki-codex-native--task:query-string-qs1-bugfix-test-repair",
+      "evidence_refs": [
+        "/Users/brad/code/Kitsoki/.worktrees/generalized-usage-rebase/tools/arena/corpus/cost-bench.manifest.yaml#query-string-qs1-bugfix-test-repair",
+        "/Users/brad/code/Kitsoki/.worktrees/generalized-usage-rebase/.artifacts/arena/paired-task-work/query-string-qs1-bugfix-test-repair--kitsoki--codex--gpt-5.5-score.json"
+      ],
+      "health": "model:result",
+      "job_type": "paired-task",
+      "metrics": {
+        "cost_usd": 0.443556,
+        "host": "local",
+        "tokens": 931778,
+        "wall_s": 366.657
+      },
+      "notes": "kitsoki bugfix pipeline via drive.sh+MCP; cost_usd=0.443556 (cache-aware estimate over REAL trace usage: 205237 fresh input + 716800 cache-read input + 9741 output tokens; subscription auth reports no metered cost); oracle solved",
+      "target_id": "cost-bench-pilot",
+      "trace_ref": "",
+      "variant_id": "kitsoki-codex-native",
+      "verdict": "solved"
+    },
+    {
+      "axis": {
+        "task": "query-string-qs1-bugfix-test-repair"
+      },
+      "cell_id": "cost-bench-pilot--single-briefed-codex-native--task:query-string-qs1-bugfix-test-repair",
+      "evidence_refs": [
+        "/Users/brad/code/Kitsoki/.worktrees/generalized-usage-rebase/tools/arena/corpus/cost-bench.manifest.yaml#query-string-qs1-bugfix-test-repair",
+        "/Users/brad/code/Kitsoki/.worktrees/generalized-usage-rebase/.artifacts/arena/paired-task-work/query-string-qs1-bugfix-test-repair--single-briefed--codex--gpt-5.5-score.json"
+      ],
+      "health": "model:result",
+      "job_type": "paired-task",
+      "metrics": {
+        "cost_usd": 0.481624,
+        "host": "local",
+        "tokens": 85622,
+        "wall_s": 178.095
+      },
+      "notes": "codex exit=0: Implemented the fix for query-string issue 336: separator array parsing now splits only on literal raw separators, then decodes each segment. Encoded separators like `%7C` or `%2C` stay inside a single decoded value.; [bench] query-string/qs1 oracle=pass suite=True -> solved; cost_usd=0.481624 (blended estimate, not exact)",
+      "target_id": "cost-bench-pilot",
+      "trace_ref": "",
+      "variant_id": "single-briefed-codex-native",
+      "verdict": "solved"
+    },
+    {
+      "axis": {
+        "task": "query-string-qs2-bugfix-test-repair"
+      },
+      "cell_id": "cost-bench-round1--kitsoki-codex-native--task:query-string-qs2-bugfix-test-repair",
+      "evidence_refs": [
+        "/workspace/kitsoki/tools/arena/corpus/cost-bench.manifest.yaml#query-string-qs2-bugfix-test-repair",
+        "/Users/brad/code/Kitsoki/.worktrees/generalized-usage-rebase/.artifacts/arena/paired-task-work/query-string-qs2-bugfix-test-repair--kitsoki--codex--gpt-5.5-score.json"
+      ],
+      "health": "model:result",
+      "job_type": "paired-task",
+      "metrics": {
+        "cost_usd": 0.520891,
+        "host": "local",
+        "tokens": 1145873,
+        "wall_s": 426.905
+      },
+      "notes": "drive.sh exit=0: {\"type\":\"thread.started\",\"thread_id\":\"019f2ff9-9ad9-7541-8224-04e231162b54\"}; cost_usd=0.520891 (cache-aware estimate over REAL trace usage: 243028 fresh input + 892288 cache-read input + 10557 output tokens; subscription auth reports no metered cost); [bench] query-string/qs2 oracle=pass suite=True -> solved",
+      "target_id": "cost-bench-round1",
+      "trace_ref": "",
+      "variant_id": "kitsoki-codex-native",
+      "verdict": "solved"
+    },
+    {
+      "axis": {
+        "task": "query-string-qs2-bugfix-test-repair"
+      },
+      "cell_id": "cost-bench-round1--single-briefed-codex-native--task:query-string-qs2-bugfix-test-repair",
+      "evidence_refs": [
+        "/workspace/kitsoki/tools/arena/corpus/cost-bench.manifest.yaml#query-string-qs2-bugfix-test-repair",
+        "/Users/brad/code/Kitsoki/.worktrees/generalized-usage-rebase/.artifacts/arena/paired-task-work/query-string-qs2-bugfix-test-repair--single-briefed--codex--gpt-5.5-score.json"
+      ],
+      "health": "model:result",
+      "job_type": "paired-task",
+      "metrics": {
+        "cost_usd": 0.320569,
+        "host": "local",
+        "tokens": 56990,
+        "wall_s": 178.412
+      },
+      "notes": "codex exit=0: Implemented the issue 404 fix.; cost_usd=0.320569 (blended estimate, not exact); [bench] query-string/qs2 oracle=pass suite=True -> solved",
+      "target_id": "cost-bench-round1",
+      "trace_ref": "",
+      "variant_id": "single-briefed-codex-native",
+      "verdict": "solved"
+    },
+    {
+      "axis": {
+        "task": "kitsoki-bug12-bugfix-test-repair"
+      },
+      "cell_id": "cost-bench-round1--kitsoki-codex-native--task:kitsoki-bug12-bugfix-test-repair",
+      "evidence_refs": [
+        "/workspace/kitsoki/tools/arena/corpus/cost-bench.manifest.yaml#kitsoki-bug12-bugfix-test-repair",
+        "/Users/brad/code/Kitsoki/.worktrees/generalized-usage-rebase/.artifacts/arena/paired-task-work/kitsoki-bug12-bugfix-test-repair--kitsoki--codex--gpt-5.5-score.json"
+      ],
+      "health": "model:result",
+      "job_type": "paired-task",
+      "metrics": {
+        "cost_usd": 1.238873,
+        "host": "local",
+        "tokens": 3493106,
+        "wall_s": 886.791
+      },
+      "notes": "drive.sh exit=0: {\"type\":\"thread.started\",\"thread_id\":\"019f304b-fa3b-7ec3-ae9c-b161fb1330c9\"}; cost_usd=1.238873 (cache-aware estimate over REAL trace usage: 500430 fresh input + 2968448 cache-read input + 24228 output tokens; subscription auth reports no metered cost); [bench] kitsoki/bug12 oracle=fail suite=None -> failed",
+      "target_id": "cost-bench-round1",
+      "trace_ref": "/Users/brad/code/Kitsoki/.worktrees/generalized-usage-rebase/.artifacts/arena/paired-task-work/kitsoki-bug12-bugfix-test-repair--kitsoki--codex--gpt-5.5.jsonl",
+      "variant_id": "kitsoki-codex-native",
+      "verdict": "failed"
+    },
+    {
+      "axis": {
+        "task": "kitsoki-bug9-bugfix-test-repair"
+      },
+      "cell_id": "cost-bench-round1--kitsoki-codex-native--task:kitsoki-bug9-bugfix-test-repair",
+      "evidence_refs": [
+        "/workspace/kitsoki/tools/arena/corpus/cost-bench.manifest.yaml#kitsoki-bug9-bugfix-test-repair",
+        "/Users/brad/code/Kitsoki/.worktrees/generalized-usage-rebase/.artifacts/arena/paired-task-work/kitsoki-bug9-bugfix-test-repair--kitsoki--codex--gpt-5.5-score.json"
+      ],
+      "health": "model:result",
+      "job_type": "paired-task",
+      "metrics": {
+        "cost_usd": 3.435839,
+        "host": "local",
+        "tokens": 15888760,
+        "wall_s": 183.151
+      },
+      "notes": "drive.sh exit=0: {\"type\":\"thread.started\",\"thread_id\":\"019f30cb-eceb-7881-975a-c2580bb428b4\"}; cost_usd=3.435839 (cache-aware estimate over REAL trace usage: 847095 fresh input + 14991360 cache-read input + 50305 output tokens; subscription auth reports no metered cost); [bench] kitsoki/bug9 oracle=fail suite=None -> failed (after 1 infra retry)",
+      "target_id": "cost-bench-round1",
+      "trace_ref": "/Users/brad/code/Kitsoki/.worktrees/generalized-usage-rebase/.artifacts/arena/paired-task-work/kitsoki-bug9-bugfix-test-repair--kitsoki--codex--gpt-5.5.jsonl",
+      "variant_id": "kitsoki-codex-native",
+      "verdict": "failed"
+    },
+    {
+      "axis": {
+        "task": "kitsoki-bug12-bugfix-test-repair"
+      },
+      "cell_id": "cost-bench-round1--single-briefed-codex-native--task:kitsoki-bug12-bugfix-test-repair",
+      "evidence_refs": [
+        "/workspace/kitsoki/tools/arena/corpus/cost-bench.manifest.yaml#kitsoki-bug12-bugfix-test-repair",
+        "/Users/brad/code/Kitsoki/.worktrees/generalized-usage-rebase/.artifacts/arena/paired-task-work/kitsoki-bug12-bugfix-test-repair--single-briefed--codex--gpt-5.5-score.json"
+      ],
+      "health": "model:result",
+      "job_type": "paired-task",
+      "metrics": {
+        "cost_usd": 1.376618,
+        "host": "local",
+        "tokens": 244732,
+        "wall_s": 316.031
+      },
+      "notes": "codex exit=0: Implemented and committed the bugfix.; cost_usd=1.376618 (blended estimate, not exact); [bench] kitsoki/bug12 oracle=fail suite=None -> failed",
+      "target_id": "cost-bench-round1",
+      "trace_ref": "/Users/brad/code/Kitsoki/.worktrees/generalized-usage-rebase/.artifacts/arena/paired-task-work/kitsoki-bug12-bugfix-test-repair--single-briefed--codex--gpt-5.5.jsonl",
+      "variant_id": "single-briefed-codex-native",
+      "verdict": "failed"
+    },
+    {
+      "axis": {
+        "task": "kitsoki-bug9-bugfix-test-repair"
+      },
+      "cell_id": "cost-bench-round1--single-briefed-codex-native--task:kitsoki-bug9-bugfix-test-repair",
+      "evidence_refs": [
+        "/workspace/kitsoki/tools/arena/corpus/cost-bench.manifest.yaml#kitsoki-bug9-bugfix-test-repair",
+        "/Users/brad/code/Kitsoki/.worktrees/generalized-usage-rebase/.artifacts/arena/paired-task-work/kitsoki-bug9-bugfix-test-repair--single-briefed--codex--gpt-5.5-score.json"
+      ],
+      "health": "model:result",
+      "job_type": "paired-task",
+      "metrics": {
+        "cost_usd": 0.845994,
+        "host": "local",
+        "tokens": 150399,
+        "wall_s": 394.584
+      },
+      "notes": "codex exit=0: Implemented and committed the fix.; cost_usd=0.845994 (blended estimate, not exact); [bench] kitsoki/bug9 oracle=fail suite=None -> failed",
+      "target_id": "cost-bench-round1",
+      "trace_ref": "/Users/brad/code/Kitsoki/.worktrees/generalized-usage-rebase/.artifacts/arena/paired-task-work/kitsoki-bug9-bugfix-test-repair--single-briefed--codex--gpt-5.5.jsonl",
+      "variant_id": "single-briefed-codex-native",
+      "verdict": "failed"
+    }
+  ],
+  "summary": {
+    "n": 8,
+    "avg_cost_usd": 1.082995,
+    "infra_failures": 0,
+    "verdicts": {
+      "solved": 4,
+      "failed": 4
+    },
+    "win_rate": 0.5
+  }
+}

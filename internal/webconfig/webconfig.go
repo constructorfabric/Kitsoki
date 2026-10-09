@@ -34,6 +34,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"kitsoki/internal/app"
+	"kitsoki/internal/host"
 )
 
 // DefaultConfigFile is the checked-in, shared config file Load looks for in the
@@ -60,18 +61,41 @@ type WebConfig struct {
 	// HarnessProfiles declares named harness profiles — operator-selectable
 	// bundles of {backend, env, model} that a live session can switch between
 	// via the TUI's /provider /model commands or the web header picker. Keyed
-	// by profile name. See docs/architecture/harness-profiles.md.
+	// by profile name. See docs/guide/agents/harness-profiles.md.
 	HarnessProfiles map[string]HarnessProfile `yaml:"harness_profiles,omitempty"`
 	// DefaultProfile names the profile new sessions start on. Empty ⇒ the
 	// flag-derived static default (today's --agent/--model path). Must name a
 	// declared profile when set.
 	DefaultProfile string `yaml:"default_profile,omitempty"`
 
+	// HarnessLadder declares the operator-level automatic multi-provider
+	// fallback + effort/model escalation ladder applied to every
+	// host.agent.decide / host.agent.task dispatch — no per-story YAML wiring
+	// required. Nil (the field absent) means no ladder is installed: every
+	// dispatch stays on today's single-attempt behavior, which is why this is
+	// opt-in rather than defaulted on for every deployment (see
+	// docs/architecture/harness-ladder.md and internal/host/ladder.go's
+	// package doc for the full design). Validated in Load via
+	// resolveHarnessLadder.
+	HarnessLadder *HarnessLadder `yaml:"harness_ladder,omitempty"`
+
 	// Intercept binds the `kitsoki intercept` pre-LLM gate (the Stage-3
 	// UserPromptSubmit hook) to a story room: app.yaml + starting state +
 	// confidence bar. Nil ⇒ no binding (the hook command must then receive
 	// --app/--room on the command line). See docs/architecture/prompt-intercept.md.
 	Intercept *InterceptConfig `yaml:"intercept,omitempty"`
+
+	// AgentLaunchPolicy is a machine-local preflight gate for external
+	// host.agent.* and `kitsoki agent launch` subprocesses. It can reject
+	// protected checkout roots/branches and require opened Kitsoki capsules
+	// before a coding-agent CLI is forked.
+	AgentLaunchPolicy *host.AgentLaunchPolicy `yaml:"agent_launch_policy,omitempty"`
+
+	// AgentUserDelegation declares the local OS account/wrapper setup for
+	// delegated backend CLIs. Runtime delegation is currently gated off, so
+	// Kitsoki only parses this as a machine-local setup receipt.
+	AgentUserDelegation *AgentUserDelegationConfig `yaml:"agent_user_delegation,omitempty"`
+
 	// Mining configures the always-on ambient session miner
 	// (docs/proposals/ambient-session-miner.md). Absent or Enabled=false ⇒ the
 	// miner never starts and nothing in any flow/test path spends LLM. Validated
@@ -92,6 +116,55 @@ type WebConfig struct {
 	// The profile supplies community/project conventions; root.overrides remains
 	// the explicit escape hatch and wins on conflicts.
 	ProjectProfile string `yaml:"project_profile,omitempty"`
+
+	// FeedbackRouting is the producer-keyed routing table for the web
+	// server's POST /api/feedback/local intake (U2, feedback report
+	// 01KXD2300AEDR4DKBVGQY7PJT2): keyed by the feedback bundle's producer
+	// id (e.g. "pog-portal"), each rule decides whether the catalog sink
+	// fires for that producer and what node type it proposes into which
+	// catalog. Absent ⇒ every bundle stays local-JSONL-only. Validated in
+	// Load via resolveFeedbackRouting.
+	FeedbackRouting map[string]FeedbackRoute `yaml:"feedback_routing,omitempty"`
+}
+
+// FeedbackRoute is one producer's `feedback_routing:` rule. The node type
+// named here lives in the CONSUMER repo's own catalog (POG ruling D-F2 —
+// e.g. a `portal-feedback` type proposed into the consumer's review queue);
+// kitsoki never declares feedback node types itself.
+type FeedbackRoute struct {
+	// Sink selects the extra sink for this producer: "" or "local" keeps
+	// the bundle JSONL-only; "catalog" additionally proposes a node.
+	Sink string `yaml:"sink,omitempty"`
+	// Catalog is the target catalog path, repo-root-relative (the same
+	// convention --kits-dir/--stories-dir use). Empty defaults to
+	// pog/catalog.yaml.
+	Catalog string `yaml:"catalog,omitempty"`
+	// Type is the node type id to propose. Required when sink is "catalog".
+	Type string `yaml:"type,omitempty"`
+	// Fields optionally names field ids of the target type to populate
+	// (first carries the summary text; "report"/"report_id" carry the
+	// receipt ref) — mirrors a catalog's own feedback_routing.fields.
+	Fields []string `yaml:"fields,omitempty"`
+}
+
+// resolveFeedbackRouting validates the `feedback_routing:` block fail-fast
+// at load, mirroring resolveMining: sink must be one of ""|local|catalog,
+// and a catalog-sink rule must name its node type.
+func (cfg *WebConfig) resolveFeedbackRouting() error {
+	for producer, rule := range cfg.FeedbackRouting {
+		if strings.TrimSpace(producer) == "" {
+			return fmt.Errorf("feedback_routing: empty producer key")
+		}
+		switch rule.Sink {
+		case "", "local", "catalog":
+		default:
+			return fmt.Errorf("feedback_routing.%s: sink %q is not one of \"local\"|\"catalog\"", producer, rule.Sink)
+		}
+		if rule.Sink == "catalog" && strings.TrimSpace(rule.Type) == "" {
+			return fmt.Errorf("feedback_routing.%s: sink \"catalog\" requires a node `type`", producer)
+		}
+	}
+	return nil
 }
 
 // InterceptConfig is the operator's binding for the pre-LLM intercept gate. It
@@ -219,8 +292,8 @@ type RootConfig struct {
 // RootOverrides are the rung-1 fold inputs. Each is optional.
 type RootOverrides struct {
 	// Bindings rebinds dev-story host_interfaces (ticket/vcs/ci/workspace/
-	// transport) onto concrete handlers. Folded into the import's
-	// host_bindings. An unknown iface is a Load error.
+	// transport) onto concrete handlers or .star script paths. Folded into the
+	// import's host_bindings. An unknown iface is a Load error.
 	Bindings map[string]string `yaml:"bindings,omitempty"`
 	// World sets instance-level world defaults projected into dev-story via
 	// world_in:. An unknown dev-story world key is a Load error.
@@ -304,7 +377,83 @@ type QuotaControl struct {
 	LeaseTimeout    string `yaml:"lease_timeout,omitempty"`
 }
 
-var validBackends = map[string]bool{"": true, "claude": true, "copilot": true, "codex": true}
+// HarnessLadder is the `.kitsoki.yaml` `harness_ladder:` block: an ordered,
+// cheap-first list of {backend, provider, model} slots (Models — the
+// availability/model axis) crossed with an ordered effort catalog (Efforts —
+// the capability axis, swept low→max on each model before the next one is tried).
+// Mirrors internal/host.LadderConfig field-for-field; ToHostLadderConfig does
+// the (trivial, lossless) conversion. See the package doc on
+// internal/host/ladder.go for the full infra-vs-capability routing design.
+type HarnessLadder struct {
+	// Models is the ordered model axis, cheapest first. At least one entry is
+	// required when harness_ladder: is declared at all.
+	Models []HarnessLadderModel `yaml:"models"`
+	// Efforts is the ordered effort axis, cheapest first (e.g.
+	// [low, medium, high, xhigh, max]). Empty ⇒ no effort sweep (each model is
+	// tried once, at its own default effort).
+	Efforts []string `yaml:"efforts,omitempty"`
+	// MaxAttempts caps the total dispatch count across the whole model×effort
+	// grid. Zero ⇒ no cap beyond len(Models)*len(Efforts).
+	MaxAttempts int `yaml:"max_attempts,omitempty"`
+	// Backoff is a Go duration string for how long an infra-failing
+	// provider/harness lane is skipped after one failure (e.g. "5m"). Empty ⇒
+	// internal/host's default (5 minutes).
+	Backoff string `yaml:"backoff,omitempty"`
+}
+
+// HarnessLadderModel is one {backend, provider, model} slot in a
+// HarnessLadder's Models list.
+type HarnessLadderModel struct {
+	// Backend selects the coding-agent CLI: claude|copilot|codex. Empty ⇒
+	// claude.
+	Backend string `yaml:"backend,omitempty"`
+	// Provider optionally names an entry the operator exposes to
+	// host.agent.* via the same provider-resolution map effects already use
+	// with `with: { provider: <name> }` — supplying this rung's env overrides
+	// (API keys, base URLs). Empty ⇒ ambient env for Backend.
+	Provider string `yaml:"provider,omitempty"`
+	// Model is the --model value for this rung. Required.
+	Model string `yaml:"model,omitempty"`
+}
+
+// AgentUserDelegationRuntimeEnabled gates OS-user delegation of agent backends.
+// Keep config parsing active while runtime delegation is disabled so existing
+// .kitsoki.local.yaml files keep loading.
+const AgentUserDelegationRuntimeEnabled = false
+
+// AgentUserDelegationConfig is the local receipt for OS-user delegation of
+// coding-agent backend CLIs. It is intentionally machine-local: shared story
+// config may require a role, but local usernames and wrapper paths belong in
+// .kitsoki.local.yaml.
+type AgentUserDelegationConfig struct {
+	Enabled     bool   `yaml:"enabled,omitempty" json:"enabled,omitempty"`
+	RunAsUser   string `yaml:"run_as_user,omitempty" json:"run_as_user,omitempty"`
+	WrapperBin  string `yaml:"wrapper_bin,omitempty" json:"wrapper_bin,omitempty"`
+	CapsuleRoot string `yaml:"capsule_root,omitempty" json:"capsule_root,omitempty"`
+	ReceiptPath string `yaml:"receipt_path,omitempty" json:"receipt_path,omitempty"`
+}
+
+// ToHostLadderConfig converts h into the runtime internal/host.LadderConfig
+// the orchestrator installs on ctx (host.WithHarnessLadder). A nil h yields a
+// disabled LadderConfig{} (Enabled() == false), so callers can convert
+// unconditionally without a nil check.
+func (h *HarnessLadder) ToHostLadderConfig() host.LadderConfig {
+	if h == nil {
+		return host.LadderConfig{}
+	}
+	models := make([]host.LadderModel, 0, len(h.Models))
+	for _, m := range h.Models {
+		models = append(models, host.LadderModel{Backend: m.Backend, Provider: m.Provider, Model: m.Model})
+	}
+	return host.LadderConfig{
+		Models:      models,
+		Efforts:     append([]string(nil), h.Efforts...),
+		MaxAttempts: h.MaxAttempts,
+		Backoff:     h.Backoff,
+	}
+}
+
+var validBackends = map[string]bool{"": true, "claude": true, "copilot": true, "codex": true, "agy": true}
 
 // validEfforts mirrors the engine's --effort levels (internal/app loader).
 var validEfforts = map[string]bool{"low": true, "medium": true, "high": true, "xhigh": true, "max": true}
@@ -338,13 +487,25 @@ func Load(path string) (WebConfig, error) {
 	if err := cfg.resolveHarnessProfiles(); err != nil {
 		return WebConfig{}, fmt.Errorf("%s: %w", path, err)
 	}
+	if err := cfg.resolveHarnessLadder(); err != nil {
+		return WebConfig{}, fmt.Errorf("%s: %w", path, err)
+	}
 	if err := cfg.resolveIntercept(); err != nil {
+		return WebConfig{}, fmt.Errorf("%s: %w", path, err)
+	}
+	if err := cfg.resolveAgentLaunchPolicy(path); err != nil {
+		return WebConfig{}, fmt.Errorf("%s: %w", path, err)
+	}
+	if err := cfg.resolveAgentUserDelegation(path); err != nil {
 		return WebConfig{}, fmt.Errorf("%s: %w", path, err)
 	}
 	if err := cfg.resolveRoot(path); err != nil {
 		return WebConfig{}, fmt.Errorf("%s: %w", path, err)
 	}
 	if err := cfg.resolveMining(); err != nil {
+		return WebConfig{}, fmt.Errorf("%s: %w", path, err)
+	}
+	if err := cfg.resolveFeedbackRouting(); err != nil {
 		return WebConfig{}, fmt.Errorf("%s: %w", path, err)
 	}
 	return cfg, nil
@@ -487,6 +648,9 @@ func samePath(a, b string) bool {
 // mergeConfig deep-merges a local override onto a base config, local-wins:
 //   - story_dirs and default_profile are scalars/lists — a non-empty local value
 //     replaces the base value; an absent local value leaves the base untouched.
+//   - root overrides merge with the same profile-vs-explicit precedence used by
+//     project profiles, so local root.overrides can retarget one world key
+//     without restating the whole implicit dev-story root.
 //   - harness_profiles merge BY PROFILE NAME: profiles only in base survive,
 //     profiles in local are added, and a profile present in both is replaced
 //     WHOLE by the local one. (Field-level merging within a profile is
@@ -503,11 +667,20 @@ func mergeConfig(base, local WebConfig) WebConfig {
 	if local.ProjectProfile != "" {
 		out.ProjectProfile = local.ProjectProfile
 	}
+	if local.Root != nil {
+		out.Root = mergeRootConfig(base.Root, local.Root)
+	}
 	// The intercept binding is a single coherent block, so the local file
 	// replaces it whole (matching the per-profile "restate, don't field-merge"
 	// rule above) rather than field-merging into the base binding.
 	if local.Intercept != nil {
 		out.Intercept = local.Intercept
+	}
+	if local.AgentLaunchPolicy != nil {
+		out.AgentLaunchPolicy = local.AgentLaunchPolicy
+	}
+	if local.AgentUserDelegation != nil {
+		out.AgentUserDelegation = local.AgentUserDelegation
 	}
 	if len(local.HarnessProfiles) > 0 {
 		merged := make(map[string]HarnessProfile, len(base.HarnessProfiles)+len(local.HarnessProfiles))
@@ -519,6 +692,23 @@ func mergeConfig(base, local WebConfig) WebConfig {
 		}
 		out.HarnessProfiles = merged
 	}
+	// A single coherent block, like Intercept — the local file replaces it
+	// whole rather than field-merging.
+	if local.HarnessLadder != nil {
+		out.HarnessLadder = local.HarnessLadder
+	}
+	// Per-producer key merge, like HarnessProfiles: a local rule replaces
+	// the base rule for the same producer whole.
+	if len(local.FeedbackRouting) > 0 {
+		merged := make(map[string]FeedbackRoute, len(base.FeedbackRouting)+len(local.FeedbackRouting))
+		for k, v := range base.FeedbackRouting {
+			merged[k] = v
+		}
+		for k, v := range local.FeedbackRouting {
+			merged[k] = v
+		}
+		out.FeedbackRouting = merged
+	}
 	return out
 }
 
@@ -529,6 +719,7 @@ type projectProfile struct {
 	Schema          string                 `yaml:"schema"`
 	Commands        map[string]string      `yaml:"commands"`
 	Repo            projectProfileRepo     `yaml:"repo"`
+	Tracker         projectProfileTracker  `yaml:"tracker"`
 	Kitsoki         projectProfileKitsoki  `yaml:"kitsoki"`
 	DevStoryProfile projectDevStoryProfile `yaml:"dev_story_profile"`
 }
@@ -544,6 +735,10 @@ type projectProfileKitsoki struct {
 
 type projectProfileInstance struct {
 	Bindings map[string]string `yaml:"bindings"`
+}
+
+type projectProfileTracker struct {
+	Sources []any `yaml:"sources"`
 }
 
 type projectDevStoryProfile struct {
@@ -617,6 +812,9 @@ func profileRootConfig(profile projectProfile) *RootConfig {
 	if profile.Kitsoki.JudgeMode != "" {
 		world["judge_mode"] = profile.Kitsoki.JudgeMode
 	}
+	if len(profile.Tracker.Sources) > 0 {
+		world["ticket_sources"] = copyAnySlice(profile.Tracker.Sources)
+	}
 	docs := profile.DevStoryProfile.Docs
 	setStringWorld(world, "publish_durable_path", docs.PublishDurablePath)
 	setStringWorld(world, "prd_doc_filename", docs.PRDDocFilename)
@@ -641,7 +839,7 @@ func profileRootConfig(profile projectProfile) *RootConfig {
 	if len(overrides.Bindings) == 0 && len(overrides.World) == 0 {
 		return nil
 	}
-	return &RootConfig{Import: app.RootStoryName, Overrides: overrides}
+	return &RootConfig{Import: app.DefaultRootKitName, Overrides: overrides}
 }
 
 func mergeRootConfig(base, override *RootConfig) *RootConfig {
@@ -687,7 +885,7 @@ func mergeRootConfig(base, override *RootConfig) *RootConfig {
 		}
 	}
 	if out.Import == "" {
-		out.Import = app.RootStoryName
+		out.Import = app.DefaultRootKitName
 	}
 	return out
 }
@@ -720,6 +918,15 @@ func copyAnyMap(in map[string]any) map[string]any {
 	return out
 }
 
+func copyAnySlice(in []any) []any {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]any, len(in))
+	copy(out, in)
+	return out
+}
+
 func copyStringSliceMap(in map[string][]string) map[string][]string {
 	if len(in) == 0 {
 		return nil
@@ -734,15 +941,19 @@ func copyStringSliceMap(in map[string][]string) map[string][]string {
 // resolveRoot validates the `root:` block fail-fast at load (never at first
 // turn), mirroring resolveHarnessProfiles. Three checks:
 //
-//   - root.import must be the blessed base story (v1: dev-story);
-//   - every overrides.bindings.<iface> must name a dev-story host_interface
-//     (ticket/vcs/ci/workspace/transport);
-//   - every overrides.world.<key> must name a dev-story world key — resolved by
-//     loading dev-story standalone from the repo root (the directory the config
-//     file lives in is the resolution start). When dev-story cannot be resolved
-//     (a downstream checkout without the in-repo story — the deferred
-//     kitsoki-as-dependency case), world-key validation is skipped rather than
-//     failing the whole load; the import + binding checks still apply.
+//   - root.import must be a blessed root kit — one whose kit.yaml declares a
+//     root: block naming it (D6: any installed kit can qualify, not just the
+//     hardcoded dev-story; see app.ResolveRootKit);
+//   - every overrides.bindings.<iface> must name one of that kit's declared
+//     root.host_interfaces (dev-story's default set is
+//     ticket/vcs/ci/workspace/transport);
+//   - every overrides.world.<key> must name a root-story world key — resolved
+//     by loading the root story standalone from the repo root (the directory
+//     the config file lives in is the resolution start). When the root kit
+//     cannot be resolved at all (a downstream checkout without the in-repo
+//     story — the deferred kitsoki-as-dependency case), the import/binding
+//     checks are skipped too (root.import cannot be validated without
+//     resolving it) rather than failing the whole load.
 //
 // A nil Root (rung 0) is a no-op.
 func (cfg *WebConfig) resolveRoot(configPath string) error {
@@ -752,34 +963,44 @@ func (cfg *WebConfig) resolveRoot(configPath string) error {
 	}
 	importName := rc.Import
 	if importName == "" {
-		importName = app.RootStoryName
+		importName = app.DefaultRootKitName
 	}
-	if importName != app.RootStoryName {
-		return fmt.Errorf("root.import %q is not a known base story (v1 supports: %s)", importName, app.RootStoryName)
+	repoRoot := filepath.Dir(configPath)
+	if abs, err := filepath.Abs(repoRoot); err == nil {
+		repoRoot = abs
+	}
+	manifest, err := app.ResolveRootKit(importName, repoRoot, nil)
+	if err != nil {
+		if importName != app.DefaultRootKitName {
+			// An explicit, non-default root.import that fails to resolve is
+			// always a config error — surface it.
+			return err
+		}
+		// The default root kit is not resolvable here (downstream dependency
+		// case without an in-repo checkout); skip validation entirely rather
+		// than failing — the deferred kitsoki-as-dependency slice owns
+		// installed-story resolution.
+		return nil
 	}
 	if rc.Overrides == nil {
 		return nil
 	}
+	rootIfaces := manifest.RootHostInterfaces()
 	for iface := range rc.Overrides.Bindings {
-		if _, ok := app.DevStoryIfaces[iface]; !ok {
-			return fmt.Errorf("root.overrides.bindings: %q is not a host_interface declared by %s", iface, app.RootStoryName)
+		if _, ok := rootIfaces[iface]; !ok {
+			return fmt.Errorf("root.overrides.bindings: %q is not a host_interface declared by %s", iface, importName)
 		}
 	}
 	if len(rc.Overrides.World) > 0 {
-		repoRoot := filepath.Dir(configPath)
-		if abs, err := filepath.Abs(repoRoot); err == nil {
-			repoRoot = abs
-		}
-		keys, err := app.DevStoryWorldKeys(repoRoot)
+		keys, err := app.DevStoryWorldKeysFor(manifest, repoRoot)
 		if err != nil {
-			// dev-story is not resolvable here (downstream dependency case);
-			// skip the world-key check rather than failing — the deferred
-			// kitsoki-as-dependency slice owns installed-story resolution.
+			// The root story itself is not resolvable here; skip the
+			// world-key check rather than failing — same reasoning as above.
 			return nil
 		}
 		for key := range rc.Overrides.World {
 			if _, ok := keys[key]; !ok {
-				return fmt.Errorf("root.overrides.world: unknown key %q for base %s", key, app.RootStoryName)
+				return fmt.Errorf("root.overrides.world: unknown key %q for base %s", key, importName)
 			}
 		}
 	}
@@ -802,7 +1023,7 @@ func (cfg *WebConfig) resolveHarnessProfiles() error {
 	var dropped []string
 	for name, p := range cfg.HarnessProfiles {
 		if !validBackends[p.Backend] {
-			return fmt.Errorf("harness_profiles.%s: backend %q is invalid (want claude|copilot|codex)", name, p.Backend)
+			return fmt.Errorf("harness_profiles.%s: backend %q is invalid (want claude|copilot|codex|agy)", name, p.Backend)
 		}
 		missingEnv := ""
 		for k, v := range p.Env {
@@ -877,6 +1098,47 @@ func (cfg *WebConfig) resolveHarnessProfiles() error {
 	return nil
 }
 
+// resolveHarnessLadder validates the `harness_ladder:` block, fail-fast at
+// load, mirroring resolveHarnessProfiles. A nil block (the common case: no
+// ladder declared) is a no-op — every host.agent.decide / host.agent.task
+// dispatch stays on today's single-dispatch behavior. A DECLARED block must
+// name at least one model (an empty models: list is almost certainly a typo,
+// not an intentional "disable the ladder" — omit the whole harness_ladder:
+// key for that instead) with a non-empty model: and a valid backend; efforts
+// (if any) must be recognized levels; max_attempts must not be negative;
+// backoff (if set) must parse as a Go duration.
+func (cfg *WebConfig) resolveHarnessLadder() error {
+	l := cfg.HarnessLadder
+	if l == nil {
+		return nil
+	}
+	if len(l.Models) == 0 {
+		return fmt.Errorf("harness_ladder.models: at least one model is required when harness_ladder: is declared")
+	}
+	for i, m := range l.Models {
+		if !validBackends[m.Backend] {
+			return fmt.Errorf("harness_ladder.models[%d]: backend %q is invalid (want claude|copilot|codex|agy)", i, m.Backend)
+		}
+		if strings.TrimSpace(m.Model) == "" {
+			return fmt.Errorf("harness_ladder.models[%d]: model is required", i)
+		}
+	}
+	for _, e := range l.Efforts {
+		if !validEfforts[e] {
+			return fmt.Errorf("harness_ladder.efforts: %q is invalid (valid: low, medium, high, xhigh, max)", e)
+		}
+	}
+	if l.MaxAttempts < 0 {
+		return fmt.Errorf("harness_ladder.max_attempts must not be negative")
+	}
+	if l.Backoff != "" {
+		if _, err := time.ParseDuration(l.Backoff); err != nil {
+			return fmt.Errorf("harness_ladder.backoff %q is not a valid duration: %w", l.Backoff, err)
+		}
+	}
+	return nil
+}
+
 // resolveIntercept validates the intercept binding and applies the default
 // confidence bar in place. A nil or disabled block is a no-op (the hook
 // command then relies on its --app/--room/--bar flags). An enabled block must
@@ -900,6 +1162,102 @@ func (cfg *WebConfig) resolveIntercept() error {
 		return fmt.Errorf("intercept.confidence_bar %g is invalid (want a value in (0, 1])", ic.ConfidenceBar)
 	}
 	return nil
+}
+
+func (cfg *WebConfig) resolveAgentLaunchPolicy(configPath string) error {
+	p := cfg.AgentLaunchPolicy
+	if p == nil || !p.Enabled {
+		return nil
+	}
+	base := filepath.Dir(configPath)
+	if base == "" {
+		base = "."
+	}
+	baseAbs, err := filepath.Abs(base)
+	if err != nil {
+		return fmt.Errorf("agent_launch_policy: resolve config dir: %w", err)
+	}
+	baseAbs = filepath.Clean(baseAbs)
+	if len(p.ProtectedRoots) == 0 {
+		p.ProtectedRoots = []string{baseAbs}
+	} else {
+		roots, err := resolvePolicyPaths(baseAbs, p.ProtectedRoots)
+		if err != nil {
+			return fmt.Errorf("agent_launch_policy.protected_roots: %w", err)
+		}
+		p.ProtectedRoots = roots
+	}
+	if len(p.AllowedRoots) > 0 {
+		roots, err := resolvePolicyPaths(baseAbs, p.AllowedRoots)
+		if err != nil {
+			return fmt.Errorf("agent_launch_policy.allowed_roots: %w", err)
+		}
+		p.AllowedRoots = roots
+	}
+	normalized := p.Normalized()
+	*p = normalized
+	return nil
+}
+
+func (cfg *WebConfig) resolveAgentUserDelegation(configPath string) error {
+	d := cfg.AgentUserDelegation
+	if d == nil {
+		return nil
+	}
+	d.RunAsUser = strings.TrimSpace(d.RunAsUser)
+	if AgentUserDelegationRuntimeEnabled && d.Enabled && d.RunAsUser == "" {
+		return fmt.Errorf("agent_user_delegation.run_as_user is required when enabled is true")
+	}
+	base := filepath.Dir(configPath)
+	if base == "" {
+		base = "."
+	}
+	baseAbs, err := filepath.Abs(base)
+	if err != nil {
+		return fmt.Errorf("agent_user_delegation: resolve config dir: %w", err)
+	}
+	baseAbs = filepath.Clean(baseAbs)
+	if d.WrapperBin != "" {
+		resolved, err := resolvePolicyPaths(baseAbs, []string{d.WrapperBin})
+		if err != nil {
+			return fmt.Errorf("agent_user_delegation.wrapper_bin: %w", err)
+		}
+		d.WrapperBin = resolved[0]
+	}
+	if d.CapsuleRoot != "" {
+		resolved, err := resolvePolicyPaths(baseAbs, []string{d.CapsuleRoot})
+		if err != nil {
+			return fmt.Errorf("agent_user_delegation.capsule_root: %w", err)
+		}
+		d.CapsuleRoot = resolved[0]
+	}
+	if d.ReceiptPath != "" {
+		resolved, err := resolvePolicyPaths(baseAbs, []string{d.ReceiptPath})
+		if err != nil {
+			return fmt.Errorf("agent_user_delegation.receipt_path: %w", err)
+		}
+		d.ReceiptPath = resolved[0]
+	}
+	return nil
+}
+
+func resolvePolicyPaths(base string, paths []string) ([]string, error) {
+	out := make([]string, 0, len(paths))
+	for _, p := range paths {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			return nil, fmt.Errorf("entries must be non-empty")
+		}
+		if !filepath.IsAbs(p) {
+			p = filepath.Join(base, p)
+		}
+		abs, err := filepath.Abs(p)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, filepath.Clean(abs))
+	}
+	return out, nil
 }
 
 func contains(ss []string, s string) bool {

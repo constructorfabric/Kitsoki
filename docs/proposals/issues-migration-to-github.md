@@ -99,9 +99,9 @@ state, and evidence preserved), `kitsoki-dev` reads/writes GitHub, and
 - **Docs on ship:** `issues/DEPRECATED.md`; the `kitsoki-dev` README's ticket
   section (now GitHub-backed); fold the migration command into
   `docs/architecture/` or the dev-story README.
-- **Compat:** `host.local_files.ticket` stays in the codebase (other
-  instances / `external-project-targeting` may still use file tickets); only
-  the kitsoki-dev binding flips.
+- **Compat:** `host.local_files.ticket` stays in the codebase (other instances
+  may still use file tickets for local development; the dev-story README documents
+  how to configure providers per instance); only the kitsoki-dev binding flips.
 
 ## Tasks
 

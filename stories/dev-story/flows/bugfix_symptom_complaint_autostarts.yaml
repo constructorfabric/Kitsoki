@@ -1,0 +1,43 @@
+# bugfix_symptom_complaint_autostarts -- symptom-style requests from landing
+# ("make install is broken") are bug reports, not workbench free-form tasks.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world:
+  bugfix_mode: "triage"
+  judge_mode: "human"
+
+host_handlers:
+  host.agent.codeact:
+    data:
+      ok: true
+      terminated: "done"
+      payload:
+        verdict: "UNCLEAR"
+        confidence: 0.42
+        summary_title: "UNCLEAR - needs reproduction"
+        evidence: "The symptom complaint reached triage as ticket_body."
+        summary_markdown: "The hub accepted a symptom-style bug report without dispatching the workbench."
+        suggested_action: "ask for exact reproduction steps"
+        fixed_in_ref: null
+        involved_components: []
+      steps: []
+
+turns:
+  - intent:
+      name: bugfix_report
+      slots:
+        complaint: "make install"
+    expect_state: bf.triaging
+    expect_world:
+      bf__ticket_title: "Free-form bug report"
+      bf__ticket_source_mode: "freeform"
+      bf__ticket_source_ref: "operator complaint"
+      bf__ticket_body: "make install"
+    expect_events:
+      - kind: machine.say
+        effect:
+          text: "Bug report captured; entering bugfix with the inline complaint."
+
+expect_no_errors: true

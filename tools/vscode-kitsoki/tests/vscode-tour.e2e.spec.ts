@@ -38,17 +38,12 @@
  *
  * Critical path asserted beat-by-beat (the scenarios kitsoki-ui-qa checks the
  * video against). Chat / trace / graph are independent surfaces that all follow
- * ONE backend session (surface decomposition); the chat lives both as a narrow
- * sidebar pane and as a full editor-area pop-out:
+ * ONE backend session (surface decomposition):
  *   (a) "Kitsoki: Open Chat" goes straight to a story PICKER; picking the weather
- *       story STARTS the session and the narrow sidebar Chat surface immediately
- *       reflects it (current-state=lobby), collapsed to a single-line input;
- *   (b) pop the chat out EARLY — the Chat pane's title-bar button promotes it to
- *       the full editor panel, which is PINNED to the active session (mountSpa
- *       seeds the SPA's initial route from runstatus.session.current) so it opens
- *       ON the conversation, and is TALL so the InputBar shows the full structured
- *       form (no collapse) — the deliberate contrast with the narrow sidebar;
- *   (d) a turn is driven in the popped-out editor chat and state advances
+ *       story starts the session and focuses Chat in VS Code's bottom panel;
+ *   (b) maximizing the bottom panel keeps Chat out of the editor grid and exposes
+ *       the full structured input;
+ *   (d) a turn is driven in the bottom-panel chat and state advances
  *       (forecast → current-state=report, state-badge present; "Tokyo, Japan"
  *       renders);
  *   (h) surface decomposition — "Kitsoki: Open Trace" docks the Trace as its OWN
@@ -59,10 +54,9 @@
  *       follows the session and marks the current station;
  *   (j) one backend — the chat + trace + graph webviews relay to a SINGLE spawned
  *       `kitsoki web` process (asserted via the host log: exactly one spawn);
- *   (e) close the sidebar so the popped-out chat OWNS the editor area; then
- *   (g) finale — app.yaml splits ABOVE the chat, the story source on top and the
- *       conversation below (record only; assert-mode skips the editor-split beats
- *       to stay instant).
+ *   (e) close the surfaces sidebar while bottom-panel Chat remains visible; then
+ *   (g) finale — app.yaml opens above the Chat panel, leaving source and
+ *       conversation visible together (record only).
  *
  * Run (one-liner gate):  pnpm e2e
  *   ≡  KITSOKI_VSCODE_PACE=0 playwright test vscode-tour.e2e
@@ -115,27 +109,21 @@ const dwell = (ms: number) => (RECORD ? sleep(ms * PACE) : Promise.resolve());
  * beats are narrated by WEATHER_REPORT_TOUR_STEPS instead.
  */
 const EDITOR_BEATS = {
-  // "Kitsoki: Open Chat" goes straight to a story PICKER; picking a story starts
-  // the session and the narrow sidebar Chat immediately reflects it (collapsed to
-  // a single-line input). The picker is native VS Code chrome, not a webview popover.
-  pickerStart: { id: 'a-open-chat-picker', title: 'Open Chat → pick a story → it starts in the sidebar (collapsed)', dwellMs: 4000 },
-  // Pop out EARLY: the Chat pane's title-bar button promotes the conversation to
-  // the full editor-area panel. The full SPA is pinned to the active session, so it
-  // opens ON the conversation — and is TALL, so its InputBar shows the full
-  // structured form (a deliberate contrast with the collapsed sidebar).
-  popOutEarly: { id: 'b-chat-popout', title: 'Pop the chat out to the editor — full input, same session', dwellMs: 4000 },
-  // Drive a turn in the popped-out editor chat — state advances to the report.
-  driveTurn: { id: 'd-turn-driven', title: 'Drive a turn in the popped-out chat — state advances to the report', dwellMs: 4500 },
+  // "Kitsoki: Open Chat" starts the selected story in the bottom panel.
+  pickerStart: { id: 'a-open-chat-picker', title: 'Open Chat → pick a story → bottom-panel Chat starts', dwellMs: 4000 },
+  // Maximize the panel to expose the full structured form without creating an editor tab.
+  panelMaximized: { id: 'b-chat-panel-maximized', title: 'Maximize bottom-panel Chat — full input, same session', dwellMs: 4000 },
+  // Drive a turn in bottom-panel Chat — state advances to the report.
+  driveTurn: { id: 'd-turn-driven', title: 'Drive a turn in bottom-panel Chat — state advances to the report', dwellMs: 4500 },
   // Surface decomposition: Trace and Graph each open as their OWN webview in the
   // "Kitsoki Surfaces" sidebar — a separate document/store from the chat editor
   // panel — and discover-and-follow the SAME backend session via
   // runstatus.session.current. These ride the manifest (no web-tour popover).
   tracePanel: { id: 'h-trace-panel', title: 'Trace in its own sidebar panel — same session', dwellMs: 4500 },
   graphPanel: { id: 'i-graph-panel', title: 'State graph in its own sidebar panel — same session', dwellMs: 4500 },
-  // Close the sidebar so the popped-out chat OWNS the main editor area.
-  chatMain: { id: 'e-chat-main', title: 'Close the sidebar — the chat fills the main area', dwellMs: 3500 },
-  // The finale: app.yaml split ABOVE the Kitsoki chat panel — the story source on
-  // top, the conversation below, stacked in one editor group (vertical).
+  // Close the surfaces sidebar while Chat remains in the bottom panel.
+  chatMain: { id: 'e-chat-main', title: 'Close the surfaces sidebar — bottom-panel Chat remains', dwellMs: 3500 },
+  // The finale: app.yaml above the bottom-panel conversation.
   splitEditor: { id: 'g-split-editor', title: 'Open the story file above the chat', dwellMs: 4000 },
 } as const;
 
@@ -229,11 +217,9 @@ function transcodeWebmToMp4(
 
 /**
  * Dismiss the narration overlay in WHICHEVER webview still holds it. Once the
- * trace/graph/sidebar-chat surfaces are open there are several `iframe.webview`
- * hosts, so the `.first()`-bound editor frame is no longer reliably the editor
- * panel — scan every host and skip the tour where its overlay actually lives.
- * Best-effort + record-only (the editor panel's leftover forecast popover must
- * not bleed into the later sidebar+editor beats).
+ * trace/graph/chat surfaces are open there are several `iframe.webview` hosts,
+ * so scan every host and skip the tour where its overlay actually lives.
+ * Best-effort + record-only.
  */
 async function dismissTourEverywhere(win: Page): Promise<void> {
   if (!RECORD) return;
@@ -327,8 +313,7 @@ async function clickPaneHeader(win: Page, title: string): Promise<void> {
 }
 
 /**
- * Locate a sidebar view pane by its header title. Used to scope a title-bar
- * action (e.g. the Chat pane's pop-out button) to the right pane.
+ * Locate a view pane by its header title.
  */
 function paneByTitle(win: Page, title: string) {
   return win
@@ -470,119 +455,86 @@ test('vscode tour e2e — load, render, drive, trace (no-LLM, deterministic)', a
       return p;
     };
 
-    // ── (a) Open Chat → story PICKER → start → the sidebar Chat reflects it ────
-    // The headline: "Kitsoki: Open Chat" no longer opens a window directly — it goes
-    // STRAIGHT to a story picker. Reveal the single Kitsoki menu (Chat is its first
-    // pane), run Open Chat, pick the weather story; the session STARTS and the narrow
-    // sidebar Chat surface immediately follows it via the current-session seam.
+    // ── (a) Open Chat → story PICKER → start → bottom panel reflects it ────────
+    // Chat is contributed to VS Code's bottom panel beside Terminal / Ports /
+    // Playwright. It never creates an editor tab. Open Chat starts the selected
+    // story and focuses that panel view.
     await win.waitForSelector('.monaco-workbench', { timeout: 60_000 });
-    const kitsokiIcon = win.locator('.activitybar [aria-label*="Kitsoki" i]').first();
-    await expect(kitsokiIcon, 'the single Kitsoki Activity Bar menu present').toBeVisible({
-      timeout: 30_000,
-    });
-    await kitsokiIcon.click();
-    // Wait for the Chat pane to render before driving the palette — clicking the icon
-    // resolves a webview and momentarily steals focus, so pressing the palette
-    // mid-transition is a race. Asserting the pane header lands first keeps this
-    // deterministic (a race is a bug, not a sleep).
-    await expect(
-      win.locator('.pane-header').filter({ hasText: /^\s*Chat\b/i }).first(),
-      'the one Kitsoki menu opened with the Chat surface as its first pane',
-    ).toBeVisible({ timeout: 30_000 });
-    // Widen the sidebar (record only) to a ~50/50 split with the editor area the
-    // chat pops out into — the collapsed sidebar Chat reads clearly on the left, and
-    // there's room on the right for the full popped-out chat a beat later.
-    await widenSidebar(win, 700);
-    await dwell(1000);
-
-    // Open Chat → its story picker opens (a native QuickPick). Pick weather; the
-    // command calls runstatus.session.new and the session becomes current.
     const openChat = await runPaletteCommand(win, ['>Kitsoki: Open Chat']);
     expect(openChat, '"Kitsoki: Open Chat" command available').toBe(true);
     const picked = await drivePicker(win, 'weather');
     expect(picked, 'Open Chat story picker offered the weather story').toBe(true);
     await dwell(1000);
 
-    // The started session lands in the narrow sidebar Chat (the single-surface
-    // ChatSurface) — proof the left surfaces reflect the pick immediately
+    await expect(
+      win.locator('.part.panel').getByRole('tab', { name: /^Kitsoki\b/i }),
+      'the Kitsoki Chat view opened in VS Code\'s bottom panel',
+    ).toBeVisible({ timeout: 30_000 });
+    await expect(
+      win.locator('.part.editor .tab.active').filter({ hasText: /^\s*Kitsoki\s*$/i }),
+      'opening bottom-panel chat did not create a Kitsoki editor tab',
+    ).toHaveCount(0);
+
+    // The started session lands in the panel ChatSurface immediately
     // (current-session discovery on mount + the live subscribeCurrentSession seam).
     // This is also the bundle+CSP+relay+backend round-trip in one assertion: a
     // rendered session means the relay works.
     const chatFrame: FrameLocator = await surfaceFrame(win, 'surface-chat', 45_000);
     await expect(
       chatFrame.locator('[data-testid="surface-chat"]'),
-      'the sidebar Chat surface mounted (its own webview, BridgeTransport relay)',
+      'the bottom-panel Chat surface mounted (its own webview, BridgeTransport relay)',
     ).toBeVisible({ timeout: 30_000 });
     await expect(
       chatFrame.locator('[data-testid="current-state"]'),
       'a fresh session opens in the lobby room',
     ).toHaveText('lobby', { timeout: 30_000 });
-    // The narrow sidebar Chat shares height with Trace + Graph, so its InputBar
-    // collapses to a SINGLE-LINE input plus a disclosure icon (the structured
-    // forecast/climate forms don't fit). Assert that collapse — the feature.
-    await expect(
-      chatFrame.locator('[data-testid="composer-input"]'),
-      'the short Chat pane collapses its input to a single line',
-    ).toBeVisible({ timeout: 15_000 });
-    await expect(
-      chatFrame.locator('[data-testid="input-disclose"]'),
-      'a disclosure icon hints the hidden actions in the collapsed input',
-    ).toBeVisible({ timeout: 15_000 });
     if (RECORD) {
       chapters.open(EDITOR_BEATS.pickerStart.id, EDITOR_BEATS.pickerStart.title);
       await dwell(EDITOR_BEATS.pickerStart.dwellMs);
     }
     await shot('a-open-chat-picker');
 
-    // ── (b) Pop the chat out to the editor EARLY ──────────────────────────────
-    // The Chat pane's title-bar button promotes the conversation to the full
-    // editor-area panel. The full SPA is PINNED to the active session (the host
-    // seeds its initial route from runstatus.session.current), so it opens straight
-    // ON the conversation — never on the home library. And it's TALL, so the shared
-    // InputBar does NOT collapse: the full structured forecast form shows directly,
-    // the deliberate contrast with the collapsed sidebar.
-    await clickViewTitleAction(win, 'Chat', 'Open Chat in Editor');
+    // ── (b) Maximize the bottom panel; chat remains outside the editor grid ────
+    await runPaletteCommand(win, ['>View: Toggle Maximized Panel']);
     await dwell(800);
     await expect(
-      win.locator('.tab.active').filter({ hasText: /Kitsoki/i }).first(),
-      'pop-out brings the Kitsoki chat editor panel to the foreground',
+      win.locator('.part.panel').getByRole('tab', { name: /^Kitsoki\b/i }),
+      'the maximized Chat stays in the bottom panel',
     ).toBeVisible({ timeout: 15_000 });
-    // back-stories is the full-SPA InteractiveView topbar link — present ONLY in the
-    // editor chat panel, never the single-surface sidebar ChatSurface. Finding it
-    // both locates the editor frame AND proves the pop-out landed on the session.
-    const editorChat: FrameLocator = await surfaceFrame(win, 'back-stories', 45_000);
+    const editorChat: FrameLocator = await surfaceFrame(win, 'surface-chat', 45_000);
     await dismissTourEverywhere(win);
     await expect(
-      editorChat.locator('[data-testid="chat-section"]'),
-      'the popped-out chat mounted the full SPA and adopted the live session',
+      editorChat.locator('[data-testid="surface-chat"]'),
+      'the panel chat remains mounted after maximizing',
     ).toBeVisible({ timeout: 30_000 });
     await expect(
       editorChat.locator('[data-testid="current-state"]'),
-      'the editor chat opened on the SAME session, still in the lobby',
+      'the panel chat remains on the same session',
     ).toHaveText('lobby', { timeout: 30_000 });
     // Tall editor → no collapse: the structured forecast form shows directly and
     // there is NO disclosure icon (nothing is hidden).
     const forecastForm = editorChat.locator('form[data-intent="forecast"]');
     await expect(
       forecastForm,
-      'the tall editor chat shows the full structured input (no collapse)',
+      'the maximized panel shows the full structured input',
     ).toBeVisible({ timeout: 15_000 });
     await expect(
       editorChat.locator('[data-testid="input-disclose"]'),
-      'no disclosure in the tall editor chat — the actions already fit',
+      'no disclosure in the maximized panel — the actions already fit',
     ).toHaveCount(0);
     if (RECORD) {
-      chapters.open(EDITOR_BEATS.popOutEarly.id, EDITOR_BEATS.popOutEarly.title);
-      await dwell(EDITOR_BEATS.popOutEarly.dwellMs);
+      chapters.open(EDITOR_BEATS.panelMaximized.id, EDITOR_BEATS.panelMaximized.title);
+      await dwell(EDITOR_BEATS.panelMaximized.dwellMs);
     }
-    await shot('b-chat-popout');
+    await shot('b-chat-panel-maximized');
 
-    // ── (d) Drive a turn in the popped-out editor chat → state advances ───────
-    // Same structured forecast path as the sidebar, driven HERE in the full window.
+    // ── (d) Drive a turn in the bottom-panel chat → state advances ────────────
     // The param composer is a wrapping <textarea> now (not a single-line input).
     await forecastForm.locator('textarea').fill('Tokyo');
     await dwell(700);
-    await forecastForm.locator('button[type="submit"]').click();
+    await forecastForm
+      .locator('button[type="submit"]')
+      .evaluate((button) => (button as HTMLButtonElement).click());
     await expect(
       editorChat.locator('[data-testid="current-state"]'),
       'driven turn advances current-state lobby → report',
@@ -618,8 +570,8 @@ test('vscode tour e2e — load, render, drive, trace (no-LLM, deterministic)', a
 
     // ── (h) Surface decomposition: Trace in its OWN panel, same session ───────
     // The headline of this rework. "Kitsoki: Open Trace" reveals a webview view
-    // docked in the bottom panel — a SEPARATE document (own Pinia store, own
-    // Relay) from the chat editor panel. It has no chat to start a session, so it
+    // docked in the Kitsoki Surfaces activity-bar container — a SEPARATE document
+    // (own Pinia store, own Relay) from the chat panel. It has no chat to start a session, so it
     // discovers and follows the active one via runstatus.session.current, then
     // renders the SAME driven trace. Proves N-windows / one-session fan-out.
     const traceOpened = await runPaletteCommand(win, ['>Kitsoki: Open Trace']);
@@ -679,24 +631,21 @@ test('vscode tour e2e — load, render, drive, trace (no-LLM, deterministic)', a
     await shot('i-graph-panel');
 
     // ── (j) One backend across every surface ─────────────────────────────────
-    // Chat editor panel + sidebar Chat + Trace + Graph are four webviews, but the
+    // Bottom-panel Chat + Trace + Graph are three webviews, but the
     // host spawns exactly ONE `kitsoki web` process — they all relay to it. Assert
     // the extension host log shows a single backend spawn (no per-surface backend).
     const spawnCount = (fs.readFileSync(hostLog, 'utf8').match(/\[backend\] spawn:/g) ?? []).length;
-    expect(spawnCount, 'exactly one backend process serves all four surfaces').toBe(1);
+    expect(spawnCount, 'exactly one backend process serves all three surfaces').toBe(1);
 
-    // ── (e) Close the sidebar → the popped-out chat OWNS the main area ─────────
-    // Drop the Surfaces side bar (record only) so the chat panel we popped out early
-    // fills the whole editor area — the frame reads "the chat is the main workspace
-    // now," the setup for opening the story file above it.
+    // ── (e) Close the surfaces sidebar; chat remains in the bottom panel ───────
     await dismissTourEverywhere(win);
     if (RECORD) {
       await runPaletteCommand(win, ['>View: Close Primary Side Bar', '>View: Toggle Primary Side Bar Visibility']);
       await dwell(700);
     }
     await expect(
-      win.locator('.tab.active').filter({ hasText: /Kitsoki/i }).first(),
-      'the popped-out Kitsoki chat panel owns the editor area',
+      win.locator('.part.panel').getByRole('tab', { name: /^Kitsoki\b/i }),
+      'closing the surfaces sidebar leaves bottom-panel chat visible',
     ).toBeVisible({ timeout: 15_000 });
     if (RECORD) {
       chapters.open(EDITOR_BEATS.chatMain.id, EDITOR_BEATS.chatMain.title);
@@ -704,9 +653,7 @@ test('vscode tour e2e — load, render, drive, trace (no-LLM, deterministic)', a
     }
     await shot('e-chat-main');
 
-    // ── (g) Finale: the story file ABOVE the chat (record only) ──────────────
-    // Open the story's app.yaml and stack it ABOVE the Kitsoki chat panel — the
-    // source on top, the live conversation below, in one vertical editor group.
+    // ── (g) Finale: the story file above the bottom-panel chat (record only) ──
     if (RECORD) {
       await openFileAbove(win, APP_YAML);
       await expect(
@@ -865,8 +812,7 @@ async function openFileAbove(win: Page, absPath: string): Promise<void> {
  */
 async function openFileInEditor(win: Page, absPath: string): Promise<void> {
   const isMac = process.platform === 'darwin';
-  // Quick Open via the same robust open (the popped-out chat webview owns the
-  // editor focus here, so the first Cmd+P can be swallowed). The widget hosts two
+  // Quick Open via the same robust open. The widget hosts two
   // inputs (a hidden check-all checkbox + the real text combobox); openQuickInput
   // targets the combobox precisely, avoiding a strict-mode violation.
   const input = await openQuickInput(win, isMac ? 'Meta+P' : 'Control+P');

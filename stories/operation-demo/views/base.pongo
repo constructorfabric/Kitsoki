@@ -1,0 +1,8 @@
+{% comment %}
+operation-demo — small feature-spotlight story for Web operation handles.
+{% endcomment %}
+{% block status %}operation-demo · {{ world.status }}{% endblock %}
+{% block heading %}{{ state.description }}{% endblock %}
+{% block body %}{% endblock %}
+{% block choices %}{% endblock %}
+{% block footer %}{% endblock %}

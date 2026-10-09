@@ -9,12 +9,15 @@
     "prebuild": "pnpm run stage",
     "build": "vitepress build",
     "preview": "vitepress preview",
-    "stage": "pnpm stage:docs && pnpm stage:media",
+    "stage": "pnpm stage:docs && pnpm stage:media && pnpm stage:extensions",
     "stage:docs": "node scripts/stage-docs.mjs",
     "stage:media": "node scripts/stage-media.mjs",
-    "check:leaks": "node scripts/check-leaks.mjs"
+    "stage:extensions": "node scripts/stage-extensions.mjs",
+    "check:leaks": "node scripts/check-leaks.mjs",
+    "test:prepare-workspace": "node --test scripts/prepare-workspace.test.mjs"
   },
   "devDependencies": {
+    "mermaid": "^11.16.0",
     "vitepress": "^1.6.3",
     "vue": "^3.5.13"
   }

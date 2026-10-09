@@ -49,6 +49,7 @@ app:
 hosts:
   - host.inbox.add
   - host.agent.decide
+  - host.artifacts_dir
   # host.run — the handoff room's lost-work clean-tree check shells out to
   # `git status --porcelain` before the pr-refinement handoff.
   - host.run
@@ -65,7 +66,7 @@ host_interfaces:
         input:  { query: string, limit: int }
         output: { tickets: list }
       get:
-        input:  { id: string }
+        input:  { id: string, repo: string }
         output: { id: string, title: string, body: string, status: string,
                   priority: string, assignee: string, url: string, comments: list }
       comment:
@@ -128,7 +129,7 @@ host_interfaces:
     default: host.local
 
   workspace:
-    description: "Working-copy manager. Local: git worktree."
+    description: "Working-copy manager. Prefer checked-in Capsule definitions; legacy bindings may still consume name/base."
     operations:
       list:
         input:  {}
@@ -137,18 +138,15 @@ host_interfaces:
         input:  { id: string }
         output: { id: string, path: string, branch: string, dirty: bool }
       create:
-        # `id` is the workspace identity (pins the on-disk .worktrees/<id>
-        # dir basename); `name` is the branch; `base` is the branch to
-        # root from. Matches host.git_worktree's worktreeCreate, which
-        # reads id/name/base — every caller (bf.idle, impl.idle) passes
-        # `id:` from world.workspace_id. The earlier `ticket_id` label
-        # was stale: no caller passed it and the handler never read it.
-        input:  { id: string, name: string, base: string }
-        output: { ok: bool, path: string }
+        # `id` is the workspace identity; `definition` names the checked-in
+        # Capsule definition. `name`/`base` remain transitionally present for
+        # legacy bindings. Capsule bindings return the authoritative branch.
+        input:  { id: string, definition: string, name: string, base: string, session_id: string }
+        output: { ok: bool, path: string, branch: string }
       sync:
         input:  { id: string }
         output: { ok: bool, log: string }
-    default: host.git_worktree
+    default: host.capsule_workspace
 
   transport:
     description: "Out-of-band channel for posting proposals, checkpoints, status."
@@ -167,6 +165,23 @@ world:
   ticket_status:    { type: string, default: "" }
   ticket_url:       { type: string, default: "" }
   ticket_body:      { type: string, default: "" }
+  ticket_repo:      { type: string, default: "" }
+  # Ordered, provider-neutral ticket federation config, inherited from the
+  # parent (mirrors bugfix/app.yaml). Empty by default so a standalone
+  # implementation session still gets the plain host.local_files.ticket
+  # default binding.
+  ticket_sources:      { type: list,   default: [] }
+  ticket_source:       { type: string, default: "" }
+  ticket_source_label: { type: string, default: "" }
+  ticket_source_kind:  { type: string, default: "" }
+  ticket_source_repo:  { type: string, default: "" }
+  ticket_source_mode:  { type: string, default: "local" }
+  ticket_source_ref:   { type: string, default: "" }
+  # Optional override for host.local_files.ticket's `root` arg (falls back to
+  # $KITSOKI_TICKETS_ROOT then cwd when empty — see internal/host/localfiles_ticket.go).
+  # Lets a headless dispatcher (goal-seeker/punch-list) point ticket.get at a
+  # scoped, self-written ticket store instead of the project's real issues/ tree.
+  tickets_root:     { type: string, default: "" }
   thread:           { type: string, default: "" }
   allowed_authors:  { type: string, default: "" }
 
@@ -197,6 +212,11 @@ world:
   code_artifact:          { type: object, default: {} }
   test_artifact:          { type: object, default: {} }
   review_artifact:        { type: object, default: {} }
+  task_summary_artifact_path: { type: string, default: "" }
+  code_artifact_path:         { type: string, default: "" }
+  test_artifact_path:         { type: string, default: "" }
+  review_artifact_path:       { type: string, default: "" }
+  implementation_progress_artifact_path: { type: string, default: "" }
 
   # ── CI scratch (test_executing populates this) ─────────────────────
   ci_log:           { type: string, default: "" }
@@ -240,6 +260,28 @@ intents:
     description: "Begin the pipeline from idle."
     examples: [start, "begin", "kick off"]
     priority: 90
+  # NL ticket-id handoff for idle, when world.ticket_id is still empty. A
+  # headless dispatcher (goal-seeker/punch-list) whose maker doesn't reliably
+  # pass `initial_world` to session.new instead drives this as its first
+  # turn text — see stories/goal-seeker/scripts/gs_manifest.star and
+  # stories/punch-list/prompts/drive_item.md. Only "work ticket …" is
+  # declared (not a bare "ticket …" template) because idle has no other
+  # intent whose bare synonyms collide with the word "work"; "ticket" alone
+  # would risk losing to a bare-string match on a differently-worded intent
+  # in a room that declares one (bare-string wins over template regardless
+  # of intent — see internal/semroute doc.go "confidence bands"). The
+  # `titled` anchor is required: {ticket_id} is a trailing capture and
+  # without a literal after it, it would swallow the rest of the utterance
+  # (title + brief) instead of just the id.
+  work_ticket:
+    description: "State which ticket to work when none is loaded yet (NL ticket-id handoff from a headless driver)."
+    synonyms:
+      - "work ticket {ticket_id}"
+      - "work ticket {ticket_id} titled {ticket_title}"
+    priority: 89
+    slots:
+      ticket_id:    { type: string, required: true }
+      ticket_title: { type: string, required: false }
   proceed:
     description: "Advance from an _executing room to its _awaiting_reply checkpoint."
     examples: [proceed, "next", "deliver"]

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
@@ -198,20 +199,8 @@ func TestInbox_Teleport(t *testing.T) {
 
 func TestInbox_SyncGitHubFeedsWebWork(t *testing.T) {
 	f := buildInboxFixture(t)
-	restore := host.SetExecRunnerForTest(func(_ context.Context, _ string, name string, args ...string) (string, string, int, error) {
-		key := name + " " + strings.Join(args, " ")
-		switch key {
-		case "gh --version":
-			return "gh version 2.x\n", "", 0, nil
-		case "gh issue list --repo acme/repo --state open --assignee @me --limit 100 --json number,title,assignees,url":
-			return `[{"number":7,"title":"Assigned issue","url":"https://github.com/acme/repo/issues/7","assignees":[{"login":"brad"}]}]`, "", 0, nil
-		case "gh pr list --repo acme/repo --state open --search review-requested:@me --limit 100 --json number,title,author,url":
-			return `[{"number":42,"title":"Review this","url":"https://github.com/acme/repo/pull/42","author":{"login":"alice"}}]`, "", 0, nil
-		default:
-			return "", "unexpected command: " + key, 1, nil
-		}
-	})
-	defer restore()
+	restoreAPI := stubServerGitHubInboxAPI(t, "100")
+	defer restoreAPI()
 
 	var synced server.GitHubInboxSyncResult
 	rpcCall(t, f.ts, "runstatus.session.inbox.sync_github",
@@ -242,6 +231,46 @@ func TestInbox_SyncGitHubFeedsWebWork(t *testing.T) {
 		map[string]any{"session_id": f.publicID, "repo": "acme/repo"}, &second)
 	assert.Equal(t, 0, second.Inserted)
 	assert.Equal(t, 2, second.Skipped)
+}
+
+func stubServerGitHubInboxAPI(t *testing.T, wantLimit string) func() {
+	t.Helper()
+	t.Setenv("GH_TOKEN", "test-token")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodGet, r.Method)
+		require.Equal(t, "/search/issues", r.URL.Path)
+		assert.Equal(t, wantLimit, r.URL.Query().Get("per_page"))
+		q := r.URL.Query().Get("q")
+		switch {
+		case strings.Contains(q, "is:issue"):
+			writeServerJSON(t, w, map[string]any{"items": []map[string]any{{
+				"number":    7,
+				"title":     "Assigned issue",
+				"html_url":  "https://github.com/acme/repo/issues/7",
+				"assignees": []map[string]any{{"login": "brad"}},
+			}}})
+		case strings.Contains(q, "is:pr"):
+			writeServerJSON(t, w, map[string]any{"items": []map[string]any{{
+				"number":   42,
+				"title":    "Review this",
+				"html_url": "https://github.com/acme/repo/pull/42",
+				"user":     map[string]any{"login": "alice"},
+			}}})
+		default:
+			t.Fatalf("unexpected search query: %q", q)
+		}
+	}))
+	restore := host.SetGitHubAPIForTest(srv.URL, srv.Client())
+	return func() {
+		restore()
+		srv.Close()
+	}
+}
+
+func writeServerJSON(t *testing.T, w http.ResponseWriter, v any) {
+	t.Helper()
+	w.Header().Set("Content-Type", "application/json")
+	require.NoError(t, json.NewEncoder(w).Encode(v))
 }
 
 func TestWorkList_SurfacesGlobalActiveWork(t *testing.T) {

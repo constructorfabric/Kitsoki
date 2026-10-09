@@ -1,0 +1,53 @@
+# ci-status — fetch a PR's CI check status via native GitHub API.
+#
+# Diagnostic companion to stories/open-pr: after a PR is opened, this asks the
+# native host.git provider for the PR's combined status/check-run rollup so a
+# driver can see WHY CI is red without leaving the studio or depending on a
+# local gh binary. No LLM. Read the result with session.world (checks_summary /
+# failed_log).
+
+app:
+  id: ci-status
+  version: 0.1.0
+  title: "CI status"
+  author: "Kitsoki"
+  license: "CC0"
+
+hosts:
+  - host.git
+
+world:
+  repo:           { type: string, default: "" }     # owner/name; "" ⇒ host.git infers from cwd's remote
+  pr_number:      { type: string, default: "" }      # PR to read checks for
+  branch:         { type: string, default: "" }      # compatibility field; status is keyed by PR head SHA
+  worktree_path:  { type: string, default: "." }     # cwd for repo inference when repo is empty
+  checks_summary: { type: string, default: "" }      # native PR status/check-run summary
+  failed_log:     { type: string, default: "" }      # native failed-check details/links
+  ci_conclusion:  { type: string, default: "" }      # success|failure|pending|…
+  run_exit:       { type: string, default: "" }
+  run_stdout:     { type: string, default: "" }
+  last_error:     { type: string, default: "" }
+  status:         { type: string, default: "open" }
+
+intents:
+  check:
+    description: "Fetch the PR's CI checks through the native GitHub provider."
+    examples: [check, "ci status", "why did ci fail", "check ci"]
+    priority: 90
+  quit:
+    description: "Done."
+    examples: [quit, done, close]
+    priority: 50
+  look:
+    description: "Re-render."
+    examples: [look]
+    priority: 10
+
+exits:
+  abandoned:
+    description: "Operator done."
+
+root: idle
+
+include:
+  - rooms/*.yaml

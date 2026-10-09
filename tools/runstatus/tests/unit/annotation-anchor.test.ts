@@ -177,19 +177,28 @@ describe("serializeAnchor (on-wire shape, mirrors host.AnchorFromParams)", () =>
         kind: "semantic_element",
         plugin: "slidey",
         ref: "scene-2.title",
+        semantic_kind: "field",
         bbox: { x: 100, y: 50, width: 400, height: 80 },
         id: "scene-2.title",
         label: "scene-2 · title",
+        selector: "[data-slidey-el='scene-2.title']",
+        text: "Quarterly Results",
+        data: { path: "scenes[1].title" },
         point: { x: 100, y: 50 },
       },
     });
-    // UI-only fields (id/label/point) are dropped on the wire.
+    // UI-only fields (id/point) are dropped; semantic context is preserved.
     expect(wire).toEqual({
       kind: "semantic_element",
       semantic_element: {
         plugin: "slidey",
         ref: "scene-2.title",
         bbox: [100, 50, 400, 80],
+        semantic_kind: "field",
+        label: "scene-2 · title",
+        selector: "[data-slidey-el='scene-2.title']",
+        text: "Quarterly Results",
+        data: { path: "scenes[1].title" },
       },
     });
   });

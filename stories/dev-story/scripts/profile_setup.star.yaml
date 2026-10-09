@@ -1,0 +1,8 @@
+inputs:
+  op: {type: string, required: true}
+  target_path: {type: string}
+  workdir: {type: string}
+  repo_root: {type: string}
+  candidate: {type: object}
+outputs:
+  result: {type: object, required: true}

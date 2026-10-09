@@ -1,0 +1,180 @@
+# check_vscode_leg_live_profile_parity — a `check ... transport=vscode
+# profile=<X>` run must reach the vscode leg's `drive_leg` dispatch with
+# `context.args.live_profile` set IDENTICALLY to a tui/web leg's dispatch
+# (same key, same value, same `session.new` authorization the driver is told
+# to honor). A prior live rerun found the vscode leg's handoff NOT surfacing
+# `live_profile`, so its nested dev-story session opened `harness: replay` by
+# default and hit `discovery_failed_replay_miss` even though the SAME run's
+# tui/web legs opened live successfully — see
+# check_profile_passthrough.yaml's identical tui-leg assertion (that flow's
+# header comment) for the twin half of this regression. This flow closes the
+# vscode half: it pins the full rendered `host.agent.task` context block for
+# a `transport: vscode` leg's `drive_leg` dispatch, so a regression that
+# threads `live_profile` for tui/web but drops or empties it specifically for
+# vscode fails HERE instead of only surfacing in a live LLM rerun.
+#
+# Every host call is stubbed by invoke id (no real run.py / LLM call runs
+# here); this exercises the room-to-room control flow + prompt-arg rendering
+# only.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.product_journey.run:
+    by_call:
+      emit_scenario_qa_run:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            run_id: scenario-qa-vscode-profile-run-1
+            run_dir: /repo/.artifacts/product-journey/scenario-qa-vscode-profile-run-1
+            driver_plan_path: /repo/.artifacts/product-journey/scenario-qa-vscode-profile-run-1/driver-plan.md
+            execution_plan_path: /repo/.artifacts/product-journey/scenario-qa-vscode-profile-run-1/execution-plan.md
+            agent_brief_path: /repo/.artifacts/product-journey/scenario-qa-vscode-profile-run-1/agent-brief.md
+      build_scenario_qa_deck:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: scenario_qa_deck_built
+            run_dir: /repo/.artifacts/product-journey/scenario-qa-vscode-profile-run-1
+            deck_path: /repo/.artifacts/product-journey/scenario-qa-vscode-profile-run-1/deck.slidey.json
+            leg_count: 1
+            pass_count: 1
+            fail_count: 0
+            degraded_count: 0
+            summary: "1 / 1 transport checks passed."
+
+  host.starlark.run:
+    by_call:
+      plan_legs:
+        data:
+          legs:
+            items:
+              - leg_id: "prd-design::vscode"
+                scenario: "prd-design"
+                transport: "vscode"
+                visual_surface: "vscode"
+                evidence_dir: "evidence/gears-rust--core-maintainer/prd-design"
+                primary_story: "stories/dev-story/app.yaml"
+                success_criteria: ["A PRD artifact is produced from the discovery flow."]
+                transport_evidence_contract:
+                  primary_tool: "visual.open (kind=vscode)"
+                  evidence_kind: "screenshot_or_tui_png"
+                  level: "bridge-level"
+          leg_count: 1
+          driver_agent: ".agents/agents/product-journey-qa-driver.md"
+          run_dir_rel: ".artifacts/product-journey/scenario-qa-vscode-profile-run-1"
+          plan_status: { resolved: true }
+      pick_leg:
+        data:
+          current_leg:
+            leg_id: "prd-design::vscode"
+            scenario: "prd-design"
+            transport: "vscode"
+            visual_surface: "vscode"
+            evidence_dir: "evidence/gears-rust--core-maintainer/prd-design"
+            primary_story: "stories/dev-story/app.yaml"
+          current_leg_id: "prd-design::vscode"
+          current_leg_json: '{"leg_id":"prd-design::vscode","scenario":"prd-design","transport":"vscode","primary_story":"stories/dev-story/app.yaml"}'
+      record_leg_result:
+        data:
+          leg_results:
+            items:
+              - leg_id: "prd-design::vscode"
+                scenario: "prd-design"
+                transport: "vscode"
+                visual_surface: "vscode"
+                evidence_level: "bridge-level"
+                driver_status: "captured"
+                evidence_refs: ["visual_open:vscode-preflight", "visual_open:vscode-postdrive"]
+                verdict: "pass"
+                verdict_summary: "PRD discovery reached live, profile authorized; post-drive vscode capture taken."
+                frames_dir: "evidence/gears-rust--core-maintainer/prd-design"
+          pass_count: 1
+          fail_count: 0
+          degraded_count: 0
+      build_report:
+        data:
+          report_path: ".artifacts/product-journey/scenario-qa-vscode-profile-run-1/report.md"
+          report_summary: "1 / 1 transport checks passed."
+
+  host.agent.task:
+    by_call:
+      drive_leg:
+        data:
+          ok: true
+          submitted:
+            status: "captured"
+            evidence_refs: ["visual_open:vscode-preflight", "visual_open:vscode-postdrive"]
+            frames_dir: "evidence/gears-rust--core-maintainer/prd-design"
+            blockers: []
+            post_drive_evidence_ref: "visual_open:vscode-postdrive"
+            post_drive_session_handle: "s1"
+            summary: "Preflighted the vscode bridge, drove the nested dev-story session live (profile=claude-native), then re-captured the bridge against the same session handle."
+      judge_leg:
+        data:
+          ok: true
+          submitted:
+            verdict: "pass"
+            summary: "post_drive_evidence_ref proves the bridge reflects the driven-forward state."
+            cited_frames: ["vscode-postdrive.json"]
+            frames_dir: "evidence/gears-rust--core-maintainer/prd-design"
+
+turns:
+  - intent:
+      name: check
+      slots:
+        scenario: prd-design
+        transport: vscode
+        persona: core-maintainer
+        target: gears-rust
+        seed: scenario-qa
+        profile: claude-native
+    expect_state: report
+    expect_world:
+      mode: catalog
+      run_id: scenario-qa-vscode-profile-run-1
+      live_profile: claude-native
+      leg_count: 1
+      leg_index: 0
+      pass_count: 1
+      fail_count: 0
+      degraded_count: 0
+    expect_host_calls:
+      - handler: host.product_journey.run
+        args: { call: emit_scenario_qa_run }
+      - handler: host.starlark.run
+        args: { call: plan_legs }
+      - handler: host.starlark.run
+        args: { call: pick_leg }
+      # This is the assertion that closes the vscode half of the gap: the
+      # FULL rendered `context` block for a `transport: vscode` leg's
+      # drive_leg dispatch must carry `live_profile` identically to
+      # check_profile_passthrough.yaml's `transport: tui` assertion — same
+      # key, same non-empty value, same session.new authorization drive_leg.md
+      # tells the driver to honor regardless of transport.
+      - handler: host.agent.task
+        args:
+          call: drive_leg
+          context:
+            prompt: prompts/drive_leg.md
+            args:
+              leg_json: '{"leg_id":"prd-design::vscode","scenario":"prd-design","transport":"vscode","primary_story":"stories/dev-story/app.yaml"}'
+              run_id: "scenario-qa-vscode-profile-run-1"
+              run_dir: "/repo/.artifacts/product-journey/scenario-qa-vscode-profile-run-1"
+              transport: "vscode"
+              live_profile: "claude-native"
+      - handler: host.agent.task
+        args: { call: judge_leg }
+      - handler: host.starlark.run
+        args: { call: record_leg_result }
+      - handler: host.starlark.run
+        args: { call: build_report }
+      - handler: host.product_journey.run
+        args: { call: build_scenario_qa_deck }
+
+expect_no_errors: true

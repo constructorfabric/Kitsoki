@@ -1,24 +1,31 @@
 # lint — deterministic validation of the decomposition manifest (NO LLM).
 #
-# Runs stories/deliver/scripts/lint_decomposition.py against decomposition_path.
+# Runs stories/deliver/scripts/lint_decomposition.star against decomposition_path.
 # Checks: at least one brief; ids unique & non-empty; each brief has non-empty
-# brief + gate_command; every dep references an existing id; no dep cycle.
+# brief + gate_command; every dep references an existing id; no dep cycle;
+# when present, 'acceptance' is non-empty and every 'scope' glob is bounded
+# inside the repo (its parent dir exists) — the skill validator's remaining
+# checks, folded in here (proposal: deliver-canonical-decomposition B2a).
 #
-# stdout JSON: { "route": "ok"|"fail", "error": "<specific failure>" }
-# last_error is bound from stdout_json.error (empty string when route=="ok").
+# Output: { "route": "ok"|"fail", "error": "<specific failure>" }
+# last_error is bound from error (empty string when route=="ok").
 #
 # The lint_route reset at the top of on_enter follows the board.yaml pattern:
 # set to "" BEFORE the invoke so post-bind emit guards don't fire on the
 # stale prior value, only on the freshly-bound result.
 #
-# lint_passed → fleet import entry (load) — fleet parses decomposition_path
-# lint_failed → @exit:needs-human with SPECIFIC non-blank last_error
+# lint_passed → review room (adversarial feasibility/completeness gate)
+# lint_failed → budgeted refine loop back to decompose (refine_feedback set
+#   to the lint error, refine_cycle incremented, decomposition_briefs cleared
+#   so decompose's once: bind re-runs). Shares refine_cycle/refine_budget
+#   with review's revise loop — one budget for the whole ring.
+#   Budget exhausted → @exit:needs-human with a specific last_error.
 
 states:
 
   lint:
     description: "Validate the decomposition manifest deterministically (no LLM)."
-    relevant_world: [decomposition_path, lint_route, last_error]
+    relevant_world: [decomposition_path, lint_route, last_error, refine_cycle, refine_budget]
     view:
       - prose: "Validating decomposition manifest at {{ world.decomposition_path }}…"
       - kv:
@@ -35,25 +42,44 @@ states:
     on_enter:
       # Reset so post-bind guards defer to the fresh result (board.yaml pattern).
       - set: { lint_route: "" }
-      - invoke: host.run
+      - invoke: host.starlark.run
         id: lint
         with:
-          cmd: python3
-          args:
-            - "stories/deliver/scripts/lint_decomposition.py"
-            - "{{ world.decomposition_path }}"
+          script: scripts/lint_decomposition.star
+          capabilities:
+            fs:
+              read: ["**"]
+          inputs:
+            decomposition_path: "{{ world.decomposition_path }}"
         bind:
-          lint_route: "stdout_json.route"
-          last_error:  "stdout_json.error"
+          lint_route: "route"
+          last_error:  "error"
         on_error: lint
       - when: "world.lint_route == 'ok'"
         emit_intent: lint_passed
-      - when: "world.lint_route == 'fail'"
+      - when: |
+          world.lint_route == 'fail' &&
+          world.refine_cycle >= world.refine_budget
+        emit_intent: refine_budget_exhausted
+      - when: |
+          world.lint_route == 'fail' &&
+          world.refine_cycle < world.refine_budget
         emit_intent: lint_failed
     on:
       lint_passed:
-        - target: fleet
+        - target: review
       lint_failed:
+        - target: decompose
+          effects:
+            - set:
+                refine_feedback:      "{{ world.last_error }}"
+                refine_cycle:         "{{ world.refine_cycle + 1 }}"
+                # Clear the once: bind so decompose's on_enter re-runs the agent.
+                decomposition_briefs: []
+      refine_budget_exhausted:
         - target: "@exit:needs-human"
+          effects:
+            - set:
+                last_error: "Refine budget exhausted after {{ world.refine_cycle }} cycles. Last lint error: {{ world.last_error }}"
       look:
         - target: .

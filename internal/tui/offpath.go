@@ -120,7 +120,6 @@ func (m RootModel) enterOffPath() (tea.Model, tea.Cmd) {
 	// over. The next room entry's handleTurnOutcome re-opens.
 	if m.mode == ModeChoosing {
 		m.choice.Close()
-		m.transcript.FinalizeLive("")
 	}
 	m.mode = ModeOffPath
 	m.offPath, _ = m.offPath.Update(enterOffPathMsg{})

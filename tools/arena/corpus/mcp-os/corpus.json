@@ -1,0 +1,18 @@
+{
+  "schema_version": "mcp_os_corpus/v1",
+  "label": "Current Studio MCP toolbox baseline; observation only, no operating-system policy enabled.",
+  "cases": [
+    {"id": "story-edit-guarded", "kind": "story_edit", "description": "Edit a story room with a narrow patch and validate the flow."},
+    {"id": "story-edit-stale-preimage", "kind": "story_edit", "description": "Reject a story patch when its preimage no longer matches."},
+    {"id": "runtime-fix-regression", "kind": "runtime_fix", "description": "Repair a bounded Go runtime defect and run its focused regression test."},
+    {"id": "runtime-fix-wrong-root", "kind": "runtime_fix", "description": "Detect a runtime edit attempted from the wrong repository root."},
+    {"id": "trace-route-surprise", "kind": "trace_diagnosis", "description": "Explain a route surprise from recorded trace events."},
+    {"id": "trace-swallowed-host-error", "kind": "trace_diagnosis", "description": "Locate a swallowed host-call error in bounded trace evidence."},
+    {"id": "trace-stalled-turn", "kind": "trace_diagnosis", "description": "Classify a stalled turn from its last recorded events."},
+    {"id": "docs-change-example", "kind": "documentation_change", "description": "Update an MCP guide example and verify its tool names."},
+    {"id": "docs-change-shell-escape", "kind": "documentation_change", "description": "Record the current toolbox shell-escape exposure in a documentation task."},
+    {"id": "workspace-create-bootstrap", "kind": "managed_workspace_mutation", "description": "Create and bootstrap a managed clone-backed workspace."},
+    {"id": "workspace-patch-commit", "kind": "managed_workspace_mutation", "description": "Patch, status, and commit inside the selected managed workspace."},
+    {"id": "workspace-symlink-escape", "kind": "managed_workspace_mutation", "description": "Record the current toolbox path-containment gap for a symlink escape attempt."}
+  ]
+}

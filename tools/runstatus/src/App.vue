@@ -69,11 +69,11 @@ const isSnapshot =
     .__KITSOKI_SNAPSHOT__ !== undefined;
 const inbox = useInboxStore();
 const operatorQuestions = useOperatorQuestionStore();
+const source = !isSnapshot && !chromeless ? new LiveSource("/") : null;
 if (!isSnapshot && !chromeless) {
-  const source = new LiveSource("/");
-  inbox.init(source);
+  inbox.init(source!);
   // Forwarded-question feed shares the live-server lifecycle with the inbox.
-  operatorQuestions.init(source);
+  operatorQuestions.init(source!);
 }
 onUnmounted(() => {
   inbox.teardown();
@@ -88,6 +88,14 @@ onUnmounted(() => {
 onMounted(async () => {
   if (chromeless) return;
   await router.isReady();
-  if (router.currentRoute.value.path === "/") useTourStore().maybeAutoStart();
+  if (router.currentRoute.value.path === "/") {
+    let projectOnboarded = false;
+    try {
+      projectOnboarded = (await source?.setupStatus())?.project_onboarded === true;
+    } catch {
+      projectOnboarded = false;
+    }
+    useTourStore().maybeAutoStart({ projectOnboarded });
+  }
 });
 </script>

@@ -174,7 +174,39 @@ agents:
     tools: [host.authoring.propose, host.authoring.apply]
 ```
 
-### 3.1 Other builtins
+### 3.1 Explicit story-authoring room
+
+Every loaded story also gets an explicit on-path `story_authoring`
+room unless it already declares one. The loader injects the room, the
+global `author_story` intent, and entry arcs from every non-terminal
+state. This gives operators a typed on-path command for quick story
+changes without needing to enter the `/meta story edit` overlay. The
+entry intent is hidden from default action menus so it does not change
+ordinary story branch choices or staged-gate behavior.
+
+The injected entry arc records the caller in
+`world.story_authoring_return_state`, stores the optional
+`author_story.proposal` slot in `world.story_authoring_request`, and
+targets `story_authoring`. Inside the room, free text routes through
+`story_authoring_capture`, which dispatches the built-in
+`story-author` via `host.agent.task` and binds the accepted submit
+payload to `world.story_authoring_note`. `return_to_story` returns to
+the saved state path; `clear_story_authoring` clears the current
+proposal and result.
+
+The room runs with `write_mode: read_only`, so the story author can
+draft edits while mutating tools still go through the normal operator
+write-mode grant. The task acceptance schema is a built-in schema
+reference; stories do not need to carry a generated schema file just
+to use the default room. The generated room also renders the captured
+proposal, loaded story root, return state, write-mode posture, and last
+authoring result so the operator can see what was interpreted before
+and after the authoring agent runs. Declaration wins: if a story declares
+`story_authoring`, `author_story`, or any of the supporting names
+itself, the loader preserves that authored definition and only fills
+missing pieces around it.
+
+### 3.2 Other builtins
 
 Three more agents ship pre-registered alongside `story-author`:
 
@@ -194,21 +226,72 @@ Three more agents ship pre-registered alongside `story-author`:
 - **`story-bug-reporter`** — gathers reproduction context and files a
   story bug by invoking `kitsoki bug create --target story` (see
   `cmd/kitsoki/bug.go`). Tool surface:
-  `Bash(kitsoki bug create*)` — a single-command pattern that
-  forbids the agent from running anything else. Reached through
-  the builtin `story.bug` meta mode.
+  `Read`/`Glob`/`Grep` plus `Bash(kitsoki bug create*)`. The first
+  three tools let the reporter read the context trace and prior local
+  bugs; the Bash pattern is the only filing side effect. Reached
+  through the builtin `story.bug` meta mode.
 - **`kitsoki-bug-reporter`** — same shape against `--target kitsoki`,
   reached through the builtin `kitsoki.bug` meta mode.
 - **`story-explainer`** — read-only sibling of `story-author`
   (`Read`, `Glob`, `Grep` only). Reached through `story.ask`.
+- **`story-improver`** — read-only continuous-improvement reviewer for
+  the running story. It reads the current context and trace, inspects
+  prompts / rooms / scripts / agent declarations, and returns an
+  introspection report: observed false start, likely cause,
+  recommended story change, tool/permission notes, and no-LLM
+  regression coverage. Reached through `story.improve`. Web sessions
+  can file the completed report through `runstatus.meta.improve.report`,
+  which writes the same evidence bundle shape as bug reports: redacted
+  trace, browser HAR, rrweb replay, console/error state, and local or
+  remote posting metadata.
+- **`kitsoki-improver`** — read-only continuous-improvement reviewer
+  for kitsoki engine runs. It uses the same trace-backed report shape,
+  but looks for reusable engine, host, tool, prompt, workflow, or
+  test improvements rather than story-specific edits. Reached through
+  `kitsoki.improve`.
+
+Bug and improvement reports share a small internal report contract:
+stable report kinds (`bug`, `meta-improve`), the browser evidence
+sidecars (`screenshot.png`, `har.json`, `rrweb.json`, `console.json`,
+`trace.redacted.jsonl`), the destination names (`configured`, `local`,
+`ticket-provider`), and two permission profiles. Improvers use the
+read-only profile (`Read`/`Glob`/`Grep`) and never post or mutate on
+their own. Bug reporters use the bug-filer profile, which is the
+read-only profile plus `Bash(kitsoki bug create*)` so they can perform
+their one confirmed side effect. The web completion affordance then
+uses the same evidence/posting contract for `runstatus.meta.improve.report`
+that Report Bug uses for `runstatus.bug.report`.
+
+**Product-site proof.** Continuous improvement is cataloged as its own
+public feature, not only as a row in the meta-mode table:
+`features/meta-improvement.yaml` generates the
+`/features/meta-improvement.html` page and the
+`META_IMPROVEMENT_TOUR_STEPS` manifest. Its deterministic tour spec
+(`tools/runstatus/tests/playwright/meta-improve-video.spec.ts`) drives
+a no-LLM Cloak session to completion, shows the improvement reminder
+and auto-run toggle, opens `story.improve`, waits for the
+introspection report, and checks that the report mentions evidence
+and posting. Capture the product-site replay with:
+
+```bash
+make demo-feature-rrweb FEATURE=meta-improvement
+```
+
+The generated review artifacts stay under
+`.artifacts/meta-improvement/`: `meta-improvement-demo.rrweb.json`,
+`meta-improvement-demo.html`, chapter metadata, and one
+`NN-<step>.png` frame per tour beat. The catalog QA scenarios assert
+the same end-to-end claims the feature page advertises: terminal-run
+reminder, `story.improve` streaming, and evidence-backed local or
+remote report posting.
 
 ### 3.2 Builtin meta_modes
 
-The loader injects six meta_modes that every app gets without
+The loader injects eight meta_modes that every app gets without
 declaring them in YAML (mirrors the agent-builtin pattern, see
 `internal/app/builtin_meta_modes.go`). Map keys follow a
 `group.verb` convention so a single namespace (`story.*`,
-`kitsoki.*`) can carry multiple verbs (`edit`, `ask`, `bug`)
+`kitsoki.*`) can carry multiple verbs (`edit`, `ask`, `improve`, `bug`)
 without inventing ad-hoc names. Each group has a `default` verb
 that bare `/meta <group>` resolves to (`edit` for both builtin
 groups):
@@ -218,9 +301,21 @@ groups):
   Per-app keying.
 - **`story.ask`** — `/meta story ask`. Read-only Q&A about the
   story, agent `story-explainer`, tools `Read`/`Glob`/`Grep`.
+- **`story.improve`** — `/meta story improve`; bare
+  `/meta improve` resolves here. Read-only introspection for the
+  current run, agent `story-improver`, tools `Read`/`Glob`/`Grep`.
+  Use this when the run produced a surprising answer, the operator
+  corrected the agent, or a tool loop looked wasteful and you want a
+  concrete report on prompt / tool / script / permission / flow-test
+  improvements before editing. Terminal states in the TUI and web UI
+  surface an "Improve this run" reminder; the web reminder can also
+  file an evidence-backed report locally, through `--ticket-repo`, or
+  through a private `ticket_provider/v1` script passed with
+  `kitsoki web --improve-ticket-provider <provider.star>`.
 - **`story.bug`** — `/meta story bug`. Files a story bug via
   `kitsoki bug create --target story`; agent
-  `story-bug-reporter`.
+  `story-bug-reporter`, tools `Read`/`Glob`/`Grep` plus
+  `Bash(kitsoki bug create*)`.
 - **`kitsoki.edit`** — `/meta kitsoki edit` (default verb, so
   bare `/meta kitsoki` resolves here). Agent `kitsoki-engineer`,
   cwd `${KITSOKI_REPO}`. Chat row keys against the synthetic
@@ -229,15 +324,23 @@ groups):
   the same row the user reopens while playing dev-story.
 - **`kitsoki.ask`** — `/meta kitsoki ask`. Read-only Q&A about
   kitsoki source, agent `kitsoki-explainer`.
+- **`kitsoki.improve`** — `/meta kitsoki improve`. Read-only
+  introspection for reusable engine improvements, agent
+  `kitsoki-improver`, tools `Read`/`Glob`/`Grep`, cwd
+  `${KITSOKI_REPO}`. Use this when the durable fix belongs in
+  kitsoki's runtime, host/tool surface, prompts, trace UX, docs, or
+  no-LLM regression harness rather than in the running story.
 - **`kitsoki.bug`** — `/meta kitsoki bug`. Files a kitsoki bug
   via `kitsoki bug create --target kitsoki`; agent
-  `kitsoki-bug-reporter`.
+  `kitsoki-bug-reporter`, tools `Read`/`Glob`/`Grep` plus
+  `Bash(kitsoki bug create*)`.
 
 The entire `kitsoki.*` group is omitted from the injection set
 when `KITSOKI_REPO` is unset.
 
-**Agent verb for read-only metas.** The two read-only modes above
-(`story.ask`, `kitsoki.ask`) — and any app-declared meta whose agent's
+**Agent verb for read-only metas.** The read-only modes above
+(`story.ask`, `story.improve`, `kitsoki.ask`, `kitsoki.improve`) —
+and any app-declared meta whose agent's
 `Tools` contains only read-only entries — use `host.agent.ask` as
 their underlying agent verb (agent-split proposal §2.3, decision
 D14). The loader cross-checks: a meta whose agent carries `Edit` or
@@ -257,21 +360,23 @@ Trigger uniqueness is per-group, so `story.bug` and `kitsoki.bug`
 (both trigger `bug`) coexist.
 
 **Bare verbs resolve to the story group.** A single-token
-`/meta <verb>` (`/meta bug`, `/meta ask`, `/meta edit`) is NOT a
+`/meta <verb>` (`/meta bug`, `/meta ask`, `/meta improve`,
+`/meta edit`) is NOT a
 group lookup — there is no group named `bug`. The TUI resolver
 (`resolveMetaName` → `metaVerbKey`) maps the bare verb to the
 matching grouped builtin, **preferring the `story` group**, so
 `/meta bug` ≡ `/meta story bug`, `/meta ask` ≡ `/meta story ask`,
-`/meta edit` ≡ `/meta story edit`. This keeps the common,
+`/meta improve` ≡ `/meta story improve`, `/meta edit` ≡
+`/meta story edit`. This keeps the common,
 story-targeting verbs one token short while leaving the keys
 grouped — the grouping is what lets a story declare an `ask` /
 `bug` intent without colliding with these triggers (see the
 intent-collision check in `validateMetaModes`; a flat,
 un-namespaced builtin trigger would not be free to coexist with a
 same-named intent). Engine-targeting stays explicit: there is no
-bare `/meta` shortcut into `kitsoki.*` — type `/meta kitsoki bug`
-/ `/meta kitsoki edit`. Bare `/meta` (no verb) likewise resolves
-the `story` group's default verb.
+bare `/meta` shortcut into `kitsoki.*` — type `/meta kitsoki improve`,
+`/meta kitsoki bug`, or `/meta kitsoki edit`. Bare `/meta` (no verb)
+likewise resolves the `story` group's default verb.
 
 The `/meta self` single-token trigger from prior versions is gone
 (use `/meta kitsoki edit`).
@@ -635,11 +740,18 @@ What ships with kitsoki today (formerly under "Limitations"):
   `kitsoki.edit` uses the `kitsoki-engineer` agent rooted at
   `${KITSOKI_REPO}` and keys its chat against a synthetic `app_id`
   so the conversation is the same row across every running app;
+  `story.improve` / `kitsoki.improve` are read-only introspection
+  report modes for continuous improvement after false starts or
+  operator corrections. The web completion affordance can persist a
+  meta-improve report with trace/HAR/rrweb/console evidence under
+  `.artifacts/issues/bugs`, post to GitHub via `--ticket-repo`, or call
+  a custom `ticket_provider/v1` create operation via
+  `--improve-ticket-provider`;
   `story.bug` uses the `story-bug-reporter` agent which files
-  reports via `kitsoki bug create --target story` under the running
-  app's `issues/bugs/` directory (and `kitsoki.bug` does the same
-  against `${KITSOKI_REPO}/issues/bugs/`). Apps override any builtin
-  by declaring a `meta_modes.<group.verb>` with the same key.
+  reports via `kitsoki bug create --target story` under the selected
+  local sink (`issues/bugs/` or `.artifacts/issues/bugs/`); `kitsoki.bug`
+  does the same for the engine target. Apps override any builtin by declaring
+  a `meta_modes.<group.verb>` with the same key.
 - **The foyer "meta sessions" panel** is available from the
   Esc-menu's "Meta sessions" entry. It lists every active meta
   chat the controller can see — including cross-app `kitsoki.*` chats

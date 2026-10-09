@@ -48,6 +48,11 @@ narrative docs (`docs/stories/state-machine.md`, `docs/stories/authoring.md`) an
   docs-review's `reviewed`/`fixing`/`fixed` now carry `say:`
   breadcrumbs (verdict → "applying fixes…" before the slow agent.task →
   "docs patched").
+- **Bugfix/dev-story oversight selector**: `oversight_mode` is now the
+  user-facing selector (`gated`, `llm-review`, `no-gate`) and maps to the
+  existing `judge_mode` compatibility flag plus distinct bugfix operation
+  policies, so operators can choose human gates, LLM review, or drivable
+  no-gate operation runs before launching bugfix.
 - Tests: `internal/orchestrator/execution_mode_gate_test.go` (engine
   unit — staged stop incl. fails-without-fix check, plus per-room say
   streaming) and `cmd/kitsoki/docs_review_execution_mode_test.go` +
@@ -215,12 +220,12 @@ room's choice menu so a staged operator can pick it.
    every real decision gate in docs-review and bugfix does work (a host
    call) then decides → post-bind, which is fully covered. Close it when
    a story actually needs a pre-bind auto-advance into a gate.
-2. **bugfix migration.** Now that the engine decider (§3.2) exists, the
-   §6 per-room "auto-fire if confident" guard can be collapsed onto an
-   app-level `decider:` block, mapping `judge_mode` → `ExecutionMode`
-   (`human` → staged, `llm`/`llm_then_human` → one-shot). High blast
-   radius (bugfix is the dogfood story) — do it deliberately with the
-   flow suite as the guard.
+2. **bugfix engine-decider migration.** Bugfix/dev-story now expose the
+   operator-facing `oversight_mode` selector and operation-policy variants, but
+   the bugfix checkpoint rooms still use the older per-room
+   `agent.decide → emit_intent` guard. Collapse that onto an app-level
+   `decider:` block once the dogfood flow suite is ready to absorb the blast
+   radius.
 3. **Narrative docs.** Fold §§1–4 into `docs/stories/state-machine.md` /
    `docs/stories/authoring.md` (execution modes, the gate rule, the `decider:`
    state field + app block, `--mode`) and delete this proposal.

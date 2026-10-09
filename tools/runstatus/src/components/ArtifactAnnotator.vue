@@ -5,16 +5,16 @@
  * {media_handle, media_kind} it renders the right substrate + annotation layer
  * and emits a single unified AnnotationAnchor regardless of kind:
  *
- *   - png    → <img> + RegionDrawLayer (region: box / freeform / highlight)
- *   - mp4    → <video> + a timeline + frame-grab, then RegionDrawLayer on the still
+ *   - png    → <img> + RegionDrawLayer plus optional SemanticOverlay
+ *   - mp4    → <video> + timeline + frame-grab, then region/semantic overlay
  *   - rrweb  → ReplayFrame (the spatial-oracle reconstructed-DOM picker:
- *              dom_node / region / time_range), normalized via normalizeAnchor
- *   - html   → a static <iframe> + SpatialPicker (dom_node / region)
- *   - slidey → an <iframe> + SemanticOverlay (semantic_element), sidecar-fetched
+ *              dom_node / region / semantic_element), normalized via normalizeAnchor
+ *   - html   → a static <iframe> + SpatialPicker plus optional SemanticOverlay
+ *   - slidey → live embed picks or poster-backed SemanticOverlay
  *
  * This generalizes spatial-oracle: ReplayFrame/SpatialPicker/resolveElement are
- * REUSED for the DOM-bearing kinds; the canvas + semantic overlay are NEW for
- * the flat-image and slideshow kinds. Every path funnels into one `anchor` emit
+ * REUSED for the DOM-bearing kinds; the canvas + semantic overlay cover flat
+ * images, HTML/data fields, and poster-backed media. Every path funnels into one `anchor` emit
  * carrying the artifact metadata + a discriminated `target`.
  */
 import { ref, computed, onMounted, onBeforeUnmount, watch } from "vue";
@@ -34,7 +34,10 @@ import type {
 import type { SemanticElementTarget } from "../lib/annotationAnchor.js";
 import { normalizeAnchor, regionToTarget } from "../lib/annotationAnchor.js";
 import type { SemanticMap, SemanticSidecar } from "../lib/semanticPlugins.js";
-import { toSemanticMap } from "../lib/semanticPlugins.js";
+import {
+  enrichSemanticMapFromDOM,
+  toSemanticMap,
+} from "../lib/semanticPlugins.js";
 import type { RrwebEvent } from "../data/session-capture.js";
 import SpatialPicker from "./SpatialPicker.vue";
 import ReplayFrame from "./ReplayFrame.vue";
@@ -194,7 +197,14 @@ const iframe = ref<HTMLIFrameElement | null>(null);
 const iframeRoot = ref<Document | null>(null);
 
 function onIframeLoad(): void {
-  iframeRoot.value = iframe.value?.contentDocument ?? null;
+  const doc = iframe.value?.contentDocument ?? null;
+  iframeRoot.value = doc;
+  const win = doc?.defaultView;
+  const width = Math.round(win?.innerWidth || doc?.documentElement?.clientWidth || 0);
+  const height = Math.round(win?.innerHeight || doc?.documentElement?.clientHeight || 0);
+  if (width > 0 && height > 0) {
+    naturalSize.value = { width, height };
+  }
 }
 
 // ── slidey: a still backdrop + the semantic overlay (sidecar-driven) ─────────
@@ -209,7 +219,10 @@ const semanticError = ref<string | null>(null);
  *  size changes (the poster <img> sets naturalSize on load). */
 const semanticMap = computed<SemanticMap | null>(() =>
   semanticSidecar.value
-    ? toSemanticMap(semanticSidecar.value, props.mediaHandle, naturalSize.value)
+    ? enrichSemanticMapFromDOM(
+        toSemanticMap(semanticSidecar.value, props.mediaHandle, naturalSize.value),
+        props.mediaKind === "html" ? iframeRoot.value : null
+      )
     : null
 );
 
@@ -248,6 +261,10 @@ function onSemanticPick(target: SemanticElementTarget): void {
   emit("anchor", { ...meta(), target });
 }
 
+function boxFromTuple(b: [number, number, number, number]): Box {
+  return { x: b[0], y: b[1], width: b[2], height: b[3] };
+}
+
 // ── slidey (live embed) — element picking ON the interactive deck ─────────────
 // The flagship path: rather than a static poster + sidecar overlay, the live deck
 // owns spatial feedback. We turn on annotation mode in the embedded deck and
@@ -272,7 +289,7 @@ function onEmbedLoad(): void {
 
 onMounted(() => {
   if (props.mediaKind === "rrweb") void loadReplay();
-  if (props.mediaKind === "slidey" && !useLiveEmbed.value) void loadSemantic();
+  if (!useLiveEmbed.value) void loadSemantic();
   if (useLiveEmbed.value) {
     _teardownPick = installEmbedPickListener((pick) => {
       // Build the discriminated semantic_element anchor the refine consumes; the
@@ -284,7 +301,7 @@ onMounted(() => {
           plugin: pick.producer ?? "embed",
           ref: pick.ref,
           label: pick.label ?? pick.ref,
-          ...(pick.bbox ? { bbox: pick.bbox } : {}),
+          ...(pick.bbox ? { bbox: boxFromTuple(pick.bbox) } : {}),
         } as SemanticElementTarget,
       });
     });
@@ -303,7 +320,7 @@ watch(
     semanticSidecar.value = null;
     stillHandle.value = props.mediaKind === "png" ? props.mediaHandle : null;
     if (props.mediaKind === "rrweb") void loadReplay();
-    if (props.mediaKind === "slidey") void loadSemantic();
+    if (!useLiveEmbed.value) void loadSemantic();
   }
 );
 </script>
@@ -324,6 +341,7 @@ watch(
         :shape="regionShape"
         @region="onRegion"
       />
+      <SemanticOverlay v-if="semanticMap" :map="semanticMap" @pick="onSemanticPick" />
       <div class="aa-tools">
         <button
           v-for="s in (['box', 'highlight', 'freeform'] as RegionShape[])"
@@ -349,6 +367,7 @@ watch(
           :shape="regionShape"
           @region="onRegion"
         />
+        <SemanticOverlay v-if="semanticMap" :map="semanticMap" @pick="onSemanticPick" />
         <div class="aa-tools">
           <button
             v-for="s in (['box', 'highlight', 'freeform'] as RegionShape[])"
@@ -408,7 +427,9 @@ watch(
         :events="replayEvents"
         :natural-width="naturalSize.width"
         :natural-height="naturalSize.height"
+        :semantic-map="semanticMap"
         @pick="onPickerBundle"
+        @semantic-pick="onSemanticPick"
       />
       <p v-else class="aa-muted" data-testid="aa-rrweb-empty">No session replay available.</p>
     </div>
@@ -428,6 +449,7 @@ watch(
         :root="iframeRoot"
         @pick="onPickerBundle"
       />
+      <SemanticOverlay v-if="semanticMap" :map="semanticMap" @pick="onSemanticPick" />
     </div>
 
     <!-- slidey: a still poster backdrop + the semantic overlay (sidecar). A

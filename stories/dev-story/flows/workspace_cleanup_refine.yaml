@@ -10,7 +10,7 @@ initial_world:
   cleanup_recommended: 1
 
 host_handlers:
-  host.git_worktree.cleanup_scan:
+  host.capsule_workspace.cleanup_scan:
     data:
       ok: true
       base: main
@@ -32,7 +32,7 @@ turns:
   - intent: { name: refine, slots: { feedback: feature/old } }
     expect_state: workspace_cleanup_review
     expect_host_calls:
-      - handler: host.git_worktree.cleanup_scan
+      - handler: host.capsule_workspace.cleanup_scan
     expect_world:
       cleanup_filter: feature/old
       cleanup_recommended: 0

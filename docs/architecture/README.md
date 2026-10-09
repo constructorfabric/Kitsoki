@@ -1,99 +1,95 @@
 # Architecture
 
-How kitsoki works under the hood — the engine, its design commitments,
-and the boundaries where it talks to the outside world. *Audience:
-architects evaluating the approach, and contributors changing the
-kitsoki codebase itself.*
+High-level system model for Kitsoki: the deterministic engine, the LLM
+boundary, persistent sessions, and the contracts where the runtime reaches the
+outside world.
 
-If you are here to **write a story**, you want [`../stories/`](../stories/README.md)
-instead. If you are here to **test or debug** one, see
-[`../tracing/`](../tracing/README.md).
+Use this section to understand or change the platform. Use
+[`../guide/`](../guide/README.md) for operator runbooks, CLI walkthroughs,
+agent-launch instructions, harness/profile configuration, credential setup, and
+contributor commands.
 
----
+## Reading Paths
 
-## Start here
+| Goal | Read |
+|---|---|
+| Understand the thesis | [`concept.md`](concept.md) -> [`overview.md`](overview.md) |
+| Understand the runtime map | [`overview.md`](overview.md) -> [`hosts.md`](hosts.md) -> [`transports.md`](transports.md) |
+| Understand the LLM boundary | [`semantic-routing.md`](semantic-routing.md) -> [`system-prompt.md`](system-prompt.md) -> [`agent-plugin.md`](agent-plugin.md) |
+| Understand external-agent surfaces | [`mcp-studio.md`](mcp-studio.md) -> [`agent-plugin.md`](agent-plugin.md) -> [`operator-ask.md`](operator-ask.md) |
+| Use or configure agent launch | [`../guide/agents/`](../guide/agents/README.md) |
+| Contribute safely | [`../guide/development/developer-guide.md`](../guide/development/developer-guide.md) -> [`../tracing/testing.md`](../tracing/testing.md) |
 
-- **[`concept.md`](concept.md)** — the thesis. Control inversion (the
-  runtime drives the state machine; the LLM only handles narrow
-  sub-tasks), progressive determinism, and the spectrum from CLI
-  wizards to free agent workflows. Read this first.
-- **[`overview.md`](overview.md)** — the system design: layers, the
-  package map, the turn loop, the LLM boundary, multi-surface
-  conversations, the persistence/replay model, and the trust model.
-- **[`prior-art.md`](prior-art.md)** — comparative grounding: what
-  kitsoki borrows from and rejects from interactive fiction
-  (Inform/TADS/Ink/Yarn), statecharts and orchestration
-  (XState/SCXML/Temporal/LangGraph), and dialogue managers
-  (Rasa/Dialogflow/Bot Framework).
+## Start Here
 
-## The external-world boundary
+- [`concept.md`](concept.md) — control inversion, progressive determinism, and
+  why the LLM returns bounded results instead of driving the workflow.
+- [`overview.md`](overview.md) — system layers, turn loop, LLM boundary,
+  multi-surface sessions, persistence, replay, and trust model.
+- [`prior-art.md`](prior-art.md) — what Kitsoki borrows from and rejects from
+  interactive fiction, statecharts, workflow engines, and dialogue managers.
 
-These docs describe how the deterministic engine reaches outside
-itself — every interpretive or side-effecting call crosses one of
-these surfaces.
+## Runtime Boundaries
 
-- **[`hosts.md`](hosts.md)** — every built-in `host.*` handler with its
-  input/output contract. The effect surface authors invoke from YAML.
-  Use [`hosts/`](hosts/README.md) as the shorter family index.
-- **[`agent-plugin.md`](agent-plugin.md)** — the Agent plugin
-  contract: declaring external agents under `agent_plugins:`, the
-  `invoke: host.agent.<verb>` + `agent:` effect shape, the
-  subprocess / MCP-over-HTTP transports, schema validation, and
-  sub-events.
-- **[`agent-providers.md`](agent-providers.md)** — the `providers:`
-  block: retargeting the `claude` subprocess at an alternate
-  Anthropic-compatible backend (model + env overrides) per invocation,
-  selected by an agent's `provider:` or an effect's `with: { provider }`.
-- **[`agent-backends.md`](agent-backends.md)** — the `--agent
-  claude|copilot` switch: which coding-agent CLI kitsoki forks behind
-  every agent verb + routing, the claude→copilot flag translation, and
-  the interface-compliance conformance suite.
-- **[`agent-cli.md`](agent-cli.md)** — the `host.agent.*` verb
-  surface as a standalone CLI (`kitsoki agent …`, `agent-serve`) for
-  validators and CI outside a running state machine.
-- **[`mcp-studio.md`](mcp-studio.md)** — the `kitsoki mcp` studio server
-  an external coding agent attaches to: the handle model and the
-  `story.*` / `session.*` / `render.*` tool surface that let it author a
-  story, drive a live session (no-LLM by default), and *see* the terminal
-  and browser views — plus the MCP-client operator surface.
-- **[`operator-ask.md`](operator-ask.md)** — forwarding a dispatched
-  agent's clarifying question back to the live operator (web + TUI + the
-  MCP studio client) via the `mcp__operator__ask` bridge, replacing the
-  headless-broken built-in `AskUserQuestion` tool; the DI
-  `OperatorPrompter` seam, interactivity gating, the wire schema, and the
-  trace events.
-- **[`artifact-annotation.md`](artifact-annotation.md)** — viewing and
-  annotating a room artifact (png / mp4 / rrweb / html / slidey deck) with
-  location-tied feedback: the discriminated `AnnotationAnchor` union, the two
-  producer-agnostic plugin contracts (the static **semantic-sidecar** and the live
-  **embed protocol** — with the slidey deck as the reference plugin), the
-  `ArtifactAnnotator` surface, and the companion-serving RPC/route. Generalises
-  [`visual-ambient.md`](visual-ambient.md).
-- **[`system-prompt.md`](system-prompt.md)** — the layered, cache-friendly
-  system prompt (kitsoki → project → task) composed for every claude
-  invocation, the replace-vs-append model, and the per-verb dynamic-sections
-  policy.
-- **[`transports.md`](transports.md)** — output adapters (TUI, Jira,
-  Bitbucket) and how sessions are keyed by external thread.
-- **[`semantic-routing.md`](semantic-routing.md)** — the routing stack
-  that sits between the deterministic match and the LLM: synonyms,
-  templates, typed slot parsers, and the turncache, plus
-  `kitsoki replay-routing` and `kitsoki inspect --synonym-suggestions`.
-- **[`ambient-mining.md`](ambient-mining.md)** — the propose → apply
-  loop: a scored recipe is deduped against the live inventory, drafted
-  into a staged YAML delta, and on an explicit accept applied via the
-  meta-mode reload path **only when the no-LLM flow suite stays green**,
-  with the surface-and-verdict recorded in the trace.
+- [`hosts.md`](hosts.md) — authoritative host-effect contracts.
+  [`hosts/`](hosts/README.md) is the shorter family index.
+- [`transports.md`](transports.md) — external thread transports, session keys,
+  and the drive-vs-transport model.
+- [`mcp-studio.md`](mcp-studio.md) — external-agent control plane for authoring,
+  driving, testing, and inspecting Kitsoki sessions.
+- [`operator-ask.md`](operator-ask.md) — forwarding agent questions to a live
+  operator instead of using headless-broken `AskUserQuestion`.
 
-## Contributing
+## Runtime Concepts
 
-- **[`developer-guide.md`](developer-guide.md)** — build, test, debug;
-  how to add an intent, host handler, transport, or subcommand; coding
-  conventions and the repository layout.
+- [`starlark.md`](starlark.md) — deterministic glue scripts, CodeAct snippets,
+  cassettes, validation, and the narrow `ctx` capability surface.
+- [`semantic-routing.md`](semantic-routing.md) — deterministic routing,
+  synonyms, templates, typed slots, the turn cache, and replay tooling.
+- [`system-prompt.md`](system-prompt.md) — layered, cache-friendly prompts for
+  routing and `host.agent.*` calls.
+- [`room-workbench.md`](room-workbench.md) — the `workbench:` primitive and its
+  deterministic-boundary rule.
+- [`prompt-intercept.md`](prompt-intercept.md) — pre-LLM prompt classification,
+  conservative gates, and decision recording.
+- [`ambient-mining.md`](ambient-mining.md) — propose/apply mining loop for
+  staged story improvements.
 
-## See also
+## Contracts And Models
 
-- The session trace and replay guarantees that make all of this
-  auditable: [`../tracing/trace-format.md`](../tracing/trace-format.md).
-- How a real workflow was decomposed into deterministic rooms:
-  [`../case-studies/bug-fix.md`](../case-studies/bug-fix.md).
+- [`agent-plugin.md`](agent-plugin.md) — external agent declarations and the
+  `invoke: host.agent.<verb>` contract.
+- [`github-agent.md`](github-agent.md) — the `@kitsoki` GitHub dispatch model.
+- [`artifact-annotation.md`](artifact-annotation.md) — unified annotations for
+  screenshots, videos, rrweb captures, HTML, and Slidey decks.
+- [`visual-ambient.md`](visual-ambient.md) — frame/point/element context fed
+  into visual oracles; generalized by artifact annotations.
+- [`embeddings.md`](embeddings.md) — embedding index/store/sidecar and
+  `host.agent.search`.
+- [`extension-docs.md`](extension-docs.md) — source-owned docs sidecars and the
+  deterministic extension library index.
+- [`decomposition-graph.md`](decomposition-graph.md) and
+  [`graph-grouping-taxonomy.md`](graph-grouping-taxonomy.md) — graph model,
+  validation, areas, and initiatives.
+- [`repo-history-training.md`](repo-history-training.md) — manifest and
+  promotion rule for repo-history training data.
+
+## Guide Handoff
+
+- [`../guide/agents/launch.md`](../guide/agents/launch.md) — `kitsoki agent
+  launch`, CodeAct mode, dry-runs, and interactive Codex launches.
+- [`../guide/agents/harness-profiles.md`](../guide/agents/harness-profiles.md)
+  — backend/profile/model configuration.
+- [`../guide/development/developer-guide.md`](../guide/development/developer-guide.md)
+  — local build/test/debug contribution workflow.
+- [`../guide/development/capsules.md`](../guide/development/capsules.md) —
+  hermetic repository fixtures and `kitsoki capsule` usage.
+- [`../guide/integrations/github-app-setup.md`](../guide/integrations/github-app-setup.md)
+  — GitHub App setup runbook.
+
+## See Also
+
+- [`../tracing/trace-format.md`](../tracing/trace-format.md) — the audit trail
+  that makes architecture decisions replayable.
+- [`../case-studies/bug-fix.md`](../case-studies/bug-fix.md) — a real workflow
+  decomposed into deterministic rooms.

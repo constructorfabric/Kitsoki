@@ -1,0 +1,7 @@
+schema: capsule-definition/v1
+id: self
+description: Generic clone-backed workspace for the current project checkout.
+source:
+  kind: self
+policy:
+  network: none

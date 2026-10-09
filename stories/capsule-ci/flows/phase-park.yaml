@@ -1,0 +1,23 @@
+test_kind: flow
+app: capsule-ci
+initial_state: prepare
+initial_world:
+  ci_job_id: job-park
+  ci_pipeline: change
+turns:
+  - intent: { name: needs_input, slots: {} }
+    expect_state: parked
+    expect_world:
+      ci_outcome: needs_input
+      ci_verdict:
+        schema: capsule-ci-verdict/v1
+        pipeline: change
+        outcome: needs_input
+        summary: "The prepare phase needs an explicit authority or decision."
+        checks: []
+        promotion_eligible: false
+        source_digest: null
+        story_digest: null
+        environment_digest: null
+        envelope_digest: null
+expect_no_errors: true

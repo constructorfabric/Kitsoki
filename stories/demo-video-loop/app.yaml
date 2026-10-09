@@ -40,12 +40,14 @@ app:
 # does not commit; the demo artifacts live under repo-root .artifacts/, not the
 # tree.
 #   host.agent.task    — the maker: authors the demo video + qa inputs each turn
-#   host.run            — the deterministic video-validation gate, the qa.sh gate,
-#                         and the diff/proposal/epoch helpers
+#   host.run            — the deterministic video-validation gate and the
+#                         diff/proposal/epoch helpers
+#   host.ui_qa.run      — the kitsoki-ui-qa gate and completion-state adapter
 #   host.artifacts_dir  — persist each iteration's record (the run trail)
 hosts:
   - host.agent.task
   - host.run
+  - host.ui_qa.run
   - host.artifacts_dir
 
 agents:
@@ -61,7 +63,6 @@ agents:
       the qa feature/scenarios paths you wrote.
     model: claude-opus-4-8
     tools: [Read, Write, Edit, Glob, Grep, Bash]
-    external_side_effect: false
 
 world:
   # --- Input contract (the world_in: an importer supplies) ---
@@ -98,6 +99,8 @@ world:
   qa_ok:        { type: string, default: "" }
   qa_exit_code: { type: int,    default: 0 }
   qa_report:    { type: string, default: "" }
+  qa_completion_state_path:     { type: string, default: "" }
+  qa_completion_artifact_handle: { type: string, default: "" }
 
   # Cost: session_cost_usd is the reserved engine-maintained spend var (declared
   # here so it has a default and is seedable in flow fixtures); the runtime
@@ -135,6 +138,10 @@ intents:
     description: "(internal) re-enter the maker after a gate loop-back."
     examples: ["mark_looped"]
     priority: 1
+  record_qa_completion:
+    description: "(internal) journal the generated QA completion-state artifact before routing the verdict."
+    examples: ["record_qa_completion"]
+    priority: 1
   loop_again:
     description: "(internal) gate failed, budget remains — loop with feedback."
     examples: ["loop_again"]
@@ -158,6 +165,17 @@ exits:
   achieved:  { requires: [terminal_reason] }
   exhausted: { requires: [terminal_reason] }
   abandoned: { requires: [terminal_reason] }
+
+operations:
+  demo_video_qa:
+    title: "Gate demo video"
+    mode: autonomous
+    execution_mode: one-shot
+    run_in_background: true
+    stop_on: [host-error]
+    terminal_artifact: qa_completion_artifact_handle
+    phase_summary:
+      from: [video_path, qa_report, qa_completion_artifact_handle]
 
 # The first real room IS the root — no idle/begin ceremony.
 root: generating

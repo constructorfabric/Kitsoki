@@ -1,0 +1,59 @@
+# opens_pr — happy path: `open` packages evidence and host.git opens the PR → @exit:opened with pr_url.
+#
+# MOCKS open_pr_exec (host.git), so it proves the ROUTING contract (native
+# outcome → opened → @exit:opened, pr_url bound). The real provider path is
+# covered by host.git unit tests.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  repo:          bsacrobatix/Kitsoki
+  head_branch:   fix/template-object-interp-placeholder
+  branch_kind:   bug
+  base_branch:   main
+  remote:        origin
+  worktree_path: .worktrees/bf-template-object-interp-placeholder
+  title:         "fix(render): render non-scalar template values as JSON, not the Go placeholder"
+  feature_description: "Fixes the object-in-string-template silent-data-loss bug."
+  product_site_paths: "features/trace-features.yaml"
+  product_feature_id: trace-features
+  demo_source_path: "tools/runstatus/tests/playwright/trace-features-video.spec.ts"
+
+host_handlers:
+  host.run:
+    by_call:
+      prepare_pr_package:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            outcome: prepared
+            body: "## Summary\n\nFixes the object-in-string-template silent-data-loss bug.\n\n## Demo\n\n- Rendered video: `.artifacts/trace-features/trace-features.mp4`\n"
+            package_path: ".context/open-pr/fix-template-object-interp-placeholder.md"
+            demo_video_path: ".artifacts/trace-features/trace-features.mp4"
+            last_error: ""
+  host.git:
+    by_call:
+      open_pr_exec:
+        data:
+          ok: true
+          outcome: opened
+          url:     "https://github.com/bsacrobatix/Kitsoki/pull/7"
+          pr_id:   "7"
+          repo:    bsacrobatix/Kitsoki
+
+turns:
+  - intent: { name: open, slots: {} }
+    expect_state: __exit__opened
+    expect_world:
+      status:       opened
+      prepare_outcome: prepared
+      pr_package_path: ".context/open-pr/fix-template-object-interp-placeholder.md"
+      demo_video_path: ".artifacts/trace-features/trace-features.mp4"
+      open_outcome: opened
+      pr_url:       "https://github.com/bsacrobatix/Kitsoki/pull/7"
+      pr_number:    "7"
+      repo:         bsacrobatix/Kitsoki
+
+expect_terminal: true

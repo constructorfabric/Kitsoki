@@ -1,0 +1,26 @@
+# lint_rejects_scope_overlap — the structural gate rejects a decomposition where two
+# changes that are READY at intake own OVERLAPPING scope (no two changes may own the
+# same file at ready-time — the disjoint-scope claim; goal.py lint parity). gs_lint
+# fail()s → needs_human; the loop never starts.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: bootstrap
+initial_world:
+  goal_slug: scope-test
+  goal_dir:  stories/goal-seeker/testdata/scope-overlap
+  work_dir:  .artifacts/goal/flow-scope
+  reset_log: true
+host_handlers: { host.run: { by_call: {} } }
+
+turns:
+  - intent: { name: look, slots: {} }
+    expect_state: bootstrap
+  - intent: { name: advance, slots: {} }        # bootstrap → lint_check (runs gs_lint)
+    expect_state: lint_check
+  - intent: { name: advance, slots: {} }        # lint fail → needs_human
+    expect_state: needs_human
+  - intent: { name: look, slots: {} }
+    expect_view_matches: "scope overlap"
+
+expect_no_errors: true

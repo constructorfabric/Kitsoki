@@ -1,0 +1,25 @@
+app: { id: corpus-forge, version: 0.3.0, title: "Corpus Forge", author: Kitsoki, license: CC0 }
+hosts: [host.starlark.run, host.corpus.prove, host.corpus.freeze_receipt]
+world:
+  # Intake adapters supply only the canonical corpus-case.v1 candidate list.
+  # Imported verified_red/verified_green fields are neither required nor read.
+  source_candidates: { type: list, default: [] }
+  task_limit: { type: int, default: 5 }
+  selection_id: { type: string, default: "local-corpus-forge" }
+  corpus_role: { type: string, default: "calibration" }
+  source_manifest_ref: { type: string, default: "" }
+  loaded_candidates: { type: list, default: [] }
+  selected_candidates: { type: list, default: [] }
+  selected_ids: { type: string, default: "" }
+  proofs: { type: list, default: [] }
+  validation: { type: object, default: {} }
+  receipt: { type: object, default: {} }
+  last_error: { type: string, default: "" }
+intents:
+  start: { description: "Load canonical corpus candidates.", examples: [start], priority: 90 }
+  accept: { description: "Continue.", examples: [accept], priority: 80 }
+  quit: { description: "Stop.", examples: [quit], priority: 50 }
+  look: { description: "Refresh.", examples: [look], priority: 10 }
+exits: { done: { requires: [receipt, validation] }, abandoned: {} }
+root: idle
+include: [rooms/*.yaml]

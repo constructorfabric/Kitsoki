@@ -15,7 +15,8 @@
 #                      it at synthetic.new via ANTHROPIC_BASE_URL +
 #                      ANTHROPIC_AUTH_TOKEN=${SYNTHETIC_API_KEY}, so GLM-5.2 is
 #                      the worker. (No Anthropic account is used.)
-#   - kitsoki        — installed onto PATH (/usr/local/bin) so drive.sh and the
+#   - kitsoki        — cloned/refreshed from bsacrobatix/kitsoki main, then
+#                      installed onto PATH (/usr/local/bin) so drive.sh and the
 #                      studio MCP resolve it.
 #   - env scaffold   — /etc/profile.d/bakeoff-env.sh (cache/PATH knobs).
 #
@@ -25,6 +26,9 @@
 set -euo pipefail
 
 KITSOKI_DIR="${KITSOKI_DIR:-/opt/bakeoff/repos/kitsoki}"
+KITSOKI_REMOTE_NAME="${KITSOKI_REMOTE_NAME:-origin}"
+KITSOKI_REMOTE_URL="${KITSOKI_REMOTE_URL:-https://github.com/bsacrobatix/kitsoki.git}"
+KITSOKI_BRANCH="${KITSOKI_BRANCH:-main}"
 log() { printf '[provision-vm] %s\n' "$*"; }
 
 # --- 1. system deps -----------------------------------------------------------
@@ -58,14 +62,39 @@ npm i -g @openai/codex @anthropic-ai/claude-code >/dev/null 2>&1
 log "codex:  $(command -v codex)  $(codex --version 2>&1 | head -1)"
 log "claude: $(command -v claude)  $(claude --version 2>&1 | head -1)"
 
-# --- 3. kitsoki on PATH -------------------------------------------------------
-if [[ -d "$KITSOKI_DIR" ]]; then
-  log "installing kitsoki from $KITSOKI_DIR"
-  make -C "$KITSOKI_DIR" install >/dev/null 2>&1 || {
-    # Fallback: go install straight onto PATH if the full make target is heavy.
-    GOBIN=/usr/local/bin go -C "$KITSOKI_DIR" install ./cmd/kitsoki
-  }
-fi
+# --- 3. kitsoki checkout + PATH install --------------------------------------
+sync_kitsoki_checkout() {
+  mkdir -p "$(dirname "$KITSOKI_DIR")"
+  if [[ ! -d "$KITSOKI_DIR/.git" ]]; then
+    if [[ -e "$KITSOKI_DIR" ]]; then
+      log "ERROR: $KITSOKI_DIR exists but is not a git checkout"
+      return 1
+    fi
+    log "cloning kitsoki from ${KITSOKI_REMOTE_URL} (${KITSOKI_BRANCH}) into $KITSOKI_DIR"
+    git clone --origin "$KITSOKI_REMOTE_NAME" --branch "$KITSOKI_BRANCH" --single-branch \
+      "$KITSOKI_REMOTE_URL" "$KITSOKI_DIR"
+    return 0
+  fi
+
+  log "refreshing kitsoki checkout from ${KITSOKI_REMOTE_URL} ${KITSOKI_BRANCH}"
+  git -C "$KITSOKI_DIR" remote get-url "$KITSOKI_REMOTE_NAME" >/dev/null 2>&1 \
+    || git -C "$KITSOKI_DIR" remote add "$KITSOKI_REMOTE_NAME" "$KITSOKI_REMOTE_URL"
+  git -C "$KITSOKI_DIR" remote set-url "$KITSOKI_REMOTE_NAME" "$KITSOKI_REMOTE_URL"
+  git -C "$KITSOKI_DIR" fetch "$KITSOKI_REMOTE_NAME" "$KITSOKI_BRANCH"
+  if git -C "$KITSOKI_DIR" show-ref --verify --quiet "refs/heads/$KITSOKI_BRANCH"; then
+    git -C "$KITSOKI_DIR" checkout "$KITSOKI_BRANCH"
+  else
+    git -C "$KITSOKI_DIR" checkout -b "$KITSOKI_BRANCH" "$KITSOKI_REMOTE_NAME/$KITSOKI_BRANCH"
+  fi
+  git -C "$KITSOKI_DIR" pull --ff-only "$KITSOKI_REMOTE_NAME" "$KITSOKI_BRANCH"
+}
+
+sync_kitsoki_checkout
+log "installing kitsoki from $KITSOKI_DIR"
+make -C "$KITSOKI_DIR" install >/dev/null 2>&1 || {
+  # Fallback: go install straight onto PATH if the full make target is heavy.
+  GOBIN=/usr/local/bin go -C "$KITSOKI_DIR" install ./cmd/kitsoki
+}
 command -v kitsoki >/dev/null && log "kitsoki: $(command -v kitsoki)" || log "WARN: kitsoki not on PATH"
 
 # --- 4. env scaffold (non-secret) ---------------------------------------------

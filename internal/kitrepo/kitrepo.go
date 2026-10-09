@@ -7,8 +7,11 @@
 // the engine-targeting features silently vanished whenever the operator
 // forgot to export it. This package adds a persisted fallback under
 // ~/.kitsoki/repo: once the repo is located (from the env or by
-// auto-detecting a dev checkout), the path is written there and every
-// later run — from any working directory, with no env var — finds it.
+// auto-detecting a dev checkout), the path is written there and later runs
+// outside a checkout, with no env var, can find it. A checkout containing the
+// current working directory always beats that remembered fallback. This is
+// important for managed capsules: a stale primary-checkout preference must not
+// redirect a capsule command to different story and tool sources.
 package kitrepo
 
 import (
@@ -26,10 +29,10 @@ const EnvVar = "KITSOKI_REPO"
 // "" when it cannot be determined. Resolution order:
 //
 //  1. $KITSOKI_REPO, if set and non-empty.
-//  2. the path saved in ~/.kitsoki/repo by a prior run (skipped if it no
+//  2. auto-detection — the nearest ancestor of the working directory
+//     whose go.mod declares `module kitsoki` (i.e. the current dev checkout).
+//  3. the path saved in ~/.kitsoki/repo by a prior run (skipped if it no
 //     longer points at a directory).
-//  3. auto-detection — the nearest ancestor of the working directory
-//     whose go.mod declares `module kitsoki` (i.e. a dev checkout).
 //
 // A value resolved via (1) or (3) is persisted to ~/.kitsoki/repo so
 // later runs from ANY directory resolve it without $KITSOKI_REPO — this
@@ -41,12 +44,12 @@ func Resolve() string {
 		save(env)
 		return env
 	}
-	if saved := readSaved(); saved != "" {
-		return saved
-	}
 	if detected := detect(); detected != "" {
 		save(detected)
 		return detected
+	}
+	if saved := readSaved(); saved != "" {
+		return saved
 	}
 	return ""
 }

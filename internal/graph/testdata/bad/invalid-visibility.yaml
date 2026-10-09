@@ -1,0 +1,10 @@
+schema: project-object-graph/seed-catalog/v0
+type_registry:
+  - id: core-node
+    schema: graph-type/v0
+nodes:
+  - schema: graph/core-node/v0
+    id: node-one
+    title: Node one
+    status: active
+    visibility: super-secret

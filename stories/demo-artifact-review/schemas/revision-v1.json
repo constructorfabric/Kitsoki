@@ -1,0 +1,1 @@
+{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"Demo artifact revision v1","type":"object","additionalProperties":false,"required":["kind","ref","schema_version"],"properties":{"kind":{"enum":["mockup","rrweb","slidey"]},"ref":{"type":"string","minLength":1},"schema_version":{"const":1}}}

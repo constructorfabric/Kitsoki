@@ -168,7 +168,28 @@ function collectActions(doc: Document): VisualAction[] {
     });
     if (out.length >= ACTION_LIMIT) break;
   }
+  addSyntheticReportBugAction(doc, seen, out);
   return out;
+}
+
+function addSyntheticReportBugAction(doc: Document, seen: Set<string>, out: VisualAction[]): void {
+  const handle = "testid:meta-report-bug";
+  if (seen.has('[data-testid="meta-report-bug"]')) return;
+
+  const metaButton = doc.querySelector("[data-testid='meta-button']");
+  if (!(metaButton instanceof HTMLElement) || !isVisible(metaButton) || isDisabled(metaButton)) return;
+  const bbox = rectOf(metaButton);
+  if (bbox.width <= 0 || bbox.height <= 0) return;
+
+  out.push({
+    handle,
+    selector: '[data-testid="meta-report-bug"]',
+    testid: "meta-report-bug",
+    role: "button",
+    label: "Report bug",
+    disabled: false,
+    bbox,
+  });
 }
 
 function isActionCandidate(el: HTMLElement): boolean {

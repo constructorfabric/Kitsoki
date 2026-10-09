@@ -33,6 +33,7 @@ package orchestrator
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -41,6 +42,7 @@ import (
 	"kitsoki/internal/app"
 	"kitsoki/internal/clock"
 	"kitsoki/internal/host"
+	"kitsoki/internal/jobs"
 	"kitsoki/internal/journal"
 	"kitsoki/internal/store"
 	"kitsoki/internal/trace"
@@ -562,6 +564,17 @@ func (o *Orchestrator) fireTimeout(ctx context.Context, sid app.SessionID, fromS
 			slog.String("current", string(journey.State)),
 		)
 		return nil
+	}
+	// A timeout can be a control-plane circuit breaker, not merely a UI
+	// transition. Background jobs deliberately outlive their submitting turn;
+	// without this explicit cancellation a timed-out agent continues spending
+	// tokens after the workflow has already declared its result unusable.
+	if source := lookupStateByPath(o.def, fromState); source != nil && source.Timeout != nil && source.Timeout.CancelJob && o.scheduler != nil {
+		if jobID, ok := journey.World.Get("last_job_id").(string); ok && jobID != "" {
+			if cancelErr := o.scheduler.Cancel(ctx, jobID); cancelErr != nil && !errors.Is(cancelErr, jobs.ErrJobNotFound) {
+				return fmt.Errorf("fireTimeout: cancel background job %q: %w", jobID, cancelErr)
+			}
+		}
 	}
 
 	// Validate target exists.

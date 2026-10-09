@@ -1,131 +1,85 @@
 # The VS Code extension
 
-The `tools/vscode-kitsoki/` extension puts kitsoki's **web UI inside the editor**:
-the **chat front and center** in an editor-area panel, with the live **trace + state
-diagram as a maximizable hint rail** beside it, themed to match VS Code, bound to
-the workspace's `stories/` and
-`.kitsoki/`. It is a **third head** on the orchestrator body — the same Vue SPA
-the [browser web UI](web-ui.md) serves, relayed into a webview instead of a
-browser tab, driving the same `kitsoki web` backend over the same JSON-RPC/SSE
-protocol. The orchestrator, its method set (`internal/runstatus/server/server.go`),
-and the SSE contract are **unchanged**: every interpretive decision still lands
-in the trace byte-for-byte, because it is the same process the browser talks to.
+The `tools/vscode-kitsoki/` extension puts Kitsoki's **chat in VS Code's bottom
+panel**, beside Terminal, Ports, and testing views. Live **trace** and **state
+graph** views remain in a dedicated activity-bar container. Chat is not an editor
+tab, so opening a conversation never replaces a source file or consumes an editor
+group.
+
+It is a **third head** on the orchestrator body: the same Vue SPA the
+[browser web UI](web-ui.md) serves, relayed into a webview and driving the same
+`kitsoki web` JSON-RPC/SSE backend. The orchestrator, method set
+(`internal/runstatus/server/server.go`), and trace contract are unchanged.
 
 > This is **not** the inverse [`/ide`](README.md#editor-awareness-ide) work
-> ([`hosts.md`](../architecture/hosts.md#hostide--editor-awareness)), where the
-> terminal kitsoki dials *out* to a running editor to rent its capabilities. Here
-> the editor *hosts* kitsoki's own UI. The two are complementary and share no code.
+> ([`hosts.md`](../architecture/hosts.md#hostide--editor-awareness)), where a
+> terminal Kitsoki session dials out to a running editor. Here the editor hosts
+> Kitsoki's UI. The two paths are complementary.
 
-*Audience: operators running kitsoki from inside VS Code, and contributors on the
-embed/relay/demo plumbing. The shared SPA, JSON-RPC method set, and trace
-rendering are documented once in [`web-ui.md`](web-ui.md) — this page covers only
-what is unique to the editor embed.*
+*Audience: operators running Kitsoki inside VS Code and contributors working on
+the embed, relay, or extension QA plumbing. Shared SPA behavior is documented in
+[`web-ui.md`](web-ui.md); this page covers editor-specific integration.*
 
 ## Layout
-
-The SPA's own multi-pane layout (chat **and** trace fighting for width) is wrong
-inside VS Code's narrow chrome. So the embed runs the SPA in a dedicated **editor
-panel** and the SPA detects the webview host (`acquireVsCodeApi` present →
-`isEmbedded()`, `tools/runstatus/src/lib/embed.ts`) and renders the interactive
-view **chat-only** — trace and graph are their own dockable windows (see
-[Surface decomposition](#surface-decomposition--chat-trace-and-graph-as-independent-windows)),
-so the chat panel never repeats them.
 
 ```
 VS Code window
 ┌──────────┬──────────────────────────────────────────────────────┐
-│ Activity │  editor area: Kitsoki CHAT panel (front/center)       │
-│   bar    │ ┌──────────────────────────────────────────────────┐ │
-│ [K] chat │ │  CHAT  — story library → transcript · room view   │ │
-│ [K] surf │ │  > type a message…                                │ │
+│ Activity │ editor area: source files and native diffs           │
+│ bar      │                                                      │
+│ [K]      ├──────────────────────────────────────────────────────┤
+│ Trace    │ bottom panel: Terminal | Ports | Playwright | Kitsoki│
+│ Graph    │ ┌──────────────────────────────────────────────────┐ │
+│          │ │ CHAT — transcript · room view · composer          │ │
 │          │ └──────────────────────────────────────────────────┘ │
-│ Trace ▏  │   Trace + Graph open as their OWN docked surfaces      │
-│ Graph ▏  │   ("Kitsoki Surfaces" container) — never in the chat.  │
 └──────────┴──────────────────────────────────────────────────────┘
 ```
 
-- **Editor panel** — a `WebviewPanel` (`ChatPanel`, `src/webview.ts`) in the
-  editor area, registered with a `WebviewPanelSerializer` so it revives after
-  reload / restart / window-move (its persisted state is just a marker; the live
-  session is re-discovered on boot, see [Surface decomposition](#surface-decomposition--chat-trace-and-graph-as-independent-windows)).
-  It mounts the **full SPA** (no surface marker) but the embed interactive layout is
-  **chat-only**: the conversation fills the panel — no trace/graph hint rail.
-- **Standalone trace / graph surfaces** — the `TraceTimeline` / `StateDiagram` each
-  dock as their **own webview** in the **Kitsoki Surfaces** activity-bar container
-  (`kitsoki.trace`, `kitsoki.graph` `WebviewView`s). See
-  [Surface decomposition](#surface-decomposition--chat-trace-and-graph-as-independent-windows).
-- **Activity-bar launcher** — the `kitsoki` `viewsContainer` hosts a thin
-  `kitsoki.launch` tree view whose `viewsWelcome` is an **Open Kitsoki Chat** button
-  → `command:kitsoki.openChat`. Revealing the view (clicking the Kitsoki icon) also
-  auto-opens the editor panel. (The launcher is the *only* view in this container,
-  so its `onDidChangeVisibility` auto-open fires reliably — the trace/graph views
-  live in a separate container precisely to keep that signal clean.)
-- **Code + kitsoki in one workspace** — open your story's `app.yaml` (or any code)
-  in a split beside the Kitsoki panel; both are themed to the editor.
+- **Bottom-panel Chat** — `kitsoki.chat` is a `WebviewView` in the `kitsoki`
+  panel container contributed through `viewsContainers.panel`. `Kitsoki: Open
+  Chat` starts the selected story and focuses this view. It never calls
+  `createWebviewPanel` and there is no "Open Chat in Editor" command.
+- **Standalone Trace / Graph** — `kitsoki.trace` and `kitsoki.graph` are
+  `WebviewView`s in the `kitsoki-surfaces` activity-bar container. Commands
+  `Kitsoki: Open Trace` and `Kitsoki: Open Graph` focus them; VS Code still lets
+  operators drag these dockable views elsewhere.
+- **Editor-aware documents** — `host.ide.*` files and diffs open in the active
+  editor column. Because Chat is outside the editor grid, documents do not need
+  an artificial beside-chat split.
 
-`mountSpa(webview, …, surface?)` (`src/webview.ts`) is the one shared path that
-wires a webview's relay, brings up the backend, and renders the bundle. The chat
-panel calls it with **no** `surface` (full SPA); the trace/graph providers pass
-`'trace'`/`'graph'`. Commands `Kitsoki: Open Chat`, `Open Trace`, `Open Graph`, and
-`Restart Backend` are contributed in the `Kitsoki` category (`src/extension.ts`).
+`mountSpa(webview, …, surface)` (`src/webview.ts`) is the shared path that wires
+a webview relay, brings up the backend, and renders the bundle. Each provider
+passes `'chat'`, `'trace'`, or `'graph'`, and the SPA mounts the corresponding
+single-surface host.
 
-## Surface decomposition — chat, trace, and graph as independent windows
+## Surface decomposition — chat, trace, and graph as independent views
 
-The chat panel is the primary surface, but the three UI elements — **chat**,
-**trace**, **state graph** — can each exist in their **own** VS Code window
-independently, all sharing the **one** backend session. This is "N windows, one
-session," and it costs almost nothing because of how the embed is already built:
-each webview is its own document → its own SPA instance → its own Pinia store →
-its own `Relay`, all pointed at the single `Backend` process. There is no
-store-singleton to untangle (that hazard only exists for two Vue roots in *one*
-document, which never happens here).
+Each webview is its own document, SPA instance, Pinia store, and `Relay`, but all
+point at one `Backend` process and one current session. The arrangement is "N
+views, one session" without frontend singleton coupling.
 
-**Single-surface boot.** The chat panel boots the full SPA. A trace-only or
-graph-only webview instead mounts just that one component: `renderSpaHtml` injects
-`window.__KITSOKI_SURFACE = 'trace' | 'graph'`, and `main.ts` reads it at boot —
-if set, it mounts a `SurfaceHost` (`tools/runstatus/src/surfaces/`) rendering a
-single thin view (`TraceSurface.vue` / `GraphSurface.vue`) instead of the router.
-Absent the marker, the full SPA boots unchanged (the browser is also unchanged; a
-`?surface=trace` query param is the browser-dev fallback). The surface views reuse
-the **exact same** `TraceTimeline` / `StateDiagram` components — they are prop-only
-and decoupled, so mounting one standalone is trivial.
+**Single-surface boot.** `renderSpaHtml` injects
+`window.__KITSOKI_SURFACE = 'chat' | 'trace' | 'graph'`. `main.ts` mounts the
+matching `SurfaceHost` (`tools/runstatus/src/surfaces/`) instead of the full
+router. Components are shared with the browser UI.
 
-**Follow-the-session seam.** Chat is what *starts* a session; a trace/graph
-window has no chat, so it must **discover and follow** the active one. The backend
-hosts exactly one "current" session, so it is the source of truth (works in the
-browser too — least surprise):
+**Follow-the-session seam.** Chat starts or attaches a session. Trace and Graph
+follow it through the backend's current-session contract:
 
-- RPC `runstatus.session.current` → `{ session_id | null }` — the most recently
-  created (`session.new`) or attached (`session.attach`) session. The
-  `SessionRegistry` tracks `currentSessionID` (guarded by its existing mutex) and
-  the server exposes it via an optional `CurrentSessionProvider`
-  (`internal/runstatus/server/`).
-- Notification `runstatus.session.changed` `{ session_id }` over a dedicated SSE
-  feed (`runstatus.session.current.subscribe`/`unsubscribe` →
-  `/rpc/session-current`, `session_current.go`), mirroring the existing
-  notifications feed. A new subscriber is seeded with the current value so it
-  syncs immediately.
+- RPC `runstatus.session.current` returns `{ session_id | null }`.
+- `runstatus.session.current.subscribe` streams `runstatus.session.changed`
+  notifications and seeds new subscribers with the current value.
+- Each surface hydrates from that current session on mount and after visibility
+  changes.
 
-On the client, `DataSource` gains `getCurrentSession()` and
-`subscribeCurrentSession(onChange)` (`LiveSource` + `SnapshotSource`); the
-transport is generic (`call` + `openEventStream` proxy any method/path), so this
-needed **zero** transport/relay changes. Each surface on mount: resolve the
-session; if none, show "Start a chat to begin"; else `hydrate()` (graph also reads
-the current room view so the diagram shows the room's moves) and re-hydrate on
-`session.changed`.
+Hidden webview views can drop `postMessage` even with retained context, so state
+is not pushed into hidden views. Each view rehydrates from backend-owned state
+when it resolves or becomes visible.
 
-**Placement (hybrid).** Chat lives in the editor area (`WebviewPanel`,
-pop-out / "Move into New Window" capable). Trace + Graph are `WebviewView`s in a
-dedicated **Kitsoki Surfaces** activity-bar container (`kitsoki-surfaces`),
-revealed by `Kitsoki: Open Trace` / `Open Graph` (`kitsoki.trace.focus` /
-`kitsoki.graph.focus`) — draggable to the panel or secondary sidebar. They are in
-their own container (not the launcher's) so the launcher's auto-open signal stays
-clean. One of each: revealing focuses the existing surface.
-
-> **Hidden webview views drop `postMessage`** even with `retainContextWhenHidden`,
-> so the surfaces never push state into a hidden view — state lives backend-side
-> and re-hydrates on (re)resolve / visibility (the `session.current` seam). The
-> serializer keys the chat panel by `viewType` alone, which is fine for one-of-each.
+**Placement.** Chat defaults to the bottom panel alongside VS Code's native tool
+views. Trace and Graph default to the activity bar. All three remain dockable
+`WebviewView`s, but the extension no longer creates or serializes a Chat editor
+`WebviewPanel`.
 
 ### Native integration roadmap (not built yet)
 
@@ -352,10 +306,9 @@ manifest. Both advance one `ChapterRecorder` clock, so the chapter sidecar spans
 the whole editor tour.
 
 **Critical path asserted beat-by-beat** (and the scenarios the QA gate checks the
-video against): (a) the Kitsoki editor panel opens and shows the themed story
-library (clicking the activity-bar icon auto-opens it); (c) a session starts
-(`current-state = lobby`) and the chat panel is **chat-only** (`hint-rail` count is
-0 — no trace/graph in the chat); (d) a turn is driven and state advances
+video against): (a) `Kitsoki: Open Chat` opens the story picker, starts the chosen
+story, and focuses the bottom-panel Chat without creating an editor tab; (c) the
+session starts at `current-state = lobby`; (d) a turn is driven and state advances
 (`forecast` → `current-state = report`, the "Tokyo, Japan" forecast renders —
 proving the cassette replay ran end-to-end through bundle → CSP → BridgeTransport →
 relay → backend); (h) **`Kitsoki: Open Trace`** docks a **standalone** Trace
@@ -365,8 +318,8 @@ session — its own webview, separate store, rendering the driven timeline
 standalone Graph surface (`surface-graph`) following the session, current station
 marked (`diagram-current-station`); (j) **one backend** — chat + trace + graph relay
 to a single spawned process (asserted via the host log: exactly one
-`[backend] spawn`); (g) the finale splits `app.yaml` beside the panel — code +
-kitsoki side by side (record only). The standalone-surface beats find the right
+`[backend] spawn`); (g) the finale opens `app.yaml` above the bottom panel — code
+and conversation remain visible together (record only). The standalone-surface beats find the right
 webview among several via a `surfaceFrame(testid)` scan (the single-webview
 `webviewFrame` helper can't disambiguate once 3 webviews are open).
 
@@ -384,9 +337,9 @@ The full-editor video proves the *flow*; it does not show each surface at the
 **exact size it occupies** when docked. `make surface-panels`
 (`tools/runstatus/tests/playwright/surface-panels.spec.ts`) is the Vue-layer
 companion: it spawns `kitsoki web` (no-LLM), drives one forecast turn over RPC, then
-screenshots each `?surface=` target at its real VS Code sizes/orientations — chat
-(editor), trace + graph (narrow sidebar, **stacked** half-height, and wide bottom
-panel) — into `.artifacts/surface-panels/`. Feed those PNGs straight to
+screenshots each `?surface=` target at its real VS Code sizes/orientations — Chat
+(bottom panel), Trace + Graph (narrow sidebar, **stacked** half-height, and wide
+bottom panel) — into `.artifacts/surface-panels/`. Feed those PNGs straight to
 `kitsoki-ui-qa --frames` to QA each panel as actually presented. This is how the
 trace's filter-bar-crowding-out-rows regression was caught: in a docked panel the
 `TraceTimeline` filter bar now collapses behind a one-line **Filters** toggle
@@ -412,9 +365,9 @@ build the binary, build the extension bundle (esbuild), then run the gate.
 
 Manual run (outside the e2e harness): build `bin/kitsoki`, build the extension
 (`cd tools/vscode-kitsoki && pnpm install && pnpm build`), point
-`kitsoki.binaryPath` at it, click the Kitsoki activity-bar icon (or run
-`Kitsoki: Open Chat`). The editor panel spawns the backend and renders the story
-library; start a session for chat front/center with the trace + graph hint rail.
+`kitsoki.binaryPath` at it, then run `Kitsoki: Open Chat`. Pick a story and the
+extension focuses Chat in the bottom panel. The Kitsoki Surfaces activity-bar icon
+opens the independent Trace and Graph views.
 
 Tests:
 

@@ -2,6 +2,7 @@ package shot
 
 import (
 	"image/color"
+	"strings"
 	"testing"
 )
 
@@ -143,5 +144,30 @@ func TestParse_NonSGRCSIStripped(t *testing.T) {
 	g := Parse("a\x1b[2Kb") // \x1b[2K = erase line, must not print "2K"
 	if got := rowText(g.Rows[0]); got != "ab" {
 		t.Errorf("row = %q, want %q (CSI bytes leaked)", got, "ab")
+	}
+}
+
+// TestParse_OSC8HyperlinkStripped guards render.tui_png: Frame.ANSI may carry
+// OSC 8 terminal hyperlinks around markdown paths. Those controls are
+// zero-width; the rasterizer must paint only the visible label, not the
+// "8;;file://..." wrapper that plain render.tui already strips.
+func TestParse_OSC8HyperlinkStripped(t *testing.T) {
+	const path = "stories/prd/README.md"
+	line := "Overlap 1:  \x1b]8;;file:///Users/brad/code/Kitsoki/" + path + "\x07" + path + "\x1b]8;;\x07"
+	g := Parse(line)
+	got := rowText(g.Rows[0])
+	want := "Overlap 1:  " + path
+	if got != want {
+		t.Fatalf("row = %q, want %q", got, want)
+	}
+	if strings.Contains(got, "8;;") || strings.Contains(got, "file://") || strings.Count(got, path) != 1 {
+		t.Fatalf("OSC 8 payload leaked into visible row: %q", got)
+	}
+}
+
+func TestParse_OSCTerminatedByST(t *testing.T) {
+	g := Parse("a\x1b]8;;file:///tmp/x.md\x1b\\x.md\x1b]8;;\x1b\\b")
+	if got := rowText(g.Rows[0]); got != "ax.mdb" {
+		t.Errorf("row = %q, want %q", got, "ax.mdb")
 	}
 }

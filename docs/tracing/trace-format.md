@@ -212,6 +212,10 @@ All kinds use the dotted form the SPA subsystem chip logic already consumes.
 | `harness.returned`           | Host invocation completed.                                  |
 | `harness.error`              | Orchestrator dispatch loop failed loudly.                   |
 | `world.update`               | One effect applied during a transition.                     |
+| `operation.started`          | An operation-scoped world overlay opened.                   |
+| `operation.committed`        | An operation overlay published selected values to durable world. |
+| `operation.abandoned`        | An operation overlay was discarded without becoming durable. |
+| `operation.draft_persisted`  | An operation overlay was saved as an explicit resumable draft. |
 | `scheduler.submitted`        | Background job dispatched.                                  |
 | `scheduler.completed`        | Background job reached a terminal state.                    |
 | `artifact.emitted`           | A host call produced a named media artifact (see §Artifact event). |
@@ -238,6 +242,49 @@ An off-ramp turn emits `agent.off_path.question` / `agent.off_path.answer`
 (the converse exchange) but **never** a `turn.end` with a rejected outcome — the
 whole point is that a no-match is answered instead of bounced. See
 [`docs/stories/state-machine.md`](../stories/state-machine.md) §11.
+
+### Operation events
+
+Operation-scoped world keeps abandonable task scratch out of durable session
+world. The trace records both the local overlay and the deterministic close-out
+so replay can reconstruct the same final world while still showing what was
+discarded.
+
+**`operation.started`** opens an overlay.
+
+| Payload key         | Type   | Meaning                                             |
+|---------------------|--------|-----------------------------------------------------|
+| `operation_id`      | string | Stable operation scope, usually the state's `operation.scope`. |
+| `state`             | string | State path whose operation overlay opened.          |
+| `parent_world_hash` | string | sha256 over the durable world snapshot at open time. |
+
+**`world.update` inside an operation** still uses the normal effect payload, but
+adds `operation_id` and `operation_local: true`. Replay applies that update to
+the active overlay instead of durable world.
+
+**`operation.committed`** closes an overlay by applying a durable patch.
+
+| Payload key    | Type   | Meaning                                      |
+|----------------|--------|----------------------------------------------|
+| `operation_id` | string | Operation being closed.                       |
+| `world_patch`  | object | Key/value patch copied into durable world.    |
+
+**`operation.draft_persisted`** saves a resumable draft under the reserved
+`world.operation_drafts` map and closes the overlay.
+
+| Payload key    | Type   | Meaning                                      |
+|----------------|--------|----------------------------------------------|
+| `operation_id` | string | Operation being saved.                        |
+| `draft_id`     | string | Draft handle written under `operation_drafts`. |
+| `world`        | object | Selected overlaid values captured in the draft. |
+
+**`operation.abandoned`** closes an overlay without applying its patch.
+
+| Payload key        | Type   | Meaning                                      |
+|--------------------|--------|----------------------------------------------|
+| `operation_id`     | string | Operation being abandoned.                    |
+| `reason`           | string | `exit`, `reenter`, `explicit`, or a story-provided reason. |
+| `discarded_patch`  | object | Overlay values that did not enter durable world. |
 
 ### Mining proposal events
 
@@ -293,8 +340,8 @@ replay no-ops; they index the receipt and promotion artifacts.
 
 ### Agent event kinds
 
-Every agent call produces exactly two events: `agent.call.start` and
-`agent.call.complete` (or `agent.call.error` on failure).  These events are **no-ops
+Every agent call produces one `agent.call.start` and exactly one terminal
+`agent.call.complete` or `agent.call.error`. These events are **no-ops
 for replay** — `BuildJourney` ignores them — but they carry the response and
 agent metadata for audit and the runstatus SPA. Large prompts and responses
 (>1KB) are written to sidecar files under the configured prompts directory and
@@ -303,9 +350,9 @@ payloads remain inline.
 
 | Kind                   | When written                                               |
 |------------------------|------------------------------------------------------------|
-| `agent.call.start`    | After `Agent.Ask` returns (so cassette `episode_id` / `match_idx` from `resp.Meta` are available). |
+| `agent.call.start`    | At dispatch time, before launching the external agent/transport. |
 | `agent.call.complete` | After schema validation passes; carries `Submission` + `Meta`. |
-| `agent.call.error`    | When `Agent.Ask` returns an error, or schema validation fails, or a sub-event constraint fires. |
+| `agent.call.error`    | When the agent transport/stream fails, returns an infrastructure error, schema validation fails, or a sub-event constraint fires. |
 
 **`agent.call.start` payload fields:**
 
@@ -327,7 +374,7 @@ payloads remain inline.
 | `duration_ms`| int    | Round-trip duration in milliseconds.                 |
 | `response`   | object | Parsed `Submission` + any verb-specific fields. Omitted when `response_file` is set (large responses). |
 | `response_file` | string | Relative path (from the trace dir) to the response sidecar when the response exceeds ~1KB and a prompts dir is configured; omitted otherwise. |
-| `meta`       | object | Opaque agent metadata. For the claude-CLI transport: `{ "usage": { "input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens", … }, "cost_usd": <float> }`, captured per invocation from the stream-json `result` event. Omitted when no usage was reported (e.g. a test stub). Plugin transports may carry their own meta (cassette `episode_id` / `match_idx`, …). |
+| `meta`       | object | Opaque agent metadata. For the claude-CLI transport: `{ "usage": { "input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens", … }, "cache": { "read_tokens", "creation_tokens", "hit" }, "cost_usd": <float> }`, captured per invocation from the stream-json `result` event. `meta.cache` is a named, typed convenience view of the same cache counters already in `meta.usage` (mirrors `internal/harness/live.go`'s `UsageInfo` field names) — `hit` is true only when `read_tokens > 0` (a cache-write-only call is a miss, not a hit). `meta.cache` is omitted when the transport reported no cache keys at all (e.g. copilot); `meta` itself is omitted when no usage was reported (e.g. a test stub). Plugin transports may carry their own meta (cassette `episode_id` / `match_idx`, …). |
 | `transcript_ref` | object | Pointer-only reference to the per-call agent-action sidecar — `{ format, path, events, schema_version }` — present when the call's native execution stream was captured. No detail is inlined. See [§Agent-action transcript sidecar](#agent-action-transcript-sidecar). |
 
 **`agent.call.error` payload fields:**
@@ -342,6 +389,24 @@ payloads remain inline.
 
 For the full agent plugin contract (transports, lifecycle, auth/secrets, and
 sub-events), see [`docs/architecture/agent-plugin.md`](../architecture/agent-plugin.md).
+
+**`agent.process` diagnostics:**
+
+External CLI-backed agent calls also emit `agent.stream` rows whose payload
+`type` is `agent.process`. They are not replay actions; they are live-process
+breadcrumbs for diagnosis:
+
+| `subtype` | Meaning |
+|---|---|
+| `start` | The subprocess was spawned. Payload includes backend, redacted argv, working directory, pid, uid/root/sandbox posture, provider env key names, and common env-key presence booleans. |
+| `no_output` | The process produced no stdout before the diagnostic threshold. This is a warning only; it does not kill the process. |
+| `finish` | The subprocess exited or was cancelled/killed. Payload includes exit code, duration, raw stream-event count, stderr/infra summary, and `severity:error` for failed exits. |
+
+For direct non-sandboxed CLI launches, `KITSOKI_AGENT_ACTIVITY_TIMEOUT=<duration>`
+turns prolonged stdout inactivity into cancellation. The handler then writes the
+matching `agent.call.error`, so a live trace does not end with a dangling
+`agent.call.start`. Sandboxed launches use `sandbox.resources.activity_timeout`
+for the same policy.
 
 ### Agent-action transcript sidecar
 

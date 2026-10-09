@@ -14,12 +14,16 @@ full framing before searching.
 
 ## Where to look (use `Read` / `Grep` / `Glob`)
 
-1. **In-progress proposals** — `docs/proposals/.workspace/*/` (other
-   drafts being authored right now). `kind: in_progress`.
-2. **Accepted proposals** — `docs/proposals/*.md` (the current queue).
+1. **In-progress proposal/design drafts** — configured workspaces such as
+   `docs/proposals/.workspace/*/` or `.context/designs/.workspace/*/`.
+   `kind: in_progress`.
+2. **Accepted proposals/design docs** — the repo's existing proposal, design,
+   ADR, PRD, RFC, or feature-spec directories. In this repo that is commonly
+   `docs/proposals/*.md`; in external repos, find and use the equivalent.
    `kind: accepted`.
-3. **Feature / bug docs** — `issues/features/*.md`, `issues/bugs/*.md`,
-   and `stories/*/issues/`. `kind: feature`.
+3. **Feature / bug docs** — local issue docs such as `issues/features/*.md`,
+   `issues/bugs/*.md`, `.artifacts/issues/bugs/*.md`, and story-local issue
+   folders. `kind: feature`.
 
 ## What to report
 

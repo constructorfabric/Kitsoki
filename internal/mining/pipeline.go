@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 
+	"kitsoki/internal/host"
 	"kitsoki/internal/store"
 )
 
@@ -34,8 +34,6 @@ type ExecPipelineRunner struct {
 	// WorkDir is the directory pass job dirs are created under (a pass writes
 	// prep/<job>/ + analysis.json there). Defaults to ".artifacts/mining/jobs".
 	WorkDir string
-	// Python is the python interpreter (default "python3").
-	Python string
 	// AgentCmd builds the argv for the one agent pass given the prep output
 	// path and the job dir. Defaults to `node intents.workflow.js <intents-in>`.
 	// A cassette-backed dogfood run swaps this; tests never reach it.
@@ -54,10 +52,6 @@ func (r *ExecPipelineRunner) RunPass(ctx context.Context, req PassRequest) (Pass
 	if r.ToolsDir == "" {
 		return PassResult{}, fmt.Errorf("mining: ExecPipelineRunner requires ToolsDir")
 	}
-	python := r.Python
-	if python == "" {
-		python = "python3"
-	}
 	workDir := r.WorkDir
 	if workDir == "" {
 		workDir = filepath.Join(".artifacts", "mining", "jobs")
@@ -75,8 +69,7 @@ func (r *ExecPipelineRunner) RunPass(ctx context.Context, req PassRequest) (Pass
 	// agent/agent sessions, mining the human's interactive backlog); the live
 	// pass passes --keep-agent-sessions because the host.agent.task turns ARE
 	// what work happened (the cli-vs-sdk distinction is the seed/live difference).
-	prepArgs := []string{
-		filepath.Join(r.ToolsDir, "prep.py"),
+	prepArgs := []any{
 		req.TranscriptDirs[0],
 		"--job", job,
 		"--out", jobDir,
@@ -89,8 +82,18 @@ func (r *ExecPipelineRunner) RunPass(ctx context.Context, req PassRequest) (Pass
 	} else {
 		prepArgs = append(prepArgs, "--keep-agent-sessions")
 	}
-	if err := runStep(ctx, jobDir, python, prepArgs...); err != nil {
+	result, err := host.SessionMiningRunHandler(ctx, map[string]any{
+		"op":            "prep",
+		"tools_dir":     r.ToolsDir,
+		"cwd":           jobDir,
+		"args":          prepArgs,
+		"fail_on_error": true,
+	})
+	if err != nil {
 		return PassResult{}, fmt.Errorf("mining: prep.py: %w", err)
+	}
+	if result.Error != "" {
+		return PassResult{}, fmt.Errorf("mining: prep.py: %s", result.Error)
 	}
 
 	// B–E are the existing pipeline tail. Wrapping their exact invocation is
@@ -114,17 +117,6 @@ func (r *ExecPipelineRunner) RunPass(ctx context.Context, req PassRequest) (Pass
 // (recipes below it are still returned; the proposer drops them — this keeps the
 // scoring policy in one place). v1 returns 0 (the proposer owns the gate).
 func (req PassRequest) PriorityFloor() float64 { return 0 }
-
-// runStep runs one pipeline step in dir, surfacing combined output on failure.
-func runStep(ctx context.Context, dir, name string, args ...string) error {
-	cmd := exec.CommandContext(ctx, name, args...)
-	cmd.Dir = dir
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("%s %v: %w\n%s", name, args, err, out)
-	}
-	return nil
-}
 
 // analysisDoc is the subset of tools/session-mining/schema/analysis.schema.json
 // the miner reads to translate instances into recipes.

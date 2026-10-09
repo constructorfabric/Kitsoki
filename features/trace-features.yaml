@@ -3,7 +3,7 @@ id: trace-features
 kind: feature
 title: Trace introspection, live
 tagline: View modes, waterfall, decision-first detail, annotation, replay.
-summary: "Every trace-introspection capability on a live run: view modes, the latency waterfall, observation category chips, decision-first detail with the confidence bar and alternatives, annotation, and deterministic replay."
+summary: 'Every trace-introspection capability on a live run: view modes, the latency waterfall, observation category chips, decision-first detail with the confidence bar and alternatives, annotation, and deterministic replay.'
 promo:
   order: 25
 docs:
@@ -12,6 +12,7 @@ related:
   - agent-actions
   - trace-introspection
 demo:
+  format: rrweb
   spec: tests/playwright/trace-features-video.spec.ts
   artifactDir: trace-features
   videoBase: trace-features-demo
@@ -113,7 +114,7 @@ tour:
       route: any
       target: routing-detail
       title: The turn the model never saw
-      body: "Expand a turn's start event and read its routing detail. The 'Direct' row says yes — this turn was matched to its intent deterministically and advanced without ever calling an LLM. Across a typical run roughly four turns in five resolve this way, with zero agent calls. The model is a callee at named decision points, not the dispatcher for every step — the line a structured-output wrapper can't draw, because there the model is always in the loop."
+      body: Expand a turn's start event and read its routing detail. The 'Direct' row says yes — this turn was matched to its intent deterministically and advanced without ever calling an LLM. Across a typical run roughly four turns in five resolve this way, with zero agent calls. The model is a callee at named decision points, not the dispatcher for every step — the line a structured-output wrapper can't draw, because there the model is always in the loop.
       placement: right
       kind: explain
       advance: next
@@ -123,7 +124,7 @@ tour:
       route: any
       target: world-diff-viewer
       title: How the turn mutated the world
-      body: "Expand a world.update row and the change is laid out key by key — added, removed, or changed, with the before and after side by side. This is the state delta the runtime actually applied, not a sentence an agent wrote about what it did: kitsoki owns the world, so every mutation is structured, diffable data you can audit — never prose you have to trust."
+      body: 'Expand a world.update row and the change is laid out key by key — added, removed, or changed, with the before and after side by side. This is the state delta the runtime actually applied, not a sentence an agent wrote about what it did: kitsoki owns the world, so every mutation is structured, diffable data you can audit — never prose you have to trust.'
       placement: right
       kind: explain
       advance: next
@@ -133,7 +134,7 @@ tour:
       route: any
       target: category-filter-chips
       title: Observation kind taxonomy
-      body: "Every event has a semantic kind: decision, agent-call, host-call, narration, world-mutation, routing, or lifecycle. Click a chip to filter down to one category — the same taxonomy drives row colors, the waterfall, and a future graph layout."
+      body: 'Every event has a semantic kind: decision, agent-call, host-call, narration, world-mutation, routing, or lifecycle. Click a chip to filter down to one category — the same taxonomy drives row colors, the waterfall, and a future graph layout.'
       placement: bottom
       kind: explain
       advance: next
@@ -181,7 +182,7 @@ tour:
       route: any
       target: replay-button
       title: Replay against a different operator
-      body: "Re-run one recorded agent call against a different LLM or local model and diff the verdict — without touching the original run. This makes the pluggable-operator moat visible: same recorded input, different operator, auditable output diff."
+      body: 'Re-run one recorded agent call against a different LLM or local model and diff the verdict — without touching the original run. This makes the pluggable-operator moat visible: same recorded input, different operator, auditable output diff.'
       placement: left
       kind: explain
       advance: next
@@ -190,7 +191,7 @@ tour:
     - id: trace-done
       route: any
       title: That's the full picture
-      body: "You've seen the complete trace-introspection stack: semantic kind taxonomy, latency waterfall, decision-first detail, confidence bars, runner-up alternatives, human annotation, and single-call replay. Hit '?' anytime to replay this tour."
+      body: 'You''ve seen the complete trace-introspection stack: semantic kind taxonomy, latency waterfall, decision-first detail, confidence bars, runner-up alternatives, human annotation, and single-call replay. Hit ''?'' anytime to replay this tour.'
       placement: center
       kind: explain
       advance: next

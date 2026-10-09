@@ -24,26 +24,28 @@ initial_world:
   deck: { spec_path: "stories/task-bakeoff/baked/deck.json", summary: "Matrix bake-off report deck." }
 
 host_handlers:
-  host.run:
+  host.starlark.run:
     by_call:
-      # scoring: aggregate.py → summary. The stub returns a summary-shaped object.
+      # scoring: host.bakeoff.run → summary. The stub returns a summary-shaped object.
       aggregate:
         data:
-          ok: true
-          exit_code: 0
-          stdout_json:
-            summary_path: "tools/bugfix-bakeoff/results/summary.json"
-            generated_at: "2026-06-24T00:00:00Z"
-            cells: [{ key: "bug9-opus-4.8-kitsoki" }, { key: "bug9-opus-4.8-single" }, { key: "bug9-sonnet-4.6-single" }]
-            rollup: { by_treatment: {}, by_candidate: {}, by_cell_key: {} }
-      # reporting: eval_pilot_report.py → report markdown + deck spec.
+          result:
+            ok: true
+            exit_code: 0
+            stdout_json:
+              summary_path: "tools/bugfix-bakeoff/results/summary.json"
+              generated_at: "2026-06-24T00:00:00Z"
+              cells: [{ key: "bug9-opus-4.8-kitsoki" }, { key: "bug9-opus-4.8-single" }, { key: "bug9-sonnet-4.6-single" }]
+              rollup: { by_treatment: {}, by_candidate: {}, by_cell_key: {} }
+      # reporting: host.bakeoff.run → report markdown + deck spec.
       build_report:
         data:
-          ok: true
-          exit_code: 0
-          stdout_json:
-            markdown: "# Bake-off report\n\nsolve rate, cost, tokens, wall time by treatment."
-            deck: { spec_path: "stories/task-bakeoff/baked/deck.json", summary: "Matrix bake-off report deck (bug9 grid)." }
+          result:
+            ok: true
+            exit_code: 0
+            stdout_json:
+              markdown: "# Bake-off report\n\nsolve rate, cost, tokens, wall time by treatment."
+              deck: { spec_path: "stories/task-bakeoff/baked/deck.json", summary: "Matrix bake-off report deck (bug9 grid)." }
 
   host.slidey.render:
     by_call:

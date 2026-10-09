@@ -107,12 +107,16 @@ as `input.visual`.
 
 ## Beyond rrweb — the anchor union
 
-This page describes the v1 rrweb/live-DOM seam. The flat bundle here is now the
+This page started as the v1 rrweb/live-DOM seam. The flat bundle here is now the
 v1 case of a discriminated **anchor union** that generalises annotation to png,
-mp4, static HTML, and slidey decks (region drawing, time-ranges, semantic
-elements) through one producer-agnostic contract — see
-[artifact-annotation](artifact-annotation.md). The bundle stays forward-compatible:
-a v1 payload (flat `point`/`element`) normalises into the union unchanged.
+mp4, static HTML, rrweb playbacks, and live embeds through one producer-agnostic
+contract — see [artifact-annotation](artifact-annotation.md). A semantic sidecar
+can describe arbitrary HTML/data fields by opaque `ref`, optional DOM `selector`,
+label/text/value, structured `data`, and/or `bbox`; the web annotator resolves
+selector-only fields against the iframe/replay DOM and the prompt preamble
+carries that context to the read-only oracle. The bundle stays
+forward-compatible: a v1 payload (flat `point`/`element`) normalises into the
+union unchanged.
 
 ## Non-goals
 

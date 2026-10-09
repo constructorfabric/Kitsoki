@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO=${KUBERNETES_REPO:-/Users/brad/code/kubernetes}
+REPO=${KUBERNETES_REPO:-${KITSOKI_PJ_REPOS_DIR:-$HOME/code}/kubernetes}
 BASELINE_SHA=${KUBERNETES_BASELINE_SHA:-0c61430054aa4ac54e4855be2f2d9a9d7e645540}
 FIX_SHA=${KUBERNETES_FIX_SHA:-18fccdf6f619514dfbcba02f8b4fdc91120cd5c3}
 BASELINE_WORKTREE=${KUBERNETES_BASELINE_WORKTREE:-/private/tmp/k8s-kubelet-stats-baseline}
@@ -10,6 +10,7 @@ TEST_FILE="pkg/kubelet/stats/oracle_test.go"
 
 if [[ ! -d "$REPO/.git" ]]; then
   echo "kubernetes oracle: repo not found at $REPO" >&2
+  echo "kubernetes oracle: set KUBERNETES_REPO=/path/to/kubernetes, or KITSOKI_PJ_REPOS_DIR=/parent/dir containing a kubernetes/ checkout (default parent: \$HOME/code)" >&2
   exit 1
 fi
 

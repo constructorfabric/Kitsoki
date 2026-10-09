@@ -1,0 +1,212 @@
+# path<TAB>justification
+.agents/skills/goal/goal.py	goal skill helper owned by the existing goal orchestration subsystem
+.agents/skills/work-decomposition/scripts/validate_decomposition.py	work-decomposition skill validator owned by the existing skill implementation
+scripts/build-loc-growth-slide.py	repo helper script for Slidey deck generation
+scripts/with-timeout.py	repo helper script shared by shell-driven test runners
+testdata/apps/imports_prompt_rebase/child/scripts/probe.py	test fixture used to exercise prompt import behavior
+tools/arena/_yaml.py	arena subsystem module
+tools/arena/arena.py	arena subsystem CLI entrypoint
+tools/arena/arena/__init__.py	arena subsystem package marker
+tools/arena/arena/artifact_adapters.py	arena subsystem module
+tools/arena/arena/checks.py	arena subsystem module
+tools/arena/arena/completion_state.py	arena subsystem module
+tools/arena/arena/executor.py	arena subsystem module
+tools/arena/arena/mcp_operating_system_report.py	arena subsystem module
+tools/arena/arena/mcp_operating_system_live.py	arena subsystem dependency-injected live calibration runner
+tools/arena/arena/mcp_os_report.py	arena subsystem module
+tools/arena/arena/model.py	arena subsystem module
+tools/arena/arena/placement.py	arena subsystem module
+tools/arena/arena/task_optimization_receipt.py	arena subsystem strict scored-attempt evidence validator
+tools/arena/arena/task_optimization_runner.py	arena subsystem deterministic task-optimization lifecycle runner
+tools/arena/arena/plugins/__init__.py	arena subsystem package marker
+tools/arena/arena/plugins/base.py	arena subsystem plugin module
+tools/arena/arena/plugins/bugfix.py	arena subsystem plugin module
+tools/arena/arena/plugins/mcp_operating_system.py	arena subsystem plugin module
+tools/arena/arena/plugins/mcp_os.py	arena subsystem plugin module
+tools/arena/arena/plugins/paired_task.py	arena subsystem plugin module
+tools/arena/arena/plugins/persona_qa.py	arena subsystem plugin module
+tools/arena/arena/plugins/swarm.py	arena subsystem plugin module
+tools/arena/arena/plugins/usable_kitsoki_gate.py	arena subsystem plugin module
+tools/arena/arena/plugins/usable_kitsoki_gate_constants.py	arena subsystem plugin constants
+tools/arena/arena/rollup.py	arena subsystem module
+tools/arena/arena/treatments/__init__.py	arena subsystem package marker
+tools/arena/arena/treatments/base.py	arena subsystem treatment module
+tools/arena/arena/treatments/capabilities.py	arena subsystem treatment module
+tools/arena/arena/treatments/codex_codeact.py	arena subsystem treatment module
+tools/arena/arena/treatments/kitsoki_mcp.py	arena subsystem treatment module
+tools/arena/arena/treatments/raw_codex.py	arena subsystem treatment module
+tools/arena/arena/treatments/registry.py	arena subsystem treatment module
+tools/arena/lib/paired_task_runner.py	arena subsystem support module
+tools/arena/lib/yaml.py	arena subsystem support module
+tools/arena/scripts/bugswarm_apply_verification.py	arena subsystem helper script
+tools/arena/scripts/bugswarm_enrich_source.py	arena subsystem source-bound BugSwarm provenance enrichment helper
+tools/arena/scripts/bugswarm_lock_corpus.py	arena subsystem deterministic BugSwarm corpus lock helper
+tools/arena/scripts/bugswarm_to_arena.py	arena subsystem helper script
+tools/arena/scripts/bugswarm_to_arena_spec.py	arena subsystem helper script
+tools/arena/scripts/bugswarm_verify_source.py	arena subsystem helper script
+tools/arena/scripts/bugswarm_disk_budget.py	arena subsystem disk-budget preflight helper; Docker inspection is isolated behind explicit operator invocation
+tools/arena/scripts/glm52_bugswarm_report.py	arena subsystem helper script
+tools/arena/scripts/glm52_gap_plan.py	arena subsystem helper script
+tools/arena/scripts/glm52_report_gate.py	arena subsystem helper script
+tools/arena/scripts/oss_to_arena_spec.py	arena subsystem helper script
+tools/arena/scripts/run_scenario_qa_legs_parallel.py	arena subsystem helper script
+tools/arena/scripts/yaml.py	arena subsystem helper script
+tools/arena/tests/run_no_llm.py	arena subsystem no-LLM test harness
+tools/arena/tests/test_arena_cli_ux.py	arena subsystem test
+tools/arena/tests/test_arena_skeleton.py	arena subsystem test
+tools/arena/tests/test_bugswarm_apply_verification.py	arena subsystem test
+tools/arena/tests/test_bugswarm_enrich_source.py	arena subsystem no-network provenance enrichment test
+tools/arena/tests/test_bugswarm_lock_corpus.py	arena subsystem test
+tools/arena/tests/test_bugswarm_paired_task_source.py	arena subsystem test
+tools/arena/tests/test_bugswarm_source.py	arena subsystem test
+tools/arena/tests/test_bugswarm_verify_source.py	arena subsystem test
+tools/arena/tests/test_bugswarm_disk_budget.py	arena subsystem no-Docker disk-budget preflight test
+tools/arena/tests/test_check_types.py	arena subsystem test
+tools/arena/tests/test_completion_state.py	arena subsystem test
+tools/arena/tests/test_corpus_loading.py	arena subsystem test
+tools/arena/tests/test_glm52_bugswarm_report.py	arena subsystem test
+tools/arena/tests/test_glm52_gap_plan.py	arena subsystem test
+tools/arena/tests/test_glm52_report_gate.py	arena subsystem test
+tools/arena/tests/test_mcp_operating_system_decision.py	arena subsystem test
+tools/arena/tests/test_mcp_operating_system_live.py	arena subsystem no-LLM test
+tools/arena/tests/test_mcp_os_baseline.py	arena subsystem test
+tools/arena/tests/test_oss_to_arena_spec.py	arena subsystem test
+tools/arena/tests/test_paired_task_codeact.py	arena subsystem test
+tools/arena/tests/test_persona_qa_plugin.py	arena subsystem test
+tools/arena/tests/test_strict_mcp_corpus_lock.py	arena subsystem no-LLM strict-MCP corpus lock test
+tools/arena/tests/test_swarm_plugin.py	arena subsystem test
+tools/arena/tests/test_task_optimization_lifecycle.py	arena subsystem no-LLM task-optimization lifecycle test
+tools/arena/tests/test_task_optimization_runner.py	arena subsystem no-LLM task-optimization runner test
+tools/arena/tests/test_task_optimization_scored_receipt.py	arena subsystem no-LLM scored receipt contract test
+tools/arena/tests/test_treatments_library.py	arena subsystem test
+tools/arena/tests/test_ui_verdict_checks.py	arena subsystem test
+tools/arena/tests/test_usable_kitsoki_gate_calibration.py	arena subsystem test
+tools/arena/tests/test_usable_kitsoki_gate_corpus.py	arena subsystem test
+tools/arena/tests/test_usable_kitsoki_gate_golden_fixtures.py	arena subsystem test
+tools/arena/tests/test_usable_kitsoki_gate_live_calibration.py	arena subsystem test
+tools/arena/tests/test_usable_kitsoki_gate_live_gate.py	arena subsystem test
+tools/arena/tests/test_usable_kitsoki_gate_plugin.py	arena subsystem test
+tools/arena/tests/test_usable_kitsoki_gate_schema.py	arena subsystem test
+tools/arena/tests/test_validate_corpus.py	arena subsystem test
+tools/arena/tests/validate_corpus.py	arena subsystem test helper
+tools/arena/tests/yaml.py	arena subsystem test helper
+tools/arena/yaml.py	arena subsystem module
+tools/bugfix-bakeoff/aggregate.py	bugfix-bakeoff tooling module
+tools/bugfix-bakeoff/external/bench.py	bugfix-bakeoff external benchmark helper
+tools/bugfix-bakeoff/external/bench_grade_test.py	bugfix-bakeoff test
+tools/completion_state.py	shared Python tooling module
+tools/dev-workflow-matrix/agent_dispatch.py	dev-workflow-matrix tooling module
+tools/dev-workflow-matrix/docs_fidelity.py	dev-workflow-matrix tooling module
+tools/dev-workflow-matrix/docs_fidelity_test.py	dev-workflow-matrix test
+tools/dev-workflow-matrix/generate.py	dev-workflow-matrix tooling module
+tools/dev-workflow-matrix/generate_test.py	dev-workflow-matrix test
+tools/dev-workflow-matrix/run_checks.py	dev-workflow-matrix tooling module
+tools/dev-workflow-matrix/run_checks_test.py	dev-workflow-matrix test
+tools/dev-workflow-matrix/ux_heuristic.py	dev-workflow-matrix tooling module
+tools/dev-workflow-matrix/ux_heuristic_test.py	dev-workflow-matrix test
+tools/lint-docs-migrated.py	docs migration lint helper
+tools/lint-site-coverage.py	site coverage lint helper
+tools/lint-video-catalog.py	video catalog lint helper
+tools/loopy/test_judge_verdict_after.py	loopy subsystem test
+tools/mcp-demo/scripts/capture-live.py	MCP demo helper script
+tools/persona_qa/__init__.py	persona-qa subsystem package marker
+tools/persona_qa/__main__.py	persona-qa subsystem CLI entrypoint
+tools/persona_qa/completion.py	persona-qa subsystem module
+tools/persona_qa/completion_cli.py	persona-qa subsystem CLI helper
+tools/persona_qa/config.py	persona-qa subsystem module
+tools/persona_qa/deck.py	persona-qa subsystem deck helper
+tools/persona_qa/kit.py	persona-qa subsystem module
+tools/persona_qa/reporting.py	persona-qa subsystem module
+tools/persona_qa/tests/test_completion.py	persona-qa subsystem test
+tools/persona_qa/tests/test_completion_cli.py	persona-qa subsystem test
+tools/persona_qa/tests/test_deck_cli.py	persona-qa subsystem test
+tools/persona_qa/tests/test_kit_cli.py	persona-qa subsystem test
+tools/persona_qa/tests/test_shared_rollup.py	persona-qa subsystem test
+tools/persona_qa/tests/test_ui_verdict.py	persona-qa subsystem test
+tools/persona_qa/transports.py	persona-qa subsystem module
+tools/persona_qa/ui_verdict.py	persona-qa subsystem module
+tools/product-journey/active_corpus_test.py	product-journey subsystem test
+tools/product-journey/autonomous_fix_exit_test.py	product-journey subsystem test
+tools/product-journey/autonomous_marathon_due_test.py	product-journey subsystem test
+tools/product-journey/autonomous_marathon_exit_test.py	product-journey subsystem test
+tools/product-journey/autonomous_marathon_smoke_test.py	product-journey subsystem test
+tools/product-journey/autonomous_marathon_test.py	product-journey subsystem test
+tools/product-journey/autonomous_marathon_watchdog_test.py	product-journey subsystem test
+tools/product-journey/campaign_worker_test.py	product-journey subsystem test
+tools/product-journey/capture_preflight_test.py	product-journey subsystem test
+tools/product-journey/cassette_proof_test.py	product-journey subsystem test
+tools/product-journey/claude_in_chrome_driver_test.py	product-journey subsystem test
+tools/product-journey/common.py	product-journey subsystem module
+tools/product-journey/emit.py	product-journey subsystem module
+tools/product-journey/file_findings_test.py	product-journey subsystem test
+tools/product-journey/live_budget_test.py	product-journey subsystem test
+tools/product-journey/local_findings_test.py	product-journey subsystem test
+tools/product-journey/marathon.py	product-journey subsystem module
+tools/product-journey/matrix.py	product-journey subsystem module
+tools/product-journey/native_ghagent_test.py	product-journey subsystem test
+tools/product-journey/native_gitops_boundary_test.py	product-journey subsystem test
+tools/product-journey/persona_autofix_smoke_test.py	product-journey subsystem test
+tools/product-journey/playback_evidence_test.py	product-journey subsystem test
+tools/product-journey/prune_runs_test.py	product-journey subsystem test
+tools/product-journey/review.py	product-journey subsystem module
+tools/product-journey/run.py	product-journey subsystem CLI/module
+tools/product-journey/scenario_qa_report_test.py	product-journey subsystem test
+tools/product-journey/scoped_run_test.py	product-journey subsystem test
+tools/product-journey/stats_test.py	product-journey subsystem test
+tools/product-journey/transport_axis_test.py	product-journey subsystem test
+tools/routing-tuning/intent_report_summary.py	routing-tuning helper
+tools/runstatus/fixtures/inject_usage.py	runstatus fixture helper
+tools/runstatus/fixtures/sources/agent-rich.gen.py	runstatus generated fixture source
+tools/runstatus/fixtures/sources/agent-with-separate-prompts.gen.py	runstatus generated fixture source
+tools/session-mining/aggregate.py	session-mining subsystem module
+tools/session-mining/codex_adapter.py	session-mining subsystem module
+tools/session-mining/codex_outcomes.py	session-mining subsystem module
+tools/session-mining/codex_prep.py	session-mining subsystem module
+tools/session-mining/cost_estimate.py	session-mining subsystem module
+tools/session-mining/cost_extract.py	session-mining subsystem module
+tools/session-mining/cost_report.py	session-mining subsystem module
+tools/session-mining/coverage_prep.py	session-mining subsystem module
+tools/session-mining/emit.py	session-mining subsystem module
+tools/session-mining/eval_pilot_report.py	session-mining subsystem module
+tools/session-mining/flow_fixture_compiler.py	session-mining subsystem module
+tools/session-mining/focus_brief.py	session-mining subsystem module
+tools/session-mining/ground.py	session-mining subsystem module
+tools/session-mining/intent_brief.py	session-mining subsystem module
+tools/session-mining/intent_common.py	session-mining subsystem module
+tools/session-mining/kitsoki_trace_corpus.py	session-mining subsystem module
+tools/session-mining/outcomes.py	session-mining subsystem module
+tools/session-mining/prep.py	session-mining subsystem module
+tools/session-mining/pricing.py	session-mining subsystem module
+tools/session-mining/product_journey_compiler.py	session-mining subsystem module
+tools/session-mining/redact.py	session-mining subsystem module
+tools/session-mining/report.py	session-mining subsystem module
+tools/session-mining/scenario_compiler.py	session-mining subsystem module
+tools/session-mining/tag_score.py	session-mining subsystem module
+tools/session-mining/tests/test_codex_adapter.py	session-mining subsystem test
+tools/session-mining/tests/test_cost_estimate.py	session-mining subsystem test
+tools/session-mining/tests/test_cost_extract.py	session-mining subsystem test
+tools/session-mining/tests/test_cost_report.py	session-mining subsystem test
+tools/session-mining/tests/test_eval_pilot_report.py	session-mining subsystem test
+tools/session-mining/tests/test_flow_fixture_compiler.py	session-mining subsystem test
+tools/session-mining/tests/test_git_ops_coverage.py	session-mining subsystem test
+tools/session-mining/tests/test_intent_pipeline.py	session-mining subsystem test
+tools/session-mining/tests/test_kitsoki_trace_corpus.py	session-mining subsystem test
+tools/session-mining/tests/test_outcomes.py	session-mining subsystem test
+tools/session-mining/tests/test_parsers.py	session-mining subsystem test
+tools/session-mining/tests/test_product_journey_compiler.py	session-mining subsystem test
+tools/session-mining/tests/test_redact_scenario.py	session-mining subsystem test
+tools/session-mining/tests/test_scenario_compiler.py	session-mining subsystem test
+tools/session-mining/tests/test_validate_reports.py	session-mining subsystem test
+tools/session-mining/validate_reports.py	session-mining subsystem validation helper
+tools/session-mining/verify_link.py	session-mining subsystem helper
+tools/story-qa/run.py	story-qa helper script
+tools/summarize-session.py	session summary helper
+tools/usable-kitsoki-gate/_gate_cli.py	usable-kitsoki-gate subsystem helper
+tools/usable-kitsoki-gate/flow_gate_runner.py	usable-kitsoki-gate subsystem helper
+tools/usable-kitsoki-gate/run_calibration_gate.py	usable-kitsoki-gate subsystem helper
+tools/usable-kitsoki-gate/run_live_calibration.py	usable-kitsoki-gate subsystem helper
+tools/usable-kitsoki-gate/run_live_gate.py	usable-kitsoki-gate subsystem helper
+tools/usable-kitsoki-gate/run_mcp_gate.py	usable-kitsoki-gate subsystem helper
+tools/usable-kitsoki-gate/run_tui_gate.py	usable-kitsoki-gate subsystem helper
+tools/validate-decomposition-graph.py	decomposition graph validation helper
+tools/worker-brief.py	worker brief helper

@@ -10,7 +10,7 @@ The smoke uses only replay/direct session driving and `host.run`; it does not
 call a real LLM.
 
 ```sh
-GOCACHE="$PWD/.cache/go-build" \
+GOCACHE="${KITSOKI_GOCACHE:-/private/tmp/kitsoki-gocache}" \
 go run ./cmd/kitsoki mcp-test \
   --timeout 20s \
   --server-arg mcp \
@@ -129,7 +129,7 @@ the job so it can finish. The `--flow` flag installs the fixture's
 is used for the host call.
 
 ```sh
-GOCACHE="$PWD/.cache/go-build" \
+GOCACHE="${KITSOKI_GOCACHE:-/private/tmp/kitsoki-gocache}" \
 go run ./cmd/kitsoki mcp-test \
   --list-tools=false \
   --timeout 30s \
@@ -273,7 +273,7 @@ room creates a persistent chat, enqueues a non-awaited `host.chat.drive`, then
 No dispatcher or real agent is required.
 
 ```sh
-GOCACHE="$PWD/.cache/go-build" \
+GOCACHE="${KITSOKI_GOCACHE:-/private/tmp/kitsoki-gocache}" \
 go run ./cmd/kitsoki mcp-test \
   --list-tools=false \
   --timeout 20s \
@@ -383,7 +383,7 @@ from `studio.work` as a `render.web` hash-query deep link, so the browser shot
 lands on the same focused async chat context the web active-work panel opens:
 
 ```sh
-GOCACHE="$PWD/.cache/go-build" \
+GOCACHE="${KITSOKI_GOCACHE:-/private/tmp/kitsoki-gocache}" \
 go run ./cmd/kitsoki mcp-test \
   --list-tools=false \
   --timeout 60s \
@@ -448,7 +448,7 @@ proposal queue through the deterministic session query seam and open the inbox
 panel in the same render:
 
 ```sh
-GOCACHE="$PWD/.cache/go-build" \
+GOCACHE="${KITSOKI_GOCACHE:-/private/tmp/kitsoki-gocache}" \
 go run ./cmd/kitsoki mcp-test \
   --list-tools=false \
   --timeout 60s \

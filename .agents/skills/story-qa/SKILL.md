@@ -82,7 +82,7 @@ same no-LLM preflight before refreshing targets or emitting a matrix.
 Before spending live operator time, run the no-LLM dogfood smoke:
 
 ```sh
-python3 tools/product-journey/run.py --dogfood-smoke --seed demo
+python3 tools/product-journey/run.py --gate dogfood --seed demo
 ```
 
 Inside `stories/product-journey-qa/app.yaml`, submit

@@ -1,0 +1,55 @@
+name: dev-story-implementation-replay
+source:
+  synthetic: true
+  default_branch: main
+  steps:
+    - action: write
+      path: README.md
+      content: |
+        # Dev-story Implementation Replay
+
+        Synthetic workspace for deterministic dev-story implementation replay.
+    - action: write
+      path: issues/features/F-REPLAY-001.md
+      content: |
+        # Replay implementation flow
+
+        Add the smallest visible endpoint and prove the implementation
+        checkpoints stay concise.
+    - action: write
+      path: internal/server/server.go
+      content: |
+        package server
+
+        func Healthy() bool { return true }
+    - action: write
+      path: .kitsoki/project-profile.yaml
+      content: |
+        schema: project-profile/v1
+        id: dev-story-implementation-replay
+        title: Dev-story Implementation Replay
+        repo:
+          root: "."
+          vcs: git
+          default_branch: main
+        commands:
+          test: "go test ./..."
+        kitsoki:
+          story: dev-story
+          judge_mode: human
+    - action: commit
+      message: seed dev-story implementation replay
+network: none
+verify:
+  probes:
+    - name: ticket-present
+      run: test -f issues/features/F-REPLAY-001.md
+      expect: zero
+    - name: project-profile-present
+      run: test -f .kitsoki/project-profile.yaml
+      expect: zero
+    - name: no-real-artifacts-written
+      run: test ! -e .artifacts
+      expect: zero
+scenario:
+  kind: dev-story-implementation-replay

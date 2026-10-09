@@ -1,6 +1,9 @@
 [mcp_servers.slidey]
-command = "node"
-args = ["/Users/brad/code/slidey/src/mcp.js", "--root", "/Users/brad/code/Kitsoki"]
+# Keep this checked-in launcher portable: project config overrides the user's
+# global MCP entry, so a developer-specific absolute path breaks every restart.
+command = "slidey-mcp"
+args = ["--root", "."]
+cwd = "."
 
 [mcp_servers.slidey.tools.slidey_scene_summary]
 approval_mode = "approve"
@@ -19,3 +22,11 @@ approval_mode = "approve"
 
 [mcp_servers.slidey.tools.slidey_audit]
 approval_mode = "approve"
+
+[mcp_servers.frontend-mockup]
+command = "node"
+args = ["tools/frontend-mockup-mcp/server.mjs"]
+
+[mcp_servers.frontend-mockup.env]
+KITSOKI_REPO = "."
+KITSOKI_AGENT_CMD = "kitsoki"

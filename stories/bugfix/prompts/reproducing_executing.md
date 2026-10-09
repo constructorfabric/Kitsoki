@@ -7,6 +7,23 @@ Your job is to produce evidence — a deterministic reproduction (a test, a
 script, a recorded sequence) — that the bug is real, plus the components /
 modules / services implicated.
 
+Ticket source mode: **{{ args.ticket_source_mode }}**
+{% if args.ticket_source_ref %}Ticket source ref: `{{ args.ticket_source_ref }}`{% endif %}
+
+{% if args.ticket_body %}## Bug report
+
+```markdown
+{{ args.ticket_body }}
+```
+
+Use this report as source evidence. In `freeform` mode it may be only an
+operator complaint, not a filed issue. Go as far as code inspection and local
+reproduction allow. If the complaint is too vague, do not fabricate a
+reproducer: set `bug_verified` honestly, explain the missing details in
+`summary_markdown`, and phrase the next needed operator guidance concretely.
+
+{% endif %}
+
 {% block spec_project_context %}{% endblock %}
 
 {% if args.refine_feedback %}## ⚠ Operator refinement directive (cycle {{ args.cycle }})
@@ -69,12 +86,27 @@ Before submitting:
   single deterministic, self-contained shell command (e.g.
   `go test ./internal/host/ -run TestX -count=1`), not a multi-step recipe or a
   command that needs a server/fixture you started by hand. List ONLY the test
-  file(s) in `repro_test_paths` (worktree-relative) — not logs or snapshots.
+  file(s) in `repro_test_paths` (workspace-relative) — not logs or snapshots.
 - Assert *behaviour*, not a specific implementation. The fix may be written a
   different way than you expect; your test should pass for ANY correct fix, so
   avoid pinning internal symbols, exact error strings, or one mechanism.
 - `summary_markdown` is what a human reviewer will read in the checkpoint
   inbox — write it for them, not for yourself.{% endblock %}
+- **Keep every shell command scoped and fast.** Never run a whole-repo
+  command (`go test ./...`, a full lint/build sweep, etc.) while exploring —
+  it produces no incremental output for as long as it runs and this step has
+  an activity timeout, so a slow, silent command can get your turn killed
+  before you produce anything. Target the specific package/directory you are
+  investigating (e.g. `go test ./internal/host/...`, `grep -R <term>
+  internal/host`), and prefer several small, fast commands over one broad
+  one.
+- **You have no file-editing tool and no `apply_patch` tool.** Write and
+  modify files by piping through the `Bash` tool, e.g.
+  `cat > path/to/file <<'EOF'` ... `EOF`, or `sed -i ''` for small edits.
+  Do not attempt `apply_patch`, a diff/patch-application command, or any
+  tool not in your allowed list — none of those exist here, and trying to
+  invoke them wastes your turn on tool errors instead of producing the
+  reproduction.
 
 ## Output
 
@@ -87,7 +119,7 @@ Submit a `reproduction_artifact` (see `schemas/reproducing_artifact.json`):
 - `bug_verified` — true only with an actual reproduction artifact.
 - `repro_command` — the single deterministic command that runs your RED test
   (RED now, GREEN after a correct fix). Becomes the regression gate.
-- `repro_test_paths` — worktree-relative path(s) of the test file(s) you wrote,
+- `repro_test_paths` — workspace-relative path(s) of the test file(s) you wrote,
   committed as the pre-fix reproducer. Tests only.
 - `steps` — ordered, executable.
 - `expected_outcome`, `actual_outcome` — concise factual statements.

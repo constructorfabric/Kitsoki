@@ -1,6 +1,6 @@
 ---
 name: external-repo-bakeoff
-description: Run a bug-fix bake-off on ANY external/open-source repo to answer "should I use kitsoki for my project?" — find real filed-issue bugs with regression-test PRs, pin reproducible baselines, onboard the repo, drive the kitsoki bugfix pipeline LIVE under one or more non-Claude provider profiles (GPT-5.5 / GLM-5.2 / …), grade each fix deterministically against the PR's own hidden oracle, and produce a report + slidey deck comparing models and cost vs the real maintainer fix. Use when the user says "bake off <repo>", "benchmark kitsoki on this repo", "should I use kitsoki for my project", "compare <modelA> vs <modelB> fixing bugs in <repo>", "run the external bake-off", or wants to evaluate kitsoki's prompts/patterns on real third-party code. Covers onboarding AND the live-drive tuning needed to get good working cases. Distinct from dogfood-marathon (kitsoki's OWN bugs over the MCP-driver agent) and matrix-task-comparison (kitsoki-vs-naive-prompt on fixed tasks).
+description: Run a bug-fix bake-off on any external or open-source repo to answer "should I use Kitsoki for my project?" Find real filed-issue bugs with regression-test PRs, pin reproducible baselines, onboard the repo, drive the Kitsoki bugfix pipeline live under one or more non-Claude provider profiles, grade each fix deterministically against the PR's hidden oracle, and produce a report plus Slidey deck comparing models, cost, and the maintainer fix. Use for requests such as "bake off this repo", "benchmark Kitsoki on this repo", "compare these models fixing this repo", or "run the external bake-off". Distinct from dogfood-marathon and matrix-task-comparison.
 ---
 
 # External-repo bake-off
@@ -13,6 +13,12 @@ a report + narrated slidey deck.
 
 **Read first (don't re-derive):**
 - [`tools/bugfix-bakeoff/external/README.md`](../../../tools/bugfix-bakeoff/external/README.md) — the repo-agnostic harness (`bench.py`, `projects/<name>/manifest.yaml`, the gated `bench_test.go`).
+
+The harness is an evaluation adapter for corpus manifests, hidden oracles,
+grading, cost, and reports. It is never the CI runtime or workspace control
+plane: stories and Capsule CI own CI, and native `capsule workspace` owns
+materialization and lifecycle. Only the former harness-owned clone/worktree
+materializer is retired.
 - [`docs/case-studies/query-string-bakeoff.md`](../../../docs/case-studies/query-string-bakeoff.md) — the worked reference run (GPT-5.5 solved query-string 3/3).
 - [`tools/mcp-drive/README.md`](../../../tools/mcp-drive/README.md) — the headless MCP delegation primitive (`drive.sh`).
 - [`stories/bench-bugfix/app.yaml`](../../../stories/bench-bugfix/app.yaml) — the generic bugfix instance you drive.
@@ -40,10 +46,11 @@ For **each** of 3 fixtures, find and VERIFY (delegate the GitHub spelunking to a
 - the **exact added test** (isolated — the same PR often also edits a pre-existing
   test; take only the cleanly-ADDED block) and the command to run just it.
 
-**Pre-flight (load-bearing):** clone at `baseline_sha`, install, overlay ONLY the
-added test, and prove it is **RED at baseline, GREEN at fix**. Discard any fixture
-that is already-green at baseline (degenerate — a test added atop an already-merged
-fix). This is the #1 way a bake-off goes silently wrong.
+**Pre-flight (load-bearing):** materialize a managed Capsule workspace at
+`baseline_sha`, install, overlay ONLY the added test, and prove it is **RED at
+baseline, GREEN at fix**. Discard any fixture that is already-green at baseline
+(degenerate — a test added atop an already-merged fix). This is the #1 way a
+bake-off goes silently wrong.
 
 Then write `tools/bugfix-bakeoff/external/projects/<name>/`:
 - `manifest.yaml` — `project.{repo,install,test_cmd,oracle.{target,run}}` +
@@ -58,16 +65,25 @@ onboards the repo and re-checks — keep it green.
 
 ## Phase 2 — Onboard the repo
 
-Onboarding is just the embedded dev-story; a binary-only user runs
+Onboarding is just the embedded dev-story; an installed user runs
 `kitsoki run @kitsoki/dev-story` then `onboard <path>` (writes config + instance +
 `.mcp.json` + skill/agent toolkit). The gated test exercises this headlessly. For
-the bake-off you mostly need a clean **worktree per cell** at the bug's baseline:
+the bake-off you need a clean **managed Capsule workspace per cell** at the bug's
+baseline. Let `drive_cell.sh` own that lifecycle and confirm it reports a typed
+sentinel-owned `capsule_workspace_id`, owner, generation, and workspace path
+before allowing spend:
 
 ```sh
-git -C <clone> worktree add --detach <cell> <baseline_sha>
-git -C <cell> checkout -B bench-<bug>-<modelshort>
-ln -sfn <clone>/node_modules <cell>/node_modules   # reuse one install
+tools/bugfix-bakeoff/external/drive_cell.sh \
+  --project <name> --bug <bug> --candidate <key> --no-drive
 ```
+
+If the prepared artifact lacks that Capsule identity or reports only an
+unmanaged checkout path, stop before a live run. Do not reproduce its checkout/
+branch/teardown plumbing by hand. This identity belongs to the bake-off's
+project-local Capsule control root under `.capsules/projects/`; it is
+deliberately distinct from the story's
+`initial_world.workspace_id` (explained below).
 
 ---
 
@@ -78,9 +94,13 @@ ln -sfn <clone>/node_modules <cell>/node_modules   # reuse one install
 tools/bugfix-bakeoff/external/drive_cell.sh \
     --project <name> --bug <bug> --candidate <key> --score
 ```
-It reads the manifest + `candidates.yaml`, preps the baseline worktree, bakes in
+It reads the manifest + `candidates.yaml`, prepares the baseline workspace, bakes in
 every `initial_world` knob, drives live via `drive.sh`, then scores + extracts
-cost. The rest of this phase is what it automates — read it to debug or extend.
+cost. After the identity-matched result is durable it closes the native Capsule
+and records the typed close receipt; cleanup failure is reported as debt and a
+nonzero run. Use `--keep-workspace` only for an explicit debug pass: it pins the
+workspace through a declared Capsule command. The rest of this phase is what it
+automates — read it to debug or extend.
 
 **Cheapest-viable answer — `escalate.sh`.** To answer "what is the cheapest
 model/effort that fixes my bugs?", run each bug up an ordered ladder instead of
@@ -93,7 +113,7 @@ It stops each bug at the first rung that reaches `solved`. Effort is a **profile
 property (`session.new` has no effort param) — a rung is a candidate row pointing
 at a profile with that (model, effort); see the `candidates.yaml` header +
 `ladders:`. kitsoki's OWN bugs run the same way via `--project kitsoki`
-(`local_only`; verify against a throwaway `git clone --local` mirror).
+(`local_only`; verify against a throwaway Capsule-managed local mirror).
 Polyglot repos (a JS package not at the root) set a per-bug `oracle.setup`
 (e.g. `cd sub/pkg && pnpm install`) run before the oracle.
 
@@ -114,10 +134,10 @@ knobs that make it actually work** (each learned by a failure):
 
 | knob | value | why |
 |------|-------|-----|
-| `workspace_id` | **`""`** | skips `iface.workspace.create`; otherwise it `git worktree add`s in the MCP's CWD repo and fails `invalid reference: <branch>` (branch lives in the external repo). Empty ⇒ the implementer edits the prepared `workdir` directly + commits there. |
+| `workspace_id` | **`""`** | intentional compatibility boundary: the cell was already authorized/materialized by the bake-off's sentinel-owned Capsule control project, while `stories/bench-bugfix` resolves non-empty ids in Kitsoki's separate project control plane. Passing `capsule_workspace_id` here would look up the right id in the wrong store. Empty skips story-owned creation; the ownership sentinels plus pre-bound `workdir` keep the implementer inside the prepared Capsule. |
 | `thread` | `<bug>` | else `host.append_to_file: thread argument is required` bounces every transport-post to idle. |
-| `workdir` | abs cell path | the prepared worktree on `bench-<bug>-<short>`. |
-| `base_branch`/`feature_branch` | `bench-<bug>-<short>` | a ref that exists in the worktree. |
+| `workdir` | canonical path from project-local Capsule status | the already-authorized managed cell workspace on `bench-<bug>-<short>`. |
+| `base_branch`/`feature_branch` | `bench-<bug>-<short>` | a ref that exists in the managed workspace. |
 | `bf_autostart_attempted` | `true` | else idle auto-derives/clobbers `workdir`. |
 | `judge_mode` | `"llm"` | auto-advances review/validate headlessly. |
 | `test_cmd` | the repo's test cmd | retargets the testing room off Go (e.g. `npx ava`, `pytest -q`, `cargo test -p <crate>`). ALSO arms the **deterministic GREEN→RED gate**: with `test_cmd` set + `gate_command` empty, `implementing/on_enter` mechanically proves baseline-GREEN (HEAD~1) → reproducer-RED off the model's OWN synthesised test, before any maker spend — leak-safe (no hidden oracle exposed). Prefer this over LLM-only repro. |
@@ -128,6 +148,12 @@ Orchestrator prompt: drive `full_pipeline` ONCE, then only advance explicit gate
 (the LLM judge auto-emits accept/refine). Stop at a terminal state, ~25 turns, or
 a repeated stuck state. If a `host_error` bounces to idle, read `world.last_error`
 and STOP — that's a finding, not something to brute-force.
+
+Keep both identities in evidence: `prepared/*.json` records
+`capsule_project`, `capsule_workspace_id`, owner, generation, and definition for
+lifecycle/cleanup; the story trace records an empty `workspace_id` plus the
+sentinel-backed `workdir`. Empty is correct only for this prepared-workdir
+compatibility path, not a general instruction to bypass Capsule ownership.
 
 **Run cells in parallel** across DIFFERENT providers (separate MCP servers +
 traces); keep one provider's cells modest. Per `stories/AGENTS.md`, a story-level
@@ -149,11 +175,11 @@ report it as a capability result.
 ## Phase 4 — Grade, report, deck
 
 **Grade deterministically** (independent of the model's claims). Score the cell
-worktree — `bench.py` copies it, overlays the hidden oracle into `oracle.target`,
+workspace — `bench.py` copies it, overlays the hidden oracle into `oracle.target`,
 runs `oracle.run`:
 ```sh
-QS_NODE_MODULES=<clone>/node_modules python3 bench.py score \
-  --project <name> --bug <bug> --tree <cell> --candidate <model> --treatment kitsoki \
+QS_NODE_MODULES=<dependency-cache>/node_modules python3 bench.py score \
+  --project <name> --bug <bug> --tree <workspace> --candidate <model> --treatment kitsoki \
   --out results/cells/<bug>-<model>-kitsoki.json
 #   exit 0 ⇔ oracle GREEN (good fix) · exit 1 ⇔ RED
 ```

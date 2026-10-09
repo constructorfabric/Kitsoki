@@ -1,0 +1,1521 @@
+{
+  "bugswarm_glm52_arena_cells": [],
+  "claim_ledger": {
+    "claims": [
+      {
+        "caveat": "No delta or token ratio is published while the comparison is pending.",
+        "evidence": [
+          "required_glm52_matrix",
+          "comparisons"
+        ],
+        "finding": "The claim is not yet answerable from committed evidence.",
+        "id": "overall-token-usage",
+        "missing_evidence": [
+          "Raw-prompt GLM-5.2 arm has no attempted cells."
+        ],
+        "statement": "Overall GLM-5.2 token usage comparison between Kitsoki bugfix and raw prompts.",
+        "status": "pending"
+      },
+      {
+        "caveat": "No delta or token ratio is published while the comparison is pending.",
+        "evidence": [
+          "required_glm52_matrix",
+          "comparisons"
+        ],
+        "finding": "The claim is not yet answerable from committed evidence.",
+        "id": "overall-success-rate",
+        "missing_evidence": [
+          "Raw-prompt GLM-5.2 arm has no attempted cells."
+        ],
+        "statement": "Overall GLM-5.2 success-rate comparison between Kitsoki bugfix and raw prompts.",
+        "status": "pending"
+      },
+      {
+        "caveat": "No delta or token ratio is published while the comparison is pending.",
+        "evidence": [
+          "required_glm52_matrix",
+          "comparisons"
+        ],
+        "finding": "The claim is not yet answerable from committed evidence.",
+        "id": "bugswarm-success-rate",
+        "missing_evidence": [
+          "Kitsoki GLM-5.2 arm has no attempted cells.",
+          "Raw-prompt GLM-5.2 arm has no attempted cells."
+        ],
+        "statement": "BugSwarm GLM-5.2 success-rate comparison between Kitsoki bugfix and raw prompts.",
+        "status": "pending"
+      },
+      {
+        "caveat": "Execute-mode RED/GREEN verification is still required before live GLM-5.2 cells.",
+        "evidence": [
+          "tools/arena/corpus/sources.yaml",
+          "tools/arena/corpus/bugswarm.seed.yaml"
+        ],
+        "finding": "Imported BugSwarm task count: 13.",
+        "id": "bugswarm-reusable-source",
+        "missing_evidence": [],
+        "statement": "BugSwarm is represented as a reusable source family alongside the OSS oracle corpus.",
+        "status": "supported"
+      },
+      {
+        "caveat": "GLM-5.2 headline cells currently cover only the committed bugfix fixture row.",
+        "evidence": [
+          "tools/arena/corpus/cost-bench.manifest.yaml",
+          "tools/arena/corpus/sources.yaml"
+        ],
+        "finding": "20 tasks over 10 public targets; 6 armed bugfix fixture tasks.",
+        "id": "oss-source-mix",
+        "missing_evidence": [],
+        "statement": "The OSS oracle corpus preserves the 10 public target source family separately from hidden bugfix fixtures.",
+        "status": "supported"
+      },
+      {
+        "caveat": "This is not a Kitsoki-vs-raw comparison until the matching raw-prompt arm is attempted.",
+        "evidence": [
+          "tools/bugfix-bakeoff/results/cells/bug9-glm-5.2-kitsoki.json"
+        ],
+        "finding": "1 attempted cell(s), 2890980 total tokens.",
+        "id": "observed-oss-kitsoki-glm52-cell",
+        "missing_evidence": [],
+        "statement": "Committed GLM-5.2 Kitsoki bugfix evidence exists for the OSS oracle headline matrix.",
+        "status": "supported"
+      }
+    ],
+    "pending_count": 3,
+    "status": "partial",
+    "supported_count": 3
+  },
+  "comparisons": {
+    "bugswarm": {
+      "kitsoki": {
+        "attempted": 0,
+        "avg_tokens": null,
+        "blocked": 0,
+        "failed": 0,
+        "n": 13,
+        "partial": 0,
+        "partial_rate": null,
+        "pending": 13,
+        "solved": 0,
+        "success_rate": null,
+        "total_tokens": null
+      },
+      "notes": [
+        "Kitsoki GLM-5.2 arm has no attempted cells.",
+        "Raw-prompt GLM-5.2 arm has no attempted cells."
+      ],
+      "raw_prompt": {
+        "attempted": 0,
+        "avg_tokens": null,
+        "blocked": 0,
+        "failed": 0,
+        "n": 13,
+        "partial": 0,
+        "partial_rate": null,
+        "pending": 13,
+        "solved": 0,
+        "success_rate": null,
+        "total_tokens": null
+      },
+      "status": "pending",
+      "success_rate_delta": null,
+      "token_ratio_kitsoki_to_raw": null
+    },
+    "oss-oracle": {
+      "kitsoki": {
+        "attempted": 1,
+        "avg_tokens": 2890980.0,
+        "blocked": 0,
+        "failed": 0,
+        "n": 1,
+        "partial": 1,
+        "partial_rate": 1.0,
+        "pending": 0,
+        "solved": 0,
+        "success_rate": 0.0,
+        "total_tokens": 2890980
+      },
+      "notes": [
+        "Raw-prompt GLM-5.2 arm has no attempted cells."
+      ],
+      "raw_prompt": {
+        "attempted": 0,
+        "avg_tokens": null,
+        "blocked": 0,
+        "failed": 0,
+        "n": 1,
+        "partial": 0,
+        "partial_rate": null,
+        "pending": 1,
+        "solved": 0,
+        "success_rate": null,
+        "total_tokens": null
+      },
+      "status": "pending",
+      "success_rate_delta": null,
+      "token_ratio_kitsoki_to_raw": null
+    },
+    "overall": {
+      "kitsoki": {
+        "attempted": 1,
+        "avg_tokens": 2890980.0,
+        "blocked": 0,
+        "failed": 0,
+        "n": 14,
+        "partial": 1,
+        "partial_rate": 1.0,
+        "pending": 13,
+        "solved": 0,
+        "success_rate": 0.0,
+        "total_tokens": 2890980
+      },
+      "notes": [
+        "Raw-prompt GLM-5.2 arm has no attempted cells."
+      ],
+      "raw_prompt": {
+        "attempted": 0,
+        "avg_tokens": null,
+        "blocked": 0,
+        "failed": 0,
+        "n": 14,
+        "partial": 0,
+        "partial_rate": null,
+        "pending": 14,
+        "solved": 0,
+        "success_rate": null,
+        "total_tokens": null
+      },
+      "status": "pending",
+      "success_rate_delta": null,
+      "token_ratio_kitsoki_to_raw": null
+    }
+  },
+  "completion_audit": {
+    "proven_count": 4,
+    "requirement_count": 8,
+    "requirements": [
+      {
+        "evidence": [
+          "docs/case-studies/bugswarm-glm52-bugfix-report.md",
+          "docs/case-studies/bugswarm-glm52-bugfix-report.data.json"
+        ],
+        "finding": "The report is generated offline from committed inputs.",
+        "id": "report-artifact",
+        "next": "",
+        "requirement": "Produce a generated research report with JSON data and Markdown narrative.",
+        "status": "proven"
+      },
+      {
+        "evidence": [
+          "tools/arena/corpus/cost-bench.manifest.yaml",
+          "tools/arena/corpus/sources.yaml"
+        ],
+        "finding": "The report references the frozen OSS oracle corpus and keeps it separate from BugSwarm.",
+        "id": "oss-source",
+        "next": "",
+        "requirement": "Keep the reusable OSS oracle corpus as a separate source.",
+        "status": "proven"
+      },
+      {
+        "evidence": [
+          "tools/arena/corpus/sources.yaml",
+          "tools/arena/corpus/bugswarm.seed.yaml"
+        ],
+        "finding": "Imported BugSwarm task count: 13.",
+        "id": "bugswarm-source",
+        "next": "",
+        "requirement": "Make BugSwarm a reusable source alongside the OSS oracle corpus.",
+        "status": "proven"
+      },
+      {
+        "evidence": [
+          "tools/arena/scripts/bugswarm_verify_source.py"
+        ],
+        "finding": "Verification mode=none; verified=0/0.",
+        "id": "bugswarm-execute-verification",
+        "next": "Run bugswarm_verify_source.py --execute and apply the verification report.",
+        "requirement": "Prove BugSwarm failed/passed artifact behavior before scheduling live cells.",
+        "status": "missing"
+      },
+      {
+        "evidence": [
+          "tools/bugfix-bakeoff/results/cells/bug9-glm-5.2-kitsoki.json"
+        ],
+        "finding": "1 attempted cell(s), 2890980 total tokens.",
+        "id": "oss-kitsoki-glm52",
+        "next": "",
+        "requirement": "Commit Kitsoki bugfix GLM-5.2 evidence for the OSS oracle corpus.",
+        "status": "proven"
+      },
+      {
+        "evidence": [],
+        "finding": "No attempted cell is committed. Pending task(s): kitsoki-bug9-bugfix-test-repair.",
+        "id": "oss-raw-glm52",
+        "next": "Run the generated gap-plan commands, land the rollup, and regenerate this report.",
+        "requirement": "Commit raw-prompt GLM-5.2 evidence for the OSS oracle corpus.",
+        "status": "missing"
+      },
+      {
+        "evidence": [],
+        "finding": "No attempted cell is committed. Pending task(s): bugswarm-apache-commons-lang-224267191, bugswarm-apache-dubbo-416671625, bugswarm-joel-costigliola-assertj-core-309871149, bugswarm-languagetool-org-languagetool-393031702, bugswarm-numpy-numpy-308844949, bugswarm-owlcs-owlapi-93793148, bugswarm-pgjdbc-pgjdbc-117659967, bugswarm-raphw-byte-buddy-150449078, bugswarm-scikit-learn-scikit-learn-77914145, bugswarm-spring-projects-spring-data-jpa-94336959, bugswarm-square-okhttp-99758865, bugswarm-square-okio-140452393, bugswarm-square-retrofit-201300817.",
+        "id": "bugswarm-kitsoki-glm52",
+        "next": "Run the generated gap-plan commands, land the rollup, and regenerate this report.",
+        "requirement": "Commit Kitsoki bugfix GLM-5.2 evidence for the BugSwarm corpus.",
+        "status": "missing"
+      },
+      {
+        "evidence": [],
+        "finding": "No attempted cell is committed. Pending task(s): bugswarm-apache-commons-lang-224267191, bugswarm-apache-dubbo-416671625, bugswarm-joel-costigliola-assertj-core-309871149, bugswarm-languagetool-org-languagetool-393031702, bugswarm-numpy-numpy-308844949, bugswarm-owlcs-owlapi-93793148, bugswarm-pgjdbc-pgjdbc-117659967, bugswarm-raphw-byte-buddy-150449078, bugswarm-scikit-learn-scikit-learn-77914145, bugswarm-spring-projects-spring-data-jpa-94336959, bugswarm-square-okhttp-99758865, bugswarm-square-okio-140452393, bugswarm-square-retrofit-201300817.",
+        "id": "bugswarm-raw-glm52",
+        "next": "Run the generated gap-plan commands, land the rollup, and regenerate this report.",
+        "requirement": "Commit raw-prompt GLM-5.2 evidence for the BugSwarm corpus.",
+        "status": "missing"
+      }
+    ],
+    "status": "incomplete"
+  },
+  "corpora": {
+    "bugswarm": {
+      "imported_task_count": 13,
+      "source_catalog": "tools/arena/corpus/sources.yaml",
+      "source_status": "adapter-ready",
+      "verification_mode": "",
+      "verification_report_count": 0,
+      "verification_verified_count": 0,
+      "verified_task_count": 0
+    },
+    "oss_oracle": {
+      "bugfix_task_count": 6,
+      "repo_count": 12,
+      "repos": [
+        "ansible",
+        "cpython",
+        "grafana",
+        "kitsoki",
+        "kubernetes",
+        "nextjs",
+        "pytorch",
+        "query-string",
+        "rust",
+        "tensorflow",
+        "typescript",
+        "vscode"
+      ],
+      "task_count": 26
+    }
+  },
+  "evidence_closure": {
+    "actions": [
+      {
+        "corpus": "oss-oracle",
+        "next": "Run glm52_gap_plan.py; it can generate an OSS paired-task spec from the frozen corpus manifest.",
+        "pending_count": 1,
+        "status": "ready-to-plan",
+        "tasks": [
+          "kitsoki-bug9-bugfix-test-repair"
+        ],
+        "treatments": [
+          "raw-prompt"
+        ]
+      },
+      {
+        "corpus": "bugswarm",
+        "next": "Run bugswarm_verify_source.py --execute and apply the verification report before scheduling live GLM-5.2 cells.",
+        "pending_count": 26,
+        "status": "needs-execute-verification",
+        "tasks": [
+          "bugswarm-apache-commons-lang-224267191",
+          "bugswarm-apache-dubbo-416671625",
+          "bugswarm-joel-costigliola-assertj-core-309871149",
+          "bugswarm-languagetool-org-languagetool-393031702",
+          "bugswarm-numpy-numpy-308844949",
+          "bugswarm-owlcs-owlapi-93793148",
+          "bugswarm-pgjdbc-pgjdbc-117659967",
+          "bugswarm-raphw-byte-buddy-150449078",
+          "bugswarm-scikit-learn-scikit-learn-77914145",
+          "bugswarm-spring-projects-spring-data-jpa-94336959",
+          "bugswarm-square-okhttp-99758865",
+          "bugswarm-square-okio-140452393",
+          "bugswarm-square-retrofit-201300817"
+        ]
+      }
+    ],
+    "pending_by_corpus": {
+      "bugswarm": 26,
+      "oss-oracle": 1
+    },
+    "pending_cell_count": 27
+  },
+  "evidence_gaps": [
+    "No committed raw-prompt GLM-5.2 result exists for the OSS oracle corpus.",
+    "BugSwarm artifacts have been imported but none are verified RED/GREEN yet.",
+    "No BugSwarm verification report is attached to this generated report.",
+    "Some imported BugSwarm tasks are missing committed GLM-5.2 Kitsoki or raw-prompt result cells."
+  ],
+  "generated_at": "2026-07-11T00:00:00Z",
+  "glm52_bugfix_cells": [
+    {
+      "adjudicated": true,
+      "candidate": "glm-5.2",
+      "corpus": "oss-oracle",
+      "cost_usd": 15.57545,
+      "evidence": "tools/bugfix-bakeoff/results/cells/bug9-glm-5.2-kitsoki.json",
+      "model": "hf:zai-org/GLM-5.2",
+      "notes": "oracle TestRepro_ConcurrentSessionsShareCheckout_DestroysWIP: rc=1; cost from native meta.cost_usd",
+      "oracle_status": "fail",
+      "provider": "synthetic.new",
+      "quality": "partial",
+      "source": "bugfix-bakeoff",
+      "task": "bug9",
+      "total_tokens": 2890980,
+      "treatment": "kitsoki"
+    }
+  ],
+  "inputs": {
+    "arena_rollup": "tools/arena/results/round-1/rollup.json",
+    "bakeoff_cells": "tools/bugfix-bakeoff/results/cells",
+    "bugswarm_arena_rollup": "",
+    "bugswarm_source": "tools/arena/corpus/bugswarm.seed.yaml",
+    "bugswarm_verification": "",
+    "corpus": "tools/arena/corpus/cost-bench.manifest.yaml",
+    "oss_arena_rollup": "",
+    "report_json": "docs/case-studies/bugswarm-glm52-bugfix-report.data.json",
+    "report_markdown": "docs/case-studies/bugswarm-glm52-bugfix-report.md",
+    "sources": "tools/arena/corpus/sources.yaml"
+  },
+  "interpretation": [
+    "Committed GLM-5.2 Kitsoki evidence contains 1 attempted OSS oracle cell(s), 2890980 total tokens, and no solved cell yet.",
+    "The GLM-5.2 raw-prompt arm remains pending; the report must not compute a token ratio from missing data.",
+    "BugSwarm is reusable as an imported source with 13 task(s) in the supplied source file."
+  ],
+  "kind": "glm52_bugswarm_bugfix_report",
+  "oss_glm52_arena_cells": [],
+  "references": {
+    "bugswarm_seed": [
+      {
+        "label": "BugSwarm seed artifact square-okio-140452393",
+        "purpose": "Official BugSwarm tutorial artifact; the tutorial documents run_failed.sh and run_passed.sh execution in fresh containers.",
+        "url": "https://www.bugswarm.org/docs/tutorials/setting-up-an-experiment/"
+      },
+      {
+        "label": "BugSwarm seed artifact square-retrofit-201300817",
+        "purpose": "BugSwarm REST API filter (queried 2026-07-11): lang in [Java,Python], reproduce_successes=5 (non-flaky), num_of_changed_files<=3, changes<=15, classification.code=Yes (genuine code fix, not build/test-only), 1<=num_tests_failed<=5 (bounded, not mass breakage: 3/343 tests). Exception(s) at failure: AssertionError. Not yet live-verified (verified_red/verified_green false until bugswarm_verify_source.py --execute runs).",
+        "url": "https://github.com/square/retrofit/commit/25b6bac7b2b90b80605273bf3886ad56519d6f08"
+      },
+      {
+        "label": "BugSwarm seed artifact apache-commons-lang-224267191",
+        "purpose": "BugSwarm REST API filter (queried 2026-07-11): lang in [Java,Python], reproduce_successes=5 (non-flaky), num_of_changed_files<=3, changes<=15, classification.code=Yes (genuine code fix, not build/test-only), 1<=num_tests_failed<=5 (bounded, not mass breakage: 2/4004 tests). Exception(s) at failure: ComparisonFailure. Not yet live-verified (verified_red/verified_green false until bugswarm_verify_source.py --execute runs).",
+        "url": "https://github.com/apache/commons-lang/commit/314b6b56bec4af56dba667d66a25c1613f4bc800"
+      },
+      {
+        "label": "BugSwarm seed artifact scikit-learn-scikit-learn-77914145",
+        "purpose": "BugSwarm REST API filter (queried 2026-07-11): lang in [Java,Python], reproduce_successes=5 (non-flaky), num_of_changed_files<=3, changes<=15, classification.code=Yes (genuine code fix, not build/test-only), 1<=num_tests_failed<=5 (bounded, not mass breakage: 1/5491 tests). Exception(s) at failure: ValueError. Not yet live-verified (verified_red/verified_green false until bugswarm_verify_source.py --execute runs).",
+        "url": "https://github.com/scikit-learn/scikit-learn/commit/242aaca0661f1f78395a97a429f96c8f1ed05ef3"
+      },
+      {
+        "label": "BugSwarm seed artifact owlcs-owlapi-93793148",
+        "purpose": "BugSwarm REST API filter (queried 2026-07-11): lang in [Java,Python], reproduce_successes=5 (non-flaky), num_of_changed_files<=3, changes<=15, classification.code=Yes (genuine code fix, not build/test-only), 1<=num_tests_failed<=5 (bounded, not mass breakage: 1/6512 tests). Exception(s) at failure: none recorded. Not yet live-verified (verified_red/verified_green false until bugswarm_verify_source.py --execute runs).",
+        "url": "https://github.com/owlcs/owlapi/commit/691fc830c4610233826a8cba991904f3f58528ad"
+      },
+      {
+        "label": "BugSwarm seed artifact languagetool-org-languagetool-393031702",
+        "purpose": "BugSwarm REST API filter (queried 2026-07-11): lang in [Java,Python], reproduce_successes=5 (non-flaky), num_of_changed_files<=3, changes<=15, classification.code=Yes (genuine code fix, not build/test-only), 1<=num_tests_failed<=5 (bounded, not mass breakage: 2/328 tests). Exception(s) at failure: NullPointerException. Not yet live-verified (verified_red/verified_green false until bugswarm_verify_source.py --execute runs).",
+        "url": "https://github.com/languagetool-org/languagetool/commit/e67ead69a3a123e3bd78ba30a6eff7f180af49d9"
+      },
+      {
+        "label": "BugSwarm seed artifact square-okhttp-99758865",
+        "purpose": "BugSwarm REST API filter (queried 2026-07-11): lang in [Java,Python], reproduce_successes=5 (non-flaky), num_of_changed_files<=3, changes<=15, classification.code=Yes (genuine code fix, not build/test-only), 1<=num_tests_failed<=5 (bounded, not mass breakage: 1/1734 tests). Exception(s) at failure: ArrayIndexOutOfBoundsException. Not yet live-verified (verified_red/verified_green false until bugswarm_verify_source.py --execute runs).",
+        "url": "https://github.com/square/okhttp/commit/859d27bb6f61689113be0d5ff51c470c2690e859"
+      },
+      {
+        "label": "BugSwarm seed artifact joel-costigliola-assertj-core-309871149",
+        "purpose": "BugSwarm REST API filter (queried 2026-07-11): lang in [Java,Python], reproduce_successes=5 (non-flaky), num_of_changed_files<=3, changes<=15, classification.code=Yes (genuine code fix, not build/test-only), 1<=num_tests_failed<=5 (bounded, not mass breakage: 1/9846 tests). Exception(s) at failure: AssertionError. Not yet live-verified (verified_red/verified_green false until bugswarm_verify_source.py --execute runs).",
+        "url": "https://github.com/joel-costigliola/assertj-core/commit/f3baca43c21cbc10b90f1edf45ef2b63bebe3ab6"
+      },
+      {
+        "label": "BugSwarm seed artifact pgjdbc-pgjdbc-117659967",
+        "purpose": "BugSwarm REST API filter (queried 2026-07-11): lang in [Java,Python], reproduce_successes=5 (non-flaky), num_of_changed_files<=3, changes<=15, classification.code=Yes (genuine code fix, not build/test-only), 1<=num_tests_failed<=5 (bounded, not mass breakage: 1/1419 tests). Exception(s) at failure: PSQLException. Not yet live-verified (verified_red/verified_green false until bugswarm_verify_source.py --execute runs).",
+        "url": "https://github.com/pgjdbc/pgjdbc/commit/4bf3f41f45bf0bad49941793f46f8efc76b4255c"
+      },
+      {
+        "label": "BugSwarm seed artifact raphw-byte-buddy-150449078",
+        "purpose": "BugSwarm REST API filter (queried 2026-07-11): lang in [Java,Python], reproduce_successes=5 (non-flaky), num_of_changed_files<=3, changes<=15, classification.code=Yes (genuine code fix, not build/test-only), 1<=num_tests_failed<=5 (bounded, not mass breakage: 4/6769 tests). Exception(s) at failure: AssertionError. Not yet live-verified (verified_red/verified_green false until bugswarm_verify_source.py --execute runs).",
+        "url": "https://github.com/raphw/byte-buddy/commit/77a38ee10a8644e19c559e7fb32e24b6f1e7d8d9"
+      },
+      {
+        "label": "BugSwarm seed artifact spring-projects-spring-data-jpa-94336959",
+        "purpose": "BugSwarm REST API filter (queried 2026-07-11): lang in [Java,Python], reproduce_successes=5 (non-flaky), num_of_changed_files<=3, changes<=15, classification.code=Yes (genuine code fix, not build/test-only), 1<=num_tests_failed<=5 (bounded, not mass breakage: 1/1021 tests). Exception(s) at failure: AssertionError. Not yet live-verified (verified_red/verified_green false until bugswarm_verify_source.py --execute runs).",
+        "url": "https://github.com/spring-projects/spring-data-jpa/commit/b124825116e4e380e2f9eaa68b90b3b335b92580"
+      },
+      {
+        "label": "BugSwarm seed artifact numpy-numpy-308844949",
+        "purpose": "BugSwarm REST API filter (queried 2026-07-11): lang in [Java,Python], reproduce_successes=5 (non-flaky), num_of_changed_files<=3, changes<=15, classification.code=Yes (genuine code fix, not build/test-only), 1<=num_tests_failed<=5 (bounded, not mass breakage: 1/6792 tests). Exception(s) at failure: TypeError. Not yet live-verified (verified_red/verified_green false until bugswarm_verify_source.py --execute runs).",
+        "url": "https://github.com/numpy/numpy/commit/b6eb0c41123b29282ed984e8585aae22e4979f3d"
+      },
+      {
+        "label": "BugSwarm seed artifact apache-dubbo-416671625",
+        "purpose": "BugSwarm REST API filter (queried 2026-07-11): lang in [Java,Python], reproduce_successes=5 (non-flaky), num_of_changed_files<=3, changes<=15, classification.code=Yes (genuine code fix, not build/test-only), 1<=num_tests_failed<=5 (bounded, not mass breakage: 1/1921 tests). Exception(s) at failure: NullPointerException. Not yet live-verified (verified_red/verified_green false until bugswarm_verify_source.py --execute runs).",
+        "url": "https://github.com/apache/dubbo/commit/cbb2aaf25cdace6bfe99f6b894d5d4e24071675a"
+      }
+    ],
+    "local_evidence": [
+      {
+        "label": "GLM-5.2 bugfix bakeoff cells",
+        "path": "tools/bugfix-bakeoff/results/cells",
+        "purpose": "committed Kitsoki/raw-prompt bugfix cells and usage evidence"
+      },
+      {
+        "label": "OSS oracle corpus",
+        "path": "tools/arena/corpus/cost-bench.manifest.yaml",
+        "purpose": "frozen reusable OSS task source and deterministic oracle metadata"
+      },
+      {
+        "label": "BugSwarm source catalog",
+        "path": "tools/arena/corpus/sources.yaml",
+        "purpose": "adapter contract, required metadata fields, and verification contract"
+      }
+    ],
+    "upstream": [
+      {
+        "label": "BugSwarm website",
+        "purpose": "dataset and project entry point",
+        "url": "https://www.bugswarm.org/"
+      },
+      {
+        "label": "BugSwarm client",
+        "purpose": "artifact client and image execution interface",
+        "url": "https://github.com/BugSwarm/client"
+      },
+      {
+        "label": "BugSwarm REST API",
+        "purpose": "artifact metadata filtering and retrieval interface",
+        "url": "https://www.bugswarm.org/docs/toolset/bugswarm-rest-api/"
+      },
+      {
+        "label": "BugSwarm paper",
+        "purpose": "published dataset/infrastructure description",
+        "url": "https://arxiv.org/abs/1903.06725"
+      }
+    ]
+  },
+  "reproducibility": {
+    "artifacts": [
+      {
+        "bytes": 21037,
+        "exists": true,
+        "kind": "file",
+        "path": "tools/arena/corpus/cost-bench.manifest.yaml",
+        "role": "corpus",
+        "sha256": "8d6695ef085cacba3894a9710fe7119a778ebbd1c8a8bc68f281dc3fe008485d"
+      },
+      {
+        "bytes": 3775,
+        "exists": true,
+        "kind": "file",
+        "path": "tools/arena/corpus/sources.yaml",
+        "role": "source-catalog",
+        "sha256": "96ff4fe57cabd6f5b04641ab82be648d438f63b8f5d2e0a6018c0c6fcd29ce9c"
+      },
+      {
+        "bytes": 19433,
+        "exists": true,
+        "kind": "file",
+        "path": "tools/arena/corpus/bugswarm.seed.yaml",
+        "role": "bugswarm-source",
+        "sha256": "4e6517147a7a006a2670dac69afa4c2d82c3d73ab8fbab2eea48224c60990304"
+      },
+      {
+        "bytes": 10978,
+        "exists": true,
+        "kind": "file",
+        "path": "tools/arena/results/round-1/rollup.json",
+        "role": "supporting-rollup",
+        "sha256": "49f8d3cb25601a32a51d44a44cc940bd24f0261af887cc31fdcbc95443745724"
+      },
+      {
+        "exists": true,
+        "files": [
+          {
+            "bytes": 1554,
+            "exists": true,
+            "kind": "file",
+            "path": "tools/bugfix-bakeoff/results/cells/bug9-glm-5.2-kitsoki.json",
+            "role": "matched-file",
+            "sha256": "ae6b0d8529e1b3fc183a999e93788ffa852b9881dbc8e6a3248aa1fe89839046"
+          }
+        ],
+        "kind": "directory-glob",
+        "match_count": 1,
+        "path": "tools/bugfix-bakeoff/results/cells",
+        "pattern": "*glm-5.2*.json",
+        "role": "directory-glob"
+      },
+      {
+        "exists": false,
+        "kind": "missing-optional",
+        "path": "",
+        "role": "optional-oss-arena-rollup"
+      },
+      {
+        "exists": false,
+        "kind": "missing-optional",
+        "path": "",
+        "role": "optional-bugswarm-verification"
+      },
+      {
+        "exists": false,
+        "kind": "missing-optional",
+        "path": "",
+        "role": "optional-bugswarm-arena-rollup"
+      }
+    ],
+    "generated_at": "2026-07-11T00:00:00Z",
+    "generator": {
+      "bytes": 79753,
+      "exists": true,
+      "kind": "file",
+      "path": "tools/arena/scripts/glm52_bugswarm_report.py",
+      "role": "generator",
+      "sha256": "08d7ac0776bf1edcca5c1860061be66745ed3b483f58fc37fb004bae9d494e43"
+    },
+    "regenerate_command": [
+      "python3",
+      "tools/arena/scripts/glm52_bugswarm_report.py",
+      "--generated-at",
+      "2026-07-11T00:00:00Z",
+      "--json-out",
+      "docs/case-studies/bugswarm-glm52-bugfix-report.data.json",
+      "--markdown-out",
+      "docs/case-studies/bugswarm-glm52-bugfix-report.md"
+    ],
+    "status": "reproducible",
+    "validation_commands": [
+      "python3 tools/arena/scripts/glm52_report_gate.py --report-json docs/case-studies/bugswarm-glm52-bugfix-report.data.json",
+      "python3 tools/arena/scripts/glm52_report_gate.py --report-json docs/case-studies/bugswarm-glm52-bugfix-report.data.json --require-publishable",
+      "python3 tools/arena/tests/test_glm52_bugswarm_report.py",
+      "python3 tools/arena/tests/test_glm52_report_gate.py",
+      "python3 -m py_compile tools/arena/scripts/glm52_bugswarm_report.py tools/arena/scripts/glm52_report_gate.py",
+      "python3 tools/arena/tests/validate_corpus.py tools/arena/corpus/cost-bench.manifest.yaml",
+      "python3 tools/arena/tests/run_no_llm.py"
+    ]
+  },
+  "required_glm52_matrix": [
+    {
+      "adjudicated": true,
+      "candidate": "glm-5.2",
+      "corpus": "oss-oracle",
+      "cost_usd": 15.57545,
+      "evidence": "tools/bugfix-bakeoff/results/cells/bug9-glm-5.2-kitsoki.json",
+      "legacy_task": "bug9",
+      "model": "hf:zai-org/GLM-5.2",
+      "notes": "oracle TestRepro_ConcurrentSessionsShareCheckout_DestroysWIP: rc=1; cost from native meta.cost_usd",
+      "oracle_status": "fail",
+      "provider": "synthetic.new",
+      "quality": "partial",
+      "source": "bugfix-bakeoff",
+      "task": "kitsoki-bug9-bugfix-test-repair",
+      "total_tokens": 2890980,
+      "treatment": "kitsoki"
+    },
+    {
+      "adjudicated": false,
+      "candidate": "glm-5.2",
+      "corpus": "oss-oracle",
+      "cost_usd": null,
+      "evidence": "",
+      "model": "hf:zai-org/GLM-5.2",
+      "notes": "no committed GLM-5.2 cell",
+      "oracle_status": "",
+      "provider": "synthetic.new",
+      "quality": "pending",
+      "source": "pending",
+      "task": "kitsoki-bug9-bugfix-test-repair",
+      "total_tokens": null,
+      "treatment": "raw-prompt"
+    },
+    {
+      "adjudicated": false,
+      "candidate": "glm-5.2",
+      "corpus": "bugswarm",
+      "cost_usd": null,
+      "evidence": "",
+      "model": "hf:zai-org/GLM-5.2",
+      "notes": "BugSwarm task imported but no GLM-5.2 result cell",
+      "oracle_status": "",
+      "provider": "synthetic.new",
+      "quality": "pending",
+      "source": "pending",
+      "task": "bugswarm-square-okio-140452393",
+      "total_tokens": null,
+      "treatment": "kitsoki"
+    },
+    {
+      "adjudicated": false,
+      "candidate": "glm-5.2",
+      "corpus": "bugswarm",
+      "cost_usd": null,
+      "evidence": "",
+      "model": "hf:zai-org/GLM-5.2",
+      "notes": "BugSwarm task imported but no GLM-5.2 result cell",
+      "oracle_status": "",
+      "provider": "synthetic.new",
+      "quality": "pending",
+      "source": "pending",
+      "task": "bugswarm-square-okio-140452393",
+      "total_tokens": null,
+      "treatment": "raw-prompt"
+    },
+    {
+      "adjudicated": false,
+      "candidate": "glm-5.2",
+      "corpus": "bugswarm",
+      "cost_usd": null,
+      "evidence": "",
+      "model": "hf:zai-org/GLM-5.2",
+      "notes": "BugSwarm task imported but no GLM-5.2 result cell",
+      "oracle_status": "",
+      "provider": "synthetic.new",
+      "quality": "pending",
+      "source": "pending",
+      "task": "bugswarm-square-retrofit-201300817",
+      "total_tokens": null,
+      "treatment": "kitsoki"
+    },
+    {
+      "adjudicated": false,
+      "candidate": "glm-5.2",
+      "corpus": "bugswarm",
+      "cost_usd": null,
+      "evidence": "",
+      "model": "hf:zai-org/GLM-5.2",
+      "notes": "BugSwarm task imported but no GLM-5.2 result cell",
+      "oracle_status": "",
+      "provider": "synthetic.new",
+      "quality": "pending",
+      "source": "pending",
+      "task": "bugswarm-square-retrofit-201300817",
+      "total_tokens": null,
+      "treatment": "raw-prompt"
+    },
+    {
+      "adjudicated": false,
+      "candidate": "glm-5.2",
+      "corpus": "bugswarm",
+      "cost_usd": null,
+      "evidence": "",
+      "model": "hf:zai-org/GLM-5.2",
+      "notes": "BugSwarm task imported but no GLM-5.2 result cell",
+      "oracle_status": "",
+      "provider": "synthetic.new",
+      "quality": "pending",
+      "source": "pending",
+      "task": "bugswarm-apache-commons-lang-224267191",
+      "total_tokens": null,
+      "treatment": "kitsoki"
+    },
+    {
+      "adjudicated": false,
+      "candidate": "glm-5.2",
+      "corpus": "bugswarm",
+      "cost_usd": null,
+      "evidence": "",
+      "model": "hf:zai-org/GLM-5.2",
+      "notes": "BugSwarm task imported but no GLM-5.2 result cell",
+      "oracle_status": "",
+      "provider": "synthetic.new",
+      "quality": "pending",
+      "source": "pending",
+      "task": "bugswarm-apache-commons-lang-224267191",
+      "total_tokens": null,
+      "treatment": "raw-prompt"
+    },
+    {
+      "adjudicated": false,
+      "candidate": "glm-5.2",
+      "corpus": "bugswarm",
+      "cost_usd": null,
+      "evidence": "",
+      "model": "hf:zai-org/GLM-5.2",
+      "notes": "BugSwarm task imported but no GLM-5.2 result cell",
+      "oracle_status": "",
+      "provider": "synthetic.new",
+      "quality": "pending",
+      "source": "pending",
+      "task": "bugswarm-scikit-learn-scikit-learn-77914145",
+      "total_tokens": null,
+      "treatment": "kitsoki"
+    },
+    {
+      "adjudicated": false,
+      "candidate": "glm-5.2",
+      "corpus": "bugswarm",
+      "cost_usd": null,
+      "evidence": "",
+      "model": "hf:zai-org/GLM-5.2",
+      "notes": "BugSwarm task imported but no GLM-5.2 result cell",
+      "oracle_status": "",
+      "provider": "synthetic.new",
+      "quality": "pending",
+      "source": "pending",
+      "task": "bugswarm-scikit-learn-scikit-learn-77914145",
+      "total_tokens": null,
+      "treatment": "raw-prompt"
+    },
+    {
+      "adjudicated": false,
+      "candidate": "glm-5.2",
+      "corpus": "bugswarm",
+      "cost_usd": null,
+      "evidence": "",
+      "model": "hf:zai-org/GLM-5.2",
+      "notes": "BugSwarm task imported but no GLM-5.2 result cell",
+      "oracle_status": "",
+      "provider": "synthetic.new",
+      "quality": "pending",
+      "source": "pending",
+      "task": "bugswarm-owlcs-owlapi-93793148",
+      "total_tokens": null,
+      "treatment": "kitsoki"
+    },
+    {
+      "adjudicated": false,
+      "candidate": "glm-5.2",
+      "corpus": "bugswarm",
+      "cost_usd": null,
+      "evidence": "",
+      "model": "hf:zai-org/GLM-5.2",
+      "notes": "BugSwarm task imported but no GLM-5.2 result cell",
+      "oracle_status": "",
+      "provider": "synthetic.new",
+      "quality": "pending",
+      "source": "pending",
+      "task": "bugswarm-owlcs-owlapi-93793148",
+      "total_tokens": null,
+      "treatment": "raw-prompt"
+    },
+    {
+      "adjudicated": false,
+      "candidate": "glm-5.2",
+      "corpus": "bugswarm",
+      "cost_usd": null,
+      "evidence": "",
+      "model": "hf:zai-org/GLM-5.2",
+      "notes": "BugSwarm task imported but no GLM-5.2 result cell",
+      "oracle_status": "",
+      "provider": "synthetic.new",
+      "quality": "pending",
+      "source": "pending",
+      "task": "bugswarm-languagetool-org-languagetool-393031702",
+      "total_tokens": null,
+      "treatment": "kitsoki"
+    },
+    {
+      "adjudicated": false,
+      "candidate": "glm-5.2",
+      "corpus": "bugswarm",
+      "cost_usd": null,
+      "evidence": "",
+      "model": "hf:zai-org/GLM-5.2",
+      "notes": "BugSwarm task imported but no GLM-5.2 result cell",
+      "oracle_status": "",
+      "provider": "synthetic.new",
+      "quality": "pending",
+      "source": "pending",
+      "task": "bugswarm-languagetool-org-languagetool-393031702",
+      "total_tokens": null,
+      "treatment": "raw-prompt"
+    },
+    {
+      "adjudicated": false,
+      "candidate": "glm-5.2",
+      "corpus": "bugswarm",
+      "cost_usd": null,
+      "evidence": "",
+      "model": "hf:zai-org/GLM-5.2",
+      "notes": "BugSwarm task imported but no GLM-5.2 result cell",
+      "oracle_status": "",
+      "provider": "synthetic.new",
+      "quality": "pending",
+      "source": "pending",
+      "task": "bugswarm-square-okhttp-99758865",
+      "total_tokens": null,
+      "treatment": "kitsoki"
+    },
+    {
+      "adjudicated": false,
+      "candidate": "glm-5.2",
+      "corpus": "bugswarm",
+      "cost_usd": null,
+      "evidence": "",
+      "model": "hf:zai-org/GLM-5.2",
+      "notes": "BugSwarm task imported but no GLM-5.2 result cell",
+      "oracle_status": "",
+      "provider": "synthetic.new",
+      "quality": "pending",
+      "source": "pending",
+      "task": "bugswarm-square-okhttp-99758865",
+      "total_tokens": null,
+      "treatment": "raw-prompt"
+    },
+    {
+      "adjudicated": false,
+      "candidate": "glm-5.2",
+      "corpus": "bugswarm",
+      "cost_usd": null,
+      "evidence": "",
+      "model": "hf:zai-org/GLM-5.2",
+      "notes": "BugSwarm task imported but no GLM-5.2 result cell",
+      "oracle_status": "",
+      "provider": "synthetic.new",
+      "quality": "pending",
+      "source": "pending",
+      "task": "bugswarm-joel-costigliola-assertj-core-309871149",
+      "total_tokens": null,
+      "treatment": "kitsoki"
+    },
+    {
+      "adjudicated": false,
+      "candidate": "glm-5.2",
+      "corpus": "bugswarm",
+      "cost_usd": null,
+      "evidence": "",
+      "model": "hf:zai-org/GLM-5.2",
+      "notes": "BugSwarm task imported but no GLM-5.2 result cell",
+      "oracle_status": "",
+      "provider": "synthetic.new",
+      "quality": "pending",
+      "source": "pending",
+      "task": "bugswarm-joel-costigliola-assertj-core-309871149",
+      "total_tokens": null,
+      "treatment": "raw-prompt"
+    },
+    {
+      "adjudicated": false,
+      "candidate": "glm-5.2",
+      "corpus": "bugswarm",
+      "cost_usd": null,
+      "evidence": "",
+      "model": "hf:zai-org/GLM-5.2",
+      "notes": "BugSwarm task imported but no GLM-5.2 result cell",
+      "oracle_status": "",
+      "provider": "synthetic.new",
+      "quality": "pending",
+      "source": "pending",
+      "task": "bugswarm-pgjdbc-pgjdbc-117659967",
+      "total_tokens": null,
+      "treatment": "kitsoki"
+    },
+    {
+      "adjudicated": false,
+      "candidate": "glm-5.2",
+      "corpus": "bugswarm",
+      "cost_usd": null,
+      "evidence": "",
+      "model": "hf:zai-org/GLM-5.2",
+      "notes": "BugSwarm task imported but no GLM-5.2 result cell",
+      "oracle_status": "",
+      "provider": "synthetic.new",
+      "quality": "pending",
+      "source": "pending",
+      "task": "bugswarm-pgjdbc-pgjdbc-117659967",
+      "total_tokens": null,
+      "treatment": "raw-prompt"
+    },
+    {
+      "adjudicated": false,
+      "candidate": "glm-5.2",
+      "corpus": "bugswarm",
+      "cost_usd": null,
+      "evidence": "",
+      "model": "hf:zai-org/GLM-5.2",
+      "notes": "BugSwarm task imported but no GLM-5.2 result cell",
+      "oracle_status": "",
+      "provider": "synthetic.new",
+      "quality": "pending",
+      "source": "pending",
+      "task": "bugswarm-raphw-byte-buddy-150449078",
+      "total_tokens": null,
+      "treatment": "kitsoki"
+    },
+    {
+      "adjudicated": false,
+      "candidate": "glm-5.2",
+      "corpus": "bugswarm",
+      "cost_usd": null,
+      "evidence": "",
+      "model": "hf:zai-org/GLM-5.2",
+      "notes": "BugSwarm task imported but no GLM-5.2 result cell",
+      "oracle_status": "",
+      "provider": "synthetic.new",
+      "quality": "pending",
+      "source": "pending",
+      "task": "bugswarm-raphw-byte-buddy-150449078",
+      "total_tokens": null,
+      "treatment": "raw-prompt"
+    },
+    {
+      "adjudicated": false,
+      "candidate": "glm-5.2",
+      "corpus": "bugswarm",
+      "cost_usd": null,
+      "evidence": "",
+      "model": "hf:zai-org/GLM-5.2",
+      "notes": "BugSwarm task imported but no GLM-5.2 result cell",
+      "oracle_status": "",
+      "provider": "synthetic.new",
+      "quality": "pending",
+      "source": "pending",
+      "task": "bugswarm-spring-projects-spring-data-jpa-94336959",
+      "total_tokens": null,
+      "treatment": "kitsoki"
+    },
+    {
+      "adjudicated": false,
+      "candidate": "glm-5.2",
+      "corpus": "bugswarm",
+      "cost_usd": null,
+      "evidence": "",
+      "model": "hf:zai-org/GLM-5.2",
+      "notes": "BugSwarm task imported but no GLM-5.2 result cell",
+      "oracle_status": "",
+      "provider": "synthetic.new",
+      "quality": "pending",
+      "source": "pending",
+      "task": "bugswarm-spring-projects-spring-data-jpa-94336959",
+      "total_tokens": null,
+      "treatment": "raw-prompt"
+    },
+    {
+      "adjudicated": false,
+      "candidate": "glm-5.2",
+      "corpus": "bugswarm",
+      "cost_usd": null,
+      "evidence": "",
+      "model": "hf:zai-org/GLM-5.2",
+      "notes": "BugSwarm task imported but no GLM-5.2 result cell",
+      "oracle_status": "",
+      "provider": "synthetic.new",
+      "quality": "pending",
+      "source": "pending",
+      "task": "bugswarm-numpy-numpy-308844949",
+      "total_tokens": null,
+      "treatment": "kitsoki"
+    },
+    {
+      "adjudicated": false,
+      "candidate": "glm-5.2",
+      "corpus": "bugswarm",
+      "cost_usd": null,
+      "evidence": "",
+      "model": "hf:zai-org/GLM-5.2",
+      "notes": "BugSwarm task imported but no GLM-5.2 result cell",
+      "oracle_status": "",
+      "provider": "synthetic.new",
+      "quality": "pending",
+      "source": "pending",
+      "task": "bugswarm-numpy-numpy-308844949",
+      "total_tokens": null,
+      "treatment": "raw-prompt"
+    },
+    {
+      "adjudicated": false,
+      "candidate": "glm-5.2",
+      "corpus": "bugswarm",
+      "cost_usd": null,
+      "evidence": "",
+      "model": "hf:zai-org/GLM-5.2",
+      "notes": "BugSwarm task imported but no GLM-5.2 result cell",
+      "oracle_status": "",
+      "provider": "synthetic.new",
+      "quality": "pending",
+      "source": "pending",
+      "task": "bugswarm-apache-dubbo-416671625",
+      "total_tokens": null,
+      "treatment": "kitsoki"
+    },
+    {
+      "adjudicated": false,
+      "candidate": "glm-5.2",
+      "corpus": "bugswarm",
+      "cost_usd": null,
+      "evidence": "",
+      "model": "hf:zai-org/GLM-5.2",
+      "notes": "BugSwarm task imported but no GLM-5.2 result cell",
+      "oracle_status": "",
+      "provider": "synthetic.new",
+      "quality": "pending",
+      "source": "pending",
+      "task": "bugswarm-apache-dubbo-416671625",
+      "total_tokens": null,
+      "treatment": "raw-prompt"
+    }
+  ],
+  "rollups": {
+    "glm52_by_corpus_treatment": {
+      "bugswarm|kitsoki": {
+        "attempted": 0,
+        "avg_tokens": null,
+        "blocked": 0,
+        "failed": 0,
+        "n": 13,
+        "partial": 0,
+        "partial_rate": null,
+        "pending": 13,
+        "solved": 0,
+        "success_rate": null,
+        "total_tokens": null
+      },
+      "bugswarm|raw-prompt": {
+        "attempted": 0,
+        "avg_tokens": null,
+        "blocked": 0,
+        "failed": 0,
+        "n": 13,
+        "partial": 0,
+        "partial_rate": null,
+        "pending": 13,
+        "solved": 0,
+        "success_rate": null,
+        "total_tokens": null
+      },
+      "oss-oracle|kitsoki": {
+        "attempted": 1,
+        "avg_tokens": 2890980.0,
+        "blocked": 0,
+        "failed": 0,
+        "n": 1,
+        "partial": 1,
+        "partial_rate": 1.0,
+        "pending": 0,
+        "solved": 0,
+        "success_rate": 0.0,
+        "total_tokens": 2890980
+      },
+      "oss-oracle|raw-prompt": {
+        "attempted": 0,
+        "avg_tokens": null,
+        "blocked": 0,
+        "failed": 0,
+        "n": 1,
+        "partial": 0,
+        "partial_rate": null,
+        "pending": 1,
+        "solved": 0,
+        "success_rate": null,
+        "total_tokens": null
+      }
+    },
+    "glm52_by_treatment_overall": {
+      "kitsoki": {
+        "attempted": 1,
+        "avg_tokens": 2890980.0,
+        "blocked": 0,
+        "failed": 0,
+        "n": 14,
+        "partial": 1,
+        "partial_rate": 1.0,
+        "pending": 13,
+        "solved": 0,
+        "success_rate": 0.0,
+        "total_tokens": 2890980
+      },
+      "raw-prompt": {
+        "attempted": 0,
+        "avg_tokens": null,
+        "blocked": 0,
+        "failed": 0,
+        "n": 14,
+        "partial": 0,
+        "partial_rate": null,
+        "pending": 14,
+        "solved": 0,
+        "success_rate": null,
+        "total_tokens": null
+      }
+    },
+    "supporting_oss_codex_round1": {
+      "kitsoki": {
+        "attempted": 4,
+        "avg_tokens": 5364879.25,
+        "blocked": 0,
+        "failed": 2,
+        "n": 4,
+        "partial": 0,
+        "partial_rate": 0.0,
+        "pending": 0,
+        "solved": 2,
+        "success_rate": 0.5,
+        "total_tokens": 21459517
+      },
+      "raw-prompt": {
+        "attempted": 4,
+        "avg_tokens": 134435.75,
+        "blocked": 0,
+        "failed": 2,
+        "n": 4,
+        "partial": 0,
+        "partial_rate": 0.0,
+        "pending": 0,
+        "solved": 2,
+        "success_rate": 0.5,
+        "total_tokens": 537743
+      }
+    }
+  },
+  "source_mix": {
+    "blend_policy": [
+      "Keep OSS oracle tasks and BugSwarm artifacts as separate source families in denominators.",
+      "Report overall GLM-5.2 treatment totals only after both Kitsoki and raw-prompt arms have attempted cells.",
+      "Use total tokens as the primary cross-source cost axis; USD remains secondary and evidence-dependent.",
+      "Do not count dry-run BugSwarm verification as RED/GREEN proof."
+    ],
+    "bugswarm": {
+      "component": "containerized_fail_pass_ci_artifacts",
+      "repo_count": 13,
+      "repositories": [
+        "apache/commons-lang",
+        "apache/dubbo",
+        "joel-costigliola/assertj-core",
+        "languagetool-org/languagetool",
+        "numpy/numpy",
+        "owlcs/owlapi",
+        "pgjdbc/pgjdbc",
+        "raphw/byte-buddy",
+        "scikit-learn/scikit-learn",
+        "spring-projects/spring-data-jpa",
+        "square/okhttp",
+        "square/okio",
+        "square/retrofit"
+      ],
+      "status": "adapter-ready",
+      "task_count": 13,
+      "verification_gate": "execute RED/GREEN before live GLM-5.2 cells"
+    },
+    "oss_oracle": {
+      "components": [
+        {
+          "archetypes": {
+            "docs_site_release": 6,
+            "git_ops_landing": 5,
+            "story_runtime": 5,
+            "ui_visual_qa": 4
+          },
+          "description": "Pre-registered public OSS target libraries with GitHub-content RED/GREEN oracles.",
+          "id": "pre_registered_oss_targets",
+          "oracle_kinds": [
+            "github_content"
+          ],
+          "repo_count": 10,
+          "repositories": [
+            "ansible/ansible",
+            "grafana/grafana",
+            "kubernetes/kubernetes",
+            "microsoft/TypeScript",
+            "microsoft/vscode",
+            "python/cpython",
+            "pytorch/pytorch",
+            "rust-lang/rust",
+            "tensorflow/tensorflow",
+            "vercel/next.js"
+          ],
+          "splits": {
+            "heldout": 4,
+            "training": 16
+          },
+          "task_count": 20
+        },
+        {
+          "archetypes": {
+            "bugfix_test_repair": 6
+          },
+          "description": "Existing hidden-oracle bugfix/failing-test fixtures from the bakeoff harness.",
+          "id": "armed_bugfix_fixtures",
+          "oracle_kinds": [
+            "external_bakeoff"
+          ],
+          "repo_count": 2,
+          "repositories": [
+            "kitsoki",
+            "query-string"
+          ],
+          "splits": {
+            "heldout": 2,
+            "training": 4
+          },
+          "task_count": 6
+        },
+        {
+          "archetypes": {},
+          "description": "Other OSS-oracle tasks in the frozen manifest.",
+          "id": "other_oss_oracle_tasks",
+          "oracle_kinds": [],
+          "repo_count": 0,
+          "repositories": [],
+          "splits": {},
+          "task_count": 0
+        }
+      ],
+      "repo_count": 12,
+      "selection_notes": [
+        "20 repo-history tasks cover the pre-registered 10 public OSS targets, two per repo.",
+        "6 existing armed bugfix fixtures add bugfix/failing-test coverage from query-string and kitsoki.",
+        "All tasks record deterministic RED/GREEN proof before freeze; heldout tasks are marked in the manifest and must not be executed during training rounds."
+      ],
+      "status": "frozen",
+      "task_count": 26
+    }
+  },
+  "study_protocol": {
+    "candidate": "glm-5.2",
+    "execution_steps": [
+      {
+        "commands": [
+          "python3 tools/arena/scripts/oss_to_arena_spec.py --report-json docs/case-studies/bugswarm-glm52-bugfix-report.data.json --corpus tools/arena/corpus/cost-bench.manifest.yaml --out .artifacts/arena/oss-glm52.yaml",
+          "python3 tools/arena/arena.py plan --spec .artifacts/arena/oss-glm52.yaml",
+          "python3 tools/arena/arena.py run --spec .artifacts/arena/oss-glm52.yaml --out .artifacts/arena/glm52-oss",
+          "ARENA_PAIRED_TASK_ENABLE_CODEX=1 python3 tools/arena/arena.py run --spec .artifacts/arena/oss-glm52.yaml --out .artifacts/arena/glm52-oss --live"
+        ],
+        "id": "oss-raw-glm52",
+        "pending_cells": 1,
+        "purpose": "Schedule missing OSS oracle raw-prompt GLM-5.2 cells with the frozen corpus manifest.",
+        "report_arg": "--oss-arena-rollup .artifacts/arena/glm52-oss/rollup.json",
+        "status": "ready"
+      },
+      {
+        "commands": [
+          "python3 tools/arena/scripts/bugswarm_verify_source.py --source tools/arena/corpus/bugswarm.seed.yaml --out .artifacts/bugswarm/verification.json --execute",
+          "python3 tools/arena/scripts/bugswarm_apply_verification.py --source tools/arena/corpus/bugswarm.seed.yaml --verification .artifacts/bugswarm/verification.json --out .artifacts/bugswarm/arena-source.verified.yaml",
+          "python3 tools/arena/scripts/glm52_gap_plan.py --report-json docs/case-studies/bugswarm-glm52-bugfix-report.data.json --json-out .artifacts/arena/glm52-gap-plan.json --markdown-out .artifacts/arena/glm52-gap-plan.md --bugswarm-source .artifacts/bugswarm/arena-source.verified.yaml"
+        ],
+        "id": "bugswarm-execute-verification",
+        "pending_cells": 26,
+        "purpose": "Prove BugSwarm failed/passed scripts still reproduce in fresh containers.",
+        "report_arg": "--bugswarm-verification .artifacts/bugswarm/verification.json",
+        "status": "required-before-live"
+      }
+    ],
+    "live_controls": [
+      "The report generator, gap planner, and tests are offline and must not run Docker or LLMs.",
+      "The operator must run no-LLM arena.py plan and non-live arena.py run before any --live command.",
+      "Live commands must be explicit and include ARENA_PAIRED_TASK_ENABLE_CODEX=1.",
+      "GLM-5.2 raw-prompt variants must use backend=claude so paired_task_runner dispatches through the synthetic-claude profile.",
+      "BugSwarm live cells require execute-mode RED/GREEN verification before model scheduling."
+    ],
+    "pending_cell_count": 27,
+    "pending_cells": [
+      {
+        "corpus": "oss-oracle",
+        "gate": "ready-to-plan",
+        "task": "kitsoki-bug9-bugfix-test-repair",
+        "treatment": "raw-prompt"
+      },
+      {
+        "corpus": "bugswarm",
+        "gate": "execute-verify-bugswarm",
+        "task": "bugswarm-square-okio-140452393",
+        "treatment": "kitsoki"
+      },
+      {
+        "corpus": "bugswarm",
+        "gate": "execute-verify-bugswarm",
+        "task": "bugswarm-square-okio-140452393",
+        "treatment": "raw-prompt"
+      },
+      {
+        "corpus": "bugswarm",
+        "gate": "execute-verify-bugswarm",
+        "task": "bugswarm-square-retrofit-201300817",
+        "treatment": "kitsoki"
+      },
+      {
+        "corpus": "bugswarm",
+        "gate": "execute-verify-bugswarm",
+        "task": "bugswarm-square-retrofit-201300817",
+        "treatment": "raw-prompt"
+      },
+      {
+        "corpus": "bugswarm",
+        "gate": "execute-verify-bugswarm",
+        "task": "bugswarm-apache-commons-lang-224267191",
+        "treatment": "kitsoki"
+      },
+      {
+        "corpus": "bugswarm",
+        "gate": "execute-verify-bugswarm",
+        "task": "bugswarm-apache-commons-lang-224267191",
+        "treatment": "raw-prompt"
+      },
+      {
+        "corpus": "bugswarm",
+        "gate": "execute-verify-bugswarm",
+        "task": "bugswarm-scikit-learn-scikit-learn-77914145",
+        "treatment": "kitsoki"
+      },
+      {
+        "corpus": "bugswarm",
+        "gate": "execute-verify-bugswarm",
+        "task": "bugswarm-scikit-learn-scikit-learn-77914145",
+        "treatment": "raw-prompt"
+      },
+      {
+        "corpus": "bugswarm",
+        "gate": "execute-verify-bugswarm",
+        "task": "bugswarm-owlcs-owlapi-93793148",
+        "treatment": "kitsoki"
+      },
+      {
+        "corpus": "bugswarm",
+        "gate": "execute-verify-bugswarm",
+        "task": "bugswarm-owlcs-owlapi-93793148",
+        "treatment": "raw-prompt"
+      },
+      {
+        "corpus": "bugswarm",
+        "gate": "execute-verify-bugswarm",
+        "task": "bugswarm-languagetool-org-languagetool-393031702",
+        "treatment": "kitsoki"
+      },
+      {
+        "corpus": "bugswarm",
+        "gate": "execute-verify-bugswarm",
+        "task": "bugswarm-languagetool-org-languagetool-393031702",
+        "treatment": "raw-prompt"
+      },
+      {
+        "corpus": "bugswarm",
+        "gate": "execute-verify-bugswarm",
+        "task": "bugswarm-square-okhttp-99758865",
+        "treatment": "kitsoki"
+      },
+      {
+        "corpus": "bugswarm",
+        "gate": "execute-verify-bugswarm",
+        "task": "bugswarm-square-okhttp-99758865",
+        "treatment": "raw-prompt"
+      },
+      {
+        "corpus": "bugswarm",
+        "gate": "execute-verify-bugswarm",
+        "task": "bugswarm-joel-costigliola-assertj-core-309871149",
+        "treatment": "kitsoki"
+      },
+      {
+        "corpus": "bugswarm",
+        "gate": "execute-verify-bugswarm",
+        "task": "bugswarm-joel-costigliola-assertj-core-309871149",
+        "treatment": "raw-prompt"
+      },
+      {
+        "corpus": "bugswarm",
+        "gate": "execute-verify-bugswarm",
+        "task": "bugswarm-pgjdbc-pgjdbc-117659967",
+        "treatment": "kitsoki"
+      },
+      {
+        "corpus": "bugswarm",
+        "gate": "execute-verify-bugswarm",
+        "task": "bugswarm-pgjdbc-pgjdbc-117659967",
+        "treatment": "raw-prompt"
+      },
+      {
+        "corpus": "bugswarm",
+        "gate": "execute-verify-bugswarm",
+        "task": "bugswarm-raphw-byte-buddy-150449078",
+        "treatment": "kitsoki"
+      },
+      {
+        "corpus": "bugswarm",
+        "gate": "execute-verify-bugswarm",
+        "task": "bugswarm-raphw-byte-buddy-150449078",
+        "treatment": "raw-prompt"
+      },
+      {
+        "corpus": "bugswarm",
+        "gate": "execute-verify-bugswarm",
+        "task": "bugswarm-spring-projects-spring-data-jpa-94336959",
+        "treatment": "kitsoki"
+      },
+      {
+        "corpus": "bugswarm",
+        "gate": "execute-verify-bugswarm",
+        "task": "bugswarm-spring-projects-spring-data-jpa-94336959",
+        "treatment": "raw-prompt"
+      },
+      {
+        "corpus": "bugswarm",
+        "gate": "execute-verify-bugswarm",
+        "task": "bugswarm-numpy-numpy-308844949",
+        "treatment": "kitsoki"
+      },
+      {
+        "corpus": "bugswarm",
+        "gate": "execute-verify-bugswarm",
+        "task": "bugswarm-numpy-numpy-308844949",
+        "treatment": "raw-prompt"
+      },
+      {
+        "corpus": "bugswarm",
+        "gate": "execute-verify-bugswarm",
+        "task": "bugswarm-apache-dubbo-416671625",
+        "treatment": "kitsoki"
+      },
+      {
+        "corpus": "bugswarm",
+        "gate": "execute-verify-bugswarm",
+        "task": "bugswarm-apache-dubbo-416671625",
+        "treatment": "raw-prompt"
+      }
+    ],
+    "primary_cost_metric": "total_tokens",
+    "status": "pending-evidence",
+    "success_metric": "solved / (solved + partial + failed)"
+  },
+  "threats_to_validity": {
+    "active_count": 5,
+    "high_count": 2,
+    "status": "blocked",
+    "threats": [
+      {
+        "category": "internal",
+        "description": "The raw-prompt GLM-5.2 arm has no committed attempted cells, so outcome deltas and token ratios are not publishable.",
+        "id": "missing-raw-glm52-arm",
+        "mitigation": "Commit raw-prompt GLM-5.2 cells for every headline task and regenerate the report.",
+        "severity": "high",
+        "status": "active"
+      },
+      {
+        "category": "construct",
+        "description": "The committed BugSwarm seed is metadata-only until execute-mode RED/GREEN verification proves failed and passed scripts still reproduce.",
+        "id": "bugswarm-unverified-artifact",
+        "mitigation": "Run bugswarm_verify_source.py --execute, apply the verification report, and regenerate with --bugswarm-verification.",
+        "severity": "high",
+        "status": "active"
+      },
+      {
+        "category": "external",
+        "description": "The current observed GLM-5.2 evidence is one OSS Kitsoki fixture cell, so the report is a ledger rather than a generalizable performance estimate.",
+        "id": "single-observed-glm52-cell",
+        "mitigation": "Schedule the remaining GLM-5.2 cells and report denominators by source family.",
+        "severity": "medium",
+        "status": "active"
+      },
+      {
+        "category": "construct",
+        "description": "The observed Kitsoki GLM-5.2 cell is partial, not solved, and success-rate claims count only solved cells.",
+        "id": "partial-is-not-solved",
+        "mitigation": "Keep partial rate separate from success rate and adjudicate oracle-coupled failures before publication.",
+        "severity": "medium",
+        "status": "active"
+      },
+      {
+        "category": "external",
+        "description": "The supporting Codex-native round checks harness behavior and token accounting but is not GLM-5.2 evidence.",
+        "id": "supporting-round-not-glm52",
+        "mitigation": "Keep supporting round results out of headline GLM-5.2 denominators.",
+        "severity": "low",
+        "status": "active"
+      }
+    ]
+  },
+  "version": 1
+}

@@ -3,6 +3,17 @@
 You are reviewing the implementation of the fix for **{{ args.ticket_id }}** —
 *{{ args.ticket_title }}*.
 
+{% if args.ticket_body %}## Public ticket details
+
+```markdown
+{{ args.ticket_body }}
+```
+
+The acceptance matrix must cover explicit compatibility/API statements in this
+report, not only the implementation's chosen abstraction.
+
+{% endif %}
+
 The proposed fix was:
 
 > {{ args.fix_summary }}
@@ -42,27 +53,39 @@ Before submitting:
 
 ## Constraints
 
-- **Read the CI log above and judge honestly.** `status` is `passed` ONLY if
-  the tests actually ran AND nothing failed — the bug reproduction now passes
-  and no other test regressed. If the log shows ANY failure (`FAIL`, a
-  non-zero result, a panic, `build failed`, a `UNIQUE constraint`/runtime
-  error, N tests failed) then status is `failed` — even if the bug's own test
-  passes, a fix that breaks other tests is `failed`, not `passed`. Use
-  `blocked` only for an unrunnable suite (compile error, missing dependency).
-  Never report `passed` over a log that contains failures: that ships a broken
-  fix. When `failed`/`blocked`, list the specific failing tests + the root
-  cause in `blockers` and `summary_markdown` so the implementer can repair them
-  on the next cycle.
+{% if args.acceptance_contract %}
+- **Strict public acceptance contract:** {{ args.acceptance_contract }}. Add an
+  `acceptance_coverage` item for every requirement ID, each with the exact
+  `test_path` and direct `assertion` that proves it. The story deterministically
+  rejects a passed artifact that omits an ID or leaves either field empty.
+{% endif %}
+
+- **Read the CI result and log honestly.** `status` is `passed` only when the
+  runner returned success, the bug reproduction now passes, and no *unexpected*
+  regression occurred. A framework may report an explicitly expected / known
+  failure while still returning success (for example AVA's `[expected fail]` or
+  `N known failure`); that is a documented baseline caveat, not a new failure.
+  Record it in `summary_markdown`, but do not turn it into a blocker or fail a
+  correct fix. A non-zero result, panic, build failure, unexpected test failure,
+  `UNIQUE constraint`/runtime error, or an unlabelled `N tests failed` is
+  `failed` even if the bug's own test passes. Use `blocked` only for an
+  unrunnable suite (compile error, missing dependency). When `failed`/`blocked`,
+  list the specific failing tests + root cause in `blockers` and
+  `summary_markdown` so the implementer can repair them on the next cycle.
 - `tests_added` must list new / modified test files. Reuse existing tests
   where possible; only add fresh ones if no existing test covers the bug.
-- **Check the test asserts the ticket's end-to-end OUTCOME, not a near-side
-  signal.** A green log is necessary but not sufficient: confirm the reproduction
-  actually asserts the observable deliverable the ticket promises (what the
-  caller / downstream / far side of the boundary receives), not merely that a
-  mechanism engaged (a header set, a code path hit, a wire format chosen). If the
-  test only checks the near-side signal while the ticket's real outcome could
-  still be broken, that is a `blocker` — the fix may be incomplete even though the
-  test is green. Name the missing far-side assertion in `blockers`.
+- **Make an acceptance-coverage matrix before you can say `passed`.** Extract
+  every independently observable promise from the ticket, then record in
+  `summary_markdown` a compact `promise → test file/assertion → observed result`
+  mapping for each one. A green test is necessary but not sufficient: it must
+  assert the observable deliverable the ticket promises (what the caller /
+  downstream / far side of the boundary receives), not merely that a mechanism
+  engaged (a header set, a code path hit, a wire format chosen). Do not collapse
+  distinct outcomes into one broad claim: for a UI ticket, a refreshed view,
+  visible narration/transcript, state/terminal status, and persisted data are
+  separate promises when the ticket names them. If any promise lacks a direct
+  assertion, set `status: failed`, add a `blocker` naming the missing assertion,
+  and send the work back for repair—even when all currently-run tests are green.
 - `blockers` are review-grade objections that must be fixed before the
   PR can advance.
 
@@ -70,4 +93,5 @@ Before submitting:
 
 Submit an `implement_review_artifact` (see `schemas/testing_artifact.json`).
 The `summary_markdown` should walk the reviewer through tests-added,
-tests-run results, and any blockers in plain prose.
+tests-run results, the required acceptance-coverage matrix, and any blockers in
+plain prose.

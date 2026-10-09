@@ -2,11 +2,12 @@
 //
 // A web operator who hits a surprising state clicks "Report a bug". The SPA
 // posts a title (+ optional body/severity/repro and a base64 screenshot) to
-// /rpc. This handler snapshots the server's HAR ring buffer (the last N /rpc
-// request/response pairs recorded at the choke point in handleRPC) and scrubs it
-// with the LLM-free harscrub anonymizer. Local filing writes
-// <root>/issues/bugs/<id>.md plus a sibling <id>.artifacts/ dir; GitHub filing
-// creates the issue and writes developer-only evidence under .artifacts/.
+// /rpc. This handler files the browser-observed HAR supplied during preview, or
+// falls back to the server's HAR ring buffer for direct callers, then scrubs it
+// with the LLM-free harscrub anonymizer. Local developer filing writes
+// <root>/.artifacts/issues/bugs/<id>.md plus a sibling <id>.artifacts/ dir;
+// GitHub filing creates the issue, saves a local .artifacts/ copy of the
+// evidence, and uploads scrubbed evidence as release assets for review.
 //
 // Root resolution (least-surprising, deterministic):
 //
@@ -15,8 +16,8 @@
 //	story_path's directory    git toplevel of the selected story, when given
 //	process cwd               last resort
 //
-// No LLM, no network. The HAR comes from the server's own recorder — never the
-// client — so a malicious client cannot inject fabricated traffic.
+// No LLM, no network. Client HAR payloads are accepted only as raw evidence for
+// an operator-submitted report; the server parses and scrubs them before filing.
 package server
 
 import (
@@ -30,45 +31,101 @@ import (
 	"strings"
 	"time"
 
+	"kitsoki/internal/app"
 	"kitsoki/internal/bugfile"
+	"kitsoki/internal/bugprivacy"
+	"kitsoki/internal/bugreport"
+	"kitsoki/internal/capsule"
+	"kitsoki/internal/ghagent/bugdeck"
 	"kitsoki/internal/host"
+	"kitsoki/internal/orchestrator"
+	"kitsoki/internal/reportcontract"
+	"kitsoki/internal/reportmeta"
 	"kitsoki/internal/runstatus/harscrub"
 )
 
-// scrubOptions is the single production redaction config for web-filed bug
-// evidence: $HOME path substitution plus the built-in credential patterns. Used
-// for the HAR (preview + report) and every client-supplied free-text payload
-// (rrweb, console, errors) so nothing reaches the committed artifacts on a
-// $HOME-only pass.
-func scrubOptions() harscrub.ScrubOptions {
-	return harscrub.ScrubOptions{
-		Home:           os.Getenv("HOME"),
-		SecretPatterns: harscrub.DefaultSecretPatterns(),
-	}
-}
-
-// bugPreview handles runstatus.bug.preview. It snapshots + scrubs the server's
-// HAR ring buffer right now, HOLDS that exact scrubbed snapshot under a fresh
-// capture id, and returns it for the review modal to render. The confirming
+// bugPreview handles runstatus.bug.preview. It parses + scrubs the browser HAR
+// supplied by the SPA, or snapshots the server recorder as a direct-call
+// fallback, HOLDS that exact scrubbed snapshot under a fresh capture id, and
+// returns it for the review modal to render. The confirming
 // runstatus.bug.report replays the same capture id so the filed HAR is
 // identical to what was reviewed. No LLM, no network.
-func (s *Server) bugPreview(_ map[string]any) (any, *rpcError) {
-	har := s.recorder.Snapshot()
-	depth, capacity := s.recorder.Depth()
-	harscrub.Scrub(har, scrubOptions())
+func (s *Server) bugPreview(params map[string]any) (any, *rpcError) {
+	har, source, err := s.previewHAR(params, bugreport.ScrubOptions())
+	if err != nil {
+		return nil, serverErr(err)
+	}
+	depth := len(har.Log.Entries)
+	capacity := depth
+	if source == "server-rpc-recorder" {
+		depth, capacity = s.recorder.Depth()
+	}
 
-	id := s.putCapture(har)
+	id := s.putCapture(har, source)
 	return map[string]any{
 		"capture_id": id,
 		"har":        har,
 		"depth":      depth,
 		"capacity":   capacity,
+		"har_source": source,
 	}, nil
 }
 
-// bugReport handles runstatus.bug.report. See the file comment for the
-// request/result contract.
+func (s *Server) previewHAR(params map[string]any, scrubOpts harscrub.ScrubOptions) (*harscrub.Har, string, error) {
+	if raw := strings.TrimSpace(stringParam(params, "har_json")); raw != "" {
+		har, err := harscrub.ParseHar([]byte(raw))
+		if err != nil {
+			return nil, "", fmt.Errorf("parse browser har: %w", err)
+		}
+		harscrub.Scrub(har, scrubOpts)
+		return har, "browser-fetch", nil
+	}
+	har := s.recorder.Snapshot()
+	harscrub.Scrub(har, scrubOpts)
+	return har, "server-rpc-recorder", nil
+}
+
+// bugStatus handles runstatus.bug.status. It is intentionally a local preflight:
+// GitHub mode checks only whether a credential is configured, not whether that
+// credential has repo-specific issue permissions.
+func (s *Server) bugStatus(ctx context.Context) (any, *rpcError) {
+	repo := strings.TrimSpace(s.ticketRepo)
+	if repo == "" {
+		return map[string]any{
+			"mode":     "local-artifact",
+			"path":     filepath.ToSlash(filepath.Join(".artifacts", "issues", "bugs")),
+			"can_file": true,
+		}, nil
+	}
+	auth := host.GitHubWriteAuthStatus(ctx)
+	if auth.Configured {
+		return map[string]any{
+			"mode":                   "github",
+			"repo":                   repo,
+			"can_file":               true,
+			"github_auth_configured": true,
+		}, nil
+	}
+	return map[string]any{
+		"mode":                   "github",
+		"repo":                   repo,
+		"can_file":               false,
+		"github_auth_configured": false,
+		"warning":                fmt.Sprintf("Report bug cannot file to GitHub repo %s because GitHub auth is missing. Filing bugs is critical; run `kitsoki gh-agent login` or set GH_TOKEN/GITHUB_TOKEN.", repo),
+		"setup_hint":             auth.SetupHint,
+	}, nil
+}
+
+// bugReport handles runstatus.bug.report for tests and legacy in-package
+// callers. The HTTP/RPC dispatcher uses bugReportContext so provider-backed
+// privacy checks receive the live request context.
 func (s *Server) bugReport(params map[string]any) (any, *rpcError) {
+	return s.bugReportContext(context.Background(), params)
+}
+
+// bugReportContext handles runstatus.bug.report. See the file comment for the
+// request/result contract.
+func (s *Server) bugReportContext(ctx context.Context, params map[string]any) (any, *rpcError) {
 	title := strings.TrimSpace(stringParam(params, "title"))
 	if title == "" {
 		title = "web: bug report " + time.Now().UTC().Format("2006-01-02T15:04:05Z")
@@ -90,16 +147,20 @@ func (s *Server) bugReport(params map[string]any) (any, *rpcError) {
 	repro := stringSliceParam(params, "repro_steps")
 
 	root := s.resolveBugRoot(params)
-	scrubOpts := scrubOptions()
+	localRoot, localDisplayPrefix := localBugFilingRoot(root)
+	runtime := s.bugRuntimeSnapshot(root, params)
+	scrubOpts := bugreport.ScrubOptions()
 
 	// HAR source: if a capture_id from a prior runstatus.bug.preview is supplied
 	// and still held, file that EXACT already-scrubbed snapshot (do not re-scrub
 	// — it was scrubbed at preview time). Otherwise fall back to a fresh
 	// snapshot + scrub so direct callers keep working.
 	var har *harscrub.Har
+	harSource := "server-rpc-recorder"
 	if capID := strings.TrimSpace(stringParam(params, "capture_id")); capID != "" {
-		if held, ok := s.takeCapture(capID); ok {
+		if held, source, ok := s.takeCapture(capID); ok {
 			har = held
+			harSource = source
 		}
 	}
 	if har == nil {
@@ -107,6 +168,10 @@ func (s *Server) bugReport(params map[string]any) (any, *rpcError) {
 		harscrub.Scrub(har, scrubOpts)
 	}
 	depth, capacity := s.recorder.Depth()
+	if harSource == "browser-fetch" {
+		depth = len(har.Log.Entries)
+		capacity = depth
+	}
 	harJSON, err := harscrub.Marshal(har)
 	if err != nil {
 		return nil, serverErr(fmt.Errorf("marshal scrubbed har: %w", err))
@@ -117,17 +182,74 @@ func (s *Server) bugReport(params map[string]any) (any, *rpcError) {
 	rrwebJSON := decodeRRWebEvents(stringParam(params, "rrweb_events"), scrubOpts)
 	consoleJSON, consoleEntries := decodeConsoleLogs(stringParam(params, "console_logs"), scrubOpts)
 	errInfo := decodeErrorInfo(stringParam(params, "error_info"), scrubOpts)
-
-	// Enrich the prose body with the captured error + console state.
-	body = body + errorStateSection(errInfo) + consoleSection(consoleEntries)
+	traceJSON := s.decodeTraceEvidence(params, scrubOpts)
 
 	png := decodeScreenshot(stringParam(params, "screenshot_png_b64"))
 
+	artifacts := []bugreport.Artifact{
+		{Name: reportcontract.ArtifactScreenshot, Data: png, Image: true, Label: reportcontract.LabelScreenshot},
+		{Name: reportcontract.ArtifactHAR, Data: harJSON, Label: reportcontract.LabelHAR},
+		{Name: reportcontract.ArtifactRRWeb, Data: rrwebJSON, Label: reportcontract.LabelRRWeb},
+		{Name: reportcontract.ArtifactConsole, Data: consoleJSON, Label: reportcontract.LabelConsole},
+		{Name: reportcontract.ArtifactTrace, Data: traceJSON, Label: reportcontract.LabelTrace},
+	}
+
+	// Enrich the prose body with deterministic evidence-derived triage, then
+	// keep the detailed raw error/console sections for readers who want the
+	// underlying evidence. This runs before the privacy gate so generated text is
+	// scrubbed by the same path as operator prose.
+	body = body + bugreport.EvidenceTriageMarkdown(bugreport.EvidenceTriageInput{
+		OperatorBody: body,
+		HAR:          har,
+		HARSource:    harSource,
+		HARDepth:     depth,
+		HARCapacity:  capacity,
+		RRWebJSON:    rrwebJSON,
+		ConsoleJSON:  consoleJSON,
+		TraceJSONL:   traceJSON,
+		ErrorCount:   len(errInfo.Errors),
+		LastRPC:      bugReportLastRPCInfo(errInfo),
+	}) + errorStateSection(errInfo) + consoleSection(consoleEntries)
+
+	report := bugprivacy.Report{
+		Surface:       "web",
+		Target:        nonEmpty(stringParam(params, "target"), "kitsoki"),
+		Title:         title,
+		Body:          body,
+		ReproSteps:    repro,
+		Component:     nonEmpty(stringParam(params, "component"), "web"),
+		TraceRef:      traceRef,
+		ArtifactNames: bugreport.ArtifactNames(artifacts),
+	}
+	privacyRoot := root
+	privacyDisplayPrefix := ""
+	if strings.TrimSpace(s.ticketRepo) == "" {
+		privacyRoot = localRoot
+		privacyDisplayPrefix = localDisplayPrefix
+	}
+	safeReport, privacy, perr := bugprivacy.Check(ctx, s.bugPrivacyCheckerForReport(params), report, scrubOpts, privacyRoot, stringParam(params, "filed_by"))
+	if perr != nil {
+		return nil, serverErr(fmt.Errorf("bug privacy check: %w", perr))
+	}
+	privacy = prefixServerPrivacyFollowUp(privacy, privacyDisplayPrefix)
+	if privacy.Blocked() {
+		return nil, serverErr(fmt.Errorf("%s%s", privacy.Message, bugreport.PrivacyFollowUpSuffix(privacy)))
+	}
+	title = safeReport.Title
+	body = safeReport.Body
+	repro = safeReport.ReproSteps
+	traceRef = safeReport.TraceRef
+	params = cloneParams(params)
+	params["target"] = safeReport.Target
+	params["component"] = safeReport.Component
+
 	// GitHub mode (kitsoki web --ticket-repo): file a real GitHub issue and save
 	// evidence under .artifacts for developer-local review, instead of writing a
-	// local issues/bugs/<id>.md file.
-	if s.ticketRepo != "" {
-		return s.fileBugToGitHub(params, title, body, severity, traceRef, repro, harJSON, png, rrwebJSON, consoleJSON)
+	// local .artifacts/issues/bugs/<id>.md file. Internal callers may force the
+	// local path when they need a durable evidence bundle before forwarding it to
+	// a custom provider.
+	if s.ticketRepo != "" && !boolParam(params, "force_local") {
+		return s.fileBugToGitHub(params, title, body, severity, traceRef, repro, artifacts, runtime, privacy)
 	}
 
 	id, relPath, absPath, err := bugfile.Create(bugfile.CreateRequest{
@@ -137,59 +259,51 @@ func (s *Server) bugReport(params map[string]any) (any, *rpcError) {
 		ReproSteps: repro,
 		Severity:   severity,
 		TraceRef:   traceRef,
-		TargetDir:  root,
+		TargetDir:  localRoot,
 		FiledBy:    stringParam(params, "filed_by"),
+		Runtime:    runtime,
 		Warnf:      func(string, ...any) {}, // web caller: drop warnings
 	})
 	if err != nil {
 		return nil, serverErr(err)
 	}
 
-	// Artifacts dir is a sibling of the .md: issues/bugs/<id>.artifacts/.
+	// Artifacts dir is a sibling of the .md:
+	// .artifacts/issues/bugs/<id>.artifacts/.
 	artifactsDir := strings.TrimSuffix(absPath, ".md") + ".artifacts"
-	wroteScreenshot := false
-	if mkErr := os.MkdirAll(artifactsDir, 0o755); mkErr == nil {
-		if wErr := os.WriteFile(filepath.Join(artifactsDir, "har.json"), harJSON, 0o644); wErr != nil {
-			return nil, serverErr(fmt.Errorf("write har.json: %w", wErr))
-		}
-		if png != nil {
-			if wErr := os.WriteFile(filepath.Join(artifactsDir, "screenshot.png"), png, 0o644); wErr == nil {
-				wroteScreenshot = true
-			}
-		}
-		if len(rrwebJSON) > 0 {
-			if wErr := os.WriteFile(filepath.Join(artifactsDir, "rrweb.json"), rrwebJSON, 0o644); wErr != nil {
-				return nil, serverErr(fmt.Errorf("write rrweb.json: %w", wErr))
-			}
-		}
-		if len(consoleJSON) > 0 {
-			if wErr := os.WriteFile(filepath.Join(artifactsDir, "console.json"), consoleJSON, 0o644); wErr != nil {
-				return nil, serverErr(fmt.Errorf("write console.json: %w", wErr))
-			}
-		}
-	} else {
-		return nil, serverErr(fmt.Errorf("mkdir artifacts: %w", mkErr))
+	if err := bugreport.WriteArtifacts(artifactsDir, artifacts); err != nil {
+		return nil, serverErr(err)
 	}
 
 	// Append an Artifacts section linking the sidecar files relatively, plus the
 	// recorder horizon so a reader knows how much history the HAR covers.
 	arts := artifactLinks{
-		hasScreenshot: wroteScreenshot,
-		hasRRWeb:      len(rrwebJSON) > 0,
-		hasConsole:    len(consoleJSON) > 0,
+		hasScreenshot: bugreport.HasArtifact(artifacts, reportcontract.ArtifactScreenshot),
+		hasRRWeb:      bugreport.HasArtifact(artifacts, reportcontract.ArtifactRRWeb),
+		hasConsole:    bugreport.HasArtifact(artifacts, reportcontract.ArtifactConsole),
+		hasTrace:      bugreport.HasArtifact(artifacts, reportcontract.ArtifactTrace),
 	}
-	if appendErr := appendArtifactsSection(absPath, id, arts, depth, capacity); appendErr != nil {
+	if appendErr := appendArtifactsSection(absPath, id, arts, depth, capacity, harSource); appendErr != nil {
 		return nil, serverErr(fmt.Errorf("append artifacts section: %w", appendErr))
 	}
 
-	return map[string]any{"id": id, "path": relPath}, nil
+	return map[string]any{
+		"id":             id,
+		"path":           filepath.ToSlash(serverDisplayBugPath(localDisplayPrefix, relPath)),
+		"sink":           "local-artifact",
+		"artifacts":      bugreport.ArtifactNames(artifacts),
+		"artifacts_path": filepath.ToSlash(serverDisplayBugPath(localDisplayPrefix, strings.TrimSuffix(relPath, ".md")+".artifacts")),
+		"privacy":        privacy,
+	}, nil
 }
 
 // fileBugToGitHub files the bug as a real GitHub issue on s.ticketRepo: it
-// writes the (already-scrubbed) evidence to .artifacts for developer-local
-// review, hands those paths to host.GitHubFileBug, and returns the issue url. No
-// local issues/bugs/*.md file is written in this mode.
-func (s *Server) fileBugToGitHub(params map[string]any, title, body, severity, traceRef string, repro []string, harJSON, png, rrwebJSON, consoleJSON []byte) (any, *rpcError) {
+// writes the (already-scrubbed) evidence to .artifacts as a local copy, hands
+// those paths to host.GitHubFileBug with UploadArtifacts set so the evidence is
+// uploaded as release assets and linked by public URL in the issue, and returns
+// the issue url. No local .artifacts/issues/bugs/*.md ticket is written in this
+// mode.
+func (s *Server) fileBugToGitHub(params map[string]any, title, body, severity, traceRef string, repro []string, artifacts []bugreport.Artifact, runtime reportmeta.Snapshot, privacy bugprivacy.Result) (any, *rpcError) {
 	prefix := "bug-" + time.Now().UTC().Format("20060102T150405.000000000Z")
 	artifactsRoot, displayRoot, err := s.githubBugArtifactsRoot()
 	if err != nil {
@@ -200,33 +314,10 @@ func (s *Server) fileBugToGitHub(params map[string]any, title, body, severity, t
 		return nil, serverErr(fmt.Errorf("github bug: mkdir artifacts: %w", err))
 	}
 
-	var ev []host.EvidenceFile
-	add := func(base string, data []byte, image bool, label string) error {
-		if len(data) == 0 {
-			return nil
-		}
-		p := filepath.Join(artifactsDir, base)
-		if err := os.WriteFile(p, data, 0o644); err != nil {
-			return err
-		}
-		ev = append(ev, host.EvidenceFile{Name: base, Path: filepath.ToSlash(filepath.Join(displayRoot, prefix, base)), Image: image, Label: label})
-		return nil
+	if err := bugreport.WriteArtifacts(artifactsDir, artifacts); err != nil {
+		return nil, serverErr(fmt.Errorf("github bug: %w", err))
 	}
-	for _, artifact := range []struct {
-		base  string
-		data  []byte
-		image bool
-		label string
-	}{
-		{base: "screenshot.png", data: png, image: true, label: "Screenshot"},
-		{base: "har.json", data: harJSON, label: "HAR capture (scrubbed)"},
-		{base: "rrweb.json", data: rrwebJSON, label: "Session replay (rrweb)"},
-		{base: "console.json", data: consoleJSON, label: "Console log"},
-	} {
-		if err := add(artifact.base, artifact.data, artifact.image, artifact.label); err != nil {
-			return nil, serverErr(fmt.Errorf("github bug: write artifact %s: %w", artifact.base, err))
-		}
-	}
+	ev := bugreport.EvidenceFiles(artifactsDir, filepath.ToSlash(filepath.Join(displayRoot, prefix)), artifacts)
 
 	full := body
 	if len(repro) > 0 {
@@ -246,14 +337,83 @@ func (s *Server) fileBugToGitHub(params map[string]any, title, body, severity, t
 		Component:  nonEmpty(stringParam(params, "component"), "web"),
 		Target:     nonEmpty(stringParam(params, "target"), "kitsoki"),
 		TraceRef:   traceRef,
-		KitsokiRev: gitShortRev(s.bugRoot),
+		KitsokiRev: bugreport.GitShortRev(s.bugRoot),
 		FiledBy:    stringParam(params, "filed_by"),
 		Evidence:   ev,
+		Runtime:    runtime,
+		// We are already online and gh-authed to file the issue itself, so upload
+		// the scrubbed evidence as release assets and link the public URLs —
+		// otherwise the issue body would point at developer-local paths nobody
+		// else can open. Upload failures degrade gracefully to those local paths.
+		UploadArtifacts: true,
 	})
 	if ferr != nil {
 		return nil, serverErr(fmt.Errorf("file bug to github (%s): %w", s.ticketRepo, ferr))
 	}
-	return map[string]any{"id": res.Number, "url": res.URL, "github": true}, nil
+
+	// Deposit the scrubbed rrweb + HAR onto the kitsoki github agent, keyed by the
+	// same DeckID the agent's issues.opened webhook will look up — so it produces
+	// the hosted no-LLM deck without re-downloading anything. Best-effort: a
+	// deposit failure must not fail the (already-filed) bug report.
+	s.depositAgentEvidence(res.Number, artifactData(artifacts, reportcontract.ArtifactRRWeb), artifactData(artifacts, reportcontract.ArtifactHAR))
+
+	return map[string]any{
+		"id":             res.Number,
+		"url":            res.URL,
+		"github":         true,
+		"sink":           "github",
+		"artifacts":      bugreport.ArtifactNames(artifacts),
+		"artifacts_path": filepath.ToSlash(filepath.Join(displayRoot, prefix)),
+		"privacy":        privacy,
+	}, nil
+}
+
+func (s *Server) bugRuntimeSnapshot(root string, params map[string]any) reportmeta.Snapshot {
+	var def *app.AppDef
+	storyPath := strings.TrimSpace(stringParam(params, "story_path"))
+	if storyPath != "" {
+		var storyDir string
+		if ep, ok := s.editorProvider(); ok {
+			if _, dir, ok := ep.EditorApp(storyPath); ok {
+				storyDir = dir
+			}
+		}
+		for _, candidate := range []string{storyPath, filepath.Join(storyDir, "app.yaml")} {
+			if strings.TrimSpace(candidate) == "" {
+				continue
+			}
+			if loaded, err := app.Load(candidate); err == nil {
+				def = loaded
+				break
+			}
+		}
+	}
+	return reportmeta.Capture(root, def)
+}
+
+// depositAgentEvidence writes the scrubbed rrweb + HAR into the configured agent
+// evidence store under bugdeck.DeckID(ticketRepo, issueNumber). No-op when no
+// agent evidence dir is configured. Best-effort: errors are swallowed (the bug
+// is already filed; the agent simply skips deck generation if evidence is
+// absent).
+func (s *Server) depositAgentEvidence(issueNumber string, rrwebJSON, harJSON []byte) {
+	if strings.TrimSpace(s.agentEvidenceDir) == "" || strings.TrimSpace(issueNumber) == "" {
+		return
+	}
+	store, err := bugdeck.NewEvidenceStore(s.agentEvidenceDir)
+	if err != nil {
+		return
+	}
+	_ = store.Save(bugdeck.DeckID(s.ticketRepo, issueNumber), rrwebJSON, harJSON)
+}
+
+func artifactData(artifacts []bugreport.Artifact, name string) []byte {
+	for _, artifact := range artifacts {
+		if artifact.Name == name {
+			return artifact.Data
+		}
+	}
+	return nil
 }
 
 func (s *Server) githubBugArtifactsRoot() (absRoot, displayRoot string, err error) {
@@ -268,17 +428,30 @@ func (s *Server) githubBugArtifactsRoot() (absRoot, displayRoot string, err erro
 	return absRoot, filepath.ToSlash(filepath.Join(".artifacts", "bug-reports")), nil
 }
 
-// gitShortRev returns the short HEAD sha of the repo containing dir (best-effort;
-// "" when dir is empty / not a repo / git is unavailable).
-func gitShortRev(dir string) string {
-	if strings.TrimSpace(dir) == "" {
-		return ""
+func localBugFilingRoot(root string) (absRoot, displayPrefix string) {
+	root = strings.TrimSpace(root)
+	if root == "" {
+		root = "."
 	}
-	out, err := exec.Command("git", "-C", dir, "rev-parse", "--short", "HEAD").Output()
-	if err != nil {
-		return ""
+	if filepath.Base(filepath.Clean(root)) == ".artifacts" {
+		return root, ""
 	}
-	return strings.TrimSpace(string(out))
+	return filepath.Join(root, ".artifacts"), ".artifacts"
+}
+
+func serverDisplayBugPath(prefix, rel string) string {
+	if strings.TrimSpace(prefix) == "" {
+		return rel
+	}
+	return filepath.Join(prefix, rel)
+}
+
+func prefixServerPrivacyFollowUp(privacy bugprivacy.Result, prefix string) bugprivacy.Result {
+	if strings.TrimSpace(prefix) == "" || strings.TrimSpace(privacy.FollowUpPath) == "" {
+		return privacy
+	}
+	privacy.FollowUpPath = serverDisplayBugPath(prefix, privacy.FollowUpPath)
+	return privacy
 }
 
 // resolveBugRoot picks the repo root for a web-filed bug. Precedence: explicit
@@ -290,6 +463,9 @@ func (s *Server) resolveBugRoot(params map[string]any) string {
 	}
 	if s.bugRoot != "" {
 		return s.bugRoot
+	}
+	if root := capsule.ManagedSourceRootFromCWD(); root != "" {
+		return root
 	}
 	if storyPath := strings.TrimSpace(stringParam(params, "story_path")); storyPath != "" {
 		if ep, ok := s.editorProvider(); ok {
@@ -341,24 +517,32 @@ type artifactLinks struct {
 	hasScreenshot bool
 	hasRRWeb      bool
 	hasConsole    bool
+	hasTrace      bool
 }
 
 // appendArtifactsSection appends a "## Artifacts" block to the bug markdown,
 // linking the sidecar files relatively and noting the HAR recorder horizon.
-func appendArtifactsSection(absPath, id string, arts artifactLinks, depth, capacity int) error {
+func appendArtifactsSection(absPath, id string, arts artifactLinks, depth, capacity int, harSource string) error {
 	var sb strings.Builder
 	sb.WriteString("\n## Artifacts\n\n")
 	if arts.hasScreenshot {
-		fmt.Fprintf(&sb, "- Screenshot: ./%s.artifacts/screenshot.png\n", id)
+		fmt.Fprintf(&sb, "- %s: ./%s.artifacts/%s\n", reportcontract.LabelScreenshot, id, reportcontract.ArtifactScreenshot)
 	}
-	fmt.Fprintf(&sb, "- HAR capture (scrubbed): ./%s.artifacts/har.json\n", id)
+	fmt.Fprintf(&sb, "- %s: ./%s.artifacts/%s\n", reportcontract.LabelHAR, id, reportcontract.ArtifactHAR)
 	if arts.hasRRWeb {
-		fmt.Fprintf(&sb, "- Session replay (rrweb): ./%s.artifacts/rrweb.json\n", id)
+		fmt.Fprintf(&sb, "- %s: ./%s.artifacts/%s\n", reportcontract.LabelRRWeb, id, reportcontract.ArtifactRRWeb)
 	}
 	if arts.hasConsole {
-		fmt.Fprintf(&sb, "- Console log: ./%s.artifacts/console.json\n", id)
+		fmt.Fprintf(&sb, "- %s: ./%s.artifacts/%s\n", reportcontract.LabelConsole, id, reportcontract.ArtifactConsole)
 	}
-	fmt.Fprintf(&sb, "\nThe HAR retains the %d most-recent /rpc exchange(s) (ring-buffer capacity %d).\n", depth, capacity)
+	if arts.hasTrace {
+		fmt.Fprintf(&sb, "- %s: ./%s.artifacts/%s\n", reportcontract.LabelTrace, id, reportcontract.ArtifactTrace)
+	}
+	if harSource == "browser-fetch" {
+		fmt.Fprintf(&sb, "\nThe HAR is the browser-observed network capture reviewed before filing (%d exchange(s)).\n", depth)
+	} else {
+		fmt.Fprintf(&sb, "\nThe HAR falls back to the %d most-recent server-recorded /rpc exchange(s) (ring-buffer capacity %d).\n", depth, capacity)
+	}
 
 	f, err := os.OpenFile(absPath, os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
@@ -451,6 +635,23 @@ func errorStateSection(es errorState) string {
 	return sb.String()
 }
 
+func bugReportLastRPCInfo(es errorState) bugreport.LastRPCInfo {
+	if es.LastRPC == nil {
+		return bugreport.LastRPCInfo{}
+	}
+	method, _ := es.LastRPC["method"].(string)
+	msg, _ := es.LastRPC["message"].(string)
+	var code string
+	if raw, ok := es.LastRPC["code"]; ok && raw != nil {
+		code = fmt.Sprint(raw)
+	}
+	return bugreport.LastRPCInfo{
+		Method:  method,
+		Code:    code,
+		Message: msg,
+	}
+}
+
 // consoleSection renders the "## Console (recent)" body block listing the last
 // few console entries. Empty when there are none.
 func consoleSection(entries []consoleEntry) string {
@@ -475,6 +676,52 @@ func nonEmpty(s, fallback string) string {
 		return fallback
 	}
 	return s
+}
+
+func (s *Server) bugPrivacyCheckerForReport(params map[string]any) bugprivacy.Checker {
+	if s.bugPrivacyCheckerResolver == nil {
+		return s.bugPrivacyChecker
+	}
+	checker := s.bugPrivacyCheckerResolver(BugPrivacyContext{
+		Params:    cloneParams(params),
+		Selection: s.bugPrivacySelectionForReport(params),
+	})
+	if checker != nil {
+		return checker
+	}
+	return s.bugPrivacyChecker
+}
+
+func (s *Server) bugPrivacySelectionForReport(params map[string]any) orchestrator.ProfileSelection {
+	sessionID := strings.TrimSpace(stringParam(params, "session_id"))
+	if sessionID == "" {
+		sessionID = strings.TrimSpace(stringParam(params, "trace_ref"))
+	}
+	if sessionID == "" {
+		return orchestrator.ProfileSelection{}
+	}
+	entry, rerr := s.resolve(map[string]any{"session_id": sessionID})
+	if rerr != nil {
+		return orchestrator.ProfileSelection{}
+	}
+	hc, ok := entry.Driver.(HarnessController)
+	if !ok {
+		return orchestrator.ProfileSelection{}
+	}
+	return hc.HarnessSelection()
+}
+
+func cloneParams(params map[string]any) map[string]any {
+	out := make(map[string]any, len(params))
+	for k, v := range params {
+		out[k] = v
+	}
+	return out
+}
+
+func boolParam(params map[string]any, key string) bool {
+	v, _ := params[key].(bool)
+	return v
 }
 
 // stringSliceParam reads a []string param from a JSON array of strings.

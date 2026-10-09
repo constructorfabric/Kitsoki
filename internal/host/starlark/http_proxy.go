@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 
 	"go.starlark.net/starlark"
 )
@@ -39,32 +40,38 @@ func (h *httpProxy) Attr(name string) (starlark.Value, error) {
 	return nil, nil
 }
 
-// get implements ctx.http.get(url, headers={}).
+// get implements ctx.http.get(url, headers={}, auth=None).
 func (h *httpProxy) get(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var (
 		url     string
-		headers = &starlark.Dict{}
+		headers                = &starlark.Dict{}
+		auth    starlark.Value = starlark.None
 	)
-	if err := starlark.UnpackArgs("ctx.http.get", args, kwargs, "url", &url, "headers?", &headers); err != nil {
+	if err := starlark.UnpackArgs("ctx.http.get", args, kwargs, "url", &url, "headers?", &headers, "auth?", &auth); err != nil {
 		return nil, err
 	}
 	hdrs, err := dictToStringMap(headers)
 	if err != nil {
 		return nil, err
 	}
-	return h.do("GET", url, hdrs, nil)
+	authNames, err := authNamesFromValue("ctx.http.get", auth)
+	if err != nil {
+		return nil, err
+	}
+	return h.do("GET", url, hdrs, nil, authNames)
 }
 
-// post implements ctx.http.post(url, body=..., headers={}). body may be a dict
-// (JSON-encoded, with Content-Type defaulted to application/json) or a string
-// (sent verbatim).
+// post implements ctx.http.post(url, body=..., headers={}, auth=None). body may
+// be a dict (JSON-encoded, with Content-Type defaulted to application/json) or
+// a string (sent verbatim).
 func (h *httpProxy) post(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var (
 		url     string
 		body    starlark.Value = starlark.None
 		headers                = &starlark.Dict{}
+		auth    starlark.Value = starlark.None
 	)
-	if err := starlark.UnpackArgs("ctx.http.post", args, kwargs, "url", &url, "body?", &body, "headers?", &headers); err != nil {
+	if err := starlark.UnpackArgs("ctx.http.post", args, kwargs, "url", &url, "body?", &body, "headers?", &headers, "auth?", &auth); err != nil {
 		return nil, err
 	}
 	hdrs, err := dictToStringMap(headers)
@@ -96,19 +103,70 @@ func (h *httpProxy) post(_ *starlark.Thread, _ *starlark.Builtin, args starlark.
 	default:
 		return nil, fmt.Errorf("ctx.http.post: body must be a string or dict, got %s", body.Type())
 	}
-	return h.do("POST", url, hdrs, bodyBytes)
+	authNames, err := authNamesFromValue("ctx.http.post", auth)
+	if err != nil {
+		return nil, err
+	}
+	return h.do("POST", url, hdrs, bodyBytes, authNames)
 }
 
 // do performs the request via the injected client and wraps the result in an
 // httpResponse Starlark value. A transport/replay error becomes a Starlark
 // error so the script's traceback (and ultimately the effect's on_error: arc)
 // reflects it.
-func (h *httpProxy) do(method, url string, headers map[string]string, body []byte) (starlark.Value, error) {
-	resp, err := h.client.Do(h.ictx, method, url, headers, body)
+func (h *httpProxy) do(method, url string, headers map[string]string, body []byte, auth []string) (starlark.Value, error) {
+	var (
+		resp *HTTPResponse
+		err  error
+	)
+	if len(auth) > 0 {
+		authClient, ok := h.client.(AuthHTTPClient)
+		if !ok {
+			return nil, fmt.Errorf("ctx.http.%s: auth=%v requested but no auth-aware HTTP client is configured", strings.ToLower(method), auth)
+		}
+		resp, err = authClient.DoAuth(h.ictx, method, url, headers, body, auth)
+	} else {
+		resp, err = h.client.Do(h.ictx, method, url, headers, body)
+	}
 	if err != nil {
 		return nil, err
 	}
 	return &httpResponse{resp: resp}, nil
+}
+
+func authNamesFromValue(call string, v starlark.Value) ([]string, error) {
+	switch x := v.(type) {
+	case starlark.NoneType:
+		return nil, nil
+	case starlark.String:
+		name := strings.TrimSpace(string(x))
+		if name == "" {
+			return nil, nil
+		}
+		return []string{name}, nil
+	case *starlark.List:
+		out := make([]string, 0, x.Len())
+		for i := 0; i < x.Len(); i++ {
+			name, ok := starlark.AsString(x.Index(i))
+			if !ok || strings.TrimSpace(name) == "" {
+				return nil, fmt.Errorf("%s: auth entries must be non-empty strings", call)
+			}
+			out = append(out, strings.TrimSpace(name))
+		}
+		return out, nil
+	case starlark.Tuple:
+		out := make([]string, 0, x.Len())
+		for i := 0; i < x.Len(); i++ {
+			name, ok := starlark.AsString(x.Index(i))
+			if !ok || strings.TrimSpace(name) == "" {
+				return nil, fmt.Errorf("%s: auth entries must be non-empty strings", call)
+			}
+			out = append(out, strings.TrimSpace(name))
+		}
+		return out, nil
+	default:
+		return nil, fmt.Errorf("%s: auth must be a string, list of strings, or None, got %s", call, v.Type())
+	}
 }
 
 // dictToStringMap converts a Starlark headers dict to a Go string map. Both

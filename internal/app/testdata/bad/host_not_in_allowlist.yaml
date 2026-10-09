@@ -1,0 +1,31 @@
+app:
+  id: test-host-not-in-allowlist
+  version: 0.1.0
+
+# The allow-list declares only host.run — an effect invoking any other host
+# verb must fail loudly at load time (the "silent no-op" footgun: a story
+# invoking a host verb missing from its own hosts: allow-list must never
+# silently succeed at invoke time; the loader rejects it before the app can
+# even run). See TestNegative "host invoke not in own allow-list".
+hosts: [host.run]
+
+world:
+  count: { type: int, default: 0 }
+
+intents:
+  go:
+    title: "Go"
+
+root: room_a
+
+states:
+  room_a:
+    view: "You are in room A."
+    on:
+      go:
+        - target: room_a
+          effects:
+            # host.git is never declared above — must be a load-time error,
+            # never a silent invoke-time no-op.
+            - invoke: host.git
+              with: {}

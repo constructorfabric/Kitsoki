@@ -1,0 +1,22 @@
+{
+  "schema_version": "1.0",
+  "kind": "conversation",
+  "id": "scn-c4d281a2-30e4-4002-9152-59d28d824abc-0001",
+  "source": "mined",
+  "provenance": {
+    "corpus": "claude-code",
+    "session_id": "c4d281a2-30e4-4002-9152-59d28d824abc",
+    "span_idx": 1
+  },
+  "persona": "bugfix-contributor",
+  "goal": "file the bug, then land the fixes",
+  "turns": [
+    {
+      "role": "user",
+      "text": "file the bug, then land the fixes",
+      "corrected": false
+    }
+  ],
+  "expected_effects": [],
+  "abandoned": false
+}

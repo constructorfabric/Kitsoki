@@ -18,7 +18,7 @@
 # (e.g. --fill, --draft, --base main, --title "...", --body "...").
 #
 # Invoked via `make pr` (local) and `make pr-ci` (CI).
-# See docs/architecture/developer-guide.md (§3.3).
+# See docs/guide/development/developer-guide.md (§3.3).
 
 set -euo pipefail
 

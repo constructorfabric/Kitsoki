@@ -1,0 +1,288 @@
+# open_pr rooms — idle (parked) → prepare (package evidence) → publishing (native host.git.open_pr → exit).
+#
+# prepare.on_enter validates and packages the local PR evidence:
+#   - standardized feature/* or fix|bug/* branch naming
+#   - feature/bug description
+#   - product-site source paths
+#   - demo source path
+#   - rendered MP4 under .artifacts (or a no-LLM render command that creates it)
+# It writes .context/open-pr/<branch>.md and binds it as `body` when the
+# operator did not pre-seed an explicit body.
+#
+# publishing.on_enter then calls host.git.open_pr, which pushes the current
+# worktree HEAD and opens the PR through the native GitHub provider:
+#   opened       → @exit:opened       (pr_url set)
+#   host error   → @exit:needs-human  (last_error set by the runtime)
+#
+# prepare's host.run cwd is LEFT DEFAULT (repo root); the script uses
+# `git -C "$WT"` with WT = worktree_path. We deliberately do NOT also set
+# `cwd: {{ world.worktree_path }}` — that double-applies the (relative) worktree
+# path and makes the in-script cd fail, the exact bug filed as
+# constructorfabric/Kitsoki#35 for the bugfix repro gate.
+#
+# Smart defaults (so the operator needn't know the plumbing):
+#   - remote defaults to `origin` (here origin already points at the target,
+#     e.g. the bsacrobatix repo).
+#   - repo, when blank, is AUTO-RESOLVED by host.git from the remote's URL. The
+#     resolved repo is bound back to world.repo for audit.
+
+states:
+
+  idle:
+    description: "Open-PR utility — parked. Submit `open` to package evidence, push the branch, and open the PR."
+    view:
+      - prose: "Open a PR for **{{ world.head_branch|default:'(no branch)' }}** → {{ world.base_branch }}{% if world.repo %} on {{ world.repo }}{% else %} (repo auto-resolved from {{ world.remote }}){% endif %}."
+      - kv:
+          pairs:
+            Branch:          '{{ world.head_branch|default:"(none)" }}'
+            Kind:            '{{ world.branch_kind|default:"(infer from branch)" }}'
+            Base:            "{{ world.base_branch }}"
+            Remote:          "{{ world.remote }}"
+            Repo:            '{{ world.repo|default:"(auto-resolve from remote)" }}'
+            Title:           '{{ world.title|default:"(none)" }}'
+            Description:     '{{ world.feature_description|default:"(required)" }}'
+            "Product site":  '{{ world.product_site_paths|default:"(required)" }}'
+            "Demo source":   '{{ world.demo_source_path|default:"(required)" }}'
+            "Demo artifacts": '{{ world.demo_artifact_dir|default:"(auto .artifacts/<feature-or-branch>)" }}'
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "open"
+              hint:   "package evidence, push the branch, and open the PR"
+              intent: open
+            - label:  "look"
+              hint:   "re-render"
+              intent: look
+            - label:  "quit"
+              hint:   "abandon without opening a PR"
+              intent: quit
+    relevant_world: [repo, head_branch, branch_kind, base_branch, remote, title, body, draft, feature_description, product_site_paths, product_feature_id, demo_source_path, demo_artifact_dir, demo_render_command]
+    on:
+      open:
+        - target: prepare
+      look:
+        - target: .
+      quit:
+        - target: "@exit:abandoned"
+          effects:
+            - set:
+                status: "abandoned"
+
+  prepare:
+    description: "Validate PR evidence and write the package markdown used for the PR body."
+    view:
+      - prose: "Preparing the PR package for {{ world.head_branch }}."
+      - kv:
+          pairs:
+            Outcome:      '{{ world.prepare_outcome|default:"(pending)" }}'
+            Package:      '{{ world.pr_package_path|default:"(pending)" }}'
+            "Demo video": '{{ world.demo_video_path|default:"(pending)" }}'
+      - prose: "{{ world.last_error }}"
+        when: "world.prepare_outcome != '' && world.prepare_outcome != 'prepared'"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "look"
+              intent: look
+    relevant_world: [head_branch, branch_kind, title, body, feature_description, product_site_paths, product_feature_id, demo_source_path, demo_artifact_dir, demo_render_command, pr_package_path, prepare_outcome, demo_video_path, last_error]
+    on_enter:
+      - invoke: host.run
+        id: prepare_pr_package
+        with:
+          cmd: bash
+          args:
+            - "-c"
+            - |
+              set -e
+              export NO_COLOR=1 GIT_TERMINAL_PROMPT=0 GIT_PAGER=cat
+              TITLE="$1"
+              BODY="$2"
+              DESCRIPTION="$3"
+              PRODUCT_PATHS="$4"
+              DEMO_SOURCE="$5"
+              RENDER_COMMAND="$6"
+              EMITTED=0
+              emit() { jq -n "$@"; EMITTED=1; exit 0; }
+              trap 'rc=$?; if [ "$EMITTED" != "1" ]; then jq -n --arg rc "$rc" "{outcome:\"error\",body:\"\",package_path:\"\",demo_video_path:\"\",last_error:(\"open-pr prepare aborted before completing (exit \"+\$rc+\")\")}"; fi; exit 0' EXIT
+
+              WT="{{ world.worktree_path }}"
+              [ -z "$WT" ] && WT="."
+              BRANCH="{{ world.head_branch }}"
+              KIND="{{ world.branch_kind }}"
+              FEATURE_ID="{{ world.product_feature_id }}"
+              ARTIFACT_DIR="{{ world.demo_artifact_dir }}"
+              [ -z "$BRANCH" ] && emit --arg e "no head_branch to open a PR for" '{outcome:"invalid",body:"",package_path:"",demo_video_path:"",last_error:$e}'
+              [ -z "$TITLE" ] && emit --arg e "no title for the PR" '{outcome:"invalid",body:"",package_path:"",demo_video_path:"",last_error:$e}'
+              [ -z "$DESCRIPTION" ] && emit --arg e "no feature_description; describe the user-facing feature or bug fix before opening a PR" '{outcome:"invalid",body:"",package_path:"",demo_video_path:"",last_error:$e}'
+              [ -z "$PRODUCT_PATHS" ] && emit --arg e "no product_site_paths; list the product-site source/catalog files updated for this feature" '{outcome:"invalid",body:"",package_path:"",demo_video_path:"",last_error:$e}'
+              [ -z "$DEMO_SOURCE" ] && emit --arg e "no demo_source_path; provide the checked-in source/spec that renders the demo video" '{outcome:"invalid",body:"",package_path:"",demo_video_path:"",last_error:$e}'
+
+              if [ -z "$KIND" ]; then
+                case "$BRANCH" in
+                  feature/*) KIND=feature ;;
+                  fix/*|bug/*) KIND=bug ;;
+                  *) KIND=unknown ;;
+                esac
+              fi
+              case "$KIND:$BRANCH" in
+                feature:feature/*|bug:fix/*|bug:bug/*) ;;
+                feature:*) emit --arg e "feature branches must use feature/<slug>; got $BRANCH" '{outcome:"invalid",body:"",package_path:"",demo_video_path:"",last_error:$e}' ;;
+                bug:*)     emit --arg e "bug branches must use fix/<slug> or bug/<slug>; got $BRANCH" '{outcome:"invalid",body:"",package_path:"",demo_video_path:"",last_error:$e}' ;;
+                *)         emit --arg e "could not infer branch_kind from $BRANCH; set branch_kind=feature or branch_kind=bug" '{outcome:"invalid",body:"",package_path:"",demo_video_path:"",last_error:$e}' ;;
+              esac
+
+              MISSING=""
+              OLDIFS="$IFS"
+              IFS=$(printf '\n,')
+              for path in $PRODUCT_PATHS; do
+                path=$(printf '%s' "$path" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
+                [ -z "$path" ] && continue
+                [ -e "$WT/$path" ] || MISSING=$(printf '%s%s\n' "$MISSING" "$path")
+              done
+              IFS="$OLDIFS"
+              [ -e "$WT/$DEMO_SOURCE" ] || MISSING=$(printf '%s%s\n' "$MISSING" "$DEMO_SOURCE")
+              if [ -n "$MISSING" ]; then
+                ERR=$(printf 'required PR source paths are missing in %s:\n%s' "$WT" "$MISSING")
+                emit --arg e "$ERR" '{outcome:"invalid",body:"",package_path:"",demo_video_path:"",last_error:$e}'
+              fi
+
+              SLUG=$(printf '%s' "$BRANCH" | tr '/[:upper:]' '-[:lower:]' | sed -E 's/[^a-z0-9._-]+/-/g; s/^-+//; s/-+$//')
+              [ -z "$ARTIFACT_DIR" ] && ARTIFACT_DIR=".artifacts/${FEATURE_ID:-$SLUG}"
+              if [ -n "$RENDER_COMMAND" ]; then
+                if RENDER_OUT=$(cd "$WT" && bash -c "$RENDER_COMMAND" 2>&1); then
+                  true
+                else
+                  rc=$?
+                  ERR=$(printf 'demo render command failed (exit %s):\n%s' "$rc" "$RENDER_OUT")
+                  emit --arg e "$ERR" '{outcome:"render_failed",body:"",package_path:"",demo_video_path:"",last_error:$e}'
+                fi
+              elif [ -n "$FEATURE_ID" ]; then
+                if RENDER_OUT=$(cd "$WT" && make demo-feature FEATURE="$FEATURE_ID" 2>&1); then
+                  true
+                else
+                  rc=$?
+                  ERR=$(printf 'make demo-feature FEATURE=%s failed (exit %s):\n%s' "$FEATURE_ID" "$rc" "$RENDER_OUT")
+                  emit --arg e "$ERR" '{outcome:"render_failed",body:"",package_path:"",demo_video_path:"",last_error:$e}'
+                fi
+              fi
+
+              VIDEO=$(find "$WT/$ARTIFACT_DIR" -type f -name '*.mp4' 2>/dev/null | sort | head -1 || true)
+              if [ -z "$VIDEO" ]; then
+                emit --arg e "no rendered demo MP4 found under $ARTIFACT_DIR; set demo_render_command or run the demo renderer before opening the PR" '{outcome:"no_demo",body:"",package_path:"",demo_video_path:"",last_error:$e}'
+              fi
+              case "$VIDEO" in
+                "$WT"/*) VIDEO_REL=${VIDEO#"$WT"/} ;;
+                *) VIDEO_REL=$VIDEO ;;
+              esac
+
+              mkdir -p "$WT/.context/open-pr"
+              PACKAGE="$WT/.context/open-pr/$SLUG.md"
+              SITE_LIST=$(printf '%s\n\n' "$PRODUCT_PATHS" | sed '/^$/d; s/^/- /')
+              PACKAGE_TEXT=$(printf '# %s\n\n## Summary\n\n%s\n\n## Branch\n\n- Type: %s\n- Head: %s\n- Base: %s\n\n## Product site\n\n%s\n\n## Demo\n\n- Source: %s\n- Rendered video: %s\n- Artifact directory: %s\n' "$TITLE" "$DESCRIPTION" "$KIND" "$BRANCH" "{{ world.base_branch }}" "$SITE_LIST" "$DEMO_SOURCE" "$VIDEO_REL" "$ARTIFACT_DIR")
+              if [ -n "$RENDER_COMMAND" ]; then
+                PACKAGE_TEXT=$(printf '%s- Render command: %s\n' "$PACKAGE_TEXT" "$RENDER_COMMAND")
+              elif [ -n "$FEATURE_ID" ]; then
+                PACKAGE_TEXT=$(printf '%s- Render command: make demo-feature FEATURE=%s\n' "$PACKAGE_TEXT" "$FEATURE_ID")
+              fi
+              PACKAGE_TEXT=$(printf '%s\n## Validation\n\n- [ ] Review product-site copy against the implemented behavior.\n- [ ] Watch the rendered local demo video before requesting review.\n' "$PACKAGE_TEXT")
+              printf '%s' "$PACKAGE_TEXT" > "$PACKAGE"
+              PACKAGE_REL=${PACKAGE#"$WT"/}
+              if [ -z "$BODY" ]; then
+                BODY="$PACKAGE_TEXT"
+              fi
+              emit --arg body "$BODY" --arg pkg "$PACKAGE_REL" --arg video "$VIDEO_REL" '{outcome:"prepared",body:$body,package_path:$pkg,demo_video_path:$video,last_error:""}'
+            - "kitsoki-open-pr-prepare"
+            - "{{ world.title }}"
+            - "{{ world.body }}"
+            - "{{ world.feature_description }}"
+            - "{{ world.product_site_paths }}"
+            - "{{ world.demo_source_path }}"
+            - "{{ world.demo_render_command }}"
+        bind:
+          prepare_outcome: "stdout_json.outcome"
+          body:            "stdout_json.body"
+          pr_package_path: "stdout_json.package_path"
+          demo_video_path: "stdout_json.demo_video_path"
+          last_error:      "stdout_json.last_error"
+        on_error: prepare
+      - when: "world.prepare_outcome == 'prepared'"
+        emit_intent: prepared
+      - when: "world.prepare_outcome != '' && world.prepare_outcome != 'prepared'"
+        emit_intent: prepare_failed
+    on:
+      prepared:
+        - target: publishing
+      prepare_failed:
+        - target: "@exit:needs-human"
+          effects:
+            - set:
+                status:     "needs-human"
+                last_error: "{{ world.last_error }}"
+      look:
+        - target: .
+
+  publishing:
+    description: "Push the branch to the remote and open the pull request."
+    view:
+      - prose: "Pushing {{ world.head_branch }} to {{ world.remote }} and opening the PR…"
+      - prose: "✅ Opened: {{ world.pr_url }}"
+        when: "world.open_outcome == 'opened'"
+      - prose: "⚠ Failed ({{ world.open_outcome }}): {{ world.last_error }}"
+        when: "world.open_outcome != '' && world.open_outcome != 'opened'"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "look"
+              intent: look
+    relevant_world: [repo, head_branch, base_branch, remote, worktree_path, title, body, draft, pr_package_path, demo_video_path, pr_url, pr_number, open_outcome, run_exit, run_stdout, last_error]
+    on_enter:
+      - invoke: host.git
+        id: open_pr_exec
+        with:
+          op: open_pr
+          workdir: "{{ world.worktree_path }}"
+          repo: "{{ world.repo }}"
+          remote: "{{ world.remote }}"
+          title: "{{ world.title }}"
+          body: "{{ world.body }}"
+          base: "{{ world.base_branch }}"
+          head: "{{ world.head_branch }}"
+          draft: "{{ world.draft }}"
+        bind:
+          open_outcome: "outcome"
+          pr_url:       "url"
+          pr_number:    "pr_id"
+          repo:         "repo"
+          last_error:   ""
+          run_stdout:   "url"
+        on_error: open_failed
+      # Post-bind routing; all FALSE under the default (pre-bind) world.
+      - when: "world.open_outcome == 'opened'"
+        emit_intent: opened
+    on:
+      opened:
+        - target: "@exit:opened"
+          effects:
+            - set:
+                status: "opened"
+                pr_url: "{{ world.pr_url }}"
+      look:
+        - target: .
+
+  open_failed:
+    description: "Native PR publishing failed; route the host error to a terminal needs-human exit."
+    view:
+      - prose: "Failed to open the PR: {{ world.last_error }}"
+    relevant_world: [repo, head_branch, base_branch, remote, worktree_path, title, pr_package_path, demo_video_path, open_outcome, pr_url, last_error]
+    on_enter:
+      - emit_intent: open_failed
+    on:
+      open_failed:
+        - target: "@exit:needs-human"
+          effects:
+            - set:
+                status:     "needs-human"
+                last_error: "{{ world.last_error }}"

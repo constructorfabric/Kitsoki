@@ -14,7 +14,7 @@ initial_world:
   candidates: [gpt-5.3-spark]
 
 host_handlers:
-  host.run:
+  host.bakeoff.run:
     by_call:
       preflight_local:
         data:
@@ -28,7 +28,7 @@ host_handlers:
                 "profile 'codex-spark' for candidate 'gpt-5.3-spark' is not configured in .kitsoki.yaml/.kitsoki.local.yaml"
               ]
             }
-        error: "host.run: command exited 1"
+        error: "host.bakeoff.run: command exited 1"
 
 turns:
   - intent: { name: start, slots: {} }
@@ -39,7 +39,7 @@ turns:
   - intent: { name: accept, slots: {} }
     expect_state: configure
     expect_host_calls:
-      - handler: host.run
+      - handler: host.bakeoff.run
         id: preflight_local
     expect_view_matches: "Bake-off · configure"
 

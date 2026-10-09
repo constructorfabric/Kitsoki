@@ -1,5 +1,10 @@
 # Per-story cost tracking — remaining work
 
+**Status:** Partially shipped. `cost_report.py`/`pricing.py`/`cost_extract.py`
+are live (`make cost-report`); recording a real (non-authored) agent-cost
+numerator remains the biggest honesty gap (§Remaining item 1), plus the
+methodology refinements in item 2.
+
 **Goal.** Every Kitsoki story publishes the cost savings it delivers versus doing
 the same work as a raw Claude Code agentic loop. **Session mining is the cost
 denominator for the whole project** — the same mined corpus that gives coverage

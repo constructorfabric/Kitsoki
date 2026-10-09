@@ -33,8 +33,12 @@ command -v ffmpeg >/dev/null 2>&1 || { echo "ffmpeg not on PATH" >&2; exit 1; }
 tileh=$(( tilew * 900 / 1440 ))
 bg="0x0b0f17"
 
-# Numbered scene PNGs, in order; skip any prior contact sheet.
-mapfile -t files < <(find "$dir" -maxdepth 1 -name '[0-9]*.png' ! -name 'contact-sheet.png' | sort)
+# Numbered scene PNGs, in order; skip any prior contact sheet. Avoid `mapfile`
+# so this works with the older Bash bundled on macOS.
+files=()
+while IFS= read -r file; do
+  [ -n "$file" ] && files+=( "$file" )
+done < <(find "$dir" -maxdepth 1 -name '[0-9]*.png' ! -name 'contact-sheet.png' | sort)
 n=${#files[@]}
 [ "$n" -gt 0 ] || { echo "no NN-*.png screenshots in $dir" >&2; exit 1; }
 rows=$(( (n + cols - 1) / cols ))

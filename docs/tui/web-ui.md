@@ -41,10 +41,8 @@ quality gate: nothing reaches disk until a human has seen exactly what will
 be committed. It resolves the proposal's Open Question §3 (operator
 review-before-file).
 
-What is captured, anonymized, and (on Submit) written:
+What is captured, anonymized, summarized, and (on Submit) written:
 
-- **Screenshot** — client-side via `html2canvas` over the app root (a PNG of
-  the rendered DOM; no browser permission prompt).
 - **rrweb replay** — client-side DOM recording with `maskAllInputs` enabled.
   Input masking is the **privacy boundary** for committed artifacts: typed
   values never enter the recording, so the replay is safe to commit.
@@ -54,22 +52,33 @@ What is captured, anonymized, and (on Submit) written:
   a bounded ring buffer keeps the last N request/response pairs and serializes
   them as a HAR 1.2 archive. This sees request/response bodies that page-JS
   reconstruction cannot.
+- **Trace evidence** — when the report is attached to a live session, a
+  depersonalized `trace.redacted.jsonl` sidecar preserves states, turns,
+  intents, and transitions without copying user free text.
+- **Evidence-derived triage** — server-side and deterministic. The filed
+  markdown gets a generated section with capture summary, likely repro steps,
+  observed actual behavior from network/console/error/trace evidence, and an
+  explicit note when expected behavior is not deterministically captured.
+  Reporter prose can stay short.
 - **Anonymize** — deterministic, server-side, before anything is written:
   strips `Authorization` / `Cookie` / `Set-Cookie` headers and known
   session-token query params, redacts absolute paths under `$HOME`, and
   redacts configured secret-shaped values.
-- **File** — on Submit, writes a flat `issues/bugs/<id>.md` (same format and
+- **File** — on Submit, writes a flat `.artifacts/issues/bugs/<id>.md` (same format and
   frontmatter as `kitsoki bug create`, with the operator description plus
-  `## Error state` and `## Console (recent)` sections) plus a sibling
-  `issues/bugs/<id>.artifacts/` holding `screenshot.png`, `har.json`,
-  `rrweb.json`, and `console.json`, linked from the ticket's `## Artifacts`
-  section. The ticket and its artifacts are committed to the repo, same as
-  hand-filed seeds.
+  `## Evidence-derived triage`, `## Error state`, and `## Console (recent)`
+  sections) plus a sibling
+  `.artifacts/issues/bugs/<id>.artifacts/` holding `har.json`, `rrweb.json`,
+  `console.json`, `trace.redacted.jsonl`, and any optional screenshot when
+  present, linked from the ticket's `## Artifacts` section. The ticket and its
+  artifacts are durable local review artifacts, not committed work-in-progress
+  tickets.
 
-The on-disk format, the artifacts-folder convention, and the proof that a
-sibling `.artifacts/` folder does not disturb the `issues/bugs/*.md` ticket
-reader are documented once in [`issues/README.md`](../../issues/README.md) and
-[`../stories/bugs.md`](../stories/bugs.md).
+The on-disk format and the artifacts-folder convention are documented once in
+[`issues/README.md`](../../issues/README.md) and
+[`../stories/bugs.md`](../stories/bugs.md). Start `kitsoki web --ticket-repo
+<owner/repo>` when the report should become a GitHub Issue for autonomous
+agent intake.
 
 The item is **hidden in snapshot / artifact (read-only) mode**, exactly like
 the rest of the Meta button — there is no running session or live transport to

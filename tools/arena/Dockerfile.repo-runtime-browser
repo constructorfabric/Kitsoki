@@ -1,0 +1,40 @@
+# arena browser-capable cell image: repo-runtime + Chromium/Playwright.
+#
+# Layers a headless-Chromium-capable Playwright install onto the existing
+# repo-runtime image (tools/bugfix-bakeoff/external/docker/Dockerfile.repo-runtime)
+# so arena cells that need to drive a real browser (persona-qa surfaces, and
+# later the swarm job type) have somewhere to run. The base repo-runtime image
+# is NOT modified — bugfix cells that never touch a browser keep paying zero
+# extra weight; only job types that opt into THIS image pay for Chromium.
+#
+# Build (two steps — base image first, then this layer):
+#
+#   docker build -f tools/bugfix-bakeoff/external/docker/Dockerfile.repo-runtime \
+#       -t kitsoki-arena-repo-runtime:latest tools/bugfix-bakeoff/external/docker
+#
+#   docker build -f tools/arena/Dockerfile.repo-runtime-browser \
+#       --build-arg BASE_IMAGE=kitsoki-arena-repo-runtime:latest \
+#       -t kitsoki-arena-repo-runtime-browser:latest tools/arena
+#
+# See tools/arena/scripts/smoke-browser-image.sh for a one-shot build + smoke
+# test (docker-gated, not part of standing no-docker CI).
+
+ARG BASE_IMAGE=kitsoki-arena-repo-runtime:latest
+FROM ${BASE_IMAGE}
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+# Pin to the exact Playwright version tools/runstatus/package.json declares
+# ("@playwright/test": "^1.52.0") so cell behavior matches the runstatus test
+# suite's browser build. Bump both together.
+ARG PLAYWRIGHT_VERSION=1.52.0
+ENV PLAYWRIGHT_VERSION=${PLAYWRIGHT_VERSION}
+
+# `playwright install --with-deps chromium` pulls the Linux system packages
+# headless Chromium needs (fonts, libnss3, libgbm, etc.) via apt, plus the
+# browser binary itself, in one deterministic step.
+RUN npm install -g "playwright@${PLAYWRIGHT_VERSION}" \
+ && npx --yes "playwright@${PLAYWRIGHT_VERSION}" install --with-deps chromium \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace

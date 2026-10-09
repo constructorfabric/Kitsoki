@@ -116,6 +116,11 @@
       return new Promise((r) => requestAnimationFrame(() => r()));
     };
     window.__title = (t) => { document.getElementById("winTitle").textContent = t; };
+    window.__meta = (meta) => {
+      if (meta && meta.title) document.title = meta.title;
+      if (meta && meta.footer) document.getElementById("footer").textContent = meta.footer;
+      if (meta && meta.badge) document.querySelector(".term-badge").textContent = meta.badge;
+    };
     window.__clear = () => term.clear();
     window.__ready = true;
   </script>

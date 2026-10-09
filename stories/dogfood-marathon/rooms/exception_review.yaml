@@ -1,0 +1,173 @@
+# exception_review — visible operator checkpoint for serious questions.
+#
+# This is intentionally a normal story room instead of AskUserQuestion. It works
+# in TUI/web operator surfaces, leaves a durable journal, and degrades cleanly in
+# headless flows.
+
+states:
+
+  exception_review:
+    description: "A serious exception needs operator review before continuing."
+    relevant_world: [current_case, last_result, exception_pending, exception_summary, exception_answer, exceptions, journal_path, last_error]
+    view:
+      - banner:
+          text:     "! SERIOUS EXCEPTION"
+          subtitle: "operator decision required before the autonomous loop continues"
+          color:    "#F59E0B"
+      - heading: "Case {{ world.case_index + 1 }} / {{ world.backlog.items|length }} · exception review · {{ world.exception_pending|default:world.current_case.id }}"
+      - kv:
+          pairs:
+            Case:       '{{ world.exception_pending|default:world.current_case.id }}'
+            Title:      '{{ world.current_case.title|default:world.last_result.title|default:"—" }}'
+            Severity:   'serious'
+            Question:   '{{ world.last_result.operator_question|default:world.exception_summary|default:world.last_error|default:"—" }}'
+            Impact:     '{{ world.last_result.operator_impact|default:"the case remains parked as needs-human until an operator supplies scope" }}'
+            Issue:      '{{ world.last_result.issue_link|default:world.current_case.issue_link|default:world.current_case.source_url|default:world.current_case.source_path|default:world.last_result.source_url|default:"—" }}'
+            Trace:      '{{ world.last_result.trace_link|default:world.drive_result.trace_link|default:world.last_result.trace|default:world.drive_result.trace|default:"—" }}'
+            Last exit:  '{{ world.last_result.exit|default:world.drive_result.exit|default:"—" }}'
+            Verify:     '{{ world.last_result.verify_status|default:world.verify_result.status|default:"—" }}'
+            Exceptions: '{{ world.exceptions.items|length }}'
+            Journal:    '{{ world.journal_path|default:"(pending)" }}'
+      - prose: "The autonomous run paused to collect an operator decision for this case. Answer the question if you want to resolve it now, or park it as needs-human in the journal and continue with the next case."
+      - choice:
+          mode: single
+          prompt: "Resolve this question"
+          items:
+            - label: "park case and continue"
+              hint:  "leave the question unresolved in the journal and move on"
+              intent: ack_exception
+            - label: "answer with guidance"
+              hint:  "write the operator decision into the durable journal"
+              intent: answer_exception
+              param:
+                slot:        answer
+                type:        string
+                placeholder: "guidance for this case"
+                required:    true
+            - label: "look"
+              hint:  "re-render the warning"
+              intent: look
+            - label: "quit"
+              hint:  "abandon the marathon"
+              intent: quit
+    on:
+      answer_exception:
+        - target: processing
+          effects:
+            - invoke: host.starlark.run
+              id: resolve_exception
+              with:
+                script: scripts/resolve_exception.star
+                inputs:
+                  exceptions: "{{ world.exceptions }}"
+                  case_id:    "{{ world.exception_pending != '' ? world.exception_pending : world.current_case.id }}"
+                  status:     "answered"
+                  answer:     "{{ slots.answer ?? '' }}"
+              bind:
+                exceptions: exceptions
+            - set:
+                exception_answer:  "{{ slots.answer ?? '' }}"
+                case_index:        "{{ world.case_index + 1 }}"
+                cases_processed:   "{{ world.cases_processed + 1 }}"
+                current_case:      {}
+                current_case_id:   ""
+                current_case_json: "{}"
+                pick_job_id:       ""
+                triage_verdict:    {}
+                triage_job_id:     ""
+                drive_result:      {}
+                drive_job_id:      ""
+                verify_result:     {}
+                verify_job_id:     ""
+                record_status:     ""
+                record_job_id:     ""
+                journal_job_id:    ""
+                exception_pending: ""
+                exception_summary: ""
+            - invoke: host.starlark.run
+              id: persist_journal
+              with:
+                script: scripts/persist_journal.star
+                capabilities:
+                  fs:
+                    write: [".artifacts/dogfood-marathon/**"]
+                inputs:
+                  stage:                 "exception_answered"
+                  run_id:                "{{ world.run_id }}"
+                  run_dir:               "{{ world.run_dir }}"
+                  journal_path:          "{{ world.journal_path }}"
+                  journal_markdown_path: "{{ world.journal_markdown_path }}"
+                  backlog:               "{{ world.backlog }}"
+                  results:               "{{ world.results }}"
+                  findings:              "{{ world.findings }}"
+                  exceptions:            "{{ world.exceptions }}"
+                  current_case:          "{{ world.current_case }}"
+                  case_index:            "{{ world.case_index }}"
+                  cases_processed:       "{{ world.cases_processed }}"
+              bind:
+                journal_status:        journal_status
+                journal_summary:       journal_summary
+                last_checkpoint:       last_checkpoint
+      ack_exception:
+        - target: processing
+          effects:
+            - invoke: host.starlark.run
+              id: resolve_exception
+              with:
+                script: scripts/resolve_exception.star
+                inputs:
+                  exceptions: "{{ world.exceptions }}"
+                  case_id:    "{{ world.exception_pending != '' ? world.exception_pending : world.current_case.id }}"
+                  status:     "parked"
+                  answer:     "parked without operator answer"
+              bind:
+                exceptions: exceptions
+            - set:
+                exception_answer:  "parked without operator answer"
+                case_index:        "{{ world.case_index + 1 }}"
+                cases_processed:   "{{ world.cases_processed + 1 }}"
+                current_case:      {}
+                current_case_id:   ""
+                current_case_json: "{}"
+                pick_job_id:       ""
+                triage_verdict:    {}
+                triage_job_id:     ""
+                drive_result:      {}
+                drive_job_id:      ""
+                verify_result:     {}
+                verify_job_id:     ""
+                record_status:     ""
+                record_job_id:     ""
+                journal_job_id:    ""
+                exception_pending: ""
+                exception_summary: ""
+            - invoke: host.starlark.run
+              id: persist_journal
+              with:
+                script: scripts/persist_journal.star
+                capabilities:
+                  fs:
+                    write: [".artifacts/dogfood-marathon/**"]
+                inputs:
+                  stage:                 "exception_parked"
+                  run_id:                "{{ world.run_id }}"
+                  run_dir:               "{{ world.run_dir }}"
+                  journal_path:          "{{ world.journal_path }}"
+                  journal_markdown_path: "{{ world.journal_markdown_path }}"
+                  backlog:               "{{ world.backlog }}"
+                  results:               "{{ world.results }}"
+                  findings:              "{{ world.findings }}"
+                  exceptions:            "{{ world.exceptions }}"
+                  current_case:          "{{ world.current_case }}"
+                  case_index:            "{{ world.case_index }}"
+                  cases_processed:       "{{ world.cases_processed }}"
+              bind:
+                journal_status:        journal_status
+                journal_summary:       journal_summary
+                last_checkpoint:       last_checkpoint
+      quit:
+        - target: "@exit:abandoned"
+          effects:
+            - set: { abandon_reason: "abandoned_at_exception_review" }
+      look:
+        - target: .

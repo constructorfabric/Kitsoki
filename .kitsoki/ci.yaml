@@ -1,0 +1,30 @@
+schema: capsule-ci/v1
+project_profile: .kitsoki/project-profile.yaml
+default_environment: ci
+
+cleanup:
+  keep_runs: 20
+  require_hygiene_check: true
+
+pipelines:
+  change:
+    story: stories/capsule-ci/app.yaml
+    # Normalized ingress labels used by local landing and staging-target
+    # adapters. GitHub remains an adapter, not the CI definition.
+    triggers: [local, branch_update, pull_request, staging]
+    environment: ci
+    executor: host
+    mode: one-shot
+    required: true
+    permissions:
+      # Host execution is an explicitly trusted local compatibility lane. Use
+      # container or a remotely enforced worker for none/replay confinement.
+      network: live
+      external_write: allow
+    agents:
+      policy: deny
+    result:
+      schema: capsule-ci-verdict/v1
+      pass_exits: [passed]
+      fail_exits: [failed]
+      park_exits: [needs_input]

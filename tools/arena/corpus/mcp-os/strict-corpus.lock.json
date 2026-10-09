@@ -1,0 +1,15 @@
+{
+  "schema_version": "mcp_os_strict_corpus_lock/v1",
+  "case_count": 12,
+  "files": {
+    "cells.json": "48dedd49a9df998dd3e75b63ac6e6770be1123f545aa50d7996b15b35b9cc31f",
+    "corpus.json": "964eb480711bac40712b4ab4e5c69d63f7099d271aa458c7730858f207ebfecf",
+    "policy.json": "72b75fa2a7221fcda68f687ba8c5b2145f9523b471a9ef369c5f8b4d9c3cd497",
+    "treatment.json": "0b1c160d17d6d2b2b1fc91679c3ebcecf3ded83ecdd4f4741fe7904c7bca7a82",
+    "strict-calibration-cards.json": "3791776fbb0e4497ec19fa7ff5c85dfc65c87ca92187205cd1a9801661d4ed67",
+    "strict-fixtures/guarded.txt": "b046584b2602bb3e7f48c1aa6868591e9db70aaa20d5bf80b372884f2e9dd822",
+    "strict-traces/recorded-error.jsonl": "f327b6d861ceaa877c3a4b614ace968e0765973aa41e85582e7ace7519e16a27",
+    "strict-traces/route-surprise.jsonl": "43591535454e19155a36011111a882f5d419fd22c46a5558e0a8b20ad06420a2",
+    "strict-traces/stalled-turn.jsonl": "805263ee7e11e33a01b34449831988a9e3806d606526854be58aaad0f0769753"
+  }
+}

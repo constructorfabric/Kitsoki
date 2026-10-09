@@ -32,6 +32,12 @@ test_kind: flow
 app: ../app.yaml
 initial_state: landing
 initial_world:
+  # Opt out of bf's auto_triage pre-flight (default on): this fixture tests
+  # the downstream bugfix walk, not triage. Parent-level key — the import
+  # wrapper re-seeds bf__auto_triage on entry; only the world_in projection
+  # sticks. The pre-flight contract lives in
+  # stories/bugfix/flows/preflight_triage_*.yaml.
+  auto_triage: false
   # No ticket_id yet — triage picks one. The pipeline carry-fields are
   # pre-seeded so go_bugfix's world_in projection has everything it needs.
   workdir:        "testdata/projects/cake"
@@ -74,7 +80,7 @@ host_handlers:
     data: { ok: true, message_id: "msg-1" }
   host.inbox.add:
     data: { ok: true, id: "ib-1" }
-  host.git_worktree:
+  host.capsule_workspace:
     data: { ok: true, log: "synced", path: "testdata/projects/cake" }
   host.git:
     data:

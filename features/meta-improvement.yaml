@@ -1,0 +1,191 @@
+# yaml-language-server: $schema=feature.schema.json
+id: meta-improvement
+kind: feature
+title: Meta improvement reports
+tagline: Turn a surprising run into a trace-backed improvement report.
+summary: Meta improvement mode closes the loop after a run. When a story reaches a terminal state, Kitsoki recommends reviewing the session; one click opens `/meta improve`, streams the read-only story-improver agent, and produces a report about false starts, prompt/tool/script changes, permission cleanup, and no-LLM regression coverage. The web report path writes the same evidence bundle shape as Report Bug - redacted trace, rrweb playback, HAR, console state, screenshot, and posting metadata - so story authors can keep private iterations local, route community or engine issues to GitHub, or hand private-story findings to a custom ticket provider.
+narrative: |
+  ## The improvement loop is part of the product
+
+  Meta improvement mode is the continuous-improvement side of meta mode. It is not an editor and it is not a hidden prompt tweak. It is a read-only reviewer that looks at the completed run, the trace, the story prompts, tools, scripts, and permissions, then returns a concrete report a story author can act on.
+
+  The completion affordance matters because the right moment to learn from a run is when the operator just saw the false start. The web UI keeps that path close to the terminal state: review the run now, or enable automatic review for future completions.
+
+  Reports use the same durable evidence posture as bug reports. A `meta-improve` report can include the redacted trace, rrweb playback, HAR, console state, screenshots, report labels, and posting metadata. Local reports stay under `.artifacts/issues/bugs`; shared engine or community-story reports can go to GitHub; private stories can provide their own `ticket_provider/v1` script.
+
+  The permission model stays narrow by design. `story.improve` and `kitsoki.improve` use the read-only report profile (`Read`, `Glob`, `Grep`). The report recommends a change; the author then applies the accepted change through the normal story-edit or engine-edit path with separate permissions and tests.
+promo:
+  order: 5
+  highlight: true
+docs:
+  - docs/stories/meta-mode.md
+  - docs/web/README.md
+  - docs/site/README.md
+related:
+  - meta-mode
+  - trace-introspection
+  - agent-actions
+  - review
+demo:
+  format: rrweb
+  spec: tests/playwright/meta-improve-video.spec.ts
+  artifactDir: meta-improvement
+  videoBase: meta-improvement-demo
+  posterStep: mi-reminder
+  story: testdata/apps/cloak
+  flow: testdata/apps/cloak/flows/winning.yaml
+qa:
+  scenarios:
+    - id: completion-reminder
+      required: true
+      steps:
+        - A session reaches a terminal or completed state
+        - An improvement reminder appears near the completed run
+        - The reminder offers both Run improve now and an auto-run toggle
+      title: Completed runs make improvement the obvious next step
+    - id: story-improve-turn
+      required: true
+      steps:
+        - Clicking Run improve now opens the Meta overlay in story.improve
+        - A streaming meta row is visible while the improvement turn runs
+        - A committed agent row appears with an Introspection report
+      title: The affordance launches the real story.improve meta turn
+    - id: evidence-report
+      required: true
+      steps:
+        - The report references evidence bundle artifacts such as trace, HAR, rrweb, console, or playback evidence
+        - The report includes tool or permission notes
+        - The report describes local, GitHub, or private ticket-provider posting paths
+      title: The introspection report is evidence-backed and postable
+tour:
+  export: META_IMPROVEMENT_TOUR_STEPS
+  steps:
+    - id: mi-intro-home
+      route: home
+      title: Run improvement closes the loop
+      body: This tour shows a complete session, the end-of-run improve reminder, and the real story.improve meta mode producing an introspection report.
+      placement: center
+      kind: explain
+      advance: next
+      waitForTarget: home-view
+      dwellMs: 4800
+    - id: mi-story-card
+      route: home
+      target: story-card
+      title: A deterministic story run
+      body: The demo uses the Cloak story with a no-LLM flow fixture, so the run is short, repeatable, and free to record.
+      placement: right
+      kind: explain
+      advance: next
+      waitForTarget: story-card
+      dwellMs: 4200
+    - id: mi-new-session
+      route: home
+      target: new-session-btn
+      title: Start the session
+      body: Open a fresh drive view. We will advance the story just far enough to reach a terminal state.
+      placement: right
+      kind: explain
+      advance: next
+      waitForTarget: new-session-btn
+      dwellMs: 3600
+    - id: mi-start-run
+      route: interactive
+      target: current-state
+      title: Kick off the run
+      body: The first frame shows the story output, current room, and available action before we move.
+      placement: top
+      kind: explain
+      advance: next
+      waitForTarget: current-state
+      dwellMs: 3600
+    - id: mi-mid-run
+      route: interactive
+      target: current-state
+      title: A brief middle beat
+      body: The run moves through deterministic turns. This keeps the demo focused on the improvement loop rather than story mechanics.
+      placement: bottom
+      kind: explain
+      advance: next
+      waitForTarget: current-state
+      dwellMs: 3800
+    - id: mi-complete-run
+      route: interactive
+      target: intent-btn-read_message
+      title: Complete the session
+      body: Reading the message lands in the terminal state. This is where Kitsoki should make improvement the obvious next step.
+      placement: top
+      kind: explain
+      advance: next
+      waitForTarget: intent-btn-read_message
+      dwellMs: 4200
+    - id: mi-reminder
+      route: interactive
+      target: improve-prompt
+      title: The reminder appears at completion
+      body: At the end of the session, Kitsoki recommends reviewing the run for false starts, unexpected output, wasted tool calls, prompt/tool/script improvements, permission cleanup, and no-LLM regression coverage.
+      placement: top
+      kind: explain
+      advance: next
+      waitForTarget: improve-prompt
+      dwellMs: 5600
+    - id: mi-auto-run
+      route: interactive
+      target: improve-auto-toggle
+      title: Auto-run is one checkbox away
+      body: The same affordance can auto-run improve for future completions. For this demo we will keep it manual and click Run improve now.
+      placement: top
+      kind: explain
+      advance: next
+      waitForTarget: improve-auto-toggle
+      dwellMs: 4600
+    - id: mi-evidence-report
+      route: interactive
+      target: improve-report-toggle
+      title: Evidence filing is built in
+      body: Filing is enabled by default. The report path can stay local for private iteration, post to GitHub for engine or community-story issues, or call a private ticket provider.
+      placement: top
+      kind: explain
+      advance: next
+      waitForTarget: improve-report-toggle
+      dwellMs: 4600
+    - id: mi-run-improve
+      route: interactive
+      target: improve-run
+      title: Run improve now
+      body: This button opens Meta in story.improve and sends the standard completed-session improvement prompt.
+      placement: top
+      kind: explain
+      advance: next
+      waitForTarget: improve-run
+      dwellMs: 4200
+    - id: mi-improve-stream
+      route: interactive
+      target: meta-row-streaming
+      title: The actual story.improve turn runs
+      body: The meta overlay streams a real story.improve turn through the same Meta infrastructure users get, backed here by the deterministic no-LLM stub.
+      placement: right
+      kind: explain
+      advance: next
+      waitForTarget: meta-row-streaming
+      dwellMs: 4800
+    - id: mi-report-ready
+      route: interactive
+      target: meta-row-agent
+      title: The introspection report is ready
+      body: The report names the improvement, keeps improve read-only, and points to the evidence bundle and local, GitHub, or private ticket-provider posting paths.
+      placement: right
+      kind: explain
+      advance: next
+      waitForTarget: meta-row-agent
+      dwellMs: 5600
+    - id: mi-artifacts-filed
+      route: interactive
+      target: improve-report-artifacts
+      title: Evidence artifacts are filed
+      body: The completion bar records the filed report and artifact sidecars, so the recommendation has trace, HAR, rrweb, console, and playback evidence just like a bug report.
+      placement: top
+      kind: explain
+      advance: next
+      waitForTarget: improve-report-artifacts
+      dwellMs: 5200

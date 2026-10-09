@@ -1,0 +1,10 @@
+inputs:
+  suite:                { type: object, required: true }
+  scenario_ref:         { type: string, required: false }
+  scenario_description: { type: string, required: false }
+  mode:                 { type: string, required: false }
+  transport:            { type: string, required: false }
+
+outputs:
+  suite_summary: { type: string }
+  suite_plan:    { type: string }

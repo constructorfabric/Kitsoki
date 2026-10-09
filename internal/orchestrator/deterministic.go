@@ -104,10 +104,14 @@ func buildDeterministicLookup(o *Orchestrator, state app.StatePath, primary []Me
 
 // MatchDeterministic checks whether the input matches a primary menu entry
 // without dispatching the resulting transition. It is the cheap, side-effect
-// free half of TryDeterministic: callers that want to run the dispatch on a
-// background goroutine (e.g. so the TUI can show a spinner during slow
-// on_enter host calls) call MatchDeterministic synchronously, then invoke
-// SubmitDirect themselves.
+// free half of TryDeterministic, exported for a caller that wants to inspect
+// a match before deciding whether to dispatch it (e.g. to run the dispatch
+// on its own background goroutine). No in-repo caller does this today — the
+// TUI used to run MatchDeterministic synchronously before Turn as its own
+// pre-pass, but that duplicated Turn's internal deterministic tier and could
+// in principle disagree with it, so it now calls Turn directly like every
+// other surface (see tui.go's dispatchInput). Turn's own TryDeterministic
+// call covers the same fast path with no duplication risk.
 //
 // Returns:
 //   - (intent, slots, true, nil) — matched; caller should call SubmitDirect.

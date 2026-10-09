@@ -3,7 +3,6 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -13,7 +12,10 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -23,12 +25,16 @@ import (
 	"github.com/spf13/cobra"
 
 	"kitsoki/internal/app"
+	"kitsoki/internal/buildinfo"
+	"kitsoki/internal/chats"
 	"kitsoki/internal/harness"
 	"kitsoki/internal/host"
 	"kitsoki/internal/inbox"
 	"kitsoki/internal/kitrepo"
+	"kitsoki/internal/kitstage"
 	"kitsoki/internal/machine"
 	kitsokimcp "kitsoki/internal/mcp"
+	"kitsoki/internal/metamode"
 	"kitsoki/internal/orchestrator"
 	"kitsoki/internal/store"
 	"kitsoki/internal/tui"
@@ -44,11 +50,51 @@ var version = "0.0.1-scaffold"
 // so tests can construct an isolated root and call Execute() against captured
 // I/O without running the real os.Args/os.Exit dance.
 func newRootCmd() *cobra.Command {
+	buildinfo.Version = version
 	// kitsokiRepoFlag backs the persistent --kitsoki-repo override. It points
 	// `@kitsoki/<name>` imports at a live kitsoki checkout instead of the
 	// embedded story library (see buildImportResolver). Empty → no override;
 	// the resolver falls through to on-disk discovery then the embedded copy.
 	var kitsokiRepoFlag string
+	// stagedFlag backs the persistent --staged toggle. It resolves every kit
+	// with a `kitsoki kit update` staged candidate to that candidate instead
+	// of the accepted lockfile resolution (see internal/kitstage and
+	// buildImportResolver). Exported as $KITSOKI_KIT_STAGED so subprocesses
+	// inherit the trial posture, mirroring --kitsoki-repo → $KITSOKI_REPO.
+	var stagedFlag bool
+	defaultRunCmd := runCmd()
+	prepareInvocation := func(cmd *cobra.Command, args []string) error {
+		// --kitsoki-repo overrides $KITSOKI_REPO when given; either way the
+		// chosen value is exported so every downstream consumer — the
+		// import resolver's override branch (buildImportResolver), the
+		// engine-targeting meta modes, expandMetaCwd, and the subprocesses
+		// the agents spawn — reads one canonical location. The flag wins so
+		// an operator can point a single invocation at a checkout without
+		// mutating their persisted ~/.kitsoki/repo.
+		if kitsokiRepoFlag != "" {
+			abs := kitsokiRepoFlag
+			if a, err := filepath.Abs(kitsokiRepoFlag); err == nil {
+				abs = a
+			}
+			_ = os.Setenv(kitrepo.EnvVar, abs)
+		}
+		if os.Getenv(kitrepo.EnvVar) == "" {
+			if repo := kitrepo.Resolve(); repo != "" {
+				_ = os.Setenv(kitrepo.EnvVar, repo)
+			}
+		}
+		// --staged exports the trial posture the same way: flag wins, env
+		// stays authoritative for subprocesses and the import resolver.
+		if stagedFlag {
+			_ = os.Setenv(kitstage.EnvStaged, "all")
+		}
+		// Record whether the operator explicitly passed --semantic-routing so
+		// semanticRoutingOptions can let it override KITSOKI_SEMANTIC_ROUTING.
+		// Persistent flags are inherited, so cmd.Flags() resolves it for every
+		// subcommand.
+		semanticRoutingFlagSet = cmd.Flags().Changed("semantic-routing")
+		return nil
+	}
 
 	root := &cobra.Command{
 		Use:   "kitsoki",
@@ -64,6 +110,18 @@ Embedded documentation (ships inside this binary):
   kitsoki docs all         print every topic, concatenated
 
 See docs/ in the repo for the narrative documentation.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cmd.SilenceUsage = true
+			if err := prepareInvocation(cmd, args); err != nil {
+				return err
+			}
+			defaultRunCmd.SetOut(cmd.OutOrStdout())
+			defaultRunCmd.SetErr(cmd.ErrOrStderr())
+			defaultRunCmd.SetIn(cmd.InOrStdin())
+			defaultRunCmd.SetContext(cmd.Context())
+			return defaultRunCmd.RunE(defaultRunCmd, nil)
+		},
 		// Resolve the kitsoki source repo once per invocation and export it
 		// into the environment so every downstream consumer — the
 		// kitsoki.* meta-mode injection gate, expandMetaCwd, the
@@ -74,33 +132,7 @@ See docs/ in the repo for the narrative documentation.`,
 		// run from a dev checkout the engine-targeting features work from
 		// any directory without the operator setting the env var. Runs for
 		// every subcommand (no child overrides PersistentPreRun).
-		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			// --kitsoki-repo overrides $KITSOKI_REPO when given; either way the
-			// chosen value is exported so every downstream consumer — the
-			// import resolver's override branch (buildImportResolver), the
-			// engine-targeting meta modes, expandMetaCwd, and the subprocesses
-			// the agents spawn — reads one canonical location. The flag wins so
-			// an operator can point a single invocation at a checkout without
-			// mutating their persisted ~/.kitsoki/repo.
-			if kitsokiRepoFlag != "" {
-				abs := kitsokiRepoFlag
-				if a, err := filepath.Abs(kitsokiRepoFlag); err == nil {
-					abs = a
-				}
-				_ = os.Setenv(kitrepo.EnvVar, abs)
-			}
-			if os.Getenv(kitrepo.EnvVar) == "" {
-				if repo := kitrepo.Resolve(); repo != "" {
-					_ = os.Setenv(kitrepo.EnvVar, repo)
-				}
-			}
-			// Record whether the operator explicitly passed --semantic-routing so
-			// semanticRoutingOption can let it override KITSOKI_SEMANTIC_ROUTING
-			// and the default. Persistent flags are inherited, so cmd.Flags()
-			// resolves it for every subcommand.
-			semanticRoutingFlagSet = cmd.Flags().Changed("semantic-routing")
-			return nil
-		},
+		PersistentPreRunE: prepareInvocation,
 	}
 
 	// Persistent override for `@kitsoki/<name>` import resolution. Runs for
@@ -108,15 +140,21 @@ See docs/ in the repo for the narrative documentation.`,
 	root.PersistentFlags().StringVar(&kitsokiRepoFlag, "kitsoki-repo", "",
 		"path to a kitsoki source checkout; resolves @kitsoki/NAME imports against <path>/stories/NAME (overrides $KITSOKI_REPO and the embedded story library)")
 
-	// Global toggle for the deterministic semantic-routing stack. Off by default:
-	// free-text routing is an isolated main-model decision (see
-	// docs/architecture/semantic-routing.md). Overrides per-app routing.enabled
-	// and $KITSOKI_SEMANTIC_ROUTING when passed explicitly.
+	// Persistent trial-posture toggle: resolve kits staged by `kitsoki kit
+	// update` to their candidate trees (see internal/kitstage).
+	root.PersistentFlags().BoolVar(&stagedFlag, "staged", false,
+		"resolve kits with a staged update candidate (kitsoki kit update) to the staged version instead of the accepted lockfile resolution (env: KITSOKI_KIT_STAGED)")
+
+	// Global toggle for the deterministic semantic-routing stack. When unset,
+	// the CLI keeps the stack off: exact deterministic commands still route, and
+	// misses go to the selected harness/model. Passing true opts back into
+	// semroute, turn-cache, default_intent, and free-form fallback.
 	root.PersistentFlags().BoolVar(&semanticRoutingFlag, "semantic-routing", false,
-		"enable the deterministic semantic-routing stack (semroute, turn-cache, default_intent sink, free-form fallback); default off routes free text via the main model (env: KITSOKI_SEMANTIC_ROUTING)")
+		"enable the deterministic semantic-routing stack (semroute, turn-cache, default_intent sink, free-form fallback); default off (env: KITSOKI_SEMANTIC_ROUTING)")
+	root.Flags().AddFlagSet(defaultRunCmd.Flags())
 
 	root.AddCommand(versionCmd())
-	root.AddCommand(runCmd())
+	root.AddCommand(defaultRunCmd)
 	root.AddCommand(vizCmd())
 	root.AddCommand(traceCmd())
 	root.AddCommand(replayCmd())
@@ -140,6 +178,8 @@ See docs/ in the repo for the narrative documentation.`,
 	root.AddCommand(chatCmd())
 	root.AddCommand(mcpValidatorCmd())
 	root.AddCommand(mcpBashCmd())
+	root.AddCommand(mcpCodeactCmd())
+	root.AddCommand(mcpGraphCmd())
 	root.AddCommand(mcpOperatorAskCmd())
 	root.AddCommand(bugCmd())
 	root.AddCommand(issuesCmd())
@@ -148,20 +188,38 @@ See docs/ in the repo for the narrative documentation.`,
 	root.AddCommand(promptsCmd())
 	root.AddCommand(agentCmd())
 	root.AddCommand(agentServeCmd())
+	root.AddCommand(starlarkCmd())
 	root.AddCommand(migrateAgentCmd())
 	root.AddCommand(cassetteCmd())
 	root.AddCommand(evalCmd())
 	root.AddCommand(agentBenchCmd())
+	root.AddCommand(personaQACmd())
+	root.AddCommand(qaCmd())
 	root.AddCommand(exportStatusCmd())
 	root.AddCommand(statusCmd())
 	root.AddCommand(webCmd())
 	root.AddCommand(tourCmd())
+	root.AddCommand(tourSpecCmd())
 	root.AddCommand(materializeCmd())
 	root.AddCommand(newGHAgentCmd())
 	root.AddCommand(projectProfileCmd())
 	root.AddCommand(projectToolsCmd())
+	root.AddCommand(kitCmd())
 	root.AddCommand(validateCmd())
+	root.AddCommand(storyboardCmd())
 	root.AddCommand(workflowCmd())
+	root.AddCommand(capsuleCmd())
+	root.AddCommand(queueCmd())
+	root.AddCommand(gitopsCmd())
+	root.AddCommand(ticketProviderCmd())
+	root.AddCommand(doctorCmd())
+	root.AddCommand(graphCmd())
+	root.AddCommand(roadmapCmd())
+	root.AddCommand(pogCmd())
+	root.AddCommand(historyCmd())
+	root.AddCommand(initCmd())
+	root.AddCommand(tuiServeCmd())
+	tierHelp(root)
 
 	return root
 }
@@ -199,26 +257,87 @@ func versionCmd() *cobra.Command {
 		Use:   "version",
 		Short: "Print the kitsoki version",
 		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Printf("kitsoki %s\n", version)
+			if rev := strings.TrimSpace(buildinfo.Revision); rev != "" {
+				fmt.Fprintf(cmd.OutOrStdout(), "kitsoki %s\nrevision: %s\n", version, rev)
+				return
+			}
+			if rev := strings.TrimSpace(buildinfo.RevisionShort); rev != "" {
+				fmt.Fprintf(cmd.OutOrStdout(), "kitsoki %s\nrevision: %s\n", version, rev)
+				return
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "kitsoki %s\n", version)
 		},
 	}
 }
 
+func tuiMetaAgentCaller(harnessType string) metamode.AgentCaller {
+	if strings.TrimSpace(harnessType) == "replay" {
+		var opts []metamode.StubOption
+		if v := os.Getenv("KITSOKI_META_STREAM_DELAY_MS"); v != "" {
+			if ms, err := strconv.Atoi(v); err == nil && ms > 0 {
+				opts = append(opts, metamode.WithStubStreamDelay(time.Duration(ms)*time.Millisecond))
+			}
+		}
+		return metamode.NewStubAgentCaller(opts...)
+	}
+	return metamode.NewAgentCallerAdapter()
+}
+
+func tuiMetaController(def *app.AppDef, cs *chats.Store, harnessType string) *metamode.Controller {
+	if def == nil || cs == nil || len(def.MetaModes) == 0 {
+		return nil
+	}
+	reg := host.AgentRegistry()
+	if reg == nil {
+		return nil
+	}
+	return &metamode.Controller{
+		Chats:  metamode.NewChatStoreAdapter(cs),
+		Agents: reg,
+		AppDef: def,
+		Agent:  tuiMetaAgentCaller(harnessType),
+	}
+}
+
+func tuiStoryOptions(cfg webconfig.WebConfig) ([]tui.StoryOption, error) {
+	dirs := webconfig.Resolve(nil, cfg)
+	metas, err := webconfig.DiscoverStories(dirs, buildImportResolver())
+	if err != nil {
+		if defaultStoryDirsMissing(dirs, err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	options := make([]tui.StoryOption, 0, len(metas))
+	for _, meta := range metas {
+		if meta.Def == nil {
+			continue
+		}
+		options = append(options, tui.StoryOption{
+			Path:  meta.Path,
+			AppID: meta.Def.App.ID,
+			Title: storyTitle(meta.Def),
+		})
+	}
+	return options, nil
+}
+
 func runCmd() *cobra.Command {
 	var (
-		harnessType      string
-		claudeModel      string
-		agentBackend     string
-		recordingPath    string
-		recordPath       string
-		dbPath           string
-		continueFlag     bool
-		continueID       string
-		continueKey      string
-		noImplicitResume bool
-		warpBasisPath    string
-		execModeFlag     string
-		promptOverlay    string
+		harnessType   string
+		claudeModel   string
+		agentBackend  string
+		recordingPath string
+		recordPath    string
+		hostCassette  string
+		dbPath        string
+		continueFlag  bool
+		continueID    string
+		continueKey   string
+		warpBasisPath string
+		execModeFlag  string
+		promptOverlay string
+		ticketRepo    string
 	)
 
 	cmd := &cobra.Command{
@@ -229,9 +348,10 @@ types free text; an LLM harness maps it to one of the app's intents; the
 state machine applies the transition; the view is re-rendered.
 
 Harness auto-selection (when --harness is omitted):
-  1. 'claude' binary on PATH       → claude harness (no API key needed)
-  2. Anthropic credential found    → live harness (direct SDK)
-  3. otherwise                     → replay (requires --recording)
+  1. non-Claude --agent backend    → CLI harness for that backend
+  2. 'claude' binary on PATH       → claude harness (no API key needed)
+  3. Anthropic credential found    → live harness (direct SDK)
+  4. otherwise                     → setup error; replay requires --recording
 
 A live credential is resolved from (first hit wins): ANTHROPIC_API_KEY,
 ANTHROPIC_AUTH_TOKEN, ~/.claude/settings.json (env block), or ~/.claude.json
@@ -241,6 +361,7 @@ Examples:
   kitsoki run testdata/apps/cloak/app.yaml
   kitsoki run myapp.yaml --harness claude --claude-model opus
   kitsoki run myapp.yaml --harness replay --recording recording.yaml
+  kitsoki run myapp.yaml --harness replay --recording recording.yaml --host-cassette host.cassette.yaml
   kitsoki run myapp.yaml --harness recording --record /tmp/rec.jsonl
 
 Session traces are written automatically to the nearest .kitsoki/sessions/
@@ -249,6 +370,14 @@ folder (walking up from cwd). Use 'kitsoki trace <path>' to pretty-print.
 See 'kitsoki docs llm-guide' for the full operator guide.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// `run` owns the terminal. Silence the process-wide default logger
+			// from the start of command execution so loader advisories and
+			// validation warnings cannot interleave with Cobra errors/usage
+			// before Bubble Tea has a chance to install its own rendering loop.
+			oldRunLogger := slog.Default()
+			slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
+			defer slog.SetDefault(oldRunLogger)
+
 			// Restore terminal modes on any exit path so a panic before
 			// tea.Program.Run installs its own recovery — or a prior crash
 			// that already left the terminal in alt-screen / mouse-reporting
@@ -275,590 +404,594 @@ See 'kitsoki docs llm-guide' for the full operator guide.`,
 				lipgloss.SetColorProfile(termenv.TrueColor)
 			}
 
-			// Load machine-global config from .kitsoki.yaml in the cwd. This
-			// carries harness profiles (/provider /model parity with the web)
-			// AND the implicit-root `root:` block. A missing file is not an
-			// error; an invalid profile or root block fails fast here.
-			webCfg, err := webconfig.Load(webconfig.DefaultConfigFile)
-			if err != nil {
-				return err
-			}
-			harnessProfiles, defaultProfile := harnessProfilesFromConfig(webCfg)
-
-			// Resolve the app definition. With a path arg, load it from disk
-			// (the historical rung-2 path). With NO arg, synthesize the implicit
-			// project root from .kitsoki.yaml `root:` (rung 0/1) — a dev-story
-			// instance with no file on disk. See docs/stories/imports.md
-			// "The blank root that grows".
-			var (
-				def      *app.AppDef
-				appPath  string
-				reloader func() (*app.AppDef, error)
-			)
-			if len(args) == 1 {
-				appPath = args[0]
-				// loadAppWithEnv publishes KITSOKI_APP_DIR FIRST so the loader's
-				// env-var validator can resolve `${KITSOKI_APP_DIR}` references
-				// in cwd: and other env-expanded fields.
-				def, err = loadAppWithEnv(appPath)
-				if err != nil {
-					return err
-				}
-			} else {
-				repoRoot, rrErr := os.Getwd()
-				if rrErr != nil {
-					return fmt.Errorf("resolve working directory for implicit root: %w", rrErr)
-				}
-				rootSpec := webCfg.Root.RootSpec()
-				def, err = app.SynthesizeRoot(rootSpec, repoRoot)
-				if err != nil {
-					return fmt.Errorf("synthesize implicit root: %w", err)
-				}
-				// A synthesized root has no app.yaml to re-read on /reload, so
-				// inject a reloader that re-reads .kitsoki.yaml and
-				// re-synthesizes — a rung-1 overrides edit takes effect on the
-				// same Reload + RerunOnEnter path a rung-2 file edit travels.
-				reloader = func() (*app.AppDef, error) {
-					cfg, cfgErr := webconfig.Load(webconfig.DefaultConfigFile)
-					if cfgErr != nil {
-						return nil, cfgErr
-					}
-					return app.SynthesizeRoot(cfg.Root.RootSpec(), repoRoot)
-				}
-			}
-
-			// Determine DB path.
-			if dbPath == "" {
-				dbPath = defaultDBPath()
-			}
-			if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
-				return fmt.Errorf("create db directory: %w", err)
-			}
-
-			// Resolve the execution mode (execution-modes proposal). The
-			// TUI defaults to staged so multi-way decision gates pause for
-			// the operator rather than auto-advancing silently.
-			var execMode orchestrator.ExecutionMode
-			switch execModeFlag {
-			case "staged":
-				execMode = orchestrator.ExecStaged
-			case "one-shot", "oneshot":
-				execMode = orchestrator.ExecOneShot
-			default:
-				return fmt.Errorf("--mode %q is invalid (want \"staged\" or \"one-shot\")", execModeFlag)
-			}
-
-			// Allocate the room-enter sink up-front so it can be passed into the
-			// orchestrator AND held by the rootModel. Bound to the tea.Program
-			// below via sink.Attach(p) after tea.NewProgram exists.
-			roomEnterSink := tui.NewRoomEnterSink()
-
-			// ── Orchestrator construction (shared with `kitsoki web`) ───────
-			rt, err := buildSessionRuntime(runtimeConfig{
-				AppPath:         appPath,
-				Def:             def,
-				DBPath:          dbPath,
-				ExecMode:        execMode,
-				HarnessType:     harnessType,
-				ClaudeModel:     claudeModel,
-				AgentBackend:    resolveAgentBackend(agentBackend),
-				HarnessProfiles: harnessProfiles,
-				DefaultProfile:  defaultProfile,
-				RecordingPath:   recordingPath,
-				RecordPath:      recordPath,
-				PromptOverlay:   promptOverlay,
-				RoomEnterSink:   roomEnterSink,
-				Reloader:        reloader,
-				Mining:          webCfg.Mining,
-			})
-			if err != nil {
-				return err
-			}
-			defer rt.Close()
-
-			// Re-bind the locals the rest of runCmd's TUI / resume code uses.
-			s := rt.Store
-			jw := rt.Journal
-			jobStore := rt.JobStore
-			rawChatStore := rt.ChatStore
-			orch := rt.Orch
-
-			ctx := context.Background()
-
-			// ── Flag validation ────────────────────────────────────────────
-			if continueID != "" && !continueFlag {
-				return fmt.Errorf("--id requires --continue")
-			}
-			if continueKey != "" && !continueFlag {
-				return fmt.Errorf("--key requires --continue")
-			}
-			if continueID != "" && continueKey != "" {
-				return fmt.Errorf("--id and --key are mutually exclusive")
-			}
-
-			// ── Determine session ID (resume or fresh) ─────────────────────
-			var (
-				sid        app.SessionID
-				resumeMode bool
-				tuiOptions []tui.RootModelOption
-			)
-
-			if continueFlag {
-				// Explicit --continue path.
-				switch {
-				case continueID != "":
-					sid = app.SessionID(continueID)
-				case continueKey != "":
-					t, thread, kErr := parseExternalKey(continueKey)
-					if kErr != nil {
-						return kErr
-					}
-					sid, err = s.LookupByKey(ctx, t, thread)
-					if errors.Is(err, store.ErrSessionNotFound) {
-						return fmt.Errorf("no session bound to %s", continueKey)
-					}
-					if err != nil {
-						return fmt.Errorf("lookup key %s: %w", continueKey, err)
-					}
-				default:
-					// No selector — present numbered list picker.
-					summaries, lErr := s.ListSessions(ctx, def.App.ID, 0)
-					if lErr != nil {
-						return fmt.Errorf("list sessions: %w", lErr)
-					}
-					keys := make([][]store.ExternalKey, len(summaries))
-					for i, sum := range summaries {
-						keys[i], _ = s.ListExternalKeys(ctx, sum.ID)
-					}
-					sid, err = pickSession(summaries, keys, cmd.ErrOrStderr(), cmd.InOrStdin())
-					if errors.Is(err, errPickerAborted) {
-						return errTempFail
-					}
+			runArgs := append([]string(nil), args...)
+			for {
+				var selectedStoryPath string
+				runOnce := func(args []string) error {
+					// Load machine-global config from .kitsoki.yaml in the cwd. This
+					// carries harness profiles (/provider /model parity with the web)
+					// AND the implicit-root `root:` block. A missing file is not an
+					// error; an invalid profile or root block fails fast here.
+					webCfg, err := webconfig.Load(webconfig.DefaultConfigFile)
 					if err != nil {
 						return err
 					}
-				}
-				resumeMode = true
-			} else if !noImplicitResume {
-				// Implicit-resume path: prompt with the most recent active
-				// session as the default. ListSessions returns rows ordered
-				// by started_at DESC, so activeSessions[0] is the newest.
-				// The earlier "exactly one active" guard surprised users
-				// who accumulated a pile of sessions across restarts: the
-				// prompt silently disappeared the moment they had two,
-				// so each restart spun up a fresh session and the loop
-				// felt amnesiac. Now any number of active sessions
-				// surfaces the prompt; the picker is one keystroke away
-				// for users who want to resume an OLDER session.
-				summaries, lErr := s.ListSessions(ctx, def.App.ID, 0)
-				if lErr != nil {
-					return fmt.Errorf("list sessions: %w", lErr)
-				}
-				activeSessions := summaries[:0]
-				for _, sum := range summaries {
-					if sum.Status == "active" {
-						activeSessions = append(activeSessions, sum)
+					storyOptions, storyDiscoverErr := tuiStoryOptions(webCfg)
+					storySwitch := func(story tui.StoryOption) {
+						selectedStoryPath = story.Path
 					}
-				}
-				if len(activeSessions) >= 1 {
-					sum := activeSessions[0]
-					age := time.Since(sum.StartedAt).Truncate(time.Second)
-					stateLabel := "unknown"
-					if jPreview, jErr := orch.LoadJourney(sum.ID); jErr == nil {
-						stateLabel = string(jPreview.State)
+					harnessProfiles, defaultProfile := harnessProfilesFromConfig(webCfg)
+					bugPrivacyRuntime := bugPrivacyRuntimeConfig{
+						AgentBackend:         resolveAgentBackend(agentBackend),
+						ClaudeModel:          claudeModel,
+						UseDefaultLiveLadder: strings.TrimSpace(harnessType) != "replay",
 					}
-					var pickerHint string
-					if len(activeSessions) > 1 {
-						pickerHint = fmt.Sprintf(" · [p] pick from %d active",
-							len(activeSessions))
-					}
-					fmt.Fprintf(cmd.ErrOrStderr(),
-						"You have an active session for %s from %s ago, turn %d (in %s).\n"+
-							"[Enter] to continue · [n] start fresh%s · [q] quit\n",
-						def.App.ID,
-						humanizeAge(age),
-						sum.LastTurn,
-						stateLabel,
-						pickerHint,
+
+					// Resolve the app definition. With a path arg, load it from disk
+					// (the historical rung-2 path). With NO arg, synthesize the implicit
+					// project root from .kitsoki.yaml `root:` (rung 0/1) — a dev-story
+					// instance with no file on disk. See docs/stories/imports.md
+					// "The blank root that grows".
+					var (
+						def                  *app.AppDef
+						appPath              string
+						reloader             func() (*app.AppDef, error)
+						projectStartupNotice string
 					)
-					scanner := bufio.NewScanner(cmd.InOrStdin())
-					if !scanner.Scan() {
-						// EOF / I/O error (e.g. piped or closed stdin): we
-						// cannot prompt for a choice, so don't silently fall
-						// into the default (resume) branch. Surface the
-						// condition and abort rather than guessing intent.
-						if err := scanner.Err(); err != nil {
-							fmt.Fprintf(cmd.ErrOrStderr(),
-								"Aborted: cannot read choice from stdin: %v\n", err)
-						} else {
-							fmt.Fprintln(cmd.ErrOrStderr(),
-								"Aborted: no input on stdin (EOF).")
+					if len(args) == 1 {
+						appPath = args[0]
+						// loadAppWithEnv publishes KITSOKI_APP_DIR FIRST so the loader's
+						// env-var validator can resolve `${KITSOKI_APP_DIR}` references
+						// in cwd: and other env-expanded fields.
+						def, err = loadAppWithEnv(appPath)
+						if err != nil {
+							return err
 						}
-						return errTempFail
+					} else {
+						repoRoot, rrErr := os.Getwd()
+						if rrErr != nil {
+							return fmt.Errorf("resolve working directory for implicit root: %w", rrErr)
+						}
+						rootSpec := webCfg.Root.RootSpec()
+						def, err = app.SynthesizeRootWithResolver(rootSpec, repoRoot, buildImportResolver())
+						if err != nil {
+							return fmt.Errorf("synthesize implicit root: %w", err)
+						}
+						projectStartupNotice = projectUpgradeNoticeForRoot(repoRoot)
+						// A synthesized root has no app.yaml to re-read on /reload, so
+						// inject a reloader that re-reads .kitsoki.yaml and
+						// re-synthesizes — a rung-1 overrides edit takes effect on the
+						// same Reload + RerunOnEnter path a rung-2 file edit travels.
+						reloader = func() (*app.AppDef, error) {
+							cfg, cfgErr := webconfig.Load(webconfig.DefaultConfigFile)
+							if cfgErr != nil {
+								return nil, cfgErr
+							}
+							return app.SynthesizeRootWithResolver(cfg.Root.RootSpec(), repoRoot, buildImportResolver())
+						}
 					}
-					choice := strings.TrimSpace(scanner.Text())
-					switch strings.ToLower(choice) {
-					case "q":
-						return errTempFail
-					case "n", "no":
-						// Fall through: fresh session.
-					case "p", "pick":
-						// Open the numbered-list picker over all active
-						// sessions so the user can resume a specific one.
-						keys := make([][]store.ExternalKey, len(activeSessions))
-						for i, sum := range activeSessions {
-							keys[i], _ = s.ListExternalKeys(ctx, sum.ID)
+
+					// Determine DB path.
+					if dbPath == "" {
+						dbPath = defaultDBPath()
+					}
+					if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
+						return fmt.Errorf("create db directory: %w", err)
+					}
+
+					// Resolve the execution mode (execution-modes proposal). The
+					// TUI defaults to staged so multi-way decision gates pause for
+					// the operator rather than auto-advancing silently.
+					var execMode orchestrator.ExecutionMode
+					switch execModeFlag {
+					case "staged":
+						execMode = orchestrator.ExecStaged
+					case "one-shot", "oneshot":
+						execMode = orchestrator.ExecOneShot
+					default:
+						return fmt.Errorf("--mode %q is invalid (want \"staged\" or \"one-shot\")", execModeFlag)
+					}
+
+					// Allocate the room-enter sink up-front so it can be passed into the
+					// orchestrator AND held by the rootModel. Bound to the tea.Program
+					// below via sink.Attach(p) after tea.NewProgram exists.
+					roomEnterSink := tui.NewRoomEnterSink()
+
+					// ── Orchestrator construction (shared with `kitsoki web`) ───────
+					rt, err := buildSessionRuntime(runtimeConfig{
+						AppPath:           appPath,
+						Def:               def,
+						DBPath:            dbPath,
+						ExecMode:          execMode,
+						HarnessType:       harnessType,
+						ClaudeModel:       claudeModel,
+						AgentBackend:      resolveAgentBackend(agentBackend),
+						HarnessProfiles:   harnessProfiles,
+						DefaultProfile:    defaultProfile,
+						HarnessLadder:     webCfg.HarnessLadder.ToHostLadderConfig(),
+						AgentLaunchPolicy: agentLaunchPolicyFromConfig(webCfg),
+						RecordingPath:     recordingPath,
+						RecordPath:        recordPath,
+						HostCassette:      hostCassette,
+						PromptOverlay:     promptOverlay,
+						RoomEnterSink:     roomEnterSink,
+						Reloader:          reloader,
+						Mining:            webCfg.Mining,
+					})
+					if err != nil {
+						return err
+					}
+					defer rt.Close()
+
+					// Re-bind the locals the rest of runCmd's TUI / resume code uses.
+					s := rt.Store
+					jw := rt.Journal
+					jr := rt.JournalRead
+					jobStore := rt.JobStore
+					rawChatStore := rt.ChatStore
+					orch := rt.Orch
+
+					ctx := context.Background()
+					bugFilingNotice := bugFilingAuthStartupNotice(ctx, ticketRepo)
+					bugPrivacyNotice := bugPrivacyStartupNotice(webCfg, bugPrivacyRuntime, ticketRepo)
+					runAsUserNotice := runAsUserStartupNotice(webCfg, runtime.GOOS)
+
+					// ── Flag validation ────────────────────────────────────────────
+					if continueID != "" && !continueFlag {
+						return fmt.Errorf("--id requires --continue")
+					}
+					if continueKey != "" && !continueFlag {
+						return fmt.Errorf("--key requires --continue")
+					}
+					if continueID != "" && continueKey != "" {
+						return fmt.Errorf("--id and --key are mutually exclusive")
+					}
+
+					// ── Determine session ID (resume or fresh) ─────────────────────
+					var (
+						sid        app.SessionID
+						resumeMode bool
+						tuiOptions []tui.RootModelOption
+					)
+
+					if continueFlag {
+						// Explicit --continue path.
+						switch {
+						case continueID != "":
+							sid = app.SessionID(continueID)
+						case continueKey != "":
+							t, thread, kErr := parseExternalKey(continueKey)
+							if kErr != nil {
+								return kErr
+							}
+							sid, err = s.LookupByKey(ctx, t, thread)
+							if errors.Is(err, store.ErrSessionNotFound) {
+								return fmt.Errorf("no session bound to %s", continueKey)
+							}
+							if err != nil {
+								return fmt.Errorf("lookup key %s: %w", continueKey, err)
+							}
+						default:
+							// No selector — present numbered list picker.
+							summaries, lErr := s.ListSessions(ctx, def.App.ID, 0)
+							if lErr != nil {
+								return fmt.Errorf("list sessions: %w", lErr)
+							}
+							keys := make([][]store.ExternalKey, len(summaries))
+							for i, sum := range summaries {
+								keys[i], _ = s.ListExternalKeys(ctx, sum.ID)
+							}
+							sid, err = pickSession(summaries, keys, cmd.ErrOrStderr(), cmd.InOrStdin())
+							if errors.Is(err, errPickerAborted) {
+								return errTempFail
+							}
+							if err != nil {
+								return err
+							}
 						}
-						chosen, pErr := pickSession(activeSessions, keys, cmd.ErrOrStderr(), cmd.InOrStdin())
-						if errors.Is(pErr, errPickerAborted) {
+						resumeMode = true
+					}
+
+					// ── Acquire writer lock for resume ─────────────────────────────
+					// For a resumed session we wrap p.Run() inside WithWriterLock so
+					// the lock is held for the entire TUI lifetime (§5.3).
+					// For fresh sessions we create the session normally (no lock needed
+					// at this stage; individual turns take their own locks internally).
+					var (
+						initialView string
+					)
+
+					if resumeMode {
+						// Hard-error for typo'd --id: verify the session exists before
+						// attempting rehydration.  LoadHistory returns an empty slice
+						// (not an error) for unknown sessions, so we probe by listing.
+						// Use the explicit-ID path for the check: --key and picker paths
+						// already fail fast above if the session is not found.
+						if continueID != "" {
+							sum, getErr := s.GetSession(ctx, sid)
+							if errors.Is(getErr, store.ErrSessionNotFound) {
+								fmt.Fprintf(cmd.ErrOrStderr(), "error: no session with id %s\n", sid)
+								return fmt.Errorf("no session with id %s", sid)
+							}
+							if getErr != nil {
+								return fmt.Errorf("lookup session %s: %w", sid, getErr)
+							}
+							if sum.AppID != def.App.ID {
+								fmt.Fprintf(cmd.ErrOrStderr(),
+									"error: session %s belongs to app %q, not %q\n",
+									sid, sum.AppID, def.App.ID)
+								return fmt.Errorf("session app-id mismatch")
+							}
+						}
+
+						// Wire EventSink for resumed TUI session.
+						// Use "tui:<session_id>" as the virtual transport:thread key so
+						// each session gets a stable, unique, human-readable trace path.
+						// The EventSink JSONL is the only trace — no slog file.
+						tuiTracePath := store.DefaultTracePath(def.App.ID, "tui", string(sid))
+						var tuiMetaTracePath string
+						if mkErr := os.MkdirAll(filepath.Dir(tuiTracePath), 0o755); mkErr == nil {
+							if tuiSink, sinkErr := store.OpenJSONL(tuiTracePath); sinkErr == nil {
+								orch.SetEventSink(tuiSink)
+								defer func() { _ = tuiSink.Close() }()
+								tuiMetaTracePath = tuiTracePath
+							}
+							// Failure to open is non-fatal: events still land in SQLite.
+						}
+
+						// Rehydrate the session via AttachSession (journal read path §4.5).
+						bundle, attachErr := orch.AttachSession(sid)
+						if attachErr != nil {
+							return fmt.Errorf("attach session %s: %w", sid, attachErr)
+						}
+
+						// Reconcile the story into the (appended-to) trace: backfill a
+						// base snapshot for an older trace that lacks one, or record a
+						// diff if the on-disk story drifted since the prior session.
+						if err := orch.RecordEffectiveStory(ctx, sid); err != nil {
+							return fmt.Errorf("record effective story (resume): %w", err)
+						}
+
+						// Use the journal's last view.rendered as the initial TUI frame.
+						// Fall back to RenderState only when no journal entry exists yet
+						// (e.g. session created before journal writes were enabled).
+						if bundle.InitialView != "" {
+							initialView = bundle.InitialView
+						} else {
+							initialView, err = orch.RenderState(bundle.Journey.State, bundle.Journey.World)
+							if err != nil {
+								return fmt.Errorf("render resumed state: %w", err)
+							}
+						}
+
+						// Print pre-resume status header (§5.5).
+						clarifyNote := ""
+						if bundle.PendingClarify != nil {
+							clarifyNote = " (1 pending clarify rehydrated)"
+						}
+						fmt.Fprintf(cmd.ErrOrStderr(),
+							"Resuming %s (%s, turn %d, state %s): transcript: %d rows reconstructed%s\n",
+							sid, def.App.ID, bundle.Journey.Turn, bundle.Journey.State,
+							len(bundle.TranscriptEntries), clarifyNote,
+						)
+
+						tuiOptions = append(tuiOptions,
+							tui.WithResumedJourney(bundle.Journey.State, bundle.Journey.World, bundle.Journey.Turn),
+							// Pass an empty initial view to NewRootModel because we seed
+							// the transcript from journal entries below; passing the view
+							// here too would duplicate the last turn.
+							tui.WithResumedTranscript(bundle.TranscriptEntries),
+						)
+
+						// Build the TUI model now so we can pass it to tea.NewProgram
+						// before acquiring the lock.  Pass the initialView as the
+						// NewRootModel arg only when there are no transcript entries to
+						// replay (e.g. first-turn resume), so the TUI shows something.
+						effectiveInitialView := ""
+						if len(bundle.TranscriptEntries) == 0 {
+							effectiveInitialView = initialView
+						}
+						bugPrivacyResolver := bugPrivacyCheckerResolverFromConfig(webCfg, appPath, bugPrivacyRuntime)
+						tuiOptions = append([]tui.RootModelOption{
+							tui.WithJobStore(jobStore),
+							tui.WithChatStore(rawChatStore),
+							tui.WithJournalWriter(jw),
+							tui.WithJournalReader(jr),
+							tui.WithStorySelector(storyOptions, storyDiscoverErr, storySwitch),
+							tui.WithTraceHistory(func() (store.History, error) { return s.LoadHistory(sid) }),
+							tui.WithBugTicketRepo(ticketRepo),
+							tui.WithBugPrivacyChecker(bugPrivacyResolver(orchestrator.ProfileSelection{})),
+							tui.WithBugPrivacyCheckerResolver(bugPrivacyResolver),
+						}, tuiOptions...)
+						if projectStartupNotice != "" {
+							tuiOptions = append(tuiOptions, tui.WithStartupNotice(projectStartupNotice))
+						}
+						if bugFilingNotice != "" {
+							tuiOptions = append(tuiOptions, tui.WithStartupNotice(bugFilingNotice))
+						}
+						if runAsUserNotice != "" {
+							tuiOptions = append(tuiOptions, tui.WithStartupNotice(runAsUserNotice))
+						}
+						if bugPrivacyNotice != "" {
+							tuiOptions = append(tuiOptions, tui.WithStartupNotice(bugPrivacyNotice))
+						}
+						if tuiMetaTracePath != "" {
+							tuiOptions = append(tuiOptions, tui.WithExternalTraceFile(tuiMetaTracePath))
+						}
+						if metaController := tuiMetaController(def, rawChatStore, harnessType); metaController != nil {
+							tuiOptions = append(tuiOptions, tui.WithMetaController(metaController))
+						}
+						// Allocate the meta-mode stream sink up-front so the
+						// model can hold a reference; bind it to the program
+						// post-construction via sink.Attach(p) below.
+						metaSink := tui.NewMetaStreamSink()
+						tuiOptions = append(tuiOptions, tui.WithMetaStreamSink(metaSink))
+						// Allocate the operator prompter up-front so a forwarded agent
+						// question surfaces as an inline widget; bind it to the program
+						// post-construction via prompter.Attach(p) below.
+						operatorPrompter := tui.NewTUIOperatorPrompter()
+						tuiOptions = append(tuiOptions, tui.WithOperatorPrompter(operatorPrompter))
+						// Allocate the spatial prompter up-front so a request for a spatial
+						// ambient surfaces an OSC 8 link to a transient `/point` window;
+						// bind it post-construction via prompter.Attach(p) below.
+						spatialPrompter := tui.NewTUISpatialPrompter()
+						tuiOptions = append(tuiOptions, tui.WithSpatialPrompter(spatialPrompter))
+						rootModel := tui.NewRootModel(orch, sid, appPath, effectiveInitialView, tuiOptions...)
+						// Single-pane redesign: no alt-screen + no mouse capture.
+						// Output prints into the terminal's normal scrollback so
+						// the header scrolls off naturally as content grows
+						// (Claude Code's model). The View() output is just the
+						// bottom chrome — footer + prompt — which Bubble Tea
+						// re-renders in place at the cursor row.
+
+						// Suppress slog output during TUI operation to prevent log lines
+						// from mixing with the queue indicator on the same terminal line.
+						// Issue: agent runner emits slog records while TUI is rendering,
+						// causing "2026-05-29 ... INFO ... ⏳ running…" on same line.
+						oldLogger := slog.Default()
+						suppressedLogger := slog.New(slog.NewTextHandler(io.Discard, nil))
+						slog.SetDefault(suppressedLogger)
+						defer slog.SetDefault(oldLogger)
+
+						p := tea.NewProgram(rootModel)
+						metaSink.Attach(p)
+						defer metaSink.Detach()
+						operatorPrompter.Attach(p)
+						defer operatorPrompter.Detach()
+						spatialPrompter.Attach(p)
+						defer spatialPrompter.Detach()
+						roomEnterSink.Attach(p)
+						defer roomEnterSink.Detach()
+						detach := tui.AttachOrchestratorObserver(orch, p, sid)
+						defer detach()
+						restoreProcessOutput, captureErr := captureTUIProcessOutput(cmd, p)
+						if captureErr != nil {
+							return fmt.Errorf("isolate TUI process output: %w", captureErr)
+						}
+						defer restoreProcessOutput()
+
+						lockErr := s.WithWriterLock(ctx, sid, func() error {
+							_, runErr := p.Run()
+							return runErr
+						})
+						if errors.Is(lockErr, store.ErrSessionBusy) {
+							fmt.Fprintf(cmd.ErrOrStderr(),
+								"session busy: another process holds the writer lock for %s\n"+
+									"Either close that attached session or run:\n"+
+									"    kitsoki session detach --id %s\n"+
+									"to break a stale lock.\n",
+								sid, sid,
+							)
 							return errTempFail
 						}
-						if pErr != nil {
-							return pErr
-						}
-						sid = chosen
-						resumeMode = true
-					default:
-						// Empty line (Enter) or any other input → resume the
-						// most recent active session.
-						sid = sum.ID
-						resumeMode = true
+						return lockErr
 					}
-				}
-			}
 
-			// ── Acquire writer lock for resume ─────────────────────────────
-			// For a resumed session we wrap p.Run() inside WithWriterLock so
-			// the lock is held for the entire TUI lifetime (§5.3).
-			// For fresh sessions we create the session normally (no lock needed
-			// at this stage; individual turns take their own locks internally).
-			var (
-				initialView string
-			)
-
-			if resumeMode {
-				// Hard-error for typo'd --id: verify the session exists before
-				// attempting rehydration.  LoadHistory returns an empty slice
-				// (not an error) for unknown sessions, so we probe by listing.
-				// Use the explicit-ID path for the check: --key and picker paths
-				// already fail fast above if the session is not found.
-				if continueID != "" {
-					sum, getErr := s.GetSession(ctx, sid)
-					if errors.Is(getErr, store.ErrSessionNotFound) {
-						fmt.Fprintf(cmd.ErrOrStderr(), "error: no session with id %s\n", sid)
-						return fmt.Errorf("no session with id %s", sid)
-					}
-					if getErr != nil {
-						return fmt.Errorf("lookup session %s: %w", sid, getErr)
-					}
-					if sum.AppID != def.App.ID {
-						fmt.Fprintf(cmd.ErrOrStderr(),
-							"error: session %s belongs to app %q, not %q\n",
-							sid, sum.AppID, def.App.ID)
-						return fmt.Errorf("session app-id mismatch")
-					}
-				}
-
-				// Wire EventSink for resumed TUI session.
-				// Use "tui:<session_id>" as the virtual transport:thread key so
-				// each session gets a stable, unique, human-readable trace path.
-				// The EventSink JSONL is the only trace — no slog file.
-				tuiTracePath := store.DefaultTracePath(def.App.ID, "tui", string(sid))
-				var tuiMetaTracePath string
-				if mkErr := os.MkdirAll(filepath.Dir(tuiTracePath), 0o755); mkErr == nil {
-					if tuiSink, sinkErr := store.OpenJSONL(tuiTracePath); sinkErr == nil {
-						orch.SetEventSink(tuiSink)
-						defer func() { _ = tuiSink.Close() }()
-						tuiMetaTracePath = tuiTracePath
-					}
-					// Failure to open is non-fatal: events still land in SQLite.
-				}
-
-				// Rehydrate the session via AttachSession (journal read path §4.5).
-				bundle, attachErr := orch.AttachSession(sid)
-				if attachErr != nil {
-					return fmt.Errorf("attach session %s: %w", sid, attachErr)
-				}
-
-				// Reconcile the story into the (appended-to) trace: backfill a
-				// base snapshot for an older trace that lacks one, or record a
-				// diff if the on-disk story drifted since the prior session.
-				if err := orch.RecordEffectiveStory(ctx, sid); err != nil {
-					return fmt.Errorf("record effective story (resume): %w", err)
-				}
-
-				// Use the journal's last view.rendered as the initial TUI frame.
-				// Fall back to RenderState only when no journal entry exists yet
-				// (e.g. session created before journal writes were enabled).
-				if bundle.InitialView != "" {
-					initialView = bundle.InitialView
-				} else {
-					initialView, err = orch.RenderState(bundle.Journey.State, bundle.Journey.World)
+					// ── Fresh session path ─────────────────────────────────────────
+					sid, err = orch.NewSession(ctx)
 					if err != nil {
-						return fmt.Errorf("render resumed state: %w", err)
+						return fmt.Errorf("create session: %w", err)
 					}
-				}
 
-				// Print pre-resume status header (§5.5).
-				clarifyNote := ""
-				if bundle.PendingClarify != nil {
-					clarifyNote = " (1 pending clarify rehydrated)"
-				}
-				fmt.Fprintf(cmd.ErrOrStderr(),
-					"Resuming %s (%s, turn %d, state %s): transcript: %d rows reconstructed%s\n",
-					sid, def.App.ID, bundle.Journey.Turn, bundle.Journey.State,
-					len(bundle.TranscriptEntries), clarifyNote,
-				)
-
-				tuiOptions = append(tuiOptions,
-					tui.WithResumedJourney(bundle.Journey.State, bundle.Journey.World, bundle.Journey.Turn),
-					// Pass an empty initial view to NewRootModel because we seed
-					// the transcript from journal entries below; passing the view
-					// here too would duplicate the last turn.
-					tui.WithResumedTranscript(bundle.TranscriptEntries),
-				)
-
-				// Build the TUI model now so we can pass it to tea.NewProgram
-				// before acquiring the lock.  Pass the initialView as the
-				// NewRootModel arg only when there are no transcript entries to
-				// replay (e.g. first-turn resume), so the TUI shows something.
-				effectiveInitialView := ""
-				if len(bundle.TranscriptEntries) == 0 {
-					effectiveInitialView = initialView
-				}
-				tuiOptions = append([]tui.RootModelOption{
-					tui.WithJobStore(jobStore),
-					tui.WithChatStore(rawChatStore),
-					tui.WithJournalWriter(jw),
-					tui.WithTraceHistory(func() (store.History, error) { return s.LoadHistory(sid) }),
-				}, tuiOptions...)
-				if tuiMetaTracePath != "" {
-					tuiOptions = append(tuiOptions, tui.WithExternalTraceFile(tuiMetaTracePath))
-				}
-				// Allocate the meta-mode stream sink up-front so the
-				// model can hold a reference; bind it to the program
-				// post-construction via sink.Attach(p) below.
-				metaSink := tui.NewMetaStreamSink()
-				tuiOptions = append(tuiOptions, tui.WithMetaStreamSink(metaSink))
-				// Allocate the operator prompter up-front so a forwarded agent
-				// question surfaces as an inline widget; bind it to the program
-				// post-construction via prompter.Attach(p) below.
-				operatorPrompter := tui.NewTUIOperatorPrompter()
-				tuiOptions = append(tuiOptions, tui.WithOperatorPrompter(operatorPrompter))
-				// Allocate the spatial prompter up-front so a request for a spatial
-				// ambient surfaces an OSC 8 link to a transient `/point` window;
-				// bind it post-construction via prompter.Attach(p) below.
-				spatialPrompter := tui.NewTUISpatialPrompter()
-				tuiOptions = append(tuiOptions, tui.WithSpatialPrompter(spatialPrompter))
-				rootModel := tui.NewRootModel(orch, sid, appPath, effectiveInitialView, tuiOptions...)
-				// Single-pane redesign: no alt-screen + no mouse capture.
-				// Output prints into the terminal's normal scrollback so
-				// the header scrolls off naturally as content grows
-				// (Claude Code's model). The View() output is just the
-				// bottom chrome — footer + prompt — which Bubble Tea
-				// re-renders in place at the cursor row.
-
-				// Suppress slog output during TUI operation to prevent log lines
-				// from mixing with the queue indicator on the same terminal line.
-				// Issue: agent runner emits slog records while TUI is rendering,
-				// causing "2026-05-29 ... INFO ... ⏳ running…" on same line.
-				oldLogger := slog.Default()
-				suppressedLogger := slog.New(slog.NewTextHandler(io.Discard, nil))
-				slog.SetDefault(suppressedLogger)
-				defer slog.SetDefault(oldLogger)
-
-				p := tea.NewProgram(rootModel)
-				metaSink.Attach(p)
-				defer metaSink.Detach()
-				operatorPrompter.Attach(p)
-				defer operatorPrompter.Detach()
-				spatialPrompter.Attach(p)
-				defer spatialPrompter.Detach()
-				roomEnterSink.Attach(p)
-				defer roomEnterSink.Detach()
-				detach := tui.AttachOrchestratorObserver(orch, p, sid)
-				defer detach()
-
-				lockErr := s.WithWriterLock(ctx, sid, func() error {
-					_, runErr := p.Run()
-					return runErr
-				})
-				if errors.Is(lockErr, store.ErrSessionBusy) {
-					fmt.Fprintf(cmd.ErrOrStderr(),
-						"session busy: another process holds the writer lock for %s\n"+
-							"Either close that attached session or run:\n"+
-							"    kitsoki session detach --id %s\n"+
-							"to break a stale lock.\n",
-						sid, sid,
-					)
-					return errTempFail
-				}
-				return lockErr
-			}
-
-			// ── Fresh session path ─────────────────────────────────────────
-			sid, err = orch.NewSession(ctx)
-			if err != nil {
-				return fmt.Errorf("create session: %w", err)
-			}
-
-			// Wire EventSink for fresh TUI session.
-			// freshMetaTracePath is the path handed to the meta-mode agent.
-			var freshMetaTracePath string
-			{
-				freshTracePath := store.DefaultTracePath(def.App.ID, "tui", string(sid))
-				if mkErr := os.MkdirAll(filepath.Dir(freshTracePath), 0o755); mkErr == nil {
-					if freshSink, sinkErr := store.OpenJSONL(freshTracePath); sinkErr == nil {
-						orch.SetEventSink(freshSink)
-						defer func() { _ = freshSink.Close() }()
-						freshMetaTracePath = freshTracePath
+					// Wire EventSink for fresh TUI session.
+					// freshMetaTracePath is the path handed to the meta-mode agent.
+					var freshMetaTracePath string
+					{
+						freshTracePath := store.DefaultTracePath(def.App.ID, "tui", string(sid))
+						if mkErr := os.MkdirAll(filepath.Dir(freshTracePath), 0o755); mkErr == nil {
+							if freshSink, sinkErr := store.OpenJSONL(freshTracePath); sinkErr == nil {
+								orch.SetEventSink(freshSink)
+								defer func() { _ = freshSink.Close() }()
+								freshMetaTracePath = freshTracePath
+							}
+							// Failure to open is non-fatal: events still land in SQLite.
+						}
 					}
-					// Failure to open is non-fatal: events still land in SQLite.
+
+					// Record the effective story as the first event after the header,
+					// before any turn-0 on_enter events — so the trace self-describes
+					// the story it replays against (see store.StorySnapshot).
+					if err := orch.RecordEffectiveStory(ctx, sid); err != nil {
+						return fmt.Errorf("record effective story: %w", err)
+					}
+
+					// Fire the initial state's on_enter chain BEFORE rendering
+					// the first frame. Machine.Turn already runs on_enter for a
+					// transition that lands in a new state, but the initial
+					// state isn't entered via a transition — without this call
+					// any app whose root room has on_enter (e.g. dev-story's
+					// main view that invokes iface.ticket.list_mine to
+					// populate its ticket queue) renders the first frame
+					// against default-empty world keys, and the user sees a
+					// blank list until they navigate away and back.
+					if err := orch.RunInitialOnEnter(ctx, sid); err != nil {
+						return fmt.Errorf("run initial on_enter: %w", err)
+					}
+
+					// Reload the journey so InitialViewTyped renders against
+					// the post-on_enter world.
+					j, jerr := orch.LoadJourney(sid)
+					if jerr != nil {
+						return fmt.Errorf("load journey post-on_enter: %w", jerr)
+					}
+					w := j.World
+
+					// Get initial view. Capture the typed-view payload alongside
+					// the rendered fallback string so the TUI's initial-paint
+					// seam can route through AppendSystemTyped when the root
+					// state's view is a typed element-array — otherwise the
+					// pre-rendered ANSI would be re-routed through Glamour by
+					// AppendSystem, which strips the ESC bytes and surfaces
+					// literal `[1;…m` codes in the rendered output.
+					initialView, initialTypedView, initialTypedEnv, initialTypedRR, err := orch.InitialViewTyped(w)
+					if err != nil {
+						return fmt.Errorf("initial view: %w", err)
+					}
+
+					// --warp: bootstrap teleport. Applied BEFORE the TUI starts so
+					// the operator lands at the primed state on the first frame.
+					// Errors abort with a clear message (no half-warped session).
+					// The teleport's returned outcome carries the post-warp View,
+					// which we feed into the TUI's initialView so the first frame
+					// matches the post-warp state.
+					if warpBasisPath != "" {
+						resolved, basis, basisErr := tui.LoadWarpBasis(warpBasisPath, appPath)
+						if basisErr != nil {
+							return fmt.Errorf("--warp %q: %w", warpBasisPath, basisErr)
+						}
+						if basis.State == "" {
+							return fmt.Errorf("--warp %s: missing required `state:` field", resolved)
+						}
+						slots := make(map[string]any, len(basis.World))
+						for k, v := range basis.World {
+							slots[k] = v
+						}
+						out, warpErr := orch.Teleport(ctx, sid, inbox.TeleportTarget{
+							State: app.StatePath(basis.State),
+							Slots: slots,
+						})
+						if warpErr != nil {
+							return fmt.Errorf("--warp %s: teleport: %w", resolved, warpErr)
+						}
+						if out != nil && out.View != "" {
+							initialView = out.View
+							initialTypedView = out.TypedView
+							initialTypedEnv = out.RenderEnv
+							initialTypedRR = out.Renderer
+						}
+					}
+
+					// Launch TUI.
+					// WithMouseCellMotion enables scroll-wheel events on the
+					// transcript viewport. Copying text then requires Option
+					// (macOS) or Shift (Linux) held during selection to bypass
+					// mouse capture.
+					bugPrivacyResolver := bugPrivacyCheckerResolverFromConfig(webCfg, appPath, bugPrivacyRuntime)
+					tuiOptions = []tui.RootModelOption{
+						tui.WithJobStore(jobStore),
+						tui.WithChatStore(rawChatStore),
+						tui.WithJournalWriter(jw),
+						tui.WithJournalReader(jr),
+						tui.WithInitialTypedView(initialTypedView, initialTypedEnv, initialTypedRR),
+						tui.WithStorySelector(storyOptions, storyDiscoverErr, storySwitch),
+						tui.WithTraceHistory(func() (store.History, error) { return s.LoadHistory(sid) }),
+						tui.WithBugTicketRepo(ticketRepo),
+						tui.WithBugPrivacyChecker(bugPrivacyResolver(orchestrator.ProfileSelection{})),
+						tui.WithBugPrivacyCheckerResolver(bugPrivacyResolver),
+					}
+					if projectStartupNotice != "" {
+						tuiOptions = append(tuiOptions, tui.WithStartupNotice(projectStartupNotice))
+					}
+					if bugFilingNotice != "" {
+						tuiOptions = append(tuiOptions, tui.WithStartupNotice(bugFilingNotice))
+					}
+					if runAsUserNotice != "" {
+						tuiOptions = append(tuiOptions, tui.WithStartupNotice(runAsUserNotice))
+					}
+					if bugPrivacyNotice != "" {
+						tuiOptions = append(tuiOptions, tui.WithStartupNotice(bugPrivacyNotice))
+					}
+					if freshMetaTracePath != "" {
+						tuiOptions = append(tuiOptions, tui.WithExternalTraceFile(freshMetaTracePath))
+					}
+					if metaController := tuiMetaController(def, rawChatStore, harnessType); metaController != nil {
+						tuiOptions = append(tuiOptions, tui.WithMetaController(metaController))
+					}
+					// Allocate the meta-mode stream sink up-front so the
+					// model can hold a reference; bind it to the program
+					// post-construction via sink.Attach(p) below. This is
+					// what lets the user see live agent progress (tool calls,
+					// narration, retries) in the transcript while a meta-mode
+					// Send is in flight, instead of a buffered spinner.
+					metaSink := tui.NewMetaStreamSink()
+					tuiOptions = append(tuiOptions, tui.WithMetaStreamSink(metaSink))
+					// Allocate the operator prompter up-front so a forwarded agent
+					// question surfaces as an inline widget; bind it post-construction
+					// via prompter.Attach(p) below.
+					operatorPrompter := tui.NewTUIOperatorPrompter()
+					tuiOptions = append(tuiOptions, tui.WithOperatorPrompter(operatorPrompter))
+					// Allocate the spatial prompter up-front so a request for a spatial
+					// ambient surfaces an OSC 8 link to a transient `/point` window; bind
+					// it post-construction via prompter.Attach(p) below.
+					spatialPrompter := tui.NewTUISpatialPrompter()
+					tuiOptions = append(tuiOptions, tui.WithSpatialPrompter(spatialPrompter))
+					rootModel := tui.NewRootModel(orch, sid, appPath, initialView, tuiOptions...)
+					// Single-pane redesign: no alt-screen + no mouse capture.
+					// Output prints to normal scrollback so the terminal's
+					// native scroll (wheel / Cmd+↑) walks history; the prompt
+					// re-renders at the bottom in place.
+
+					// Suppress slog output during TUI operation to prevent log lines
+					// from mixing with the queue indicator on the same terminal line.
+					oldLogger := slog.Default()
+					suppressedLogger := slog.New(slog.NewTextHandler(io.Discard, nil))
+					slog.SetDefault(suppressedLogger)
+					defer slog.SetDefault(oldLogger)
+
+					p := tea.NewProgram(rootModel)
+					metaSink.Attach(p)
+					defer metaSink.Detach()
+					operatorPrompter.Attach(p)
+					defer operatorPrompter.Detach()
+					spatialPrompter.Attach(p)
+					defer spatialPrompter.Detach()
+					roomEnterSink.Attach(p)
+					defer roomEnterSink.Detach()
+					// Bridge orchestrator background-turn notifications into
+					// the Bubble Tea message loop so the main transcript
+					// re-renders when a background job's on_complete fires —
+					// without this, the inbox badge ticks but the transcript
+					// stays frozen until the next keystroke.
+					detach := tui.AttachOrchestratorObserver(orch, p, sid)
+					defer detach()
+					restoreProcessOutput, captureErr := captureTUIProcessOutput(cmd, p)
+					if captureErr != nil {
+						return fmt.Errorf("isolate TUI process output: %w", captureErr)
+					}
+					defer restoreProcessOutput()
+					_, err = p.Run()
+					if selectedStoryPath != "" && err == nil {
+						return nil
+					}
+					return err
 				}
-			}
-
-			// Record the effective story as the first event after the header,
-			// before any turn-0 on_enter events — so the trace self-describes
-			// the story it replays against (see store.StorySnapshot).
-			if err := orch.RecordEffectiveStory(ctx, sid); err != nil {
-				return fmt.Errorf("record effective story: %w", err)
-			}
-
-			// Fire the initial state's on_enter chain BEFORE rendering
-			// the first frame. Machine.Turn already runs on_enter for a
-			// transition that lands in a new state, but the initial
-			// state isn't entered via a transition — without this call
-			// any app whose root room has on_enter (e.g. dev-story's
-			// main view that invokes iface.ticket.list_mine to
-			// populate its ticket queue) renders the first frame
-			// against default-empty world keys, and the user sees a
-			// blank list until they navigate away and back.
-			if err := orch.RunInitialOnEnter(ctx, sid); err != nil {
-				return fmt.Errorf("run initial on_enter: %w", err)
-			}
-
-			// Reload the journey so InitialViewTyped renders against
-			// the post-on_enter world.
-			j, jerr := orch.LoadJourney(sid)
-			if jerr != nil {
-				return fmt.Errorf("load journey post-on_enter: %w", jerr)
-			}
-			w := j.World
-
-			// Get initial view. Capture the typed-view payload alongside
-			// the rendered fallback string so the TUI's initial-paint
-			// seam can route through AppendSystemTyped when the root
-			// state's view is a typed element-array — otherwise the
-			// pre-rendered ANSI would be re-routed through Glamour by
-			// AppendSystem, which strips the ESC bytes and surfaces
-			// literal `[1;…m` codes in the rendered output.
-			initialView, initialTypedView, initialTypedEnv, initialTypedRR, err := orch.InitialViewTyped(w)
-			if err != nil {
-				return fmt.Errorf("initial view: %w", err)
-			}
-
-			// --warp: bootstrap teleport. Applied BEFORE the TUI starts so
-			// the operator lands at the primed state on the first frame.
-			// Errors abort with a clear message (no half-warped session).
-			// The teleport's returned outcome carries the post-warp View,
-			// which we feed into the TUI's initialView so the first frame
-			// matches the post-warp state.
-			if warpBasisPath != "" {
-				resolved, basis, basisErr := tui.LoadWarpBasis(warpBasisPath, appPath)
-				if basisErr != nil {
-					return fmt.Errorf("--warp %q: %w", warpBasisPath, basisErr)
+				if err := runOnce(runArgs); err != nil {
+					return err
 				}
-				if basis.State == "" {
-					return fmt.Errorf("--warp %s: missing required `state:` field", resolved)
+				if selectedStoryPath == "" {
+					return nil
 				}
-				slots := make(map[string]any, len(basis.World))
-				for k, v := range basis.World {
-					slots[k] = v
-				}
-				out, warpErr := orch.Teleport(ctx, sid, inbox.TeleportTarget{
-					State: app.StatePath(basis.State),
-					Slots: slots,
-				})
-				if warpErr != nil {
-					return fmt.Errorf("--warp %s: teleport: %w", resolved, warpErr)
-				}
-				if out != nil && out.View != "" {
-					initialView = out.View
-					initialTypedView = out.TypedView
-					initialTypedEnv = out.RenderEnv
-					initialTypedRR = out.Renderer
-				}
+				runArgs = []string{selectedStoryPath}
+				continueFlag = false
+				continueID = ""
+				continueKey = ""
+				warpBasisPath = ""
 			}
-
-			// Launch TUI.
-			// WithMouseCellMotion enables scroll-wheel events on the
-			// transcript viewport. Copying text then requires Option
-			// (macOS) or Shift (Linux) held during selection to bypass
-			// mouse capture.
-			tuiOptions = []tui.RootModelOption{
-				tui.WithJobStore(jobStore),
-				tui.WithChatStore(rawChatStore),
-				tui.WithJournalWriter(jw),
-				tui.WithInitialTypedView(initialTypedView, initialTypedEnv, initialTypedRR),
-				tui.WithTraceHistory(func() (store.History, error) { return s.LoadHistory(sid) }),
-			}
-			if freshMetaTracePath != "" {
-				tuiOptions = append(tuiOptions, tui.WithExternalTraceFile(freshMetaTracePath))
-			}
-			// Allocate the meta-mode stream sink up-front so the
-			// model can hold a reference; bind it to the program
-			// post-construction via sink.Attach(p) below. This is
-			// what lets the user see live agent progress (tool calls,
-			// narration, retries) in the transcript while a meta-mode
-			// Send is in flight, instead of a buffered spinner.
-			metaSink := tui.NewMetaStreamSink()
-			tuiOptions = append(tuiOptions, tui.WithMetaStreamSink(metaSink))
-			// Allocate the operator prompter up-front so a forwarded agent
-			// question surfaces as an inline widget; bind it post-construction
-			// via prompter.Attach(p) below.
-			operatorPrompter := tui.NewTUIOperatorPrompter()
-			tuiOptions = append(tuiOptions, tui.WithOperatorPrompter(operatorPrompter))
-			// Allocate the spatial prompter up-front so a request for a spatial
-			// ambient surfaces an OSC 8 link to a transient `/point` window; bind
-			// it post-construction via prompter.Attach(p) below.
-			spatialPrompter := tui.NewTUISpatialPrompter()
-			tuiOptions = append(tuiOptions, tui.WithSpatialPrompter(spatialPrompter))
-			rootModel := tui.NewRootModel(orch, sid, appPath, initialView, tuiOptions...)
-			// Single-pane redesign: no alt-screen + no mouse capture.
-			// Output prints to normal scrollback so the terminal's
-			// native scroll (wheel / Cmd+↑) walks history; the prompt
-			// re-renders at the bottom in place.
-
-			// Suppress slog output during TUI operation to prevent log lines
-			// from mixing with the queue indicator on the same terminal line.
-			oldLogger := slog.Default()
-			suppressedLogger := slog.New(slog.NewTextHandler(io.Discard, nil))
-			slog.SetDefault(suppressedLogger)
-			defer slog.SetDefault(oldLogger)
-
-			p := tea.NewProgram(rootModel)
-			metaSink.Attach(p)
-			defer metaSink.Detach()
-			operatorPrompter.Attach(p)
-			defer operatorPrompter.Detach()
-			spatialPrompter.Attach(p)
-			defer spatialPrompter.Detach()
-			roomEnterSink.Attach(p)
-			defer roomEnterSink.Detach()
-			// Bridge orchestrator background-turn notifications into
-			// the Bubble Tea message loop so the main transcript
-			// re-renders when a background job's on_complete fires —
-			// without this, the inbox badge ticks but the transcript
-			// stays frozen until the next keystroke.
-			detach := tui.AttachOrchestratorObserver(orch, p, sid)
-			defer detach()
-			_, err = p.Run()
-			return err
 		},
 	}
 
 	cmd.Flags().StringVar(&harnessType, "harness", "",
-		"harness type: claude|live|replay|recording (default: claude if `claude` binary on PATH, else live if an Anthropic credential is found, else replay)")
+		"harness type: claude|live|replay|recording (default: selected from --agent, then claude on PATH, then Anthropic credential)")
 	cmd.Flags().StringVar(&claudeModel, "claude-model", "",
 		fmt.Sprintf("model passed to claude -p --model (default: %s); use 'opus' for higher quality at higher cost", harness.DefaultClaudeModel))
 	cmd.Flags().StringVar(&agentBackend, "agent", "",
@@ -867,6 +1000,8 @@ See 'kitsoki docs llm-guide' for the full operator guide.`,
 		"path to recording YAML file (required for --harness replay)")
 	cmd.Flags().StringVar(&recordPath, "record", "",
 		"path to output JSONL recording (for --harness recording)")
+	cmd.Flags().StringVar(&hostCassette, "host-cassette", "",
+		"host cassette backing host.* calls (deterministic, no LLM); combinable with --harness replay")
 	cmd.Flags().StringVar(&dbPath, "db", "",
 		"path to SQLite session database (default: $XDG_DATA_HOME/kitsoki/sessions.db)")
 
@@ -876,8 +1011,6 @@ See 'kitsoki docs llm-guide' for the full operator guide.`,
 		"resume a specific session by ID (requires --continue)")
 	cmd.Flags().StringVar(&continueKey, "key", "",
 		"resume a specific session by external key transport:thread (requires --continue)")
-	cmd.Flags().BoolVar(&noImplicitResume, "no-implicit-resume", false,
-		"always start a fresh session even if exactly one active session exists for this app")
 
 	cmd.Flags().StringVar(&promptOverlay, "prompt-overlay", "",
 		"project prompt-overlay dir: its prompts shadow the story's and may {% extends \"@story/…\" %} to specialize without forking (see docs/stories/prompts.md)")
@@ -885,8 +1018,40 @@ See 'kitsoki docs llm-guide' for the full operator guide.`,
 		`execution mode: "staged" (stop at each decision gate for the operator) or "one-shot" (auto-advance, LLM/default deciders)`)
 	cmd.Flags().StringVar(&warpBasisPath, "warp", "",
 		"path to a warp-basis YAML (state + world overrides); applied as the first action after session create. Same file the TUI's /warp file:<path> loads. See stories/oregon-trail/scenarios/ for examples.")
+	cmd.Flags().StringVar(&ticketRepo, "ticket-repo", "",
+		"file TUI /bug reports as GitHub issues on this owner/repo with uploaded evidence; requires GitHub auth from `kitsoki gh-agent login`, `kitsoki gh-agent token`, or GH_TOKEN/GITHUB_TOKEN. Default empty value writes local artifact tickets under .artifacts/issues/bugs instead")
 
 	return cmd
+}
+
+// captureTUIProcessOutput quarantines process-level stdout/stderr while Bubble
+// Tea owns the terminal. tea.NewProgram must be constructed first so its
+// renderer retains the real terminal writer; everything else is redirected to
+// a pipe and returned to the model as managed terminalOutputMsg values.
+func captureTUIProcessOutput(cmd *cobra.Command, program *tea.Program) (func(), error) {
+	capture, err := tui.NewTerminalOutputCapture()
+	if err != nil {
+		return nil, err
+	}
+
+	priorStdout, priorStderr := os.Stdout, os.Stderr
+	priorCmdOut, priorCmdErr := cmd.OutOrStdout(), cmd.ErrOrStderr()
+	capture.Attach(program)
+	os.Stdout = capture.Writer()
+	os.Stderr = capture.Writer()
+	cmd.SetOut(capture.Writer())
+	cmd.SetErr(capture.Writer())
+
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			os.Stdout = priorStdout
+			os.Stderr = priorStderr
+			cmd.SetOut(priorCmdOut)
+			cmd.SetErr(priorCmdErr)
+			_ = capture.Close()
+		})
+	}, nil
 }
 
 // setHarnessLogger wires the logger into harness implementations that support it.
@@ -900,19 +1065,65 @@ func setHarnessLogger(h harness.Harness, l *slog.Logger) {
 // autoSelectHarness returns the harness type to use when --harness is not explicitly set.
 //
 // Precedence:
-//  1. `claude` binary on PATH    → use ClaudeCLIHarness (no API key needed).
-//  2. Anthropic credential found → use LiveHarness (direct SDK). See
+//  1. non-Claude agent backend   → use the CLI routing harness for that backend.
+//  2. `claude` binary on PATH    → use ClaudeCLIHarness (no API key needed).
+//  3. Anthropic credential found → use LiveHarness (direct SDK). See
 //     resolveAnthropicCredential for the credential chain.
-//  3. Otherwise                  → use "replay" (requires --recording) or error.
-func autoSelectHarness() string {
+//  4. Otherwise                  → error; replay requires an explicit recording.
+func autoSelectHarness(agentBackend string) (string, error) {
+	agentBackend = strings.TrimSpace(agentBackend)
+	if agentBackend != "" && agentBackend != "claude" {
+		return "claude", nil
+	}
+	claude := false
 	if _, err := exec.LookPath("claude"); err == nil {
-		return "claude"
+		claude = true
 	}
-	if hasAnthropicCredential() {
-		return "live"
+	cred := hasAnthropicCredential()
+	if claude {
+		return "claude", nil
 	}
-	// Fall back to replay; the caller will error if --recording is not set.
-	return "replay"
+	if cred {
+		return "live", nil
+	}
+	return "", errors.New(strings.TrimSpace(firstRunProviderHint(false, false)))
+}
+
+// firstRunProviderHint returns an actionable message when NO agent provider is
+// configured (no `claude` binary on PATH and no Anthropic credential), so a
+// fresh `kitsoki` run does not silently fall back to the replay harness. Returns
+// "" when a provider exists. Change 0.4 (G1: "no silent replay fallback on
+// first run").
+func firstRunProviderHint(hasClaude, hasCred bool) string {
+	if hasClaude || hasCred {
+		return ""
+	}
+	return "kitsoki: no agent provider found for the default harness.\n" +
+		"To run kitsoki live, configure one of:\n" +
+		"  - install the `claude` CLI (Claude Code) so it is on your PATH, or\n" +
+		"  - set ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN (direct Anthropic SDK), or\n" +
+		"  - select another agent backend, such as `--agent codex` or KITSOKI_AGENT=codex, or\n" +
+		"  - select a harness profile in .kitsoki.local.yaml (see docs/guide/agents/harness-profiles.md).\n" +
+		"To run deterministic replay instead, pass --harness replay --recording <recording.yaml>.\n"
+}
+
+func bugFilingAuthStartupNotice(ctx context.Context, ticketRepo string) string {
+	repo := strings.TrimSpace(ticketRepo)
+	if repo == "" {
+		return ""
+	}
+	if host.GitHubWriteAuthStatus(ctx).Configured {
+		return ""
+	}
+	return fmt.Sprintf("(warning: GitHub bug filing is unavailable for %s because auth is missing. Filing bugs is critical; run `kitsoki gh-agent login` or set GH_TOKEN/GITHUB_TOKEN.)", repo)
+}
+
+func runAsUserStartupNotice(cfg webconfig.WebConfig, goos string) string {
+	warning := runAsUserSetupWarning(cfg, goos)
+	if warning == nil {
+		return ""
+	}
+	return fmt.Sprintf("(warning: %s. %s Command: `%s`.)", warning.Title, warning.Body, warning.ActionCommand)
 }
 
 // resolveAgentBackend resolves the agent backend selector with precedence
@@ -926,15 +1137,23 @@ func resolveAgentBackend(flag string) string {
 }
 
 // buildHarness constructs the appropriate harness based on the harness type flag.
-// If harnessType is empty, autoSelectHarness() is called to pick one.
+// If harnessType is empty, autoSelectHarness() is called to pick one from the
+// selected agent backend and available credentials.
 // claudeModel is the model name for the ClaudeCLIHarness; pass "" to use the default.
 func buildHarness(harnessType, claudeModel, agentBackend, recordingPath, recordPath string, def *app.AppDef) (harness.Harness, error) {
 	return buildHarnessWithActiveProfile(harnessType, claudeModel, agentBackend, recordingPath, recordPath, def, host.ActiveProfile{})
 }
 
 func buildHarnessWithActiveProfile(harnessType, claudeModel, agentBackend, recordingPath, recordPath string, def *app.AppDef, activeProfile host.ActiveProfile) (harness.Harness, error) {
+	if activeProfile.Provider.Model != "" {
+		claudeModel = activeProfile.Provider.Model
+	}
 	if harnessType == "" {
-		harnessType = autoSelectHarness()
+		var err error
+		harnessType, err = autoSelectHarness(agentBackend)
+		if err != nil {
+			return nil, err
+		}
 	}
 	withProfile := func(ctx context.Context) context.Context {
 		return host.WithActiveProfile(ctx, activeProfile)
@@ -982,6 +1201,24 @@ func buildHarnessWithActiveProfile(harnessType, claudeModel, agentBackend, recor
 				ClaudeBin:     codexBin,
 				Exec:          codexExec,
 				ValidatorTool: host.CodexValidatorToolName("kitsoki-validator"),
+			})
+		}
+		if agentBackend == "agy" {
+			agyBin, err := exec.LookPath("agy")
+			if env := os.Getenv(host.AgyBinEnv); env != "" {
+				agyBin, err = env, nil
+			}
+			if err != nil {
+				return nil, fmt.Errorf("--agent agy: %w", host.ErrAgentUnavailable)
+			}
+			agyExec := func(ctx context.Context, bin string, args []string, stdin, workingDir string) (string, error) {
+				return host.RunClaudeOneShotForHarness(host.WithAgentBackendNamed(withProfile(ctx), "agy"), bin, args, stdin, workingDir)
+			}
+			return harness.NewClaudeCLI(def, harness.ClaudeCLIConfig{
+				Model:         claudeModel,
+				ClaudeBin:     agyBin,
+				Exec:          agyExec,
+				ValidatorTool: "mcp__kitsoki-validator__submit",
 			})
 		}
 		claudeExec := func(ctx context.Context, bin string, args []string, stdin, workingDir string) (string, error) {
@@ -1224,8 +1461,10 @@ func testCmd() *cobra.Command {
 		Use:   "test",
 		Short: "Run Mode 1 and Mode 2 tests for an app",
 		Long: `Test sub-commands:
-  kitsoki test flows   <app.yaml>   — Mode 2: deterministic flow tests (no LLM)
-  kitsoki test intents <app.yaml>   — Mode 1: intent pass-rate tests
+  kitsoki test flows         <app.yaml>   — Mode 2: deterministic flow tests (no LLM)
+  kitsoki test flow-coverage <app.yaml>   — static flow fixture coverage ledger
+  kitsoki test intents       <app.yaml>   — Mode 1: intent pass-rate tests (harness/recording, may use an LLM)
+  kitsoki test routing       <app.yaml>   — Mode 0: no-LLM routing-tier fixture tests (semroute/deterministic only)
 
 Fixture layout (defaults):
   <app-dir>/flows/*.yaml      — flow fixtures (run under 'test flows')
@@ -1235,7 +1474,9 @@ Fixture layout (defaults):
 See 'kitsoki docs llm-guide' §7 for fixture shape.`,
 	}
 	cmd.AddCommand(testFlowsCmd())
+	cmd.AddCommand(testFlowCoverageCmd())
 	cmd.AddCommand(testIntentsCmd())
+	cmd.AddCommand(testRoutingCmd())
 	return cmd
 }
 
@@ -1250,6 +1491,7 @@ See 'kitsoki docs llm-guide' §7 for fixture shape.`,
 //	echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{...}}' | kitsoki serve cloak.yaml
 func serveCmd() *cobra.Command {
 	var dbPath string
+	var kitsDir string
 	cmd := &cobra.Command{
 		Use:   "serve <app.yaml>",
 		Short: "Start the MCP server on stdio for an app",
@@ -1301,8 +1543,13 @@ See 'kitsoki docs llm-guide' for the full operator guide.`,
 				return fmt.Errorf("build machine for %q: %w", def.App.ID, err)
 			}
 
-			// Construct the MCP server.
-			srv := kitsokimcp.NewServer(m, s, def)
+			// Construct the MCP server (kit_call is enabled when --kits-dir
+			// discovers one or more installed kits, S3b).
+			kits, err := buildKitDispatcher(kitsDir)
+			if err != nil {
+				return fmt.Errorf("load installed kits from %q: %w", kitsDir, err)
+			}
+			srv := kitsokimcp.NewServer(m, s, def, mcpKitOption(kits))
 
 			// Run until stdin closes or signal received.
 			ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
@@ -1313,6 +1560,7 @@ See 'kitsoki docs llm-guide' for the full operator guide.`,
 		},
 	}
 	cmd.Flags().StringVar(&dbPath, "db", "", "path to the SQLite session database (default: in-memory)")
+	cmd.Flags().StringVar(&kitsDir, "kits-dir", "", "directory of installed kit.yaml roots (enables the kit_call MCP tool, S3b)")
 	return cmd
 }
 
@@ -1328,9 +1576,12 @@ See 'kitsoki docs llm-guide' for the full operator guide.`,
 //   - CSI ?1049 l — leave alternate screen buffer
 //
 // Written to stderr so it doesn't interleave with structured stdout output
-// (e.g. JSON traces piped to a file). A bare terminal will render the
-// sequence; a pipe (no terminal) will silently absorb it.
+// (e.g. JSON traces piped to a file). When stderr is not a terminal, skip the
+// sequence so captured startup errors stay readable.
 func restoreTerminal() {
+	if !isatty(os.Stderr) {
+		return
+	}
 	const seq = "\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1049l"
 	_, _ = fmt.Fprint(os.Stderr, seq)
 }

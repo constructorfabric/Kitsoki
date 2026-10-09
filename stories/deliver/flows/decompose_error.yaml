@@ -10,6 +10,7 @@ initial_state: configure
 initial_world:
   base_branch: main
   main_worktree_path: "."
+  decomposition_path: ".artifacts/deliver/decompose-error.yaml"
 
 host_handlers:
   host.agent.task:

@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"kitsoki/internal/host"
@@ -31,6 +32,9 @@ import (
 // renderer (node) but incurs NO LLM cost, so it's safe under `make test` where
 // slidey is present and skips cleanly where it isn't.
 func TestSlideyRefineChangesHandleAndBytes(t *testing.T) {
+	if testing.Short() {
+		t.Skip("real slidey render e2e is skipped under -short")
+	}
 	if !slideyAvailable() {
 		t.Skip("slidey not on PATH and SLIDEY_HOME unset — skipping real-render e2e")
 	}
@@ -51,11 +55,27 @@ func TestSlideyRefineChangesHandleAndBytes(t *testing.T) {
 	}
 	artifactsRoot := filepath.Join(work, "artifacts")
 
+	// slidey's `bundle` step synthesizes narration audio for every deck scene
+	// via a live edge-tts network call (see slidey/web/build-narration-audio.mjs)
+	// with NO caching — two bundles of the byte-identical spec each get a fresh
+	// TTS response, and the neural voice service is not bit-reproducible across
+	// calls. That made this test flake on the "unchanged spec -> unchanged
+	// handle" sanity check for a reason that has nothing to do with the
+	// content-addressing this test exists to guard: the rendered HTML really
+	// did change, but only because of nondeterministic narration audio, not a
+	// hashing bug. Narration synthesis is documented as additive/best-effort in
+	// slidey (it degrades to a silent fallback when edge-tts isn't resolvable),
+	// so scoping this test's PATH to exclude edge-tts exercises the exact same
+	// deterministic fallback path without touching the sister repo, and keeps
+	// this test hermetic (no live network TTS calls, per repo policy of never
+	// incurring real external-service cost/nondeterminism in automated tests).
+	ctx := ctxWithoutEdgeTTS(t)
+
 	// renderAndEmit runs the real render → emit chain the rendering room runs,
 	// returning the content-addressed handle id and the rendered html bytes.
 	renderAndEmit := func(label string) (string, []byte) {
 		t.Helper()
-		rres, rerr := host.SlideyRenderHandler(context.Background(), map[string]any{
+		rres, rerr := host.SlideyRenderHandler(ctx, map[string]any{
 			"spec_path": specPath,
 			"format":    "html",
 		})
@@ -152,6 +172,33 @@ func editCardLabel(t *testing.T, path, newLabel string) {
 	if err := os.WriteFile(path, out, 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// ctxWithoutEdgeTTS returns a context whose host.cliExec PATH override omits
+// the directory containing the `edge-tts` binary, if any is resolvable. This
+// makes slidey's narration-audio synthesis (which shells out to `edge-tts`)
+// resolve as unavailable, so slidey falls back to its documented silent/no-
+// narration path deterministically instead of making a live, non-reproducible
+// TTS network call. When edge-tts isn't installed at all, the original PATH
+// is used unchanged (nothing to strip).
+func ctxWithoutEdgeTTS(t *testing.T) context.Context {
+	t.Helper()
+	ctx := context.Background()
+	ttsPath, err := exec.LookPath("edge-tts")
+	if err != nil {
+		return ctx
+	}
+	excludeDir := filepath.Dir(ttsPath)
+	origPath := os.Getenv("PATH")
+	var kept []string
+	for _, dir := range filepath.SplitList(origPath) {
+		if dir == excludeDir {
+			continue
+		}
+		kept = append(kept, dir)
+	}
+	newPath := strings.Join(kept, string(os.PathListSeparator))
+	return host.WithCLIExecEnv(ctx, map[string]string{"PATH": newPath})
 }
 
 func slideyAvailable() bool {

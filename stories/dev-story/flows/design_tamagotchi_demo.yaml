@@ -14,7 +14,23 @@ initial_state: design
 initial_world:
   judge_mode: "human"
 
+starlark_inspect_cassette: ../cassettes/design_tamagotchi.inspect.yaml
+
 host_handlers:
+  host.run:
+    by_call:
+      roadmap_ledger_proposal_published:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            ok: true
+            ledger: ".artifacts/roadmap/progress.yaml"
+            event_id: "evt-tamagotchi"
+            item_id: "proposal/tamagotchi-pet-ui"
+            changed: true
+  host.fs.writable_dir:
+    data: { path: "docs/proposals", used_fallback: false }
   host.ide.open_file:
     data: { ok: true, connected: true }
   host.agent.decide:
@@ -58,36 +74,29 @@ host_handlers:
         confidence:          0.88
         needs_clarification: false
         follow_up_questions: []
-  host.run:
+  host.starlark.run:
     by_call:
-      name_slug:
-        data:
-          ok: true
-          exit_code: 0
-          stdout: '{"slug":"tamagotchi-pet-ui","workspace":"docs/proposals/.workspace/tamagotchi-pet-ui"}'
-          stdout_json: { slug: "tamagotchi-pet-ui", workspace: "docs/proposals/.workspace/tamagotchi-pet-ui" }
-      uniquify:
-        data:
-          ok: true
-          exit_code: 0
-          stdout: '{"slug":"tamagotchi-pet-ui","workspace":"docs/proposals/.workspace/tamagotchi-pet-ui"}'
-          stdout_json: { slug: "tamagotchi-pet-ui", workspace: "docs/proposals/.workspace/tamagotchi-pet-ui" }
       publish:
         data:
+          design_file: "docs/proposals/tamagotchi-pet-ui.md"
+          ticket_id: "F-2026-06-11T120000Z-tamagotchi-pet-ui"
+          ticket_path: "issues/features/F-2026-06-11T120000Z-tamagotchi-pet-ui.md"
+          ticket_title: "Tamagotchi pet UI"
+      roadmap_ledger_proposal_published:
+        data:
           ok: true
           exit_code: 0
-          stdout: '{"design_file":"docs/proposals/tamagotchi-pet-ui.md","ticket_id":"F-2026-06-11T120000Z-tamagotchi-pet-ui","ticket_path":"issues/features/F-2026-06-11T120000Z-tamagotchi-pet-ui.md","ticket_title":"Tamagotchi pet UI"}'
+          stdout: '{"ok":true,"ledger":".artifacts/roadmap/progress.yaml","event_id":"evt-tamagotchi","item_id":"proposal/tamagotchi-pet-ui","changed":true}'
           stdout_json:
-            design_file: "docs/proposals/tamagotchi-pet-ui.md"
-            ticket_id:     "F-2026-06-11T120000Z-tamagotchi-pet-ui"
-            ticket_path:   "issues/features/F-2026-06-11T120000Z-tamagotchi-pet-ui.md"
-            ticket_title:  "Tamagotchi pet UI"
+            ok: true
+            ledger: ".artifacts/roadmap/progress.yaml"
+            event_id: "evt-tamagotchi"
+            item_id: "proposal/tamagotchi-pet-ui"
+            changed: true
 
 turns:
   - intent: { name: discuss, slots: { message: "I want to add tamagotchi-style virtual pets to the session UI" } }
     expect_state: design_search
-    expect_world:
-      design_slug: "tamagotchi-pet-ui"
 
   - intent: { name: confirm, slots: {} }
     expect_state: design_refine

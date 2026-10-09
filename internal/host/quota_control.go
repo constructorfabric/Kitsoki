@@ -402,10 +402,10 @@ func (l *quotaLimiter) withState(fn func(*quotaStateFile) error) error {
 		return fmt.Errorf("provider quota: open lock %s: %w", lockPath, err)
 	}
 	defer lock.Close()
-	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
+	if err := flockExclusive(lock); err != nil {
 		return fmt.Errorf("provider quota: lock %s: %w", lockPath, err)
 	}
-	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+	defer flockRelease(lock)
 
 	st, err := readQuotaState(path)
 	if err != nil {

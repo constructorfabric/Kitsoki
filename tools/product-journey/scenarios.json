@@ -2,123 +2,1358 @@
   "scenarios": [
     {
       "id": "product-discovery",
+      "tier": "curated",
       "label": "Product discovery walkthrough",
       "stage": "discover_product",
-      "task": "Walk the Kitsoki product overview story end to end and explain what Kitsoki does, who it is for, and what the first credible action should be.",
+      "task": "Start as a skeptical new visitor who has heard Kitsoki can drive agentic software work. Figure out what Kitsoki actually does, whether it fits the assigned repository, and what concrete action you would try first.",
+      "natural_utterances": [
+        {
+          "text": "i keep hearing kitsoki can run these workflows, but what would i actually use first on this repo?",
+          "source": "curated-corpus",
+          "source_ref": "product-discovery-visitor"
+        },
+        {
+          "text": "show me the shortest path from landing page to a real bugfix or design run",
+          "source": "curated-corpus",
+          "source_ref": "product-discovery-first-action"
+        },
+        {
+          "text": "i am not sure if this is a product, a framework, or just internal tooling - make that clear",
+          "source": "curated-corpus",
+          "source_ref": "product-discovery-category"
+        }
+      ],
       "primary_story": "stories/product-site/app.yaml",
-      "required_mcp": ["session.open", "session.inspect", "render.tui"],
+      "required_mcp": [
+        "session.open",
+        "session.inspect",
+        "render.tui"
+      ],
       "evidence": [
         "rendered_tui_frame",
         "session_trace",
         "navigation_trace",
         "checkpoint_rating",
-        "key_interaction_video"
+        "key_interaction_video",
+        "png-sequence"
       ],
       "success_criteria": [
-        "Persona can identify the product category without private repo context.",
-        "Persona can find a documented next action.",
-        "Broken links, stale media, or confusing claims are filed as product findings."
-      ]
+        "Persona can state the product category and target user without relying on private repo context.",
+        "Persona can point to a first action that is concrete enough to try in the assigned repository.",
+        "Persona can identify at least one trust signal or missing proof that affects whether they would continue.",
+        "Broken links, stale media, ambiguous claims, or unclear setup paths are recorded as product findings."
+      ],
+      "case_variants": [
+        {
+          "id": "cold-visitor",
+          "utterance": "i have never seen kitsoki before - tell me whether this is worth trying today",
+          "setup": "Start from the product overview with no prior context and avoid repo archaeology until the page gives a concrete next step.",
+          "success_focus": "The product category, target user, and first credible action are visible from the walkthrough."
+        },
+        {
+          "id": "returning-skeptic",
+          "utterance": "i saw a demo last week, but i need to know what proof exists now before i spend time on it",
+          "setup": "Look for current demo evidence, proof artifacts, and wording that distinguishes planned capability from shipped behavior.",
+          "success_focus": "Claims are backed by accessible proof or filed as confusing product gaps."
+        },
+        {
+          "id": "repo-fit-check",
+          "utterance": "would this help with my assigned repo, or is it only tuned for kitsoki itself?",
+          "setup": "Interpret the product story through the assigned repository's stack and contribution model.",
+          "success_focus": "The user can decide whether onboarding, bugfix, design, or product-bug filing is the right next journey."
+        }
+      ],
+      "transports": {
+        "allowed": [
+          "tui",
+          "web"
+        ],
+        "required": [
+          "tui"
+        ],
+        "overrides": {
+          "web": {
+            "required_mcp": [
+              "session.open",
+              "session.inspect",
+              "visual.open",
+              "visual.observe"
+            ],
+            "evidence": [
+              "browser_screenshot",
+              "session_trace",
+              "navigation_trace",
+              "checkpoint_rating",
+              "key_interaction_video"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "tui-slash-commands",
+      "tier": "curated",
+      "label": "TUI slash command discovery",
+      "stage": "follow_tutorial",
+      "task": "Use the Kitsoki TUI the way a Codex or Claude Code user would naturally try it: type / at the prompt, filter the command list, accept the visible primary suggestion, and verify the completed command actually executes.",
+      "natural_utterances": [
+        {
+          "text": "does slash work here like it does in codex or claude code?",
+          "source": "curated-corpus",
+          "source_ref": "slash-command-transfer"
+        },
+        {
+          "text": "i typed / but i cannot tell what tab is going to accept",
+          "source": "curated-corpus",
+          "source_ref": "slash-command-tab-target"
+        },
+        {
+          "text": "filter this down to the command i want and prove enter ran the completed thing",
+          "source": "curated-corpus",
+          "source_ref": "slash-command-execution"
+        }
+      ],
+      "primary_story": "testdata/apps/cloak/app.yaml",
+      "required_mcp": [
+        "session.open",
+        "session.inspect",
+        "render.tui"
+      ],
+      "evidence": [
+        "rendered_tui_frame",
+        "session_trace",
+        "navigation_trace",
+        "checkpoint_rating",
+        "key_interaction_video",
+        "png-sequence"
+      ],
+      "success_criteria": [
+        "Typing / at the beginning of the TUI prompt shows available slash commands without requiring Kitsoki-specific docs.",
+        "Typing letters after / filters the visible command list to likely matches.",
+        "The primary suggestion is visually marked as the Tab completion target.",
+        "Pressing Tab accepts the primary suggestion and Enter executes the completed command.",
+        "The failure mode is understandable when no command matches or the prompt cursor is not at a slash-command position."
+      ],
+      "case_variants": [
+        {
+          "id": "first-slash",
+          "utterance": "i typed slash at the beginning of the prompt; what commands can i run?",
+          "setup": "Begin from an idle TUI prompt with no command text entered.",
+          "success_focus": "The menu appears, is readable, and exposes the primary completion target."
+        },
+        {
+          "id": "filter-and-tab",
+          "utterance": "i know the command starts with val - filter the menu and tab-complete it",
+          "setup": "Type a partial command after / and capture the filtered list before pressing Tab.",
+          "success_focus": "Filtering narrows the list and Tab inserts the exact highlighted command."
+        },
+        {
+          "id": "noisy-transfer",
+          "utterance": "i am trying the slash commands i use elsewhere, so make the error state obvious if this one is not supported",
+          "setup": "Try a plausible external slash command that Kitsoki may not support.",
+          "success_focus": "Unsupported or mismatched commands fail with visible, non-destructive guidance."
+        }
+      ],
+      "transports": {
+        "allowed": [
+          "tui"
+        ],
+        "required": [
+          "tui"
+        ]
+      }
     },
     {
       "id": "project-onboarding",
+      "tier": "curated",
       "label": "Project onboarding",
       "stage": "onboard_project",
-      "task": "Use the documented Kitsoki onboarding path to configure the assigned repository and explain how bugfix/design work should be launched.",
+      "task": "Onboard a repository that is fresh on this machine, where setup may be incomplete and the user does not yet know which Kitsoki workflow to start. Produce a concrete project profile, smoke result, and next-story recommendation.",
+      "natural_utterances": [
+        {
+          "text": "this repo is fresh on this machine - i want make install to run cleanly",
+          "source": "session-transcript",
+          "source_ref": "mined-scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0000"
+        },
+        {
+          "text": "so make install will work now?",
+          "source": "session-transcript",
+          "source_ref": "mined-scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0001"
+        },
+        {
+          "text": "if make install fails, give a message that maybe make setup is needed",
+          "source": "session-transcript",
+          "source_ref": "mined-scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0002"
+        }
+      ],
       "primary_story": "stories/dev-story/app.yaml",
-      "required_mcp": ["session.open", "session.inspect", "render.tui", "visual.observe"],
+      "required_mcp": [
+        "session.open",
+        "session.inspect",
+        "render.tui",
+        "visual.observe"
+      ],
       "evidence": [
         "session_trace",
         "rendered_tui_frame",
         "generated_config_diff",
         "onboarding_smoke_result",
-        "key_interaction_video"
+        "key_interaction_video",
+        "flow-fixture"
       ],
       "success_criteria": [
-        "Generated project config names real commands and relevant project files.",
-        "Persona can state the next Kitsoki command or room to use.",
-        "No silent operator-question defaulting occurs."
-      ]
+        "Generated project config names real commands, package managers, and project files from the assigned repository.",
+        "Setup or smoke output distinguishes missing prerequisites from product bugs.",
+        "Persona can state the next Kitsoki command, story, or stop point to use for bugfix/design work.",
+        "No silent operator-question defaulting occurs; missing human decisions become visible blockers."
+      ],
+      "case_variants": [
+        {
+          "id": "fresh-machine",
+          "utterance": "this repo is fresh here; make the first install path obvious",
+          "setup": "Assume dependencies may be missing and the user has not run setup before.",
+          "success_focus": "The profile identifies setup commands, install commands, and a deterministic smoke check."
+        },
+        {
+          "id": "failed-install-hint",
+          "utterance": "make install failed; tell me whether i should run setup or file a product bug",
+          "setup": "Start after a failed install or dependency check.",
+          "success_focus": "The outcome classifies prerequisite failure versus Kitsoki failure without hand-waving."
+        },
+        {
+          "id": "next-workflow",
+          "utterance": "now that the repo is onboarded, should i use bugfix, prd, or something else?",
+          "setup": "Assume onboarding produced enough repository facts to choose a next journey.",
+          "success_focus": "The next story recommendation is grounded in repository state and persona risk focus."
+        }
+      ],
+      "transports": {
+        "allowed": [
+          "tui",
+          "web",
+          "vscode",
+          "cli"
+        ],
+        "required": [
+          "tui"
+        ],
+        "overrides": {
+          "cli": {
+            "required_mcp": [
+              "session.open",
+              "session.inspect",
+              "session.trace"
+            ],
+            "evidence": [
+              "session_trace",
+              "command_output",
+              "generated_config_diff",
+              "onboarding_smoke_result",
+              "flow-fixture"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "gears-first-run-web-demo",
+      "tier": "curated",
+      "label": "Gears Rust first-run web demo",
+      "stage": "onboard_project",
+      "task": "Record a first-time web user experience for Kitsoki on constructorfabric/gears-rust: configure the provider, onboard the project, create and open PRD artifacts, inspect open bug tickets, fix one bug, and end on the real pull request link.",
+      "natural_utterances": [
+        {
+          "text": "show me the full first run in the web ui on constructorfabric/gears-rust",
+          "source": "curated-corpus",
+          "source_ref": "gears-first-run-full-web"
+        },
+        {
+          "text": "set up my provider, onboard this repo, create a PRD, then fix one open bug and show me the PR",
+          "source": "curated-corpus",
+          "source_ref": "gears-first-run-provider-prd-bugfix"
+        },
+        {
+          "text": "the replay can be cassette driven, but the cassette must come from a real run and link the real artifacts",
+          "source": "curated-corpus",
+          "source_ref": "gears-first-run-real-run-cassette-contract"
+        }
+      ],
+      "primary_story": ".kitsoki/stories/gears-rust-dev/app.yaml",
+      "required_mcp": [
+        "session.open",
+        "session.inspect",
+        "session.trace",
+        "visual.observe"
+      ],
+      "evidence": [
+        "session_trace",
+        "trace-replay",
+        "trace-derived-flow",
+        "host-cassette",
+        "provider_config_receipt",
+        "project_profile",
+        "prd_artifact",
+        "artifact_open_evidence",
+        "github_issue_url",
+        "candidate_diff",
+        "oracle_result",
+        "full_suite_result",
+        "pull_request_url",
+        "key_interaction_video",
+        "slidey_deck"
+      ],
+      "success_criteria": [
+        "The replay flow and host cassette are generated from a recorded real run trace, not hand-authored synthetic fixture content.",
+        "The evidence manifest links the originating trace, generated flow, generated host cassette, video, deck, and every real artifact opened in the UI.",
+        "Provider setup reaches a usable configured state or records a visible blocker before any project work begins.",
+        "Project onboarding produces or opens the Gears Rust project profile under .kitsoki and names real repository commands and files.",
+        "The PRD chapter shows the user driving the PRD flow and opening the produced PRD artifact in the UI.",
+        "The bugfix chapter starts from a live open bug issue in https://github.com/constructorfabric/gears-rust/issues and records the selected issue URL.",
+        "The fix chapter links candidate diff evidence, targeted oracle or test output, full-suite output or classified blocker, and the final pull request URL.",
+        "The Slidey deck embeds only videos derived from the accepted real-run cassettes and its narration calls out the real artifact links."
+      ],
+      "case_variants": [
+        {
+          "id": "provider-setup",
+          "utterance": "start from a blank web ui and configure the provider before doing project work",
+          "setup": "Use a fresh profile or capsule where provider state is absent or explicitly reset.",
+          "success_focus": "The video shows the provider setup path and the evidence manifest records the provider receipt or blocker."
+        },
+        {
+          "id": "project-onboarding-prd",
+          "utterance": "onboard constructorfabric/gears-rust, create a PRD, and open the artifact",
+          "setup": "Run against the Gears Rust checkout with .kitsoki profile generation enabled.",
+          "success_focus": "The project profile and PRD artifact are real files linked from the deck and visible in the web UI."
+        },
+        {
+          "id": "github-bugfix-pr",
+          "utterance": "pick one open bug in constructorfabric/gears-rust, fix it, and show the PR link",
+          "setup": "Fetch the live GitHub bug queue and select an issue with enough reproduction detail to drive the bugfix story.",
+          "success_focus": "The issue URL, fix evidence, and pull request URL are all linked and traceable to the recorded run."
+        }
+      ],
+      "transports": {
+        "allowed": [
+          "web"
+        ],
+        "required": [
+          "web"
+        ],
+        "overrides": {
+          "web": {
+            "required_mcp": [
+              "session.open",
+              "session.inspect",
+              "session.trace",
+              "visual.open",
+              "visual.observe"
+            ],
+            "evidence": [
+              "browser_screenshot",
+              "session_trace",
+              "trace-replay",
+              "trace-derived-flow",
+              "host-cassette",
+              "provider_config_receipt",
+              "project_profile",
+              "prd_artifact",
+              "github_issue_url",
+              "candidate_diff",
+              "oracle_result",
+              "full_suite_result",
+              "pull_request_url",
+              "key_interaction_video",
+              "slidey_deck"
+            ]
+          }
+        }
+      }
     },
     {
       "id": "bugfix",
+      "tier": "curated",
       "label": "Bug fix with hidden oracle",
       "stage": "fix_bug",
-      "task": "Start from public issue/repro material, drive Kitsoki's bugfix workflow, and score the resulting worktree with the project's deterministic oracle.",
+      "task": "Start from messy public issue or local repro material, select one fixable bug, drive Kitsoki's bugfix workflow, and score the resulting worktree with deterministic oracle evidence instead of prose confidence.",
+      "natural_utterances": [
+        {
+          "text": "resolve the red gate test that's already written but not committed",
+          "source": "session-transcript",
+          "source_ref": "mined-scn-1b4ace86-f192-43b0-ab86-16142fec0079-0001"
+        },
+        {
+          "text": "file the bug, then land the fixes",
+          "source": "session-transcript",
+          "source_ref": "mined-scn-c4d281a2-30e4-4002-9152-59d28d824abc-0001"
+        },
+        {
+          "text": "we have some .kitsoki-owner problem that's preventing us from merging some bug fixes",
+          "source": "session-transcript",
+          "source_ref": "mined-scn-c4d281a2-30e4-4002-9152-59d28d824abc-0000"
+        }
+      ],
       "primary_story": "stories/bugfix/app.yaml",
-      "required_mcp": ["session.open", "session.inspect", "render.tui", "visual.observe"],
+      "required_mcp": [
+        "session.open",
+        "session.inspect",
+        "render.tui",
+        "visual.observe"
+      ],
       "evidence": [
         "session_trace",
         "candidate_diff",
         "oracle_result",
         "full_suite_result",
-        "key_interaction_video"
+        "key_interaction_video",
+        "trace-replay"
       ],
       "success_criteria": [
-        "Hidden oracle passes.",
-        "Full suite passes or failure is classified.",
-        "Patch shape is reviewable for the persona's project."
-      ]
+        "The selected bug has a concrete repro, failing test, issue reference, or explicitly recorded blocker.",
+        "Hidden oracle or targeted test passes for the candidate fix.",
+        "Full suite passes or failure is classified with a believable ownership boundary.",
+        "Patch shape is reviewable for the persona's project and does not include unrelated cleanup."
+      ],
+      "case_variants": [
+        {
+          "id": "red-test",
+          "utterance": "there is already a red gate test; make it pass without broad cleanup",
+          "setup": "Begin from a local failing test or oracle fixture.",
+          "success_focus": "The patch is minimal and the targeted oracle flips from failing to passing."
+        },
+        {
+          "id": "public-issue",
+          "utterance": "pick one public bug from this repo and prove the fix against its repro",
+          "setup": "Start from the target repository's bug queue and choose one issue with enough reproduction detail.",
+          "success_focus": "Issue selection, repro, patch, and verification are linked in the evidence."
+        },
+        {
+          "id": "blocked-landing",
+          "utterance": "the fix may be done, but owner/worktree state is preventing it from landing",
+          "setup": "Start after a candidate fix exists but merge ownership, branch, or worktree state is suspect.",
+          "success_focus": "The run classifies code correctness separately from landing or repository hygiene blockers."
+        }
+      ],
+      "transports": {
+        "allowed": [
+          "tui",
+          "web",
+          "vscode",
+          "cli"
+        ],
+        "required": [
+          "tui"
+        ],
+        "overrides": {
+          "cli": {
+            "required_mcp": [
+              "session.open",
+              "session.inspect",
+              "session.trace"
+            ],
+            "evidence": [
+              "session_trace",
+              "command_output",
+              "candidate_diff",
+              "oracle_result",
+              "full_suite_result",
+              "trace-replay"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "dogfood-marathon-tui",
+      "tier": "curated",
+      "label": "Dogfood marathon TUI supervision",
+      "stage": "fix_bug",
+      "task": "Start from kitsoki-dev in the real TUI, ask for a dogfood marathon, start the autonomous 15-bug backlog, supervise a serious exception through the choice widget, and capture the final report/deck evidence in one continuous interactive session.",
+      "natural_utterances": [
+        {
+          "text": "I want to do a dogfood marathon",
+          "source": "curated-corpus",
+          "source_ref": "dogfood-marathon-request"
+        },
+        {
+          "text": "start the marathon",
+          "source": "curated-corpus",
+          "source_ref": "dogfood-marathon-start"
+        },
+        {
+          "text": "show me the 15 bug marathon in the real TUI with arrow menus, readable progress, exceptions, and the final deck",
+          "source": "curated-corpus",
+          "source_ref": "dogfood-marathon-supervisor"
+        }
+      ],
+      "primary_story": ".kitsoki/stories/kitsoki-dev/app.yaml",
+      "required_mcp": [
+        "session.open",
+        "session.inspect",
+        "session.trace",
+        "render.tui"
+      ],
+      "evidence": [
+        "rendered_tui_frame",
+        "key_interaction_video",
+        "png-sequence"
+      ],
+      "success_criteria": [
+        "The proof is one continuous kitsoki-dev TUI session that starts with a clean kitsoki invocation surface rather than a fake shell or argument-heavy command.",
+        "The room's full dogfood marathon message is visible before the first user input, and both typed inputs are shown before Enter is pressed.",
+        "The kitsoki-dev and dogfood marathon choice widgets are exercised with real ArrowDown and ArrowUp keypresses, including cursor movement evidence.",
+        "All 15 constructorfabric, bsacrobatix, and local cases appear with readable source, title, progress, result, and before/after or fixed/blocked affordances.",
+        "The serious exception uses a warning affordance, shows Issue and Trace references, asks a real decision question, and is resolved through the choice widget.",
+        "The final report summarizes 15 cases, time, cost, issues found/fixed, and 15 per-bug Slidey decks plus the aggregate deck."
+      ],
+      "case_variants": [
+        {
+          "id": "constructorfabric/Kitsoki#66",
+          "title": "raw AskOffPath payload",
+          "utterance": "constructorfabric Kitsoki issue 66: raw AskOffPath payload",
+          "setup": "Replay the issue as a marathon case sourced from constructorfabric/Kitsoki#66.",
+          "success_focus": "The case identity, source, fix stage, and fixed result remain readable in the TUI video."
+        },
+        {
+          "id": "constructorfabric/Kitsoki#65",
+          "title": "init failure title",
+          "utterance": "constructorfabric Kitsoki issue 65: init failure title",
+          "setup": "Replay the issue as a marathon case sourced from constructorfabric/Kitsoki#65.",
+          "success_focus": "The case identity, source, fix stage, and fixed result remain readable in the TUI video."
+        },
+        {
+          "id": "constructorfabric/Kitsoki#64",
+          "title": "landing action rows",
+          "utterance": "constructorfabric Kitsoki issue 64: landing action rows",
+          "setup": "Replay the issue as a marathon case sourced from constructorfabric/Kitsoki#64.",
+          "success_focus": "The action-row before/after outcome is visible and understandable while the marathon is moving quickly."
+        },
+        {
+          "id": "constructorfabric/Kitsoki#63",
+          "title": "duplicate inbox notification",
+          "utterance": "constructorfabric Kitsoki issue 63: duplicate inbox notification",
+          "setup": "Replay the issue as a marathon case sourced from constructorfabric/Kitsoki#63.",
+          "success_focus": "The case identity, source, fix stage, and fixed result remain readable in the TUI video."
+        },
+        {
+          "id": "constructorfabric/Kitsoki#61",
+          "title": "first-run profile scope",
+          "utterance": "constructorfabric Kitsoki issue 61: first-run profile scope",
+          "setup": "Replay the issue as the serious exception case sourced from constructorfabric/Kitsoki#61.",
+          "success_focus": "The TUI shows Issue: Kitsoku Issue #61, a trace reference, a real decision question, and the choice-widget resolution path."
+        },
+        {
+          "id": "bsacrobatix/Kitsoki#1202",
+          "title": "blocked findings accounting",
+          "utterance": "bsacrobatix Kitsoki issue 1202: blocked findings accounting",
+          "setup": "Replay the issue as a marathon case sourced from bsacrobatix/Kitsoki#1202.",
+          "success_focus": "The case identity, source, fix stage, and fixed result remain readable in the TUI video."
+        },
+        {
+          "id": "bsacrobatix/Kitsoki#1201",
+          "title": "replay agent-task dispatch",
+          "utterance": "bsacrobatix Kitsoki issue 1201: replay agent-task dispatch",
+          "setup": "Replay the issue as a marathon case sourced from bsacrobatix/Kitsoki#1201.",
+          "success_focus": "The case identity, source, fix stage, and fixed result remain readable in the TUI video."
+        },
+        {
+          "id": "bsacrobatix/Kitsoki#1200",
+          "title": "empty ticket queue",
+          "utterance": "bsacrobatix Kitsoki issue 1200: empty ticket queue",
+          "setup": "Replay the issue as a marathon case sourced from bsacrobatix/Kitsoki#1200.",
+          "success_focus": "The case identity, source, fix stage, and fixed result remain readable in the TUI video."
+        },
+        {
+          "id": "bsacrobatix/Kitsoki#1199",
+          "title": "hosted preflight triage",
+          "utterance": "bsacrobatix Kitsoki issue 1199: hosted preflight triage",
+          "setup": "Replay the issue as a marathon case sourced from bsacrobatix/Kitsoki#1199.",
+          "success_focus": "The case identity, source, fix stage, and fixed result remain readable in the TUI video."
+        },
+        {
+          "id": "bsacrobatix/Kitsoki#1198",
+          "title": "HAR method labels",
+          "utterance": "bsacrobatix Kitsoki issue 1198: HAR method labels",
+          "setup": "Replay the issue as a marathon case sourced from bsacrobatix/Kitsoki#1198.",
+          "success_focus": "The case identity, source, fix stage, and fixed result remain readable in the TUI video."
+        },
+        {
+          "id": "bsacrobatix/Kitsoki#1197",
+          "title": "trace row labels",
+          "utterance": "bsacrobatix Kitsoki issue 1197: trace row labels",
+          "setup": "Replay the issue as a marathon case sourced from bsacrobatix/Kitsoki#1197.",
+          "success_focus": "The case identity, source, fix stage, and fixed result remain readable in the TUI video."
+        },
+        {
+          "id": "bsacrobatix/Kitsoki#1196",
+          "title": "mobile tour dead-end",
+          "utterance": "bsacrobatix Kitsoki issue 1196: mobile tour dead-end",
+          "setup": "Replay the issue as a marathon case sourced from bsacrobatix/Kitsoki#1196.",
+          "success_focus": "The case identity, source, fix stage, and fixed result remain readable in the TUI video."
+        },
+        {
+          "id": "bsacrobatix/Kitsoki#1194",
+          "title": "GitHub label rate limits",
+          "utterance": "bsacrobatix Kitsoki issue 1194: GitHub label rate limits",
+          "setup": "Replay the issue as a marathon case sourced from bsacrobatix/Kitsoki#1194.",
+          "success_focus": "The case identity, source, fix stage, and fixed result remain readable in the TUI video."
+        },
+        {
+          "id": "bsacrobatix/Kitsoki#1190",
+          "title": "wrong profile after on_error",
+          "utterance": "bsacrobatix Kitsoki issue 1190: wrong profile after on_error",
+          "setup": "Replay the issue as a marathon case sourced from bsacrobatix/Kitsoki#1190.",
+          "success_focus": "The case identity, source, fix stage, and fixed result remain readable in the TUI video."
+        },
+        {
+          "id": "local/bugfix-auth-profile",
+          "title": "codex profile backend assertion",
+          "utterance": "local bugfix auth profile: codex profile backend assertion",
+          "setup": "Replay the local bug as a marathon case sourced from .artifacts local stabilization work.",
+          "success_focus": "The case identity, local source, fix stage, and fixed result remain readable in the TUI video."
+        }
+      ],
+      "transports": {
+        "allowed": [
+          "tui"
+        ],
+        "required": [
+          "tui"
+        ]
+      }
     },
     {
       "id": "prd-design",
+      "tier": "curated",
       "label": "PRD and design workflow",
       "stage": "plan_project_work",
-      "task": "Use Kitsoki to turn a project improvement idea into a PRD/design artifact grounded in repository files, conventions, and tests.",
+      "task": "Turn an under-specified improvement idea into a scoped PRD/design artifact that is grounded in repository files, names real risks, and is small enough to hand to an implementation agent.",
+      "natural_utterances": [
+        {
+          "text": "i want to dogfood kitsoki to build a critical new feature",
+          "source": "session-transcript",
+          "source_ref": "mined-scn-2e107a60-10e3-4d70-afe5-ea995adc4d6f-0000"
+        },
+        {
+          "text": "what does it take to get an extension uploaded to vs code marketplace?",
+          "source": "session-transcript",
+          "source_ref": "mined-scn-rollout-2026-06-22t17-54-26-019eeef7-9fdf-7060-86d0-1b1c25348cd5-0000"
+        },
+        {
+          "text": "is there an rrweb viewer extension for vs code?",
+          "source": "session-transcript",
+          "source_ref": "mined-scn-rollout-2026-06-26t15-21-48-019f0305-531e-7510-a890-14cc41e8491f-0000"
+        }
+      ],
       "primary_story": "stories/dev-story/app.yaml",
-      "required_mcp": ["session.open", "session.inspect", "render.tui", "visual.observe"],
+      "required_mcp": [
+        "session.open",
+        "session.inspect",
+        "render.tui",
+        "visual.observe"
+      ],
       "evidence": [
         "session_trace",
         "prd_artifact",
         "design_artifact",
         "review_notes",
-        "key_interaction_video"
+        "key_interaction_video",
+        "flow-fixture"
       ],
       "success_criteria": [
-        "Artifacts cite real repository files and commands.",
-        "Scope is small enough for review.",
-        "Open questions are explicit instead of hidden in generated prose."
-      ]
+        "Artifacts cite real repository files, commands, or product surfaces rather than generic architecture advice.",
+        "Scope is small enough for review and explicitly excludes tempting adjacent work.",
+        "Open questions, assumptions, and operator decisions are explicit instead of hidden in generated prose.",
+        "The design names a validation path that does not require live LLM spend in automated tests."
+      ],
+      "case_variants": [
+        {
+          "id": "critical-feature",
+          "utterance": "i want to dogfood kitsoki to build a critical new feature, but keep the first slice reviewable",
+          "setup": "Start with a broad product idea and force it into a first deliverable.",
+          "success_focus": "The PRD/design separates first slice, non-goals, risks, and deterministic validation."
+        },
+        {
+          "id": "external-requirements",
+          "utterance": "what would it take to ship this as a VS Code extension?",
+          "setup": "Start from a product goal that depends on external platform requirements.",
+          "success_focus": "The artifact identifies researched constraints, repo touchpoints, and unresolved publication decisions."
+        },
+        {
+          "id": "evidence-viewer",
+          "utterance": "we need a way to inspect rrweb or playback evidence from inside the workflow",
+          "setup": "Start from an evidence-review pain point rather than a fully formed implementation request.",
+          "success_focus": "The design grounds UX, artifact format, and validation in existing media/replay contracts."
+        }
+      ],
+      "transports": {
+        "allowed": [
+          "tui",
+          "web",
+          "vscode",
+          "cli"
+        ],
+        "required": [
+          "tui"
+        ],
+        "overrides": {
+          "cli": {
+            "required_mcp": [
+              "session.open",
+              "session.inspect",
+              "session.trace"
+            ],
+            "evidence": [
+              "session_trace",
+              "command_output",
+              "prd_artifact",
+              "design_artifact",
+              "review_notes",
+              "flow-fixture"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "docs-to-mcp-first-run",
+      "tier": "curated",
+      "label": "Docs to MCP first run",
+      "stage": "follow_tutorial",
+      "task": "Start from public docs or the product site, find the path to run Kitsoki through Studio MCP from Codex, launch the appropriate story, and verify the run exposes enough state for a reusable scenario/persona QA campaign.",
+      "natural_utterances": [
+        {
+          "text": "i want codex to run kitsoki through mcp; where do i start and how do i know it is connected?",
+          "source": "curated-corpus",
+          "source_ref": "docs-mcp-first-run-start"
+        },
+        {
+          "text": "show me the documented path from product site to a real scenario qa run",
+          "source": "curated-corpus",
+          "source_ref": "docs-mcp-first-run-docs"
+        },
+        {
+          "text": "prove this is a reusable story surface and not just a local script",
+          "source": "curated-corpus",
+          "source_ref": "docs-mcp-first-run-reuse"
+        }
+      ],
+      "primary_story": "stories/scenario-qa/app.yaml",
+      "required_mcp": [
+        "session.open",
+        "session.inspect",
+        "session.trace",
+        "render.tui",
+        "visual.observe"
+      ],
+      "evidence": [
+        "browser_screenshot",
+        "rendered_tui_frame",
+        "session_trace",
+        "navigation_trace",
+        "checkpoint_rating",
+        "key_interaction_video",
+        "flow-fixture"
+      ],
+      "success_criteria": [
+        "The persona can navigate from public product/docs material to the scenario-qa or product-journey story contract.",
+        "The first-run path verifies Studio MCP health or records a visible blocker before dispatching any live work.",
+        "The generated run bundle, driver handoff, report path, and Slidey deck path are discoverable without private repo archaeology.",
+        "Any missing setup, stale docs, or confusing MCP terminology is recorded as a finding with evidence."
+      ],
+      "case_variants": [
+        {
+          "id": "cold-docs-reader",
+          "utterance": "i only have the docs open; get me to a real MCP-backed QA run",
+          "setup": "Start from documentation or product-site navigation, not from remembered commands.",
+          "success_focus": "The path names the story, the MCP health check, and the first scenario command."
+        },
+        {
+          "id": "codex-attached",
+          "utterance": "codex says it has kitsoki tools; prove the attached MCP server is the right checkout",
+          "setup": "Assume Codex has a Studio MCP attachment and needs to confirm it before driving.",
+          "success_focus": "The run verifies server identity, story loadability, and trace/report paths."
+        },
+        {
+          "id": "external-story-author",
+          "utterance": "i have my own story; show which config/catalog pieces i would replace",
+          "setup": "Interpret the docs through a non-Kitsoki project author lens.",
+          "success_focus": "The product separates generic scenario/persona inputs from Kitsoki-specific defaults."
+        },
+        {
+          "id": "mcp-config-persistence",
+          "utterance": "why do we keep losing the mcp tools - i updated the config a few times and apparently it's gone again",
+          "setup": "Start after the Studio MCP config has previously been wired up correctly, then re-check it after an unrelated change, re-clone, or reboot to see whether the wiring silently reverted.",
+          "success_focus": "The persona can tell whether the MCP config regressed, name the concrete cause, and fix it instead of re-discovering the same drift blind each time."
+        }
+      ],
+      "transports": {
+        "allowed": [
+          "tui",
+          "web",
+          "cli"
+        ],
+        "required": [
+          "tui",
+          "web"
+        ],
+        "overrides": {
+          "web": {
+            "required_mcp": [
+              "session.open",
+              "session.inspect",
+              "visual.open",
+              "visual.observe"
+            ],
+            "evidence": [
+              "browser_screenshot",
+              "session_trace",
+              "navigation_trace",
+              "checkpoint_rating",
+              "key_interaction_video"
+            ]
+          },
+          "cli": {
+            "required_mcp": [
+              "session.open",
+              "session.inspect",
+              "session.trace"
+            ],
+            "evidence": [
+              "session_trace",
+              "command_output",
+              "flow-fixture"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "agent-launch-experience",
+      "tier": "curated",
+      "label": "Kitsoki agent launch experience",
+      "stage": "onboard_project",
+      "task": "Launch a Kitsoki-backed agent experience from Codex or a terminal, verify the selected profile/model/tool boundary, and confirm the run can ask for operator input through supported surfaces instead of hidden AskUserQuestion fallbacks.",
+      "natural_utterances": [
+        {
+          "text": "launch the kitsoki agent experience from codex and prove it is using the expected profile",
+          "source": "curated-corpus",
+          "source_ref": "agent-launch-profile"
+        },
+        {
+          "text": "when the agent needs a human decision, show me where that question appears",
+          "source": "curated-corpus",
+          "source_ref": "agent-launch-operator-ask"
+        },
+        {
+          "text": "i need the web and tui surfaces to agree about session state before i trust the run",
+          "source": "curated-corpus",
+          "source_ref": "agent-launch-state-parity"
+        }
+      ],
+      "primary_story": "stories/dev-story/app.yaml",
+      "required_mcp": [
+        "session.open",
+        "session.status",
+        "session.inspect",
+        "session.trace",
+        "render.tui",
+        "visual.observe"
+      ],
+      "evidence": [
+        "session_trace",
+        "rendered_tui_frame",
+        "browser_screenshot",
+        "checkpoint_rating",
+        "review_notes",
+        "key_interaction_video",
+        "flow-fixture"
+      ],
+      "success_criteria": [
+        "The launch path names the intended story, profile, and model/tool boundary before live agent dispatch.",
+        "TUI and web evidence show the same current state, next action, or visible blocker.",
+        "Operator questions use the supported operator-ask bridge when available, and headless/replay mode records an explicit blocker instead of silently defaulting.",
+        "The run records profile mismatch, missing MCP tools, or stale checkout identity as product findings."
+      ],
+      "case_variants": [
+        {
+          "id": "codex-native-launch",
+          "utterance": "start a codex-driven kitsoki run and show the profile/model choice in the trace",
+          "setup": "Start from Codex with Studio MCP available and avoid shell-only shortcuts.",
+          "success_focus": "The evidence ties the run to the expected profile and checkout."
+        },
+        {
+          "id": "operator-question",
+          "utterance": "make the agent ask for a real operator decision and show where i answer it",
+          "setup": "Use a scenario that needs a human choice or a cassette-backed simulation of that choice.",
+          "success_focus": "The operator question is visible in web/TUI or is an explicit replay blocker."
+        },
+        {
+          "id": "surface-parity",
+          "utterance": "show me the same run state in the TUI and web before continuing",
+          "setup": "Capture both transport views around the same session state.",
+          "success_focus": "The frames agree on current room, progress, and next action."
+        }
+      ],
+      "transports": {
+        "allowed": [
+          "tui",
+          "web",
+          "cli"
+        ],
+        "required": [
+          "tui",
+          "web"
+        ],
+        "overrides": {
+          "web": {
+            "required_mcp": [
+              "session.open",
+              "session.inspect",
+              "visual.open",
+              "visual.observe",
+              "visual.act"
+            ],
+            "evidence": [
+              "browser_screenshot",
+              "session_trace",
+              "navigation_trace",
+              "checkpoint_rating",
+              "key_interaction_video"
+            ]
+          },
+          "cli": {
+            "required_mcp": [
+              "session.open",
+              "session.status",
+              "session.inspect",
+              "session.trace"
+            ],
+            "evidence": [
+              "session_trace",
+              "command_output",
+              "review_notes",
+              "flow-fixture"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "remote-worker-campaign",
+      "tier": "curated",
+      "label": "Remote worker campaign readiness",
+      "stage": "score_and_report",
+      "task": "Prepare a standing persona/scenario QA campaign for a remote VM or arena worker: validate worker readiness, assign a bounded scenario batch, capture evidence, file credible findings through the existing issue pipeline, and update the rollup deck and summary.",
+      "natural_utterances": [
+        {
+          "text": "i have a vm i want to use as the worker; validate it before spending live qa budget",
+          "source": "curated-corpus",
+          "source_ref": "remote-worker-readiness"
+        },
+        {
+          "text": "send a bounded persona qa batch to arena and keep the issue/deck rollup updated",
+          "source": "curated-corpus",
+          "source_ref": "remote-worker-arena"
+        },
+        {
+          "text": "file real findings with evidence, but keep local stabilization bugs local unless the handoff is github",
+          "source": "curated-corpus",
+          "source_ref": "remote-worker-issue-sink"
+        }
+      ],
+      "primary_story": "stories/product-journey-qa/app.yaml",
+      "required_mcp": [
+        "session.open",
+        "session.status",
+        "session.inspect",
+        "session.trace",
+        "render.tui",
+        "visual.observe"
+      ],
+      "evidence": [
+        "session_trace",
+        "command_output",
+        "review_notes",
+        "bug_report_markdown",
+        "key_interaction_video",
+        "trace-replay"
+      ],
+      "success_criteria": [
+        "Worker readiness checks cover health, ticket repo, hosted gh-agent readiness when needed, watchdog state, and artifact paths before live dispatch.",
+        "Arena or worker placement produces a durable receipt that names project, persona, scenarios, budget, worker, and run directory.",
+        "Credible issues reuse the existing file-findings/autonomous-fix pipeline with evidence, dedupe, claim, independent verify, close-out, and stats where applicable.",
+        "Local stabilization findings default to `.artifacts/issues/bugs` unless the scenario's handoff boundary explicitly requires GitHub.",
+        "The campaign summary and Slidey rollup deck are refreshed from artifacts rather than prose memory."
+      ],
+      "case_variants": [
+        {
+          "id": "vm-preflight",
+          "utterance": "check the VM is ready to run capture before assigning it work",
+          "setup": "Start with a configured remote worker candidate and no assumption that hosted services are healthy.",
+          "success_focus": "The run fails closed on stale heartbeat, wrong repo, unhealthy URL, or missing artifact path."
+        },
+        {
+          "id": "arena-batch",
+          "utterance": "run a small persona/scenario batch through arena and show the retained receipt",
+          "setup": "Use a bounded batch rather than a full campaign to prove placement and artifact collection.",
+          "success_focus": "The retained result records worker identity, scenario list, costs, outputs, and validation."
+        },
+        {
+          "id": "issue-to-fix-rollup",
+          "utterance": "take credible findings through filing/fixing and refresh the deck and summary",
+          "setup": "Start after evidence exists for at least one credible issue finding.",
+          "success_focus": "The issue pipeline, gh-agent fix evidence, final validation, stats, and Slidey rollup are linked."
+        },
+        {
+          "id": "vm-graceful-shutdown",
+          "utterance": "i have a vm for the kitsoki-github-agent - gracefully shut it down",
+          "setup": "Start with a running remote worker VM and drive an orderly stop instead of a hard kill.",
+          "success_focus": "The shutdown drains in-flight work, syncs state, and leaves the VM in a resumable stopped state with evidence of each step."
+        },
+        {
+          "id": "vm-resize-startup-check",
+          "utterance": "ok it has been resized - i turned it on, check that it starts up properly",
+          "setup": "Start after a remote worker VM was resized and restarted; verify the listener, services, and resource posture before trusting it with new work.",
+          "success_focus": "The readiness check confirms the resized VM is healthy (listener up, resources sized as expected) before it is assigned a batch."
+        },
+        {
+          "id": "vm-decommission",
+          "utterance": "delete them - it's a testing node so it's ok",
+          "setup": "Start with a disposable testing-node VM that is no longer needed and confirm it is safe to decommission before deleting its state.",
+          "success_focus": "Decommissioning a scratch worker is deliberate and evidenced, not an accidental loss of a production worker's state."
+        }
+      ],
+      "transports": {
+        "allowed": [
+          "tui",
+          "web",
+          "cli"
+        ],
+        "required": [
+          "cli"
+        ],
+        "overrides": {
+          "web": {
+            "required_mcp": [
+              "session.open",
+              "session.inspect",
+              "visual.open",
+              "visual.observe"
+            ],
+            "evidence": [
+              "browser_screenshot",
+              "session_trace",
+              "navigation_trace",
+              "review_notes",
+              "key_interaction_video"
+            ]
+          },
+          "cli": {
+            "required_mcp": [
+              "session.open",
+              "session.status",
+              "session.inspect",
+              "session.trace"
+            ],
+            "evidence": [
+              "session_trace",
+              "command_output",
+              "review_notes",
+              "bug_report_markdown",
+              "trace-replay"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "campaign-rollup-review",
+      "tier": "curated",
+      "label": "Campaign rollup review",
+      "stage": "score_and_report",
+      "task": "Review the standing campaign artifacts as a stakeholder: compare persona/scenario outcomes, open findings, filed issues, gh-agent fixes, evidence gaps, cost, and the latest Slidey deck before choosing the next campaign slice.",
+      "natural_utterances": [
+        {
+          "text": "show me what the ongoing product qa campaign found this week and what changed",
+          "source": "curated-corpus",
+          "source_ref": "campaign-rollup-weekly"
+        },
+        {
+          "text": "which personas and scenarios are still under-tested, and what should we run next?",
+          "source": "curated-corpus",
+          "source_ref": "campaign-rollup-next"
+        },
+        {
+          "text": "do not call it passed if the evidence gaps or issue fixes are still red",
+          "source": "curated-corpus",
+          "source_ref": "campaign-rollup-honesty"
+        }
+      ],
+      "primary_story": "stories/product-journey-qa/app.yaml",
+      "required_mcp": [
+        "session.open",
+        "session.inspect",
+        "session.trace",
+        "render.tui"
+      ],
+      "evidence": [
+        "session_trace",
+        "review_summary",
+        "checkpoint_rating",
+        "key_interaction_video",
+        "rrweb"
+      ],
+      "success_criteria": [
+        "The rollup summarizes outcomes by persona, scenario, transport, proof source, finding kind, issue state, cost, and run freshness.",
+        "The Slidey deck links retained playback or an explicit playback blocker for each claimed coverage area.",
+        "Open evidence gaps, failed validations, stale workers, and unresolved gh-agent fixes keep the summary in a blocked or needs-evidence state.",
+        "The next campaign slice is generated from missing coverage and high-severity findings, not from ad hoc operator memory."
+      ],
+      "case_variants": [
+        {
+          "id": "weekly-summary",
+          "utterance": "give me the current campaign deck and a concise summary of what changed",
+          "setup": "Start from existing campaign artifacts and avoid re-running live capture.",
+          "success_focus": "The summary is regenerated from artifact state and points to the current Slidey deck."
+        },
+        {
+          "id": "coverage-gap",
+          "utterance": "find the weakest persona/scenario/transport coverage and plan the next batch",
+          "setup": "Use rollup metadata and missing proof evidence rows.",
+          "success_focus": "The next batch is justified by concrete missing coverage or high-risk findings."
+        },
+        {
+          "id": "red-gate-honesty",
+          "utterance": "mark the campaign blocked if any proof, issue, or fix gate is still red",
+          "setup": "Inject or retain a red validation/fix/evidence state in the rollup.",
+          "success_focus": "The stakeholder view stays conservative and cites the blocking artifact."
+        }
+      ],
+      "transports": {
+        "allowed": [
+          "tui",
+          "web",
+          "cli"
+        ],
+        "required": [
+          "web"
+        ],
+        "overrides": {
+          "web": {
+            "required_mcp": [
+              "session.open",
+              "session.inspect",
+              "visual.open",
+              "visual.observe"
+            ],
+            "evidence": [
+              "browser_screenshot",
+              "session_trace",
+              "review_summary",
+              "rrweb",
+              "key_interaction_video"
+            ]
+          },
+          "cli": {
+            "required_mcp": [
+              "session.open",
+              "session.inspect",
+              "session.trace"
+            ],
+            "evidence": [
+              "session_trace",
+              "command_output",
+              "review_summary",
+              "trace-replay"
+            ]
+          }
+        }
+      }
     },
     {
       "id": "feature-implementation",
+      "tier": "curated",
       "label": "Feature implementation",
       "stage": "plan_project_work",
-      "task": "Use Kitsoki to implement a small accepted design slice and validate it with project tests.",
+      "task": "Implement or dry-run one accepted design slice while preserving reviewability: make the smallest coherent change, validate it with deterministic tests, and leave unfinished follow-up work explicit.",
+      "natural_utterances": [
+        {
+          "text": "implement the smallest slice from that design and do not drag in the whole roadmap",
+          "source": "curated-corpus",
+          "source_ref": "feature-slice-small"
+        },
+        {
+          "text": "if the accepted design is missing something, stop with a blocker instead of inventing requirements",
+          "source": "curated-corpus",
+          "source_ref": "feature-slice-blocker"
+        },
+        {
+          "text": "make sure the tests prove the behavior and not just that the code compiles",
+          "source": "curated-corpus",
+          "source_ref": "feature-slice-tests"
+        }
+      ],
       "primary_story": "stories/dev-story/app.yaml",
-      "required_mcp": ["session.open", "session.inspect", "render.tui", "visual.observe"],
+      "required_mcp": [
+        "session.open",
+        "session.inspect",
+        "render.tui",
+        "visual.observe"
+      ],
       "evidence": [
         "session_trace",
         "implementation_diff",
         "targeted_test_result",
         "review_summary",
-        "key_interaction_video"
+        "key_interaction_video",
+        "flow-fixture"
       ],
       "success_criteria": [
-        "Implementation follows the design artifact.",
-        "Tests are targeted and deterministic.",
-        "Remaining work is separated from completed work."
-      ]
+        "Implementation follows a named accepted design artifact or records that no accepted slice exists.",
+        "The diff is limited to the promised slice and follows local conventions.",
+        "Tests are targeted, deterministic, and tied to user-visible or contract behavior.",
+        "Remaining work is separated from completed work in the review summary."
+      ],
+      "case_variants": [
+        {
+          "id": "happy-slice",
+          "utterance": "the design is accepted; implement only the first user-visible path",
+          "setup": "Start with a complete enough design artifact and one obvious first slice.",
+          "success_focus": "The diff maps directly back to design requirements and passes targeted tests."
+        },
+        {
+          "id": "missing-decision",
+          "utterance": "i think this is ready, but stop if a product decision is still missing",
+          "setup": "Start with a design that may contain unresolved choices.",
+          "success_focus": "The run records a blocker rather than fabricating requirements or widening scope."
+        },
+        {
+          "id": "follow-up-cleanup",
+          "utterance": "finish the implementation, but keep cleanup and unrelated refactors out of the patch",
+          "setup": "Start with nearby tempting cleanup in the same code area.",
+          "success_focus": "The review summary explains what changed, what was deliberately left alone, and why."
+        }
+      ],
+      "transports": {
+        "allowed": [
+          "tui",
+          "web",
+          "vscode",
+          "cli"
+        ],
+        "required": [
+          "tui"
+        ],
+        "overrides": {
+          "cli": {
+            "required_mcp": [
+              "session.open",
+              "session.inspect",
+              "session.trace"
+            ],
+            "evidence": [
+              "session_trace",
+              "command_output",
+              "implementation_diff",
+              "targeted_test_result",
+              "review_summary",
+              "flow-fixture"
+            ]
+          }
+        }
+      }
     },
     {
       "id": "evidence-backed-product-bug",
+      "tier": "curated",
       "label": "Evidence-backed product bug",
       "stage": "file_product_issue",
-      "task": "Convert any confusing or broken Kitsoki behavior observed during the journey into a useful product bug report with visual and trace evidence.",
+      "task": "Convert confusing, broken, or misleading Kitsoki behavior observed during the journey into a useful product bug report with expected/actual behavior, reproduction steps, trace context, and visual evidence.",
+      "natural_utterances": [
+        {
+          "text": "this bounced back to idle and i cannot tell what failed - file that as a real bug",
+          "source": "curated-corpus",
+          "source_ref": "product-bug-silent-bounce"
+        },
+        {
+          "text": "the UI made it look ready but the evidence was only demo data",
+          "source": "curated-corpus",
+          "source_ref": "product-bug-proof-confusion"
+        },
+        {
+          "text": "turn this confusing behavior into a ticket someone else can reproduce without reading this chat",
+          "source": "curated-corpus",
+          "source_ref": "product-bug-repro-ticket"
+        }
+      ],
       "primary_story": "stories/dev-story/app.yaml",
-      "required_mcp": ["visual.observe", "session.inspect", "render.tui"],
+      "required_mcp": [
+        "visual.observe",
+        "session.inspect",
+        "render.tui"
+      ],
       "evidence": [
         "bug_report_markdown",
         "screenshot_or_tui_png",
         "trace_reference",
         "reproduction_steps",
-        "key_interaction_video"
+        "key_interaction_video",
+        "rrweb"
       ],
       "success_criteria": [
-        "Report includes expected versus actual behavior.",
-        "Report includes deterministic reproduction context.",
-        "Sensitive local data is redacted or explicitly marked local-only."
-      ]
+        "Report includes expected versus actual behavior in user-facing terms.",
+        "Report includes deterministic reproduction context, including story, intent, transport, and seed when available.",
+        "Report links trace and visual/TUI evidence that a reviewer can inspect.",
+        "Sensitive local data is redacted or explicitly marked local-only.",
+        "Weaknesses that are product-design gaps are routed to PRD/design instead of being mislabeled as implementation bugs."
+      ],
+      "case_variants": [
+        {
+          "id": "silent-bounce",
+          "utterance": "it went back to idle with no useful error, and i need a repro ticket",
+          "setup": "Start from an observed story transition or host-call failure that was not clearly surfaced.",
+          "success_focus": "The report preserves the state, intent, trace reference, and user-visible missing error."
+        },
+        {
+          "id": "visual-confusion",
+          "utterance": "the screen implied the run was ready, but the proof evidence did not back that up",
+          "setup": "Start from a mismatch between UI readiness language and evidence/review state.",
+          "success_focus": "The ticket links the visual frame to the underlying review or evidence artifact."
+        },
+        {
+          "id": "design-weakness",
+          "utterance": "this is not exactly broken, but the workflow led me to the wrong next step",
+          "setup": "Start from confusing guidance or unclear next action.",
+          "success_focus": "The finding is classified as weakness versus issue and routed to the right follow-up path."
+        }
+      ],
+      "transports": {
+        "allowed": [
+          "tui",
+          "web",
+          "vscode",
+          "cli"
+        ],
+        "required": [
+          "tui"
+        ],
+        "overrides": {
+          "cli": {
+            "required_mcp": [
+              "session.open",
+              "session.inspect",
+              "session.trace"
+            ],
+            "evidence": [
+              "bug_report_markdown",
+              "command_output",
+              "trace_reference",
+              "reproduction_steps",
+              "trace-replay"
+            ]
+          }
+        }
+      }
     }
   ]
 }

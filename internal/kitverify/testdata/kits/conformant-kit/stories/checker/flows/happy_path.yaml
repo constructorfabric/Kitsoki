@@ -1,0 +1,11 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+turns:
+  - intent: { name: start }
+    expect_state: working
+
+  - intent: { name: finish, slots: { pr_url: "https://example.com/pr/1" } }
+    expect_state: __exit__done
+    expect_world:
+      pr_url: "https://example.com/pr/1"

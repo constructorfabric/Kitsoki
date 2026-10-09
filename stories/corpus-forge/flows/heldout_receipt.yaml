@@ -1,0 +1,35 @@
+# Heldout succeeds only when the configured receipt registry accepts it. The
+# registry itself owns cross-session cohort separation; this flow uses a
+# deterministic handler because flows never create a durable global store.
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  corpus_role: heldout
+  selection_id: example-heldout-2026-07
+  task_limit: 1
+  source_manifest_ref: fixtures/heldout.yaml
+  source_candidates:
+    - { kind: corpus-case.v1, id: heldout-case, repo: example/heldout, source: external-bakeoff, baseline_ref: base, fix_ref: fix, ticket: heldout, archetype: bugfix, oracle: { command: [test] }, provenance: { adapter: fixture, locator: heldout, source_digest: sha256:heldout } }
+host_handlers:
+  host.corpus.prove:
+    data:
+      proof:
+        oracle_sha256: heldout-proof
+        environment_fingerprint: fixture-v1
+  host.corpus.freeze_receipt:
+    data: {}
+turns:
+  - intent: { name: start, slots: {} }
+    expect_state: load
+  - intent: { name: accept, slots: {} }
+    expect_state: select
+  - intent: { name: accept, slots: {} }
+    expect_state: validate
+  - intent: { name: accept, slots: {} }
+    expect_state: receipt
+    expect_view_matches: "frozen receipt"
+  - intent: { name: accept, slots: {} }
+    expect_state: __exit__done
+expect_terminal: true
+expect_no_errors: true

@@ -1,0 +1,32 @@
+# Journey preview stays on the story surface and delegates to the deterministic
+# CLI adapter. The handler is fully stubbed: this is a no-LLM contract test.
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.run:
+    by_call:
+      journey_preview:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: "docs-minded-contributor\tproject-onboarding\tweb\n"
+          stdout_json: { status: previewed }
+
+turns:
+  - intent:
+      name: journey_preview
+      slots:
+        journey: .kitsoki/qa/journeys/onboarding/journey.yaml
+    expect_state: journey
+    expect_world:
+      journey_action: preview
+      journey_path: .kitsoki/qa/journeys/onboarding/journey.yaml
+    expect_host_calls:
+      - handler: host.run
+        args:
+          cmd: kitsoki
+          args: [qa, preview, .kitsoki/qa/journeys/onboarding/journey.yaml]
+          cwd: "."
+expect_no_errors: true

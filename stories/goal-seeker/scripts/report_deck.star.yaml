@@ -1,0 +1,12 @@
+inputs:
+  goal_slug: { type: string, required: true }
+  goal_dir: { type: string, required: true }
+  work_dir: { type: string, required: true }
+outputs:
+  status: { type: string }
+  summary_path: { type: string }
+  deck_path: { type: string }
+  change_count: { type: int }
+  video_count: { type: int }
+  plan_event_count: { type: int }
+  change_paths: { type: object }

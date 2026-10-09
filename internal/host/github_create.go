@@ -18,16 +18,20 @@ package host
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
+
+	"kitsoki/internal/reportmeta"
 )
 
-// ghTicketCreate implements ticket.create via `gh issue create`.
+// ghTicketCreate implements ticket.create via the native GitHub REST API.
 //
 // Input args:
 //   - title (string, required)
 //   - body (string) — the prose body; the kitsoki metadata block is appended.
-//   - repo (string, optional) — owner/repo slug; falls back to the local remote.
+//   - repo (string, required) — owner/repo slug.
 //   - labels ([]string | []any | comma-string, optional) — explicit labels,
 //     merged with the mapped axes below.
 //   - severity / component / target / status (string, optional) — mapped to
@@ -47,56 +51,64 @@ func ghTicketCreate(ctx context.Context, args map[string]any) (Result, error) {
 	body := ghAppendMetadata(ghStr(args["body"]), args)
 	labels := ghTicketLabels(args)
 	repo := strings.TrimSpace(ghStr(args["repo"]))
+	repo = resolveTicketRepo(ctx, repo, args)
+	if repo == "" {
+		return Result{Error: "ticket.create: repo argument is required for native GitHub issue filing"}, nil
+	}
 	assignee := strings.TrimSpace(ghStr(args["assignee"]))
 
-	build := func(withLabels bool) []string {
-		a := []string{"issue", "create"}
-		if repo != "" {
-			a = append(a, "--repo", repo)
-		}
-		a = append(a, "--title", title, "--body", body)
-		if withLabels {
-			for _, l := range labels {
-				a = append(a, "--label", l)
-			}
+	build := func(withLabels bool) map[string]any {
+		payload := map[string]any{"title": title, "body": body}
+		if withLabels && len(labels) > 0 {
+			payload["labels"] = labels
 		}
 		if assignee != "" {
-			a = append(a, "--assignee", assignee)
+			payload["assignees"] = []string{assignee}
 		}
-		return a
+		return payload
 	}
 
 	var warning string
-	stdout, stderr, code, err := cliExec(ctx, "", "gh", build(len(labels) > 0)...)
-	if err != nil {
-		return Result{Error: fmt.Sprintf("ticket.create: exec: %v", err)}, nil
+	var created struct {
+		Number  int    `json:"number"`
+		HTMLURL string `json:"html_url"`
 	}
-	// `gh issue create --label X` fails the WHOLE create if any one label is
-	// missing OR the caller lacks triage. Recover in two steps so the fixed
-	// kitsoki vocabulary is applied whenever possible:
+	code, resp, err := githubAPIJSON(ctx, http.MethodPost, "repos/"+repo+"/issues", build(len(labels) > 0), &created)
+	if err != nil {
+		return Result{Error: fmt.Sprintf("ticket.create: %v", err)}, nil
+	}
+	// The GitHub API rejects a labelled create if any one label is missing OR
+	// the caller lacks triage. Recover in two steps so the fixed kitsoki
+	// vocabulary is applied whenever possible:
+	//
 	//   1. ensure the labels exist (best-effort), then retry WITH labels;
 	//   2. only if that still fails (a real triage-permission wall) drop labels
 	//      and warn — a fork contributor can still file the issue unlabelled.
-	if code != 0 && len(labels) > 0 && ghLooksLikeLabelErr(stderr) {
+	//
+	// This preserves the legacy "retry without labels when label creation is
+	// blocked" behavior while keeping issue filing native.
+	if code >= 300 && len(labels) > 0 && ghLooksLikeLabelErr(resp) {
 		ghEnsureLabels(ctx, repo, labels)
-		stdout, stderr, code, err = cliExec(ctx, "", "gh", build(true)...)
+		code, resp, err = githubAPIJSON(ctx, http.MethodPost, "repos/"+repo+"/issues", build(true), &created)
 		if err != nil {
-			return Result{Error: fmt.Sprintf("ticket.create: exec: %v", err)}, nil
+			return Result{Error: fmt.Sprintf("ticket.create: %v", err)}, nil
 		}
-		if code != 0 && ghLooksLikeLabelErr(stderr) {
+		if code >= 300 && ghLooksLikeLabelErr(resp) {
 			warning = "labels not applied (insufficient triage permission on the repo); issue filed unlabelled"
-			stdout, stderr, code, err = cliExec(ctx, "", "gh", build(false)...)
+			code, resp, err = githubAPIJSON(ctx, http.MethodPost, "repos/"+repo+"/issues", build(false), &created)
 			if err != nil {
-				return Result{Error: fmt.Sprintf("ticket.create: exec: %v", err)}, nil
+				return Result{Error: fmt.Sprintf("ticket.create: %v", err)}, nil
 			}
 		}
 	}
-	if code != 0 {
-		return Result{Error: fmt.Sprintf("ticket.create: %s", strings.TrimSpace(stderr))}, nil
+	if code >= 300 {
+		return Result{Error: fmt.Sprintf("ticket.create: %s", githubAPIError(resp))}, nil
 	}
-	// `gh issue create` prints the new issue's URL as its last output line.
-	url := lastNonEmptyLine(stdout)
-	num := issueNumberFromURL(url)
+	url := strings.TrimSpace(created.HTMLURL)
+	if url == "" && created.Number > 0 {
+		url = githubIssueURL(repo, created.Number)
+	}
+	num := fmt.Sprintf("%d", created.Number)
 	data := map[string]any{
 		"ok":     true,
 		"id":     num,
@@ -106,7 +118,19 @@ func ghTicketCreate(ctx context.Context, args map[string]any) (Result, error) {
 	if warning != "" {
 		data["warning"] = warning
 	}
+	githubTicketSourceData(data, repo)
+	data["ref"] = "github:" + repo + "#" + num
 	return Result{Data: data}, nil
+}
+
+func githubAPIError(resp string) string {
+	var raw struct {
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal([]byte(resp), &raw); err == nil && strings.TrimSpace(raw.Message) != "" {
+		return strings.TrimSpace(raw.Message)
+	}
+	return strings.TrimSpace(resp)
 }
 
 // ghTicketLabels maps the local bug-format axes onto the fixed GitHub label
@@ -157,6 +181,9 @@ func ghAppendMetadata(body string, args map[string]any) string {
 		{"kitsoki_rev", ghStr(args["kitsoki_rev"])},
 		{"filed_by", ghStr(args["filed_by"])},
 		{"legacy_id", ghStr(args["legacy_id"])},
+	}
+	for _, key := range reportmeta.RuntimeFieldKeys {
+		fields = append(fields, kv{key, ghStr(args[key])})
 	}
 	var lines []string
 	for _, f := range fields {
@@ -220,7 +247,7 @@ func ghParseMetadata(body string) map[string]any {
 // label it" 403 a fork contributor hits.
 func ghLooksLikeLabelErr(stderr string) bool {
 	s := strings.ToLower(stderr)
-	if !strings.Contains(s, "label") {
+	if !strings.Contains(s, "label") && !strings.Contains(s, "labels") {
 		return false
 	}
 	return strings.Contains(s, "not have permission") ||
@@ -231,17 +258,19 @@ func ghLooksLikeLabelErr(stderr string) bool {
 		strings.Contains(s, "403")
 }
 
-// ghEnsureLabels best-effort creates each label on the repo with a colour
-// derived from its prefix (gh label create --force is create-or-update, so it's
-// idempotent). Failures are ignored — the caller's degrade-to-unlabelled path
-// covers a repo where the caller lacks triage to create labels.
+// ghEnsureLabels best-effort creates or updates each label on the repo with a
+// colour derived from its prefix. Failures are ignored — the caller's
+// degrade-to-unlabelled path covers a repo where the caller lacks triage.
 func ghEnsureLabels(ctx context.Context, repo string, labels []string) {
 	for _, l := range labels {
-		args := []string{"label", "create", l, "--color", labelColor(l), "--force"}
-		if repo != "" {
-			args = append(args, "--repo", repo)
+		payload := map[string]any{"name": l, "color": labelColor(l)}
+		if l == "source-autonomous" {
+			payload["description"] = "Filed by an autonomous agent"
 		}
-		_, _, _, _ = cliExec(ctx, "", "gh", args...)
+		code, _, _ := githubAPIJSON(ctx, http.MethodPost, "repos/"+repo+"/labels", payload, nil)
+		if code == http.StatusUnprocessableEntity {
+			_, _, _ = githubAPIJSON(ctx, http.MethodPatch, githubLabelPath(repo, l), payload, nil)
+		}
 	}
 }
 
@@ -262,6 +291,8 @@ func labelColor(label string) string {
 		return "1d76db"
 	case label == "in_progress":
 		return "fef2c0"
+	case label == "source-autonomous":
+		return "bfd4f2"
 	default:
 		return "ededed"
 	}

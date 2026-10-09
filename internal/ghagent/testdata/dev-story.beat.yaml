@@ -22,7 +22,10 @@ initial_world:
 
 turns:
   - intent: { name: drive, slots: {} }
-    expect_state: impl.idle
+    # impl.idle.on_enter auto-starts once ticket_id is set (goal-seeker/
+    # punch-list headless drivers only reliably get one prompt turn), so
+    # this lands straight at review_task_executing instead of parking at idle.
+    expect_state: impl.review_task_executing
     expect_world:
       impl__ticket_title: "Draft the GitHub-agent POC direction"
 

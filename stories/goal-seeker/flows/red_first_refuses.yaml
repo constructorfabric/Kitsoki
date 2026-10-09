@@ -1,0 +1,75 @@
+# red_first_refuses — DETERMINISM GUARANTEE 3: RED-first. A change whose gate ALREADY
+# PASSES (exit 0) is not RED — the bug isn't present / the work is already done — so
+# dispatch must REFUSE to start it as a no-op. Here the RED-first pre-check (host.run)
+# is stubbed to exit 0 (green); redcheck routes to `park` (park_reason=gate_not_red)
+# instead of entering punch-list — NEVER to needs_human (that would dead-end the loop:
+# needs_human.retry re-folds the same ledger, which deterministically re-derives the
+# SAME first ready change forever). This fixture has only ONE change, so after the
+# park there is nothing left ready (ready_id becomes ""); the stronger claim — parking
+# advances to a DIFFERENT ready change when one exists — is
+# flows/gate_not_red_parks_and_advances.yaml.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: start
+initial_world:
+  goal_slug: goal-seeker-test
+  goal_dir:  stories/goal-seeker/testdata/goal
+  work_dir:  .artifacts/goal/flow-red
+  reset_log: true
+
+host_handlers:
+  host.agent.decide:
+    by_call:
+      evaluate:
+        data:
+          ok: true
+          submitted:
+            verdict: not_done
+            summary: "C1 ready."
+            next_instruction:
+              change_id: "C1"
+              action: "implement C1"
+              pipeline: "implementation"
+              gate: { class: "G-FLOW", cmd: "true" }
+  # The gate ALREADY PASSES (exit 0) — the change is not RED.
+  host.run:
+    by_call:
+      redcheck: { data: { ok: true, exit_code: 0, stdout: "PASS" } }
+
+turns:
+  - intent: { name: look, slots: {} }
+    expect_state: start
+  - intent: { name: advance, slots: {} }        # start → bootstrap (reset log)
+    expect_state: bootstrap
+  - intent: { name: advance, slots: {} }        # bootstrap → lint_check
+    expect_state: lint_check
+  - intent: { name: advance, slots: {} }        # lint ok → evaluate
+    expect_state: evaluate
+  - intent: { name: advance, slots: {} }        # evaluate → deciding
+    expect_state: deciding
+  - intent: { name: advance, slots: {} }        # decide (not_done) → dispatch
+    expect_state: dispatch
+  - intent: { name: advance, slots: {} }        # gs_manifest → RED-first check
+    expect_state: redcheck
+  # The gate already passes (exit 0) — RED-first PARKS the change and self-escapes;
+  # no punch-list drive, and NOT a dead-end at needs_human.
+  - intent: { name: advance, slots: {} }
+    expect_state: park
+    expect_not_state: needs_human
+    expect_world: { red_exit: 0 }
+  - intent: { name: look, slots: {} }
+    expect_view_matches: "gate_not_red"
+  # gs_append settles → re-fold: C1 is now parked — the only change — so nothing is
+  # left ready. Still evaluate, never needs_human; the loop simply has no more work to
+  # dispatch until a human un-parks C1 (a legitimate resting state, not a deadlock).
+  - intent: { name: advance, slots: {} }
+    expect_state: evaluate
+    expect_not_state: needs_human
+    expect_world: { remaining: 1, ready_id: "" }
+
+expect_files:
+  - path: ../../../.artifacts/goal/flow-red/log.jsonl
+    content_matches: '"change_id":"C1".*"park_reason":"gate_not_red".*"state":"parked"'
+
+expect_no_errors: true

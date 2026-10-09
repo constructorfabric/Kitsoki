@@ -57,7 +57,7 @@ type GitHubInboxSyncItem struct {
 func (srv *Server) registerInboxTools() {
 	mcpsdk.AddTool(srv.mcpSrv, &mcpsdk.Tool{
 		Name:        "inbox.sync_github",
-		Description: "Sync assigned GitHub issues and requested PR reviews into an open driving handle's inbox. Uses gh CLI, inserts each GitHub object once, and returns fetched/inserted/skipped counts. Returns only newly-inserted items by default (counts still report the full picture); pass include_skipped to also echo already-present rows.",
+		Description: "Sync assigned GitHub issues and requested PR reviews into an open driving handle's inbox. Uses the native GitHub API, inserts each GitHub object once, and returns fetched/inserted/skipped counts. Returns only newly-inserted items by default (counts still report the full picture); pass include_skipped to also echo already-present rows.",
 	}, srv.handleGitHubInboxSync)
 }
 

@@ -313,6 +313,18 @@ type stubHarness struct {
 	closedPtr *bool
 }
 
+type structuredStubHarness struct {
+	stubHarness
+	input  harness.StructuredInput
+	called bool
+}
+
+func (s *structuredStubHarness) RunStructured(_ context.Context, in harness.StructuredInput) (json.RawMessage, error) {
+	s.called = true
+	s.input = in
+	return json.RawMessage(`{"class":"intent","intent":"root__bugfix_report","confidence":0.95}`), nil
+}
+
 func (s *stubHarness) RunTurn(_ context.Context, _ harness.TurnInput) (mcp.CallToolParams, error) {
 	return s.params, s.err
 }
@@ -354,6 +366,49 @@ func TestFromHarness_HappyPath(t *testing.T) {
 	if got["intent"] != "accept" {
 		t.Errorf("intent: got %v, want accept", got["intent"])
 	}
+}
+
+func TestFromHarness_PreservesArbitraryStructuredSchema(t *testing.T) {
+	stub := &structuredStubHarness{}
+	o := FromHarness(stub)
+	defer o.Close()
+
+	req := sampleRequest()
+	req.PromptText = "classify this bug report"
+	req.SchemaJSON = json.RawMessage(`{
+		"type":"object",
+		"required":["class","confidence"],
+		"properties":{"class":{"enum":["intent","help","room_request","meta_edit"]}}
+	}`)
+	resp, err := o.Ask(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Ask: unexpected error: %v", err)
+	}
+	if !stub.called {
+		t.Fatal("schema-bound agent call must use RunStructured, not RunTurn")
+	}
+	if string(stub.input.SchemaJSON) != string(req.SchemaJSON) {
+		t.Fatalf("structured schema changed:\n got: %s\nwant: %s", stub.input.SchemaJSON, req.SchemaJSON)
+	}
+	if stub.input.Prompt != req.PromptText {
+		t.Fatalf("structured prompt = %q, want %q", stub.input.Prompt, req.PromptText)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(resp.Submission, &got); err != nil {
+		t.Fatalf("unmarshal submission: %v", err)
+	}
+	if got["class"] != "intent" {
+		t.Fatalf("class = %v, want intent", got["class"])
+	}
+}
+
+func TestFromHarness_RejectsStructuredCallWhenHarnessLacksCapability(t *testing.T) {
+	o := FromHarness(&stubHarness{})
+	defer o.Close()
+	req := sampleRequest()
+	req.SchemaJSON = json.RawMessage(`{"type":"object"}`)
+	_, err := o.Ask(context.Background(), req)
+	assertAskError(t, err, "plugin_unsupported")
 }
 
 func TestFromHarness_DeadlineExceeded(t *testing.T) {

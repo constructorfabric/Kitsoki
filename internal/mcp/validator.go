@@ -22,10 +22,12 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 
@@ -38,6 +40,15 @@ import (
 // 2 KiB is enough to convey one or two distinct failures while keeping the
 // prompt cheap.
 const postCmdStderrCap = 2000
+
+// Submission-information defaults are deliberately conservative. The ratio
+// gate only activates after an earlier attempt contains enough scalar content
+// to clear the floor, so short enums and routing verdicts retain their existing
+// behavior. Set the ratio to zero to disable the gate for a particular call.
+const (
+	DefaultMinInformationRatio = 0.50
+	DefaultMinInformationBits  = 256.0
+)
 
 // ansiEscapeRE strips CSI sequences (most ANSI colours) from captured
 // stderr. Verifiers like pytest/rich often emit colour codes that would
@@ -72,10 +83,12 @@ type ValidatorServer struct {
 
 	// postCmd, when non-empty, is run after schema-pass to layer a
 	// semantic verifier on top of the structural check. See ValidatorConfig.
-	postCmd     string
-	postCmdArgs []PostCmdArg
-	postCmdCwd  string
-	maxRetries  int
+	postCmd             string
+	postCmdArgs         []PostCmdArg
+	postCmdCwd          string
+	maxRetries          int
+	minInformationRatio float64
+	minInformationBits  float64
 
 	// stateFilePath, when non-empty, makes counters (attempts /
 	// successfulSubmits / lastError) survive process restarts. See
@@ -87,19 +100,21 @@ type ValidatorServer struct {
 	// within a single Run(ctx), so this state is the source of truth for
 	// "have we successfully captured a payload yet" and "are we out of
 	// retries".
-	mu                sync.Mutex
-	attempts          int    // total submit calls (any outcome)
-	successfulSubmits int    // submits that passed schema + post-cmd
-	lastError         string // most recent rejection reason (for diagnostics)
+	mu                 sync.Mutex
+	attempts           int     // total submit calls (any outcome)
+	successfulSubmits  int     // submits that passed schema + post-cmd
+	lastError          string  // most recent rejection reason (for diagnostics)
+	maxInformationBits float64 // richest parsed submission observed this session
 }
 
 // validatorState is the on-disk shape of the persisted counters when
 // ValidatorConfig.StateFilePath is set. JSON-encoded, atomically rewritten
 // after every mutation under the validator's lock.
 type validatorState struct {
-	Attempts          int    `json:"attempts"`
-	SuccessfulSubmits int    `json:"successful_submits"`
-	LastError         string `json:"last_error"`
+	Attempts           int     `json:"attempts"`
+	SuccessfulSubmits  int     `json:"successful_submits"`
+	LastError          string  `json:"last_error"`
+	MaxInformationBits float64 `json:"max_information_bits,omitempty"`
 }
 
 // PostCmdArg is a single key/value pair forwarded to the --post-cmd
@@ -139,6 +154,16 @@ type ValidatorConfig struct {
 	// (5). On exhaustion the validator returns a final-error response and
 	// Run() reports OutcomeRetriesExhausted.
 	MaxRetries int
+
+	// MinInformationRatio rejects a schema-valid payload whose scalar-content
+	// information is less than this fraction of the richest parsed attempt in
+	// the same validator session. Nil uses DefaultMinInformationRatio; zero
+	// disables the comparison. Values must be in [0,1].
+	MinInformationRatio *float64
+	// MinInformationBits is the activation floor for the richest attempt. The
+	// relative gate stays dormant below this value so compact enum/boolean
+	// contracts are not penalized. Nil uses DefaultMinInformationBits.
+	MinInformationBits *float64
 
 	// StateFilePath, when non-empty, makes session counters
 	// (attempts/successfulSubmits/lastError) survive a process restart.
@@ -203,18 +228,34 @@ func NewValidatorServer(cfg ValidatorConfig) (*ValidatorServer, error) {
 	if maxRetries <= 0 {
 		maxRetries = 5
 	}
+	minInformationRatio := DefaultMinInformationRatio
+	if cfg.MinInformationRatio != nil {
+		minInformationRatio = *cfg.MinInformationRatio
+	}
+	if math.IsNaN(minInformationRatio) || math.IsInf(minInformationRatio, 0) || minInformationRatio < 0 || minInformationRatio > 1 {
+		return nil, fmt.Errorf("mcp.NewValidatorServer: MinInformationRatio must be between 0 and 1")
+	}
+	minInformationBits := DefaultMinInformationBits
+	if cfg.MinInformationBits != nil {
+		minInformationBits = *cfg.MinInformationBits
+	}
+	if math.IsNaN(minInformationBits) || math.IsInf(minInformationBits, 0) || minInformationBits < 0 {
+		return nil, fmt.Errorf("mcp.NewValidatorServer: MinInformationBits must be non-negative")
+	}
 
 	srv := &ValidatorServer{
-		schemaRaw:     append(json.RawMessage(nil), cfg.SchemaJSON...),
-		compiled:      compiled,
-		toolName:      toolName,
-		description:   desc,
-		outputPath:    cfg.OutputPath,
-		postCmd:       strings.TrimSpace(cfg.PostCmd),
-		postCmdArgs:   append([]PostCmdArg(nil), cfg.PostCmdArgs...),
-		postCmdCwd:    cfg.PostCmdCwd,
-		maxRetries:    maxRetries,
-		stateFilePath: cfg.StateFilePath,
+		schemaRaw:           append(json.RawMessage(nil), cfg.SchemaJSON...),
+		compiled:            compiled,
+		toolName:            toolName,
+		description:         desc,
+		outputPath:          cfg.OutputPath,
+		postCmd:             strings.TrimSpace(cfg.PostCmd),
+		postCmdArgs:         append([]PostCmdArg(nil), cfg.PostCmdArgs...),
+		postCmdCwd:          cfg.PostCmdCwd,
+		maxRetries:          maxRetries,
+		minInformationRatio: minInformationRatio,
+		minInformationBits:  minInformationBits,
+		stateFilePath:       cfg.StateFilePath,
 	}
 
 	// Seed counters from the state file (if present and well-formed).
@@ -228,6 +269,7 @@ func NewValidatorServer(cfg ValidatorConfig) (*ValidatorServer, error) {
 				srv.attempts = st.Attempts
 				srv.successfulSubmits = st.SuccessfulSubmits
 				srv.lastError = st.LastError
+				srv.maxInformationBits = st.MaxInformationBits
 			}
 		}
 	}
@@ -371,6 +413,8 @@ func (v *ValidatorServer) handleSubmit(ctx context.Context, req *mcpsdk.CallTool
 		v.recordFailure(msg)
 		return errorResult(msg), nil
 	}
+	informationBits := SubmissionInformationBits(instance)
+	v.observeInformation(informationBits)
 
 	if err := v.compiled.Validate(instance); err != nil {
 		msg := formatValidationError(err)
@@ -393,6 +437,11 @@ func (v *ValidatorServer) handleSubmit(ctx context.Context, req *mcpsdk.CallTool
 			v.recordFailure(rejection)
 			return errorResult(rejection), nil
 		}
+	}
+
+	if rejection := v.informationRejection(informationBits); rejection != "" {
+		v.recordFailure(rejection)
+		return errorResult(rejection), nil
 	}
 
 	// Capture to the side-channel file. We use the raw arguments rather
@@ -435,6 +484,90 @@ func (v *ValidatorServer) recordFailure(reason string) {
 	v.mu.Unlock()
 }
 
+func (v *ValidatorServer) observeInformation(bits float64) {
+	v.mu.Lock()
+	if bits > v.maxInformationBits {
+		v.maxInformationBits = bits
+	}
+	v.mu.Unlock()
+}
+
+func (v *ValidatorServer) informationRejection(bits float64) string {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return SubmissionInformationRejection(bits, v.maxInformationBits, v.minInformationRatio, v.minInformationBits)
+}
+
+// SubmissionInformationRejection reports a relative-content regression using
+// an already-computed score and session maximum. Empty means accepted.
+func SubmissionInformationRejection(bits, maxBits, minRatio, minBits float64) string {
+	if minRatio <= 0 || maxBits < minBits || maxBits == 0 {
+		return ""
+	}
+	ratio := bits / maxBits
+	if ratio+1e-9 >= minRatio {
+		return ""
+	}
+	return fmt.Sprintf(
+		"submit: payload information regressed to %.1f bits (%.1f%% of the session maximum %.1f bits); minimum is %.1f%%. Preserve the substantive content from the richer attempt while correcting its schema errors",
+		bits, ratio*100, maxBits, minRatio*100,
+	)
+}
+
+// SubmissionInformationBits is a deterministic information proxy over scalar
+// payload content. Object keys are schema scaffolding and are excluded; scalar
+// values are normalized, concatenated, and scored as Shannon information
+// (entropy per byte multiplied by byte count). This rewards substantive length
+// and diversity while repeated placeholder text contributes comparatively less.
+func SubmissionInformationBits(value any) float64 {
+	var scalars []string
+	var visit func(any)
+	visit = func(item any) {
+		switch typed := item.(type) {
+		case map[string]any:
+			keys := make([]string, 0, len(typed))
+			for key := range typed {
+				keys = append(keys, key)
+			}
+			sort.Strings(keys)
+			for _, key := range keys {
+				visit(typed[key])
+			}
+		case []any:
+			for _, child := range typed {
+				visit(child)
+			}
+		case string:
+			if normalized := strings.ToLower(strings.Join(strings.Fields(typed), " ")); normalized != "" {
+				scalars = append(scalars, normalized)
+			}
+		case json.Number:
+			scalars = append(scalars, typed.String())
+		case float64, float32, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, bool:
+			scalars = append(scalars, fmt.Sprint(typed))
+		}
+	}
+	visit(value)
+	data := []byte(strings.Join(scalars, "\x00"))
+	if len(data) == 0 {
+		return 0
+	}
+	var counts [256]int
+	for _, b := range data {
+		counts[b]++
+	}
+	total := float64(len(data))
+	bits := 0.0
+	for _, count := range counts {
+		if count == 0 {
+			continue
+		}
+		probability := float64(count) / total
+		bits -= float64(count) * math.Log2(probability)
+	}
+	return bits
+}
+
 // persistStateLocked rewrites the on-disk state file atomically. Caller
 // must hold v.mu. No-op when stateFilePath is empty. Failures are
 // non-blocking: a state-file write error must not block the LLM's
@@ -447,9 +580,10 @@ func (v *ValidatorServer) persistStateLocked() {
 		return
 	}
 	st := validatorState{
-		Attempts:          v.attempts,
-		SuccessfulSubmits: v.successfulSubmits,
-		LastError:         v.lastError,
+		Attempts:           v.attempts,
+		SuccessfulSubmits:  v.successfulSubmits,
+		LastError:          v.lastError,
+		MaxInformationBits: v.maxInformationBits,
 	}
 	data, err := json.Marshal(st)
 	if err != nil {

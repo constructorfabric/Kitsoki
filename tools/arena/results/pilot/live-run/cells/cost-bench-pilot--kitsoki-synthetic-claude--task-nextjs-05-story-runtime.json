@@ -1,0 +1,23 @@
+{
+  "axis": {
+    "task": "nextjs-05-story-runtime"
+  },
+  "cell_id": "cost-bench-pilot--kitsoki-synthetic-claude--task:nextjs-05-story-runtime",
+  "evidence_refs": [
+    "/Users/brad/code/Kitsoki/.worktrees/generalized-usage-rebase/tools/arena/corpus/cost-bench.manifest.yaml#nextjs-05-story-runtime",
+    "/Users/brad/code/Kitsoki/.worktrees/generalized-usage-rebase/.artifacts/arena/paired-task-work/nextjs-05-story-runtime--kitsoki--synthetic--claude-synthetic/packages/next/src/build/define-env.ts"
+  ],
+  "health": "model:result",
+  "job_type": "paired-task",
+  "metrics": {
+    "cost_usd": 0.0,
+    "host": "local",
+    "tokens": 0,
+    "wall_s": 21.841
+  },
+  "notes": "synthetic backend: no live model call; baseline scored directly; github_content oracle green=False",
+  "target_id": "cost-bench-pilot",
+  "trace_ref": "",
+  "variant_id": "kitsoki-synthetic-claude",
+  "verdict": "failed"
+}

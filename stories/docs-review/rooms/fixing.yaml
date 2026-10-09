@@ -35,6 +35,7 @@ states:
             "Decision": "{{ world.verdict.decision }}"
             "Stale rows": '{{ world.verdict.stale_docs|length|default:"0" }}'
             "Applied":  '{% if world.fix_artifact.applied == true %}yes{% elif world.fix_artifact.applied == false %}no (see blockers){% else %}(pending — agent has not returned){% endif %}'
+            "Repair report": '{{ world.fix_artifact.report_path|default:"(not written)" }}'
       - heading: "Worklist (read-only render of verdict.stale_docs)"
       - code: |
           {% for d in world.verdict.stale_docs %}{{ d.path }} : {{ d.lines }}{% if d.anchor %}  ({{ d.anchor }}){% endif %}

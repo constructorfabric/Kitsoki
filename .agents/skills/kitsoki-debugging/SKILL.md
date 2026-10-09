@@ -1,11 +1,16 @@
 ---
 name: kitsoki-debugging
-description: Diagnose kitsoki-dev dogfood / bugfix / feature-story bugs. Use when the user reports "going back to idle", "silent bounce", "stuck at <state>", or any "this room didn't do what I expected" complaint. Drives the same state machine the TUI uses, against the real on-disk repo state, without spinning up a session. Surfaces the underlying host-call errors that the TUI's `on_error:` arcs swallow.
+description: Diagnose kitsoki-dev dogfood, bugfix, and feature-story bugs. Use when the user reports "going back to idle", "silent bounce", being stuck in a named state, or any "this room didn't do what I expected" complaint. Drives the same state machine the TUI uses against the real on-disk repo state without spinning up a session, and surfaces host-call errors that `on_error` arcs swallow.
 ---
 
 # Kitsoki Debugging
 
 The TUI hides almost everything useful behind `on_error: idle` arcs. When the user says "it keeps going to idle", **assume the TUI is lying about what really failed** and reach for the tools below.
+
+If the failure is a `capsule ci` job, remote worker, durable run, receipt, or
+cleanup problem, switch first to
+[`capsule-ci-operations`](../capsule-ci-operations/SKILL.md). Capsule CI has its
+own run projection and `diagnose --latest`; do not infer it from a TUI trace.
 
 ## When you read a user's "bounce to idle" report
 
@@ -15,7 +20,9 @@ You have six primary tools, in order of cost:
 1. **`kitsoki trace --turns [--app <app>]`** — a compact per-turn digest of a real session: input → which routing tier resolved it (and why) → each host call **with its resolved inputs + returned outputs / error / fs inspections** → the **prompt each oracle verb dispatched** → editor context → on_error redirects → errors → outcome. This is the "what actually happened to my turn" view; it collapses a grep+jq loop into one command. **Use first to read a user's session.** No path needed — it resolves the newest session under `~/.kitsoki/sessions/` (filter with `--app kitsoki-dev`, or pass a session-id substring). Add `--turn <n>` to focus one turn and print its dispatched prompt **and each host call's inputs/outputs in full** (an unevaluated input like `spec_path: world.deck.spec_path` shows verbatim there — the tell for the bare-expr footgun).
 2. **`kitsoki turn`** — one-shot a turn against the real repo, dump host calls + errors as JSON. Cheap, repeatable, runs against the actual on-disk state. **Use to reproduce in isolation.**
 3. **Raw trace JSONL** (`kitsoki trace <file>` or `jq`) — every `machine.transition`, `host.on_error.redirect`, `machine.effect.applied`, `oracle.call.start`, `ide.context_captured`. **Use to confirm the digest and dig into a specific event.**
-4. **Go tests under `internal/orchestrator/dogfood_smoke_test.go`** — `t.TempDir()` + real `git init` + real host registry, oracle stubbed. **Use to lock in regressions.**
+4. **Hermetic capsule-backed Go tests** — `internal/capsuletest.Open` + the real
+   host registry with the oracle stubbed. **Use to lock in regressions without
+   rebuilding bespoke repository state.**
 5. **The actual TUI** — slow, hard to script, hard to inspect mid-flight. Use last.
 
 ## Two failure classes — pick the right lens
@@ -49,10 +56,12 @@ Provenance vocabulary on `turn.start`: `routed_by` ∈ {`deterministic`, `semant
 
 ## Step 1 — reproduce with `kitsoki turn`
 
-Build a fresh binary into `/tmp` so you're not racing the user's running TUI:
+Work in a managed development workspace and run the checkout's source directly.
+This avoids racing an installed/stale CLI without producing a throwaway binary:
 
 ```sh
-go build -o /tmp/kitsoki-fixed ./cmd/kitsoki
+scripts/dev-workspace.sh status <workspace-id>
+go run ./cmd/kitsoki validate .kitsoki/stories/kitsoki-dev/app.yaml
 ```
 
 Then dump the user's world state into a JSON file. The trace JSONL has every `turn.done` event with a `view_rendered` field — its prelude tells you state path, workspace_id, feature_branch, etc. Build the world file from those values:
@@ -63,7 +72,7 @@ cat > /tmp/world.json <<'EOF'
   "core__bf__ticket_id":          "<from trace>",
   "core__bf__workspace_id":       "bf-<ticket>",
   "core__bf__feature_branch":     "fix/<ticket>",
-  "core__bf__workdir":            ".worktrees/bf-<ticket>",
+  "core__bf__workdir":            "<absolute managed workspace path from status>",
   "core__bf__base_branch":        "main",
   "core__bf__bf_autostart_attempted": true,
   "core__bf__bugfix_mode":        "full",
@@ -82,7 +91,7 @@ EOF
 Then fire the turn:
 
 ```sh
-/tmp/kitsoki-fixed turn .kitsoki/stories/kitsoki-dev/app.yaml \
+go run ./cmd/kitsoki turn .kitsoki/stories/kitsoki-dev/app.yaml \
   --state core.bf.proposing \
   --intent core__bf__accept \
   --world @/tmp/world.json \
@@ -94,7 +103,10 @@ What you get:
 - `error_message` — set when the intent itself is rejected (INTENT_NOT_ALLOWED, GUARD_FAILED, MISSING_SLOTS).
 - A list of every host invocation with its full error string. **This is the layer the TUI's `on_error:` arcs swallow.**
 
-If `next_state` is the room the user expects, the bug is fixed (or never existed against current code) and the user is running a stale binary — tell them to rebuild. If it's something else, the host call that errored tells you exactly where to look.
+If `next_state` is the room the user expects, the bug is fixed (or never existed
+against current source) and the user may be running a stale installed CLI. Show
+the `go run` evidence and refresh the supported install only after validation. If
+it's something else, the host call that errored tells you exactly where to look.
 
 ### Gotchas with `kitsoki turn`
 
@@ -152,7 +164,7 @@ It reads the trace FILE, so it works on a **LIVE / in-flight** session another p
 |---|---|---|
 | "regression gate was never RED on the pre-fix snapshot" | the reproducer's RED test never landed as a DISCRETE pre-fix commit (synthesised-gate path) → testing's HEAD~1 gate found nothing RED | worktree `git log`: is there a `test(repro): …` commit BEFORE the fix commit? If the test is squashed INTO the fix, that's the bug. See `internal/bugfixsynth/synthesis_realgit_test.go`. |
 | ran on the wrong model (Sonnet, not the one you asked for) | the harness PROFILE pins the model and SUPERSEDES the agent-def; a bare `codex` profile pins nothing → falls back to the agent-def | re-run with `session.new {profile: codex-native}` (gpt-5.5) / `synthetic-claude` (GLM) — never edit the story `model:`. |
-| `not-reproducible` on a real bug | the worktree was cut from a branch that ALREADY has the fix (stale-branch reattach) | CLEAN pre-flight: `git worktree remove --force` AND `git branch -D fix/<id>`. |
+| `not-reproducible` on a real bug | the managed workspace was reacquired from a branch that already has the fix | Inspect `capsule workspace status`; release/recreate it through the owning Capsule lifecycle, preserving dirty work and the lease owner. |
 | `world.session_cost_usd: 0` under codex/gpt | known: the codex backend doesn't surface cost into world (filed bug), not a run failure | ignore for triage. |
 | idle for many minutes, non-terminal | the run is STUCK (a blocked maker / collision), not working | `git log` of the worktree + the trace tail; kill + clean + re-run. See `dogfood-marathon`. |
 
@@ -219,14 +231,20 @@ for i := len(hist)-1; i >= 0; i-- {
 
 A `HostReturned` event with an `"error"` field is a host call that failed. If the source room had `on_error: <target>`, that's where you bounced — even though the trace shows no transition log for it (the redirect is logged as `host.on_error.redirect` in the orchestrator's slog, separate from `machine.transition`).
 
-## Step 4 — pin the fix with a Go test
+## Step 4 — pin the fix with a capsule-backed Go test
 
-`internal/orchestrator/dogfood_smoke_test.go` has the pattern:
+Use `.agents/skills/capsules/SKILL.md` and start from the closest reusable state:
 
-- `setupDogfoodRepo(t)` builds a real `git init` repo at `t.TempDir()` and copies the live `stories/` + `issues/` trees into it.
-- `newSmokeOrchestrator(t, repoRoot)` wires the real host registry with the oracle stubbed (no LLM cost).
+- Open `clean-repo`, `stale-worktree`, `dirty-index`, or another named fixture
+  with `internal/capsuletest.Open(t, "<name>")`.
+- Wire the real host registry with the oracle stubbed (no LLM cost).
 - Drive turns via `orch.SubmitDirect(ctx, sid, intent, slots)` exactly as the TUI does.
-- Mutate the repo between turns (`os.RemoveAll`, `os.WriteFile`, `exec.Command("git", "worktree", "prune")`) to simulate real-world corruption shapes.
+- Mutate only the behavior-specific files/metadata inside the opened fixture.
+  Add a new named capsule when that state will recur.
+
+Keep bespoke temporary repository setup only when repository creation/bootstrap
+or the exact Git command sequence is itself the behavior under test. Do not copy
+the live story tree into a fresh ad hoc repo merely to obtain a known state.
 
 Two existing tests show the patterns:
 
@@ -259,9 +277,9 @@ A warp doubles as a regression artifact: the same file is a flow-fixture-shaped 
 |---|---|---|
 | Bounce to idle, no diagnostic | Host call errored, `on_error: idle` fired silently | `kitsoki turn` — the `host_calls[]` array shows the actual error |
 | Stuck in a room despite typing accept | Intent rejected (`INTENT_NOT_ALLOWED_IN_STATE`, missing slots, guard false) | `kitsoki turn` returns `mode:"rejected"` with `error_code` + `error_message` |
-| Implementing crashes after a process restart | `bf_autostart_attempted=true` pinned but workspace gone | World has the flag; `git worktree list` doesn't show the dir |
+| Implementing crashes after a process restart | `bf_autostart_attempted=true` pinned but workspace gone | World has the flag; `capsule workspace status --id <id>` reports missing/closed/stale generation |
 | Commit fails with `git.commit: ` (empty message) | git's "nothing to commit" goes to **stdout**, not stderr; lenient-mode checks missed it | Check `gitCommit` in `internal/host/git_vcs.go` reads both streams |
-| Worktree create says "already exists" but you can't find it | Path-comparison bug: relative vs absolute | `git worktree list --porcelain` always emits absolute; handlers must `filepath.Abs` or match by basename |
+| Legacy workspace creation says "already exists" but the expected path is absent | Metadata/path mismatch or a stale lease | Compare the typed Capsule workspace record, generation, owner, and canonical path; do not infer state from directory presence alone |
 | Conversation "lost its state" / analyst forgot everything after a `/reload` | `on_enter` re-fired on reload and a non-idempotent `host.chat.create` spawned a fresh empty chat, overwriting the bound `*_chat_id` while world counters survived | Grep the trace for a `turn.end` with `outcome:"reloaded"`, then a `host.chat.create` (not `resolve`) firing right after and a new `chat_id` in `world.update`. Fix: use `host.chat.resolve` in `on_enter`. See state-machine.md §"`on_enter` must be idempotent". |
 | "The model didn't see X" (a selection, the open doc, a world value) — yet the turn ran fine | The context never reached the dispatched prompt: a verb returned it but no prompt template/seam consumed it, OR an upstream parser returned empty against a real wire shape | `kitsoki trace --turns` → check the `prompt` line for that turn. If X isn't in it, it never reached the model. For host.ide.*, check `ide.context_captured` for `source:none` + `reason`. |
 | Free text "did nothing" / re-rendered the room instead of conversing | Routed to a navigation intent (e.g. `look`) instead of the conversational sink | `turn.start.routed_by` / `match_type`. Fix: give the conversational room a `default_intent` (semantic-routing.md §1.5). |

@@ -9,7 +9,7 @@
 # workspace write and an amend of docs/proposals/<file>.md resolve.
 #
 # `accept` publishes the proposal and files a feature ticket. `accept_no_ticket`
-# publishes only. Both use publish_design.py; the save-only path passes an empty
+# publishes only. Both use publish_design.star; the save-only path passes an empty
 # ticket_dir so no implementation ticket is minted.
 #
 # Checkpoint exits: accept → publish (+ optional file ticket) → design_done;
@@ -128,7 +128,7 @@ states:
         on_error: .
     on:
       # Accept: publish the proposal (move it from workspace to docs/proposals/)
-      # AND mint a feature ticket that links back to it. publish_design.py
+      # AND mint a feature ticket that links back to it. publish_design.star
       # handles collision-proofing and emits a JSON envelope so a single call
       # binds the published path plus the new ticket's id / path / title.
       # ticket_type is pinned to "feature" here so the draft room's
@@ -137,66 +137,162 @@ states:
       accept:
         - target: design_done
           effects:
-            - invoke: host.run
+            - invoke: host.starlark.run
               id: publish
               with:
-                cmd: python3
-                args:
-                  - "stories/dev-story/scripts/publish_design.py"
-                  - "{{ world.design_workspace }}"
-                  - "{{ world.design_slug }}"
-                  - "{{ world.design_change_target }}"
-                  - "{{ world.design_artifact.title }}"
-                  - "{{ world.design_idea }}"
-                  # External-target profile (defaults keep flat docs/proposals
-                  # + a feature ticket; an instance overrides these).
-                  - "{{ world.workdir }}"
-                  - "{{ world.design_durable_path }}"
-                  - "{{ world.design_doc_filename }}"
-                  - "{{ world.design_ticket_dir }}"
-                  # ticket_repo (slice #3): non-empty ⇒ mint a GitHub feature
-                  # issue instead of a local issues/features/<id>.md file.
-                  - "{{ world.ticket_repo }}"
+                script: scripts/publish_design.star
+                inputs:
+                  workspace: "{{ world.design_workspace }}"
+                  slug: "{{ world.design_slug }}"
+                  change_target: "{{ world.design_change_target }}"
+                  title: "{{ world.design_artifact.title }}"
+                  idea: "{{ world.design_idea }}"
+                  workdir: "{{ world.workdir }}"
+                  durable: "{{ world.design_durable_path }}"
+                  doc_filename: "{{ world.design_doc_filename }}"
+                  ticket_dir: "{{ world.design_ticket_dir }}"
+                  ticket_repo: "{{ world.ticket_repo }}"
+                capabilities:
+                  host:
+                    verbs: [host.proposal.publish]
               bind:
-                design_file: stdout_json.design_file
-                ticket_id:     stdout_json.ticket_id
-                ticket_title:  stdout_json.ticket_title
-                ticket_url:    stdout_json.ticket_url
-                thread:        stdout_json.ticket_id
-                design_ticket_path: stdout_json.ticket_path
+                design_file: design_file
+                ticket_id: ticket_id
+                ticket_title: ticket_title
+                ticket_url: ticket_url
+                thread: ticket_id
+                design_ticket_path: ticket_path
               on_error: design_draft
             - set:
                 ticket_type: "feature"
+            - invoke: host.run
+              id: roadmap_ledger_proposal_published
+              with:
+                cmd: bash
+                args:
+                  - "-c"
+                  - |
+                    if [ -d ./cmd/kitsoki ]; then
+                      exec go run ./cmd/kitsoki roadmap ledger event "$@"
+                    fi
+                    exec kitsoki roadmap ledger event "$@"
+                  - "kitsoki-roadmap-ledger"
+                  - "--ledger"
+                  - "{{ world.roadmap_ledger_path }}"
+                  - "--event"
+                  - "proposal_published"
+                  - "--item-id"
+                  - "proposal/{{ world.design_slug }}"
+                  - "--kind"
+                  - "proposal"
+                  - "--title"
+                  - "{{ world.design_artifact.title }}"
+                  - "--status"
+                  - "{{ world.design_change_target != '' ? 'in_progress' : 'proposed' }}"
+                  - "--horizon"
+                  - "next"
+                  - "--proposal"
+                  - "{{ world.design_file }}"
+                  - "--ref"
+                  - "{{ world.design_ticket_path }}"
+                  - "--check"
+                  - "proposal=done"
+                  - "--check"
+                  - "docs=pending"
+                  - "--check"
+                  - "feature_yaml=pending"
+                  - "--check"
+                  - "product_site=pending"
+                  - "--check"
+                  - "rrweb_demo=pending"
+                  - "--source"
+                  - "story:dev-story/design_draft"
+                  - "--note"
+                  - "{{ world.design_existing_state.roadmap_fit ?? '' }}"
+                  - "--json"
+              bind:
+                roadmap_ledger_result: stdout_json
+              on_error: design_done
 
       accept_no_ticket:
         - target: design_done
           effects:
-            - invoke: host.run
+            - invoke: host.starlark.run
               id: publish
               with:
-                cmd: python3
-                args:
-                  - "stories/dev-story/scripts/publish_design.py"
-                  - "{{ world.design_workspace }}"
-                  - "{{ world.design_slug }}"
-                  - "{{ world.design_change_target }}"
-                  - "{{ world.design_artifact.title }}"
-                  - "{{ world.design_idea }}"
-                  - "{{ world.workdir }}"
-                  - "{{ world.design_durable_path }}"
-                  - "{{ world.design_doc_filename }}"
-                  - ""
-                  - ""
+                script: scripts/publish_design.star
+                inputs:
+                  workspace: "{{ world.design_workspace }}"
+                  slug: "{{ world.design_slug }}"
+                  change_target: "{{ world.design_change_target }}"
+                  title: "{{ world.design_artifact.title }}"
+                  idea: "{{ world.design_idea }}"
+                  workdir: "{{ world.workdir }}"
+                  durable: "{{ world.design_durable_path }}"
+                  doc_filename: "{{ world.design_doc_filename }}"
+                  ticket_dir: ""
+                  ticket_repo: ""
+                capabilities:
+                  host:
+                    verbs: [host.proposal.publish]
               bind:
-                design_file: stdout_json.design_file
-                ticket_id:     stdout_json.ticket_id
-                ticket_title:  stdout_json.ticket_title
-                ticket_url:    stdout_json.ticket_url
-                thread:        stdout_json.ticket_id
-                design_ticket_path: stdout_json.ticket_path
+                design_file: design_file
+                ticket_id: ticket_id
+                ticket_title: ticket_title
+                ticket_url: ticket_url
+                thread: ticket_id
+                design_ticket_path: ticket_path
               on_error: design_draft
             - set:
                 ticket_type: ""
+            - invoke: host.run
+              id: roadmap_ledger_proposal_published
+              with:
+                cmd: bash
+                args:
+                  - "-c"
+                  - |
+                    if [ -d ./cmd/kitsoki ]; then
+                      exec go run ./cmd/kitsoki roadmap ledger event "$@"
+                    fi
+                    exec kitsoki roadmap ledger event "$@"
+                  - "kitsoki-roadmap-ledger"
+                  - "--ledger"
+                  - "{{ world.roadmap_ledger_path }}"
+                  - "--event"
+                  - "proposal_published"
+                  - "--item-id"
+                  - "proposal/{{ world.design_slug }}"
+                  - "--kind"
+                  - "proposal"
+                  - "--title"
+                  - "{{ world.design_artifact.title }}"
+                  - "--status"
+                  - "{{ world.design_change_target != '' ? 'in_progress' : 'proposed' }}"
+                  - "--horizon"
+                  - "next"
+                  - "--proposal"
+                  - "{{ world.design_file }}"
+                  - "--ref"
+                  - "{{ world.design_ticket_path }}"
+                  - "--check"
+                  - "proposal=done"
+                  - "--check"
+                  - "docs=pending"
+                  - "--check"
+                  - "feature_yaml=pending"
+                  - "--check"
+                  - "product_site=pending"
+                  - "--check"
+                  - "rrweb_demo=pending"
+                  - "--source"
+                  - "story:dev-story/design_draft"
+                  - "--note"
+                  - "{{ world.design_existing_state.roadmap_fit ?? '' }}"
+                  - "--json"
+              bind:
+                roadmap_ledger_result: stdout_json
+              on_error: design_done
 
       # Same inputs, revise the prose. Budget gate → main.
       refine:
@@ -298,7 +394,7 @@ states:
         - target: .
 
   # Post-publish confirmation view (was design_publish.yaml, now inline).
-  # Entered from the accept arc after publish_design.py has bound design_file.
+  # Entered from the accept arc after publish_design.star has bound design_file.
   # on_enter is empty — publish already happened in the accept arc's effects.
   design_done:
     description: "Proposal published — review the file and return to your day."
@@ -315,15 +411,17 @@ states:
           pairs:
             Title: '{{ world.design_artifact.title|default:"(n/a)" }}'
             Kind:  '{{ world.design_artifact.kind|default:"(n/a)" }}'
+            "Roadmap ledger": '{{ world.roadmap_ledger_path }}'
+            "Roadmap event":  '{{ world.roadmap_ledger_result.event_id|default:"(not recorded)" }}'
       - kv:
           pairs:
             Ticket: '{{ world.ticket_id }} — {{ world.design_ticket_path }}'
         when: "world.ticket_id != ''"
-      - prose: "Feature ticket filed. Choose **implement** to drive it now, or **main** to return."
+      - prose: "Feature ticket filed. Choose **implement** to drive it now, **decompose** to fan it out as a briefs → fleet chain instead, or **main** to return."
         when: "world.ticket_id != ''"
       # External-target profile (design_ticket_dir=\"\"): no kitsoki ticket is
       # minted — the target tracks work in its own issues — so don't claim one.
-      - prose: "Published without filing a feature ticket."
+      - prose: "Published without filing a feature ticket. Choose **decompose** to fan the proposal out as a briefs → fleet chain, or **main** to return."
         when: "world.ticket_id == ''"
       - choice:
           mode: single
@@ -333,13 +431,16 @@ states:
               hint:   "drive the new feature ticket into the implementation pipeline"
               intent: go_implementation
               when: "world.ticket_id != ''"
+            - label:  "decompose"
+              hint:   "fan the proposal out into briefs, review, and fleet — the epic-sized alternative to implement"
+              intent: go_deliver
             - label:  "main"
               hint:   "back to the engineer's day landing"
               intent: go_main
             - label:  "look"
               hint:   "re-render"
               intent: look
-    relevant_world: [design_workspace, design_slug, design_change_target, design_artifact, design_file, design_ticket_path, ticket_id, ticket_title, ticket_type]
+    relevant_world: [design_workspace, design_slug, design_change_target, design_artifact, design_file, design_ticket_path, roadmap_ledger_path, roadmap_ledger_result, ticket_id, ticket_title, ticket_type]
     on:
       # The accept arc already pinned ticket_id / ticket_type=feature /
       # ticket_url / thread, so impl's world_in: projection has everything it
@@ -352,12 +453,83 @@ states:
             - set:
                 last_error: ""
                 prev_state: "landing"
+                roadmap_implementation_item_id: "{{ world.design_slug != '' ? 'proposal/' + world.design_slug : 'feature/' + world.ticket_id }}"
+                roadmap_implementation_completion_pending: false
+                roadmap_implementation_progress_path: ""
+                roadmap_implementation_completed_result: {}
+            - invoke: host.run
+              id: roadmap_ledger_implementation_started
+              with:
+                cmd: bash
+                args:
+                  - "-c"
+                  - |
+                    if [ -d ./cmd/kitsoki ]; then
+                      exec go run ./cmd/kitsoki roadmap ledger event "$@"
+                    fi
+                    exec kitsoki roadmap ledger event "$@"
+                  - "kitsoki-roadmap-ledger"
+                  - "--ledger"
+                  - "{{ world.roadmap_ledger_path }}"
+                  - "--event"
+                  - "implementation_started"
+                  - "--item-id"
+                  - "{{ world.design_slug != '' ? 'proposal/' + world.design_slug : 'feature/' + world.ticket_id }}"
+                  - "--kind"
+                  - "{{ world.design_slug != '' ? 'proposal' : 'feature' }}"
+                  - "--title"
+                  - "{{ world.ticket_title != '' ? world.ticket_title : world.design_artifact.title }}"
+                  - "--status"
+                  - "in_progress"
+                  - "--horizon"
+                  - "now"
+                  - "--proposal"
+                  - "{{ world.design_file }}"
+                  - "--ref"
+                  - "{{ world.design_ticket_path }}"
+                  - "--ref"
+                  - "{{ world.ticket_url }}"
+                  - "--check"
+                  - "{{ world.design_file != '' ? 'proposal=done' : 'proposal=not_applicable' }}"
+                  - "--check"
+                  - "docs=pending"
+                  - "--check"
+                  - "feature_yaml=pending"
+                  - "--check"
+                  - "product_site=pending"
+                  - "--check"
+                  - "rrweb_demo=pending"
+                  - "--source"
+                  - "story:dev-story/design_done"
+                  - "--json"
+              bind:
+                roadmap_implementation_started_result: stdout_json
+              on_error: impl
         - default: true
           target: landing
           guard_hint: "No ticket was filed — return to main and pick one from your queue."
           effects:
             - set:
                 last_error: "design published but no ticket id — pick the feature from `tickets`"
+                prev_state: "landing"
+      # decompose-vs-direct (proposal deliver-canonical-decomposition.md, task
+      # B3, Open Question 3): operator choice, never an automatic size
+      # heuristic. deliver's world_in: reads design_file directly, so this arc
+      # needs no ticket at all — it works for both the ticketed and
+      # external-target (no-ticket) publish shapes above.
+      go_deliver:
+        - when: "world.design_file != ''"
+          target: deliver
+          effects:
+            - set:
+                last_error: ""
+                prev_state: "landing"
+        - default: true
+          target: landing
+          guard_hint: "No published proposal to decompose — publish a design first."
+          effects:
+            - set:
+                last_error: "no published proposal — publish a design before decomposing it"
                 prev_state: "landing"
       go_main:
         - target: landing

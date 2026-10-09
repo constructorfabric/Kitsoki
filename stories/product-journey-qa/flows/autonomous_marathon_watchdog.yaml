@@ -1,0 +1,93 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.product_journey.run:
+    by_call:
+      load_product_journey_run:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: run_loaded
+            run_id: run-watchdog
+            run_dir: .artifacts/product-journey/run-watchdog
+            project: vscode
+            persona: core-maintainer
+            seed: watchdog
+            live_budget_minutes: 6
+            run_scenario_count: 1
+            driver_journal_path: .artifacts/product-journey/run-watchdog/driver-journal.md
+            driver_handoff_path: .artifacts/product-journey/run-watchdog/driver-handoff.md
+            deck_path: .artifacts/product-journey/run-watchdog/deck.slidey.json
+            autonomous_control_status: ready_for_driver
+            autonomous_control_summary: "cadence=24h, next_due=2026-07-06T00:00:00+00:00, budget=6m/scenario, heartbeat=15m, watchdog=45m"
+            autonomous_control_path: .artifacts/product-journey/run-watchdog/autonomous-marathon-control.json
+      autonomous_product_journey_marathon_watchdog:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            schema: kitsoki/product-journey-autonomous-marathon-watchdog/v1
+            status: autonomous_watchdog_blocked
+            autonomous_watchdog_status: autonomous_watchdog_blocked
+            autonomous_watchdog_summary: "stale heartbeat: 46m since run creation; watchdog=45m; stop before spend"
+            autonomous_watchdog_path: .artifacts/product-journey/run-watchdog/autonomous-marathon-watchdog.json
+            autonomous_watchdog_markdown_path: .artifacts/product-journey/run-watchdog/autonomous-marathon-watchdog.md
+            autonomous_watchdog_age_minutes: 46
+            driver_journal_path: .artifacts/product-journey/run-watchdog/driver-journal.md
+            proof_evidence_count: 0
+            demo_evidence_count: 0
+            finding_total_count: 0
+            strength_count: 0
+            weakness_count: 0
+            weakness_route_count: 0
+            weakness_route_summary: ""
+            prd_design_intake_path: .artifacts/product-journey/run-watchdog/prd-design-intake.md
+            prd_design_intake_count: 0
+            prd_design_intake_summary: ""
+            issue_count: 0
+            fix_count: 0
+            blocked_count: 0
+            missing_evidence_count: 3
+            missing_proof_evidence_count: 3
+            proof_minimum_evidence_count: 3
+            minimum_evidence_count: 3
+            missing_proof_summary: "bugfix: trace_reference, rendered_tui_frame, command_output"
+            driver_contract_summary: "Driver contract: 1 scenarios (bugfix); 1 missing-proof rows; 4 final gates."
+            next_driver_capture: "bugfix: capture trace_reference"
+            next_driver_attach_command: "host.product_journey.run --attach-evidence --run-dir .artifacts/product-journey/run-watchdog --scenario bugfix --evidence-kind trace_reference --evidence-path <path>"
+            next_driver_blocker_command: "host.product_journey.run --record-blocker --run-dir .artifacts/product-journey/run-watchdog --scenario bugfix --title <title> --summary <summary>"
+
+turns:
+  - intent:
+      name: load
+      slots:
+        run_dir: .artifacts/product-journey/run-watchdog
+    expect_state: run_created
+    expect_world:
+      run_id: run-watchdog
+      run_dir: .artifacts/product-journey/run-watchdog
+      autonomous_control_status: ready_for_driver
+    expect_host_calls:
+      - handler: host.product_journey.run
+        args: { call: load_product_journey_run }
+
+  - intent:
+      name: autonomous_watchdog
+      slots:
+        watchdog_now: "2026-07-06T00:46:00+00:00"
+    expect_state: run_created
+    expect_world:
+      status: autonomous_watchdog_checked
+      autonomous_watchdog_status: autonomous_watchdog_blocked
+      autonomous_watchdog_age_minutes: 46
+      autonomous_watchdog_markdown_path: .artifacts/product-journey/run-watchdog/autonomous-marathon-watchdog.md
+      driver_journal_path: .artifacts/product-journey/run-watchdog/driver-journal.md
+    expect_view_matches: "RUN CREATED[\\s\\S]*Marathon watchdog[\\s\\S]*autonomous_watchdog_blocked[\\s\\S]*stale heartbeat: 46m[\\s\\S]*Watchdog age[\\s\\S]*46 min[\\s\\S]*Watchdog report[\\s\\S]*autonomous-marathon-[\\s\\S]*watchdog.md"
+    expect_host_calls:
+      - handler: host.product_journey.run
+        args: { call: autonomous_product_journey_marathon_watchdog }
+
+expect_no_errors: true

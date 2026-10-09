@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/flosch/pongo2/v6"
 
@@ -36,6 +37,18 @@ func (noopLoader) Get(path string) (io.Reader, error) {
 // NewCachedAppRenderer for tests and production runs where templates are
 // stable.
 type AppRenderer struct {
+	// mu serialises every access to set. pongo2's TemplateSet caches compiled
+	// templates in an unsynchronised map (FromString / FromCache both mutate
+	// it), so two goroutines rendering through the same renderer race on that
+	// map. In kitsoki one session's renderer is reached concurrently by the
+	// foreground turn loop AND the background job listener (a job's on_complete
+	// arc renders the next view while session.inspect renders the current one),
+	// so the race is live, not theoretical — the race detector flags it as a
+	// concurrent write inside pongo2.(*TemplateSet).FromString. Holding mu for
+	// the whole compile+execute keeps every set access single-threaded; the
+	// {% include %}/{% extends %} re-entry into set.FromCache happens on the
+	// same goroutine that already holds mu, so it cannot deadlock.
+	mu      sync.Mutex
 	set     *pongo2.TemplateSet
 	rootDir string
 	cached  bool
@@ -126,6 +139,8 @@ func (r *AppRenderer) Render(src string, env expr.Env) (out string, err error) {
 		return src, nil
 	}
 	src = preprocessCoalesce(src)
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	tpl, err := r.set.FromString(src)
 	if err != nil {
 		return "", wrapTemplateError(src, err)
@@ -152,6 +167,8 @@ func (r *AppRenderer) Render(src string, env expr.Env) (out string, err error) {
 // views/ directory) against env. Use for standalone .pongo files
 // referenced via `template_file:` or as the target of `extends:`.
 func (r *AppRenderer) RenderFile(name string, env expr.Env) (string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	tpl, err := r.set.FromCache(name)
 	if err != nil {
 		return "", fmt.Errorf("render: load template %q: %w", name, err)
@@ -228,6 +245,8 @@ func (r *AppRenderer) RenderExtended(extends string, blocks map[string]string, e
 		fmt.Fprintf(&sb, "{%% block %s %%}{{ _block_%s|safe }}{%% endblock %%}\n", name, name)
 	}
 
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	tpl, err := r.set.FromString(sb.String())
 	if err != nil {
 		return "", fmt.Errorf("render: build wrapping template for extends %q: %w", extends, err)

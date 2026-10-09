@@ -1,0 +1,26 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  repo: acme/repo
+  pr_number: "42"
+  worktree_path: "."
+
+host_handlers:
+  host.git:
+    by_call:
+      ci_status_native:
+        data:
+          state: failure
+          checks_summary: "state: failure\nfailed checks: 1\n- go-test: failure (https://github.com/acme/repo/actions/runs/1)"
+          failed_log: "- go-test: failure (https://github.com/acme/repo/actions/runs/1)"
+
+turns:
+  - intent: { name: check, slots: {} }
+    expect_state: checking
+    expect_world:
+      ci_conclusion: failure
+      checks_summary: "state: failure\nfailed checks: 1\n- go-test: failure (https://github.com/acme/repo/actions/runs/1)"
+      failed_log: "- go-test: failure (https://github.com/acme/repo/actions/runs/1)"
+
+expect_no_errors: true

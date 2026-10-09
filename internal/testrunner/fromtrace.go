@@ -33,6 +33,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	goyaml "github.com/goccy/go-yaml"
@@ -53,10 +54,11 @@ type traceLine struct {
 // flow turn. slots is the resolved slot map (values may be strings, e.g.
 // n: "1").
 type transitionPayload struct {
-	From   string         `json:"from"`
-	To     string         `json:"to"`
-	Intent string         `json:"intent"`
-	Slots  map[string]any `json:"slots"`
+	From      string         `json:"from"`
+	To        string         `json:"to"`
+	Intent    string         `json:"intent"`
+	Slots     map[string]any `json:"slots"`
+	Synthetic bool           `json:"synthetic"`
 }
 
 // turnInputPayload is the turn.input (store.UserInputReceived) payload. input is
@@ -73,6 +75,37 @@ type turnInputPayload struct {
 type harnessPayload struct {
 	Namespace string         `json:"namespace"`
 	Data      map[string]any `json:"data"`
+}
+
+// These trace payloads complete a host.agent.* cassette episode. A host return
+// can replay state changes alone, but the workbench also needs the canonical
+// agent lifecycle pair to render the captured exchange.
+type agentCallStartPayload struct {
+	Verb       string `json:"verb"`
+	Agent      string `json:"agent"`
+	Model      string `json:"model"`
+	Prompt     string `json:"prompt"`
+	PromptFile string `json:"prompt_file"`
+}
+
+type agentCallCompletePayload struct {
+	Verb         string          `json:"verb"`
+	Agent        string          `json:"agent"`
+	Model        string          `json:"model"`
+	DurationMS   int64           `json:"duration_ms"`
+	Response     json.RawMessage `json:"response"`
+	ResponseFile string          `json:"response_file"`
+	Meta         struct {
+		CostUSD float64 `json:"cost_usd"`
+		Usage   struct {
+			InputTokens  int `json:"input_tokens"`
+			OutputTokens int `json:"output_tokens"`
+		} `json:"usage"`
+	} `json:"meta"`
+	TranscriptRef *struct {
+		Format string `json:"format"`
+		Path   string `json:"path"`
+	} `json:"transcript_ref"`
 }
 
 // FlowFromTrace is the result of converting a trace: the flow fixture document
@@ -108,6 +141,17 @@ type ConvertOptions struct {
 	// an empty map is emitted (the app's world schema defaults plus on_enter
 	// effects repopulate it on replay).
 	InitialWorld map[string]any
+	// EmitAcceptance, when true, appends a DRAFT session-level acceptance:
+	// block to the generated fixture: final_state_in pins the final
+	// machine.transition's target, host_calls.required lists the unique
+	// dispatched host handlers (handler-only — no args, so the entries stay
+	// portable across arg-shape drift), and world: is emitted empty with a
+	// comment telling the operator to curate the key world vars. The draft is
+	// deliberately coarse — an outcome contract, not a path assertion — so the
+	// story-drift policy above is unaffected: still no per-turn expect_state /
+	// expect_world.
+	EmitAcceptance bool
+	traceDir       string
 }
 
 // ConvertTraceToFlow reads the JSONL trace at tracePath and converts it into a
@@ -121,6 +165,7 @@ func ConvertTraceToFlow(tracePath string, opts ConvertOptions) (*FlowFromTrace, 
 	if err != nil {
 		return nil, fmt.Errorf("fromtrace: parse %q: %w", tracePath, err)
 	}
+	opts.traceDir = filepath.Dir(tracePath)
 	return convertTraceLines(lines, opts)
 }
 
@@ -188,9 +233,21 @@ func convertTraceLines(lines []traceLine, opts ConvertOptions) (*FlowFromTrace, 
 	// turn from the turn.input event. The transition that re-drives a turn shares
 	// the same turn number, so we look the input up by tl.Turn when emitting the
 	// flow turn and stamp it onto display_input: for faithful replay.
+	operatorTurn := map[int64]bool{}
 	originalInputByTurn := map[int64]string{}
 	var turns []flowTurnDoc
 	var episodes []cassetteEpisodeDoc
+	agentStarts := map[int64]agentCallStartPayload{}
+	agentCompletes := map[int64]agentCallCompletePayload{}
+	// finalState / dispatchedHandlers feed the draft acceptance: block when
+	// EmitAcceptance is set. finalState tracks the target of the LAST
+	// machine.transition — including synthetic and on_complete transitions the
+	// turn mapping skips, because they still move the session and the contract
+	// pins where the session ended up, not how it was driven there.
+	// dispatchedHandlers is the unique host.* handler set in first-seen order.
+	finalState := ""
+	var dispatchedHandlers []string
+	seenHandler := map[string]bool{}
 	for _, tl := range lines {
 		switch tl.Kind {
 		case "turn.input":
@@ -200,6 +257,7 @@ func convertTraceLines(lines []traceLine, opts ConvertOptions) (*FlowFromTrace, 
 				// falls back to the synthetic "[intent] <name>" string.
 				continue
 			}
+			operatorTurn[tl.Turn] = true
 			if p.Input != "" {
 				originalInputByTurn[tl.Turn] = p.Input
 			}
@@ -208,15 +266,34 @@ func convertTraceLines(lines []traceLine, opts ConvertOptions) (*FlowFromTrace, 
 			if err := json.Unmarshal(tl.Payload, &p); err != nil {
 				return nil, fmt.Errorf("fromtrace: decode machine.transition: %w", err)
 			}
+			if p.To != "" {
+				finalState = p.To
+			}
 			if p.Intent == "" {
 				// A transition with no resolved intent is not re-drivable; skip
 				// it but keep going (e.g. synthetic timeout firings).
+				continue
+			}
+			if p.Synthetic {
+				continue
+			}
+			if len(operatorTurn) > 0 && !operatorTurn[tl.Turn] {
 				continue
 			}
 			turns = append(turns, flowTurnDoc{
 				Intent:       flowIntentDoc{Name: p.Intent, Slots: p.Slots},
 				DisplayInput: originalInputByTurn[tl.Turn],
 			})
+		case "agent.call.start":
+			var p agentCallStartPayload
+			if json.Unmarshal(tl.Payload, &p) == nil {
+				agentStarts[tl.Turn] = p
+			}
+		case "agent.call.complete":
+			var p agentCallCompletePayload
+			if json.Unmarshal(tl.Payload, &p) == nil {
+				agentCompletes[tl.Turn] = p
+			}
 		case "harness.returned":
 			var p harnessPayload
 			if err := json.Unmarshal(tl.Payload, &p); err != nil {
@@ -225,13 +302,21 @@ func convertTraceLines(lines []traceLine, opts ConvertOptions) (*FlowFromTrace, 
 			if !strings.HasPrefix(p.Namespace, "host.") {
 				continue
 			}
-			episodes = append(episodes, cassetteEpisodeDoc{
+			if !seenHandler[p.Namespace] {
+				seenHandler[p.Namespace] = true
+				dispatchedHandlers = append(dispatchedHandlers, p.Namespace)
+			}
+			ep := cassetteEpisodeDoc{
 				ID:    fmt.Sprintf("%s_%d", episodeIDSlug(p.Namespace), len(episodes)+1),
 				Match: map[string]any{"handler": p.Namespace},
 				Response: cassetteResponseDoc{
 					Data: p.Data,
 				},
-			})
+			}
+			if strings.HasPrefix(p.Namespace, "host.agent.") {
+				ep.Agent = episodeAgentFromTrace(agentStarts[tl.Turn], agentCompletes[tl.Turn], opts.traceDir)
+			}
+			episodes = append(episodes, ep)
 		}
 	}
 
@@ -277,7 +362,115 @@ func convertTraceLines(lines []traceLine, opts ConvertOptions) (*FlowFromTrace, 
 		return nil, fmt.Errorf("fromtrace: marshal flow: %w", err)
 	}
 	result.FlowYAML = withHeader(flowHeader, fb)
+
+	if opts.EmitAcceptance {
+		draft, dErr := buildAcceptanceDraft(finalState, dispatchedHandlers)
+		if dErr != nil {
+			return nil, fmt.Errorf("fromtrace: build acceptance draft: %w", dErr)
+		}
+		result.FlowYAML = append(result.FlowYAML, draft...)
+	}
 	return result, nil
+}
+
+// buildAcceptanceDraft renders the DRAFT acceptance: block appended to the
+// generated fixture when ConvertOptions.EmitAcceptance is set. The block is
+// marshalled through goyaml (so state paths and handler names are quoted
+// correctly) and then annotated with operator-facing comments — goyaml cannot
+// emit comments itself, so they are spliced into the rendered lines.
+func buildAcceptanceDraft(finalState string, handlers []string) ([]byte, error) {
+	draft := acceptanceDraftDoc{
+		FinalStateIn: []string{},
+		World:        map[string]any{},
+	}
+	if finalState != "" {
+		draft.FinalStateIn = append(draft.FinalStateIn, finalState)
+	}
+	if len(handlers) > 0 {
+		hc := &acceptanceHostCallsDraftDoc{}
+		for _, h := range handlers {
+			hc.Required = append(hc.Required, acceptanceRequiredDraftDoc{Handler: h})
+		}
+		draft.HostCalls = hc
+	}
+	wrapper := struct {
+		Acceptance acceptanceDraftDoc `yaml:"acceptance"`
+	}{Acceptance: draft}
+	b, err := goyaml.Marshal(wrapper)
+	if err != nil {
+		return nil, err
+	}
+	out := "# DRAFT acceptance contract derived from the recorded trace — curate before\n" +
+		"# trusting: it pins the final state and the set of dispatched host handlers,\n" +
+		"# nothing more.\n" +
+		strings.Replace(string(b),
+			"\n  world: {}",
+			"\n  # TODO(operator): curate the key world vars this session must land\n"+
+				"  # (plain scalar = exact JSON-normalized match; { matches: \"regex\" } = Go regex).\n"+
+				"  world: {}",
+			1)
+	return []byte(out), nil
+}
+
+func episodeAgentFromTrace(start agentCallStartPayload, complete agentCallCompletePayload, traceDir string) *EpisodeAgent {
+	if start.Verb == "" && complete.Verb == "" {
+		return nil
+	}
+	verb := complete.Verb
+	if verb == "" {
+		verb = start.Verb
+	}
+	agent := complete.Agent
+	if agent == "" {
+		agent = start.Agent
+	}
+	model := complete.Model
+	if model == "" {
+		model = start.Model
+	}
+	prompt := start.Prompt
+	if prompt == "" {
+		prompt = readTraceSidecar(traceDir, start.PromptFile)
+	}
+	response := string(complete.Response)
+	if b := readTraceSidecar(traceDir, complete.ResponseFile); b != "" {
+		response = b
+	}
+	ep := &EpisodeAgent{Verb: verb, Agent: agent, Model: model, DurationMs: complete.DurationMS,
+		PromptTokens: complete.Meta.Usage.InputTokens, ResponseTokens: complete.Meta.Usage.OutputTokens,
+		CostUSD: complete.Meta.CostUSD, Prompt: prompt, Response: response}
+	if complete.TranscriptRef != nil {
+		ep.Transcript = readTraceTranscript(traceDir, complete.TranscriptRef.Path, complete.TranscriptRef.Format)
+	}
+	return ep
+}
+
+func readTraceSidecar(traceDir, rel string) string {
+	if traceDir == "" || rel == "" || filepath.IsAbs(rel) {
+		return ""
+	}
+	b, err := os.ReadFile(filepath.Join(traceDir, rel))
+	if err != nil {
+		return ""
+	}
+	return string(b)
+}
+
+func readTraceTranscript(traceDir, rel, format string) *EpisodeTranscript {
+	data := readTraceSidecar(traceDir, rel)
+	if data == "" {
+		return nil
+	}
+	et := &EpisodeTranscript{Format: format}
+	for _, line := range strings.Split(strings.TrimSpace(data), "\n") {
+		if json.Valid([]byte(line)) {
+			et.Events = append(et.Events, line)
+		}
+	}
+	if len(et.Events) == 0 {
+		return nil
+	}
+	return et
 }
 
 // episodeIDSlug turns a handler namespace ("host.agent.converse") into a
@@ -334,6 +527,26 @@ type flowIntentDoc struct {
 	Slots map[string]any `yaml:"slots,omitempty"`
 }
 
+// acceptanceDraftDoc is the write-side shape of the draft acceptance: block
+// (buildAcceptanceDraft). It mirrors the read-side FlowAcceptance but keeps
+// final_state_in and world non-omitempty so the draft always shows both keys —
+// the empty world: {} is the operator's curation hook, not an omission.
+type acceptanceDraftDoc struct {
+	FinalStateIn []string                     `yaml:"final_state_in"`
+	World        map[string]any               `yaml:"world"`
+	HostCalls    *acceptanceHostCallsDraftDoc `yaml:"host_calls,omitempty"`
+}
+
+type acceptanceHostCallsDraftDoc struct {
+	Required []acceptanceRequiredDraftDoc `yaml:"required"`
+}
+
+// acceptanceRequiredDraftDoc is one handler-only required entry — the draft
+// deliberately omits args so the contract stays portable across arg drift.
+type acceptanceRequiredDraftDoc struct {
+	Handler string `yaml:"handler"`
+}
+
 type cassetteDoc struct {
 	Kind        string               `yaml:"kind"`
 	AppID       string               `yaml:"app_id"`
@@ -346,6 +559,7 @@ type cassetteEpisodeDoc struct {
 	ID       string              `yaml:"id"`
 	Match    map[string]any      `yaml:"match"`
 	Response cassetteResponseDoc `yaml:"response"`
+	Agent    *EpisodeAgent       `yaml:"agent,omitempty"`
 }
 
 type cassetteResponseDoc struct {

@@ -55,6 +55,14 @@ type SessionProvider interface {
 	Rescan() ([]StoryHeader, error)
 }
 
+// SeededSessionProvider is the optional per-session seed extension for
+// provider-backed live surfaces. Plain [SessionProvider] keeps the common
+// lifecycle method small; web-only deep links can opt into initial world values
+// without changing read-only or test-only providers.
+type SeededSessionProvider interface {
+	NewSessionSeeded(ctx context.Context, storyPath string, initialWorld map[string]any) (sessionID string, err error)
+}
+
 // ExternalAttachProvider is an optional extension of [SessionProvider]: a
 // provider that can attach a live session to an EXISTING persisted session
 // addressed by an external key (`transport:thread`, e.g. `jira:PLTFRM-12345`),

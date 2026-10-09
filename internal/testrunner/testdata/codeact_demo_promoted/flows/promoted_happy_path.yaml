@@ -1,0 +1,36 @@
+# Acceptance fixture for the codeact "promotion ratchet" (concept.md §4,
+# docs/goals/codeact/decomposition.yaml s5-promotion-ratchet). Unlike
+# testdata/codeact_demo/flows/happy_path.yaml (which stubs host.agent.codeact
+# under host_handlers: because no live/mocked agent loop is involved), this
+# flow needs NO host_handlers: stub at all: ../app.yaml's `work` room invokes
+# the REAL host.starlark.run handler over the frozen
+# scripts/promoted_sum.star script, which RunFlows registers automatically
+# for any app that declares host.starlark.run in its `hosts:` list (see
+# internal/testrunner/flows.go's appDeclaresHost handling). The promoted
+# room reaches its terminal state with result_payload == 7 — the same total
+# codeact_demo's stubbed-agent trajectory produced (world.result_payload ==
+# world.result_total from that fixture's payload.total) — with zero agent
+# dispatch anywhere in the path. Bind targets a plain top-level key of the
+# host.starlark.run result (`total`, the promoted script's sole declared
+# output) rather than the whole `payload` dict codeact_demo bound, since the
+# promoted script returns just that one key (see promoted_sum.star's frozen
+# source + its sidecar). Since there is no host_handlers: stub to trigger
+# runOneFlowOrchestrator's auto-upgrade, use_orchestrator: true opts in
+# explicitly — the legacy machine-only flow path never dispatches HostCalls
+# at all (it only asserts against the machine's own effect-walk world), so
+# without this the invoke's bind would silently never apply.
+use_orchestrator: true
+test_kind: flow
+app: ../app.yaml
+
+initial_state: work
+initial_world:
+  result_payload: null
+  result_terminated: ""
+
+turns:
+  - intent: { name: go, slots: {} }
+    expect_state: done
+    expect_world:
+      result_terminated: "done"
+      result_payload: 7

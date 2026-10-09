@@ -18,9 +18,18 @@
 #       @exit:needs-human with a synthesized last_error (never a featureless stall).
 #   #checkout — the checkout exit is captured (like rebase/merge); a failed
 #       checkout emits a clear error instead of a generic abort.
+#   #clean-main (dt-integrate-clean-main) — refuse to integrate into a DIRTY
+#       integration tree (uncommitted TRACKED changes in MAIN_WT). The merge and,
+#       on a build-fail, the `git reset --hard $PRE_MERGE_SHA` recovery both run in
+#       MAIN_WT and would CLOBBER that uncommitted work — and the self-hosting
+#       direct-ship loop integrates into "." (the live repo), so this is the one
+#       guard standing between a routine land and a destroyed working tree. It is
+#       the MAIN-tree analogue of the existing maker-worktree lost-work guard, and
+#       it must NOT be something a driver has to remember to route around by picking
+#       an open-PR exit. Routes to @exit:needs-human (outcome "dirty_main").
 #
 #   integrated → verify         (integrated_sha set)
-#   conflict | build_fail | error → @exit:needs-human (last_error)
+#   conflict | build_fail | error | dirty_main → @exit:needs-human (last_error)
 #   no JSON (abort)               → @exit:needs-human (synthesized last_error)
 
 states:
@@ -38,11 +47,11 @@ states:
             "Base (now)": 'CURRENT {{ world.base_branch }} (re-read — concurrent moves ok)'
       - heading: "Integrated"
         when: "world.integrate_outcome == 'integrated'"
-      - prose: "Rebased onto current {{ world.base_branch }}, build-checked, merged. Merged commit: {{ world.integrated_sha }}."
+      - prose: "Rebased onto current {{ world.base_branch }}, build-checked, merged. Merged commit: {{ world.integrated_sha ?? '(pending)' }}."
         when: "world.integrate_outcome == 'integrated'"
       - heading: "Integrate failed — needs a human"
         when: "world.integrate_outcome != '' && world.integrate_outcome != 'integrated'"
-      - prose: "{{ world.last_error }}"
+      - prose: "{{ world.last_error ?? '(pending)' }}"
         when: "world.integrate_outcome != '' && world.integrate_outcome != 'integrated'"
       - choice:
           mode: single
@@ -91,6 +100,23 @@ states:
               BASE_SHA=$(git -C "$MAIN_WT" rev-parse "$INTEGRATION" 2>/dev/null || echo "")
               if [ -z "$BASE_SHA" ]; then
                 emit --arg int "$INTEGRATION" '{outcome:"error",integrated_sha:"",last_op_ok:false,last_error:("integration branch "+$int+" not found")}'
+              fi
+              # CLEAN-MAIN GUARD (#clean-main): refuse to integrate into a DIRTY
+              # integration tree. The `git merge --no-ff` below, and the build-fail
+              # `git reset --hard "$PRE_MERGE_SHA"` recovery, both run in MAIN_WT and
+              # would CLOBBER any uncommitted TRACKED changes there. The self-hosting
+              # direct-ship loop sets MAIN_WT="." (the live repo), so a routine land
+              # on a dirty checkout would silently destroy the operator's WIP — the
+              # exact "reset --hard nukes main" hazard. Block BEFORE any checkout /
+              # merge / reset touches the tree and route to @exit:needs-human so the
+              # operator commits or stashes first. Tracked-only (--untracked-files=no):
+              # reset --hard never deletes untracked files, and an untracked artifact
+              # sitting in main shouldn't veto a land; but any staged/modified tracked
+              # file is destroyable, so those DO block. This mirrors the maker-worktree
+              # lost-work guard below, applied to the integration tree.
+              MAIN_DIRTY=$(git -C "$MAIN_WT" status --porcelain --untracked-files=no 2>/dev/null || echo "")
+              if [ -n "$MAIN_DIRTY" ]; then
+                emit --arg wt "$MAIN_WT" --arg files "$MAIN_DIRTY" '{outcome:"dirty_main",integrated_sha:"",last_op_ok:false,last_error:("refusing to integrate: the integration tree "+$wt+" has uncommitted tracked changes — the merge (and a build-fail reset --hard) would clobber them. Commit or stash them first:\n"+$files)}'
               fi
               # LOST-WORK GUARD: refuse to integrate a branch whose work was never
               # committed. `git rebase` IGNORES untracked files, so an untracked
@@ -173,8 +199,8 @@ states:
       # is incremented on the arc into `resolve`, so the budget bounds retries.
       - when: "world.integrate_outcome == 'conflict' && world.resolve_attempts < world.resolve_budget"
         emit_intent: integrate_conflict
-      # Any other failure (build_fail, error, uncommitted) OR a conflict with the
-      # landing budget exhausted → needs-human.
+      # Any other failure (build_fail, error, uncommitted, dirty_main) OR a conflict
+      # with the landing budget exhausted → needs-human.
       - when: "world.integrate_outcome != '' && world.integrate_outcome != 'integrated' && !(world.integrate_outcome == 'conflict' && world.resolve_attempts < world.resolve_budget)"
         emit_intent: integrate_failed
       # The host RAN (run_exit is set post-bind) but bound NO JSON outcome ⇒ the

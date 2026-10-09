@@ -217,7 +217,7 @@ func TestMaybeOffRamp_NoMatchInOffRampRoom(t *testing.T) {
 	require.NoError(t, err)
 
 	for _, code := range []intent.ErrorCode{intent.ErrUnknownIntent, intent.ErrIntentUnknown} {
-		outcome, ok := orch.maybeOffRamp(ctx, sid, app.StatePath("idea"),
+		outcome, ok := orch.maybeOffRamp(ctx, sid, app.StatePath("idea"), world.World{Vars: map[string]any{}},
 			"how do you spell discovery?", code, 0, []string{"look"}, jBefore.Turn+1)
 		require.Truef(t, ok, "off-ramp should fire on %s in an off-ramp room", code)
 		require.NotNil(t, outcome)
@@ -272,7 +272,7 @@ func TestMaybeOffRamp_ScopeGuard(t *testing.T) {
 		intent.ErrAmbiguousIntent,
 	}
 	for _, code := range blocked {
-		outcome, ok := orch.maybeOffRamp(ctx, sid, app.StatePath("idea"),
+		outcome, ok := orch.maybeOffRamp(ctx, sid, app.StatePath("idea"), world.World{Vars: map[string]any{}},
 			"some input", code, 0, []string{"look"}, 1)
 		require.Falsef(t, ok, "off-ramp must stay inert for %s (scope guard)", code)
 		require.Nilf(t, outcome, "no outcome for %s", code)
@@ -286,7 +286,7 @@ func TestMaybeOffRamp_NonOffRampRoom(t *testing.T) {
 	orch, _, sid := setupOffRampOrch(t)
 	ctx := context.Background()
 
-	outcome, ok := orch.maybeOffRamp(ctx, sid, app.StatePath("menu"),
+	outcome, ok := orch.maybeOffRamp(ctx, sid, app.StatePath("menu"), world.World{Vars: map[string]any{}},
 		"anything", intent.ErrIntentUnknown, 0, []string{"look"}, 1)
 	require.False(t, ok, "a non-off-ramp room must not off-ramp")
 	require.Nil(t, outcome)
@@ -299,7 +299,7 @@ func TestMaybeOffRamp_EmptyInputInert(t *testing.T) {
 	orch, _, sid := setupOffRampOrch(t)
 	ctx := context.Background()
 
-	outcome, ok := orch.maybeOffRamp(ctx, sid, app.StatePath("idea"),
+	outcome, ok := orch.maybeOffRamp(ctx, sid, app.StatePath("idea"), world.World{Vars: map[string]any{}},
 		"", intent.ErrIntentUnknown, 0, []string{"look"}, 1)
 	require.False(t, ok, "empty input has nothing to converse over")
 	require.Nil(t, outcome)

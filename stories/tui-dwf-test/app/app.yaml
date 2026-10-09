@@ -15,6 +15,8 @@ app:
 
 hosts:
   - host.run
+  - host.starlark.run
+  - host.punch.verify
   - host.agent.task
 
 agents:

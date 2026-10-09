@@ -1,0 +1,39 @@
+trigger: session-fold-in
+provenance:
+  kind: reviewed-proposal
+  ref: docs/proposals/agent-capability-model.md
+operations:
+  - op: add_change
+    change:
+      id: "WS.1"
+      wall: WS
+      goal_ref: [G3]
+      title: "Effect taxonomy"
+      kind: runtime
+      pipeline: implementation
+      depends_on: ["WM.0"]
+      scope: ["internal/effect/**"]
+      acceptance: ["effects are classified"]
+      gate:
+        class: G-GOTEST
+        red_now: "effects are not classified"
+        green_when: "effect tests pass"
+        cmd: "go test ./internal/effect/..."
+      agent_brief: "Add effect taxonomy as the first WS wall node."
+  - op: add_change
+    change:
+      id: "WS.2"
+      wall: WS
+      goal_ref: [G3]
+      title: "Toolbox enforcement"
+      kind: runtime
+      pipeline: implementation
+      depends_on: ["WS.1"]
+      scope: ["internal/host/agents.go"]
+      acceptance: ["toolboxes bind agent tools"]
+      gate:
+        class: G-GOTEST
+        red_now: "toolboxes are not enforced"
+        green_when: "host toolbox tests pass"
+        cmd: "go test ./internal/host/..."
+      agent_brief: "Add toolbox enforcement after the effect taxonomy."

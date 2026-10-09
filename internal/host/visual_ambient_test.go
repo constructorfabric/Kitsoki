@@ -101,6 +101,39 @@ func TestVisualAmbientPreamble(t *testing.T) {
 		assert.Contains(t, got, "media:frame-handle-xyz",
 			"an unresolved handle is rendered as-is for a downstream resolver")
 	})
+
+	t.Run("renders semantic field context without a fake point", func(t *testing.T) {
+		t.Parallel()
+		v := host.VisualAmbient{
+			MediaHandle: "issue-card.html",
+			Route:       "/s/sess-1",
+			Anchor: host.AnnotationAnchor{
+				Kind: host.AnchorSemanticElement,
+				SemanticElement: &host.AnchorSemanticElementTarget{
+					Plugin:       "html-data",
+					Ref:          "issue.status",
+					SemanticKind: "field",
+					Label:        "Status",
+					Selector:     "[data-field=status]",
+					Text:         "Blocked",
+					Data:         map[string]any{"path": "issue.status"},
+					Bbox:         [4]int{20, 30, 120, 24},
+				},
+			},
+		}
+		ctx := host.WithVisualAmbient(context.Background(), v)
+		got := host.VisualAmbientPreamble(ctx)
+		assert.Contains(t, got, "Semantic element: Status")
+		assert.Contains(t, got, "plugin=html-data")
+		assert.Contains(t, got, "kind=field")
+		assert.Contains(t, got, "ref=issue.status")
+		assert.Contains(t, got, "selector=[data-field=status]")
+		assert.Contains(t, got, `text "Blocked"`)
+		assert.Contains(t, got, "bbox=[20,30,120,24]")
+		assert.Contains(t, got, `"path":"issue.status"`)
+		assert.NotContains(t, got, "pointing at (0,0)",
+			"a semantic-only anchor must not be described as a fake pixel click")
+	})
 }
 
 func TestAgentConverse_InjectsVisualAmbient(t *testing.T) {

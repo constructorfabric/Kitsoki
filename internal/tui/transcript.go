@@ -417,6 +417,29 @@ func (m *transcriptModel) AppendSystem(body string) {
 	m.queue(rendered)
 }
 
+// AppendStartupNotice appends a runtime/setup warning shown before the user
+// takes a turn. These notices are intentionally warning-styled, not slash-output
+// blue, because they usually describe missing local safety setup.
+func (m *transcriptModel) AppendStartupNotice(body string) {
+	body = strings.TrimSpace(body)
+	if body == "" {
+		return
+	}
+	body = cleanStartupNoticeBody(body)
+	rendered := warningStyle.Bold(true).Render("! " + body)
+	m.entries = append(m.entries, transcriptEntry{body: rendered})
+	m.queue(rendered)
+}
+
+func cleanStartupNoticeBody(body string) string {
+	if strings.HasPrefix(body, "(warning:") && strings.HasSuffix(body, ")") {
+		body = strings.TrimPrefix(body, "(warning:")
+		body = strings.TrimSuffix(body, ")")
+		return strings.TrimSpace(body)
+	}
+	return body
+}
+
 // AppendSlashOutput renders body in the blue slash-command style and
 // bypasses the Markdown pipeline so ANSI styles survive. Multi-line
 // bodies are styled line-by-line so each line carries the color

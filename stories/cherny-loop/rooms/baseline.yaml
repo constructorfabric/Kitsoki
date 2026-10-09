@@ -12,23 +12,25 @@ states:
   # the cheap check that gates the expensive loop.
   baseline:
     description: "Baseline — proving the gate fails first"
-    relevant_world: [gate_mode, gate_command, gate_ok, script_gate_ok, agent_gate_ok, gate_exit_code, gate_stdout, gate_reason, gate_prompt_focus, goal_text, goal_artifact, worktree_path, workspace_branch]
+    relevant_world: [gate_mode, gate_command, gate_ok, script_gate_ok, agent_gate_ok, gate_exit_code, gate_stdout, gate_reason, gate_prompt_focus, baseline_green_policy, goal_text, goal_artifact, worktree_path, workspace_branch]
     on_enter:
       # Worktree first — before any gate or maker spend. The maker is an agent
       # that EDITS the repo, so it must write into an isolated worktree, never
       # the operator's checkout. Mint it here (idempotent — re-launch / restart
       # reuses the same branch) and pin every downstream gate + maker call to its
       # cwd via cwd/working_dir. Reads still see the whole repo; writes are
-      # confined to .worktrees/<workspace_id>. A failed mint routes to
+      # confined to the capsule workspace. A failed mint routes to
       # workspace_error rather than letting the loop spend in the wrong tree.
       - invoke: iface.workspace.create
         id: "worktree"
         with:
-          id:   "{{ world.workspace_id }}"
-          name: "{{ world.workspace_branch }}"
-          base: "{{ world.workspace_base }}"
+          id:         "{{ world.workspace_id }}"
+          definition: "development"
+          name:       "{{ world.workspace_branch }}"
+          base:       "{{ world.workspace_base }}"
         bind:
           worktree_path: path
+          workspace_branch: branch
         on_error: workspace_error
       # Reset last turn's verdict, then run the checker on the UNCHANGED artifact
       # INSIDE the worktree (identical to HEAD on a fresh branch, so a RED
@@ -71,6 +73,8 @@ states:
       # forces the bind to settle before routing (decision-emit discipline).
       - when: "(world.gate_mode != 'hybrid' && world.gate_ok == false) || (world.gate_mode == 'hybrid' && world.script_gate_ok != '' && world.agent_gate_ok != '' && (world.script_gate_ok == false || world.agent_gate_ok == false))"
         emit_intent: proceed
+      - when: "world.baseline_green_policy == 'needs-human' && ((world.gate_mode != 'hybrid' && world.gate_ok == true) || (world.gate_mode == 'hybrid' && world.script_gate_ok == true && world.agent_gate_ok == true))"
+        emit_intent: baseline_green_needs_human
     view:
       extends: "base"
       blocks:
@@ -150,6 +154,12 @@ states:
             - say: "The gate is RED — `proceed` to iterate, don't accept."
       reconfigure:
         - target: configuring
+      baseline_green_needs_human:
+        - target: "@exit:abandoned"
+          effects:
+            - set:
+                terminal_reason: "baseline_green"
+                last_gate_failure: "baseline gate already passes before maker changes; the goal may already be met or the gate is too weak. Strengthen the gate or explicitly accept the already-met result."
       abort:
         - target: "@exit:abandoned"
           effects:

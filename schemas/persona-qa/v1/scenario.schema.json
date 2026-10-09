@@ -1,0 +1,57 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://kitsoki.dev/schemas/persona-qa/v1/scenario.schema.json",
+  "title": "Persona QA Scenario",
+  "type": "object",
+  "required": ["id", "label", "stage", "task", "primary_story", "required_mcp", "evidence", "success_criteria"],
+  "additionalProperties": true,
+  "properties": {
+    "id": { "type": "string" },
+    "label": { "type": "string" },
+    "stage": {
+      "type": "string",
+      "enum": ["discover_product", "follow_tutorial", "onboard_project", "plan_project_work", "fix_bug", "file_product_issue", "score_and_report"]
+    },
+    "task": { "type": "string" },
+    "primary_story": { "type": "string" },
+    "required_mcp": { "type": "array", "items": { "type": "string" } },
+    "evidence": { "type": "array", "items": { "type": "string" } },
+    "success_criteria": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+    "natural_utterances": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["text", "source", "source_ref"],
+        "additionalProperties": true,
+        "properties": {
+          "text": { "type": "string" },
+          "source": { "type": "string" },
+          "source_ref": { "type": "string" }
+        }
+      }
+    },
+    "case_variants": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "utterance", "setup", "success_focus"],
+        "additionalProperties": true,
+        "properties": {
+          "id": { "type": "string" },
+          "utterance": { "type": "string" },
+          "setup": { "type": "string" },
+          "success_focus": { "type": "string" }
+        }
+      }
+    },
+    "transports": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "allowed": { "type": "array", "items": { "type": "string", "enum": ["tui", "web", "vscode", "cli"] } },
+        "required": { "type": "array", "items": { "type": "string", "enum": ["tui", "web", "vscode", "cli"] } },
+        "overrides": { "type": "object", "additionalProperties": true }
+      }
+    }
+  }
+}

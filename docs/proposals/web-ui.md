@@ -2,8 +2,8 @@
 
 **Status:** Draft v3. **Phases 1–4 shipped + documented** — the interactive web
 UI is complete; full reference lives in **[`docs/tui/web-ui.md`](../tui/web-ui.md)**.
-This proposal now only tracks the remaining design items (meta-mode, composer
-free-text routing, deeper runtime unification); delete it once those land. `kitsoki web <app.yaml>` serves an interactive chat
+This proposal now only tracks the remaining design items (meta-mode, deeper
+runtime unification); delete it once those land. `kitsoki web <app.yaml>` serves an interactive chat
 surface (room render + live trace + state diagram) backed by a live
 orchestrator, driveable by the **same** deterministic machinery as the rest of
 kitsoki (flow `host_handlers`, host cassettes, warps, recordings) via a shared
@@ -11,9 +11,16 @@ kitsoki (flow `host_handlers`, host cassettes, warps, recordings) via a shared
 test drives the full PRD `happy_path` chat at MacBook resolution (1440×900 @2x),
 asserting the state badge per scene and recording a video + per-scene
 screenshots in `.artifacts/web-chat/`. Verified scene-by-scene visually.
-Remaining: full meta-mode (off-path only today), and the optional deeper
-`run`/test-rig runtime unification (the host-stub + cassette + harness + warp
-mechanisms are already shared; `runCmd` construction now routes through
+**Composer free-text routing (WS-D D1, shipped):** the composer's RPC wiring
+(`session.turn` → `Orchestrator.Turn`, the same call the TUI makes) was
+already correct; the actual bug was a CLI-wide default
+(`cmd/kitsoki/semantic_routing.go`) that silently forced the deterministic
+semantic-routing stack OFF on every surface unless `--semantic-routing` was
+passed, regardless of an app's own `routing.enabled: true` — see
+`.context/dwf2-d1-findings.md` for the reproduction and fix. Remaining: full
+meta-mode (off-path only today), and the optional deeper `run`/test-rig
+runtime unification (the host-stub + cassette + harness + warp mechanisms are
+already shared; `runCmd` construction now routes through
 `buildSessionRuntime`).
 
 _Historical:_ Phases 1–2 (serve host + live read surface + write RPCs). `kitsoki web <app.yaml>` (`cmd/kitsoki/web.go`) hosts a live

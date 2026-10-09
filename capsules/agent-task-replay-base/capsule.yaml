@@ -1,0 +1,26 @@
+name: agent-task-replay-base
+source:
+  synthetic: true
+  default_branch: main
+  steps:
+    - action: write
+      path: work.txt
+      content: |
+        initial content
+    - action: write
+      path: existing.txt
+      content: |
+        existing
+    - action: commit
+      message: initial
+network: none
+verify:
+  probes:
+    - name: clean-tree
+      run: git diff --quiet && git diff --cached --quiet
+      expect: zero
+    - name: replay-file-present
+      run: test "$(cat work.txt)" = "initial content"
+      expect: zero
+scenario:
+  kind: git-flow

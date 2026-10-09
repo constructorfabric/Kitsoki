@@ -57,13 +57,17 @@ states:
         when: "world.last_op_outcome == 'merge_in_progress'"
       - prose: "MERGE_HEAD or rebase-in-progress on target worktree. Resolve first."
         when: "world.last_op_outcome == 'merge_in_progress'"
+      - heading: "Target worktree has uncommitted work"
+        when: "world.last_op_outcome == 'dirty_target'"
+      - prose: "Refusing to merge through {{ world.main_worktree_path }} while it has uncommitted changes. Commit, checkpoint, or clean that work first; git-ops will not use the shared stash stack for this merge. {{ world.last_op_output ?? '(pending)' }}"
+        when: "world.last_op_outcome == 'dirty_target'"
       - heading: "Post-merge build failed"
         when: "world.last_op_outcome == 'post_merge_test_fail'"
-      - prose: "Build failed after merge: {{ world.last_op_output }}"
+      - prose: "Build failed after merge and the target worktree was reset to its pre-merge commit: {{ world.last_op_output ?? '(pending)' }}"
         when: "world.last_op_outcome == 'post_merge_test_fail'"
       - heading: "Merge successful"
         when: "world.last_op_outcome == 'merged'"
-      - prose: "Merge failed: {{ world.last_op_output }}"
+      - prose: "Merge failed: {{ world.last_op_output ?? '(pending)' }}"
         when: "world.last_op_ok == false && world.last_op_outcome != 'merge_in_progress' && world.last_op_outcome != 'post_merge_test_fail'"
       - choice:
           mode: single
@@ -74,7 +78,7 @@ states:
               intent: retry
               when:  "world.last_op_outcome == 'post_merge_test_fail'"
             - label: "rollback"
-              hint:  "abort merge after build failure"
+              hint:  "already rolled back; return to main_ops"
               intent: rollback
               when:  "world.last_op_outcome == 'post_merge_test_fail'"
             - label: "back"
@@ -92,31 +96,29 @@ states:
             - |
               set -e
               export NO_COLOR=1 GIT_TERMINAL_PROMPT=0 GIT_PAGER=cat
-              DIRTY=$(git status --porcelain 2>/dev/null | grep -c . || true)
+              DIRTY=$(git status --porcelain 2>/dev/null || true)
               GIT_DIR=$(git rev-parse --git-dir 2>/dev/null || echo ".git")
               MERGE_IP=false
               if [ -f "$GIT_DIR/MERGE_HEAD" ] || [ -d "$GIT_DIR/rebase-apply" ] || [ -d "$GIT_DIR/rebase-merge" ]; then
                 MERGE_IP=true
               fi
-              if [ "$DIRTY" -gt 0 ]; then
-                REF=$(git stash push -u -m 'git-ops-wip' 2>&1 && git stash list | head -1 | cut -d: -f1 || echo "")
-              else
-                REF=""
-              fi
               jq -n \
-                --argjson dirty "$DIRTY" \
+                --arg dirty "$DIRTY" \
                 --argjson merge_ip "$MERGE_IP" \
-                --arg stash_ref "$REF" \
-                '{target_dirty:($dirty>0), merge_in_progress:$merge_ip, stash_ref:$stash_ref}'
+                '{target_dirty:($dirty != ""), merge_in_progress:$merge_ip, dirty_output:$dirty}'
           cwd: "{{ world.main_worktree_path }}"
         bind:
-          stash_ref:         "stdout_json.stash_ref"
           merge_in_progress: "stdout_json.merge_in_progress"
+          last_op_output:    "stdout_json.dirty_output"
         on_error: merge_exec
       - when: "world.merge_in_progress == true"
         set:
           last_op_outcome: "merge_in_progress"
-      - when: "world.merge_in_progress == false"
+      - when: "world.merge_in_progress == false && world.last_op_output != ''"
+        set:
+          last_op_ok:      false
+          last_op_outcome: "dirty_target"
+      - when: "world.merge_in_progress == false && world.last_op_output == ''"
         invoke: host.run
         id: exec_merge
         with:
@@ -130,28 +132,32 @@ states:
           last_op_output: stdout
           last_op_ok:     ok
         on_error: merge_exec
-      - when: "world.stash_ref != ''"
-        invoke: host.run
-        id: stash_pop_exec
-        with:
-          cmd: git
-          args: ["stash", "pop"]
-          cwd: "{{ world.main_worktree_path }}"
-        bind:
-          last_op_output: stdout
-        on_error: merge_exec
-      - when: "world.last_op_ok == true && !world.build_check_disabled"
+      - when: "world.last_op_ok == true && world.last_op_outcome != 'dirty_target' && !world.build_check_disabled"
         invoke: host.run
         id: build_check
         with:
           cmd: bash
-          args: ["-c", "{{ world.build_check_cmd }}"]
+          args:
+            - "-c"
+            - |
+              set -e
+              export NO_COLOR=1 GIT_TERMINAL_PROMPT=0 GIT_PAGER=cat
+              BUILD_EXIT=0
+              BUILD_OUT=$(bash -c "$1" 2>&1) || BUILD_EXIT=$?
+              if [ "$BUILD_EXIT" -ne 0 ]; then
+                git reset --hard HEAD^1 >/dev/null 2>&1 || true
+                printf '%s' "$BUILD_OUT"
+                exit "$BUILD_EXIT"
+              fi
+              printf '%s' "$BUILD_OUT"
+            - "kitsoki-build-check"
+            - "{{ world.build_check_cmd }}"
           cwd: "{{ world.main_worktree_path }}"
         bind:
           last_op_output: stdout
           last_op_ok:     ok
         on_error: merge_exec
-      - when: "world.last_op_ok == true"
+      - when: "world.last_op_ok == true && world.last_op_outcome != 'dirty_target'"
         set:
           last_op_outcome: "merged"
       - when: "world.last_op_ok == false && world.last_op_outcome == ''"
@@ -168,15 +174,7 @@ states:
         - when: "world.last_op_outcome == 'post_merge_test_fail'"
           target: main_ops
           effects:
-            - invoke: host.run
-              id: merge_abort_exec
-              with:
-                cmd: git
-                args: ["merge", "--abort"]
-                cwd: "{{ world.main_worktree_path }}"
-              bind:
-                last_op_ok: ok
-              on_error: merge_exec
+            - say: "The failed merge was already reset to its pre-merge commit."
       back:
         - target: main_ops
           effects:

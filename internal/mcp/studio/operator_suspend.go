@@ -50,9 +50,10 @@ type pendingQuestion struct {
 // turnResult carries the completed turn back to whichever handler is waiting
 // (drive when the turn never parked, otherwise answer).
 type turnResult struct {
-	outcome *orchestrator.TurnOutcome
-	frame   tui.Frame
-	err     error
+	outcome        *orchestrator.TurnOutcome
+	frame          tui.Frame
+	err            error
+	operationDrive *orchestrator.OperationDriveOutcome
 }
 
 // suspendBroker rendezvouses a parked turn goroutine with the drive/answer tool

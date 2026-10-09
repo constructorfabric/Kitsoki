@@ -1,0 +1,246 @@
+goal_slug: project-object-graph
+
+# Execution context: all work lands on the proposal branch in its worktree.
+runtime:
+  base_branch:   proposal/project-object-graph
+  worktree_path: .worktrees/project-object-graph
+
+coverage_note: >
+  First slice: WM (dogfood/process enablement) + W1 (substrate) + the front of
+  W5 (viewer consolidation, because two prototypes already exist and drift is
+  the risk). W2 (changesets), W3 (product-site conversion), W4 (computed
+  roadmap), and W6 (proposals-queue conversion) follow once the substrate is
+  proven; their change nodes are sketched here so the DAG is honest, and are
+  refined via changesets to THIS file (WM.2 makes plan edits change-managed).
+  W3 and W6 are the PAYOFF walls (goal G3/G7): converting the real product
+  site and the real docs/proposals queue into the graph is the motivation and
+  the dogfood — they are main-line work, not stretch. Scope globs are the
+  write boundary and are sharpened at implementation time; no two ready
+  changes may share scope.
+
+definition_of_done: >
+  A change is DONE only when: (a) its RED→GREEN deterministic gate is green;
+  (b) narrative docs are updated (docs/ proper) and the epic's slice table row
+  is advanced; (c) story-shaped work ships no-LLM flow fixtures; (d) the
+  progress ledger (.context/project-object-graph-progress.md) records the
+  change, its evidence (trace/session ids, test output), and the commit SHA.
+
+changes:
+  # ---- WM — dogfood / process enablement ----
+  - id: "WM.0"
+    wall: WM
+    goal_ref: [G6]
+    title: Progress ledger + session discipline bootstrapped
+    kind: docs
+    pipeline: implementation
+    scope: [".context/project-object-graph-progress.md"]
+    depends_on: []
+    acceptance:
+      - "ledger exists with per-change status table + append-only journal; every later change appends evidence rows"
+    gate:
+      class: G-LINT
+      red_now: "no ledger; progress lives only in chat context and dies with the session"
+      green_when: "ledger file exists and names every change id in this file"
+      cmd: "test -f .context/project-object-graph-progress.md"
+    agent_brief: >
+      Create the progress ledger from the template in the agent brief
+      (.context/project-object-graph-agent-brief.md §Ledger). Seed the status
+      table from this decomposition. Append-only journal below the table.
+
+  - id: "WM.1"
+    wall: WM
+    goal_ref: [G6]
+    title: Design intake for the substrate driven through kitsoki-dev
+    kind: story
+    pipeline: implementation
+    scope: [".context/project-object-graph-progress.md"]
+    depends_on: ["WM.0"]
+    acceptance:
+      - "a kitsoki-dev session (design pipeline `idea` flow or triage) is driven via the studio MCP over the W1 loader design; the session trace id + published workspace artifacts are recorded in the ledger"
+      - "friction found while driving is filed (issue_create) rather than worked around silently"
+    gate:
+      class: G-LIVE+REPLAY
+      red_now: "no kitsoki-driven design pass exists for the substrate; the epic was authored by hand"
+      green_when: "ledger cites a completed dev-story session trace covering the W1 design review"
+      replay_cmd: "grep -q 'WM.1.*trace' .context/project-object-graph-progress.md"
+    agent_brief: >
+      Use the kitsoki-mcp-driver agent to open a dev-story session (dogfood
+      instance), drive the design/idea pipeline over the W1 loader + type
+      registry design (feed it the epic's Shared decisions 1-2 and
+      seed-objects.yaml's type_registry), and record the trace id + outcome in
+      the ledger. File any MCP/story friction as issues.
+
+  - id: "WM.2"
+    wall: WM
+    goal_ref: [G2, G6]
+    title: Plan edits are change-managed (delta note per decomposition.yaml edit)
+    kind: docs
+    pipeline: implementation
+    scope: ["docs/goals/project-object-graph/**"]
+    depends_on: ["WM.0"]
+    acceptance:
+      - "every edit to this file after WM.2 lands appends a dated delta note (what changed, why) to the ledger journal — the manual precursor of G2 changesets, eating our own dogfood before the tooling exists"
+    gate:
+      class: G-LINT
+      red_now: "plan edits are silent hand edits"
+      green_when: "ledger journal contains a delta note for the most recent decomposition.yaml commit"
+      cmd: "git log -1 --format=%H -- docs/goals/project-object-graph/decomposition.yaml | xargs -I{} grep -q {} .context/project-object-graph-progress.md"
+
+  # ---- W1 — substrate (epic slice 1) ----
+  - id: "W1.0"
+    wall: W1
+    goal_ref: [G1]
+    title: internal/graph loader + node envelope + type registry with derivation
+    kind: runtime
+    pipeline: implementation
+    critical: true
+    scope: ["internal/graph/**"]
+    depends_on: ["WM.1"]
+    acceptance:
+      - "loads a catalog dir of YAML nodes; every node validates against its schema: pin; type registry supports derives_from with generic lints applying to derived types"
+      - "seed-objects.yaml (migrated to one-file-per-node or loaded as a bundle — decide during WM.1 design session and record the decision) loads clean"
+      - "table-driven good/bad fixtures per failure class"
+    gate:
+      class: G-GOTEST
+      red_now: "no internal/graph package exists; seed catalog is validated by nothing"
+      green_when: "go test ./internal/graph/... green incl. seed corpus load"
+      cmd: "go test ./internal/graph/..."
+    agent_brief: >
+      Implement the loader per the epic's Shared decisions 1-2 and
+      lifecycle-taxonomy.md's container conventions (schema pin, kebab ids,
+      !include extraction from internal/testrunner/cassette.go:291 if needed).
+      The WM.1 design session's published artifacts are the design input.
+      Envelope: schema/id/title/status/visibility + typed edge fields.
+
+  - id: "W1.1"
+    wall: W1
+    goal_ref: [G1]
+    title: Catalog lint (cycles, dangling refs, visibility leaks) + CLI verb
+    kind: runtime
+    pipeline: implementation
+    scope: ["internal/graph/**", "cmd/kitsoki/graph.go"]
+    depends_on: ["W1.0"]
+    acceptance:
+      - "lint hard-fails: composed_of/depends_on cycles, dangling refs, schema violations, internal node reachable from a public edge"
+      - "kitsoki graph lint <dir> exits non-zero on each bad fixture, zero on seed catalog"
+    gate:
+      class: G-GOTEST
+      red_now: "no lint exists"
+      green_when: "go test ./internal/graph/... green over the lint fixture table"
+      cmd: "go test ./internal/graph/..."
+
+  # ---- W5 (front) — viewer consolidation ----
+  - id: "W5.0"
+    wall: W5
+    goal_ref: [G5]
+    title: One graph viewer in kitsoki web, consolidating both prototypes
+    kind: tui
+    pipeline: implementation
+    scope: ["tools/runstatus/src/**", "docs/proposals/project-object-graph/viewer/**"]
+    depends_on: ["W1.0"]
+    acceptance:
+      - "the Vue Flow + ELK approach from .artifacts/graph-viewer-library-research/ (main checkout; kitsoki.graph/v1 wire shape from internal/app/graph/wire.go) is merged with the branch's proposal-local viewer (layer pills, node detail) into tools/runstatus"
+      - "the proposal-local viewer directory is deleted once superseded (throwaway per its own README)"
+      - "deterministic Playwright spec over the seeded catalog; no LLM"
+    gate:
+      class: G-FLOW
+      red_now: "two divergent prototypes exist (proposal-local Vue app; .artifacts Vue Flow/ELK mockup); neither is in kitsoki web"
+      green_when: "the runstatus Playwright graph-viewer spec passes against the seed catalog"
+      cmd: "cd tools/runstatus && pnpm exec playwright test graph-viewer --project=chromium"
+    agent_brief: >
+      Study both prototypes first (.artifacts/graph-viewer-library-research/README.md
+      documents the wire-shape decision; the branch viewer has the layer/type-pill
+      UX). Keep the wire shape from internal/app/graph/wire.go so story graphs and
+      object graphs share a renderer. Serve the catalog through a runstatus RPC
+      backed by W1.0's loader. Remember web embed staging: dist must be copied into
+      internal/runstatus/web/assets or the binary serves a stale bundle.
+
+  # ---- W2/W3/W4 — sketched; refine via WM.2-managed edits before starting ----
+  - id: "W2.0"
+    wall: W2
+    goal_ref: [G2]
+    title: Changeset node type + deterministic graph diff/apply
+    kind: runtime
+    pipeline: implementation
+    scope: ["internal/graph/**", "cmd/kitsoki/graph.go"]
+    depends_on: ["W1.1"]
+    acceptance:
+      - "changeset declares ADDED/MODIFIED/REMOVED/RENAMED ops; apply = yaml.Node rewrite + full re-lint, exit code gates; rejected changeset leaves catalog untouched"
+      - "adopt ECR→ECO→ECN-style lifecycle states on the changeset (research doc §3d)"
+    gate:
+      class: G-GOTEST
+      red_now: "durable nodes can only be hand-edited"
+      green_when: "diff/apply fixture table green incl. a rejected changeset"
+      cmd: "go test ./internal/graph/..."
+
+  - id: "W3.0"
+    wall: W3
+    goal_ref: [G3]
+    title: features/ adapter — graph nodes generate the feature catalog
+    kind: runtime
+    pipeline: implementation
+    scope: ["internal/graph/**", "scripts/features/**"]
+    depends_on: ["W1.1"]
+    acceptance:
+      - "adapter emits today's features/<id>.yaml shape from graph nodes; make features-check stays green; visibility: internal nodes provably excluded from public output"
+    gate:
+      class: G-SMOKE
+      red_now: "features/ and the graph are disconnected representations"
+      green_when: "make features-check green with adapter-generated output for at least one migrated feature"
+      cmd: "make features-check"
+
+  - id: "W3.1"
+    wall: W3
+    goal_ref: [G3]
+    title: FULL product-site conversion — every feature sourced from the graph
+    kind: runtime
+    pipeline: implementation
+    critical: true
+    scope: ["features/**", "internal/graph/**", "scripts/features/**"]
+    depends_on: ["W3.0"]
+    acceptance:
+      - "all features/*.yaml converted to graph nodes (site/tour/demo bindings preserved); the adapter is the only producer of the legacy shape, or is collapsed entirely if the codegen can read the graph directly"
+      - "site build + make features-check + demo-recording stamps green end-to-end from graph-sourced content"
+      - "each converted feature gains at least its acceptance-criteria edges (the enrichment the legacy shape could not hold)"
+    gate:
+      class: G-SMOKE
+      red_now: "only a pilot feature is graph-sourced; the site still reads hand-authored features/*.yaml"
+      green_when: "make features-check green with zero hand-authored features/*.yaml remaining as source of truth"
+      cmd: "make features-check"
+
+  # ---- W6 — proposals-queue conversion (payoff, goal G7) ----
+  - id: "W6.0"
+    wall: W6
+    goal_ref: [G7]
+    title: Proposals as graph nodes, wrapper-first; README index generated
+    kind: runtime
+    pipeline: implementation
+    critical: true
+    scope: ["docs/proposals/**", "internal/graph/**"]
+    depends_on: ["W2.0"]
+    acceptance:
+      - "a proposal node type wraps existing markdown proposals (structured fields grown incrementally, body stays a plain `path:` field — no `!include` loader feature; W6.0 design session found the loader has zero custom-tag machinery and a plain path field is sufficient); this goal's epic is converted first and round-trips (pilot only; lifecycle-taxonomy.md and the epic's other narrative-slice reconciliation are follow-on, not W6.0 itself)"
+      - "docs/proposals/README.md 'Current proposals' section is GENERATED from the catalog with a lint that fails on drift (hand-maintained indexes rot) — checked as a byte-diff, not semantic equality (opposite of W3.0's featuresadapter, because the README index has no downstream re-parser: its exact bytes are the contract)"
+      - "the epic's slice table is a generated view of decomposes_to edges to change nodes, whose own status is the single source of truth (no proposal-local status snapshot)"
+      - "new proposals are authored as nodes from here on (proposal-authoring skill + templates updated) — DEFERRED past this pilot, tracked as follow-on work"
+    gate:
+      class: G-LINT
+      red_now: "docs/proposals/README.md is a ~400-line hand-maintained index; proposal status lives only in prose Status lines"
+      green_when: "the index-drift lint exits 0 and is wired into make test"
+      cmd: "kitsoki graph lint docs/proposals/project-object-graph/seed-objects.yaml --check-index"
+
+  - id: "W4.0"
+    wall: W4
+    goal_ref: [G4]
+    title: Computed roadmap — graph diff emits change-node work graph
+    kind: runtime
+    pipeline: implementation
+    scope: ["internal/graph/**"]
+    depends_on: ["W2.0"]
+    acceptance:
+      - "diff(current, desired) emits nodes conforming to schemas/change-node.schema.json; golden fixture pair proves it; output loadable by the deliver story's lint"
+    gate:
+      class: G-GOTEST
+      red_now: "the roadmap is prose"
+      green_when: "golden-delta fixture test green"
+      cmd: "go test ./internal/graph/..."

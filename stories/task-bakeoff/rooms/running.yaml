@@ -6,7 +6,7 @@
 #
 # So this room does NOT execute cells itself in the default/flow path. It:
 #   1. surfaces the roster + progress (pending / ran / scored per cell), and
-#   2. on accept, advances to scoring, where the harness's FREE aggregate.py
+#   2. on accept, advances to scoring, where the harness's FREE aggregation
 #      rolls up whatever cells/*.json the manual run produced.
 #
 # Where a live operator HAS wired a run-driver, the commented host.run below shows

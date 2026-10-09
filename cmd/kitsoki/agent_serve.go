@@ -81,8 +81,8 @@ Socket resolution (first wins):
   /tmp/kitsoki-agent-<pid>.sock  default
 
 JSON-RPC methods: agent.extract, agent.decide, agent.ask, agent.task,
-agent.converse. Each takes the same parameters as the corresponding CLI
-subcommand plus an optional "parent_session_id" field.
+agent.converse, starlark.run. Each takes the same parameters as the
+corresponding CLI subcommand plus an optional "parent_session_id" field.
 
 Streaming (§5.2): each request may produce zero or more notification frames
 before the final response. Notifications have no "id" field:
@@ -335,8 +335,10 @@ func dispatchAgentRPC(ctx context.Context, method string, params map[string]any,
 		return host.AgentTaskHandler(ctx, params)
 	case "agent.converse":
 		return host.AgentConverseHandler(ctx, params)
+	case "starlark.run":
+		return host.StarlarkRunHandler(ctx, params)
 	default:
-		return host.Result{}, fmt.Errorf("agent-serve: unknown method %q; valid methods: agent.extract, agent.decide, agent.ask, agent.task, agent.converse", method)
+		return host.Result{}, fmt.Errorf("agent-serve: unknown method %q; valid methods: agent.extract, agent.decide, agent.ask, agent.task, agent.converse, starlark.run", method)
 	}
 }
 
@@ -356,6 +358,9 @@ func (s *rpcStreamSink) OnStreamEvent(ctx context.Context, ev host.StreamEvent) 
 	}
 	if ev.Subtype != "" {
 		params["subtype"] = ev.Subtype
+	}
+	if ev.Severity != "" {
+		params["severity"] = ev.Severity
 	}
 	if ev.Tool != "" {
 		params["tool"] = ev.Tool

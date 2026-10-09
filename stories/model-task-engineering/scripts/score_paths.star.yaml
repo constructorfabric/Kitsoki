@@ -1,0 +1,8 @@
+inputs:
+  bench_manifest: { type: string, required: true }
+  case_id:        { type: string }
+  output_dir:     { type: string }
+outputs:
+  report_json:     { type: string }
+  report_markdown: { type: string }
+  report_deck:     { type: string }

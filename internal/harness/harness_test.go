@@ -206,6 +206,82 @@ entries:
 	assert.Contains(t, err.Error(), "clarify")
 }
 
+// TestReplayHarness_ParaphrasePool asserts the tier-2.5 paraphrase-pool
+// contract: every string in a pre-recorded `paraphrases:` list resolves
+// identically to the entry's own `input:` (exact match, plus the existing
+// case-insensitive+trimmed fallback), while an utterance never recorded in
+// the pool still misses — the pool is exhaustive, not a semantic/embedding
+// matcher, so it never silently matches something the recording never pinned.
+func TestReplayHarness_ParaphrasePool(t *testing.T) {
+	tmp := t.TempDir()
+	rec := filepath.Join(tmp, "recording.yaml")
+	require.NoError(t, os.WriteFile(rec, []byte(`kind: recording
+entries:
+  - state: "foyer"
+    input: "go south"
+    paraphrases:
+      - "head south"
+      - "walk south please"
+      - "I'd like to go toward the south exit"
+    intent:
+      name: "go"
+      slots:
+        direction: "south"
+    confidence: 0.9
+`), 0o644))
+
+	h, err := harness.NewReplay(rec)
+	require.NoError(t, err)
+	ctx := context.Background()
+
+	// Every pool member (and the original input) resolves to the same intent.
+	for _, in := range []string{
+		"go south",
+		"head south",
+		"walk south please",
+		"I'd like to go toward the south exit",
+		// case-insensitive/trimmed fallback still applies to pool members.
+		"  HEAD SOUTH  ",
+	} {
+		t.Run(in, func(t *testing.T) {
+			params, err := h.RunTurn(ctx, makeTurnInput("foyer", in))
+			require.NoError(t, err)
+			intent, slots := extractIntent(t, params)
+			assert.Equal(t, "go", intent)
+			assert.EqualValues(t, "south", slots["direction"])
+		})
+	}
+
+	// An utterance that was never pinned into the pool must NOT silently
+	// match — it's a recording miss like any unrecorded free-text input.
+	_, err = h.RunTurn(ctx, makeTurnInput("foyer", "please proceed southward"))
+	require.Error(t, err)
+	var miss *harness.ErrRecordingMiss
+	require.ErrorAs(t, err, &miss)
+	assert.Equal(t, "please proceed southward", miss.Input)
+}
+
+// TestReplayHarness_ParaphraseEmptyRejected asserts that a blank paraphrase
+// pool member fails fast at load, same discipline as an empty `input:`.
+func TestReplayHarness_ParaphraseEmptyRejected(t *testing.T) {
+	tmp := t.TempDir()
+	rec := filepath.Join(tmp, "recording.yaml")
+	require.NoError(t, os.WriteFile(rec, []byte(`kind: recording
+entries:
+  - state: "foyer"
+    input: "go south"
+    paraphrases:
+      - "head south"
+      - "   "
+    intent:
+      name: "go"
+`), 0o644))
+
+	_, err := harness.NewReplay(rec)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "paraphrase")
+}
+
 // TestReplayHarness_MalformedRecording asserts that a missing-kind recording file fails fast.
 func TestReplayHarness_MalformedRecording(t *testing.T) {
 	tmp := t.TempDir()

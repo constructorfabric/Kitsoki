@@ -1,38 +1,41 @@
 # dev-story-mining
 
-Turn real Claude Code transcripts into named gates for **dev-story** — the
-repeatable process from
-[`.context/dev-story-from-transcripts.md`](../../.context/dev-story-from-transcripts.md)
-(and [`docs/proposals/session-pattern-mining/`](../../docs/proposals/session-pattern-mining/)),
-made first-class and runnable as a kitsoki story.
+Turn real Claude Code and Codex transcripts into Kitsoki improvements: named
+story gates, rooms, Starlark scripts, flow fixtures, hub routes, skill updates,
+and honest enforcement-limit records. The repeatable process from
+[`docs/proposals/session-pattern-mining/`](../../docs/proposals/session-pattern-mining/)
+is made first-class and runnable as a Kitsoki story.
 
-A meta / dogfood story: kitsoki improving the very state machine it runs its
-own development on. The mechanical skeleton (mine → grep the inventory → author
-→ test) is automated; the few real judgements are named checkpoint gates with a
-recorded decision at each — the same shape mining is built to find.
+A meta / dogfood story: Kitsoki improving the very state machines it uses for
+its own development. The mechanical skeleton (prepare sources -> mine -> write
+the map -> review inventory -> author -> test) is automated; the few real judgements are named
+checkpoint gates with a recorded decision at each - the same shape mining is
+built to find.
 
 ## The pipeline
 
 ```
-idle ──start──▶ mine ──▶ map ──▶ decide ──▶ author ──▶ record ──▶ @exit:done
-                 │         │        │          │           │
-                 └ refine ─┴ refine ┴ refine ──┴ refine ───┴ refine (budgeted)
-                                                            │
+idle ──start──▶ prepare ──▶ mine ──▶ mapping ──▶ map ──▶ decide ──▶ author ──▶ record ──▶ @exit:done
+                    │         │          │          │        │          │           │
+                    └ refine ─┴ refine ─┴ refine ──┴ refine ┴ refine ─┴ refine ───┴ refine (budgeted)
+                                                                   │
    any room: quit / budget-exhausted ──────────────▶ @exit:abandoned
 ```
 
 | Phase | Producer (persona) | Decision the gate records |
 |---|---|---|
-| **mine** | `miner` (`host.agent.task`) | Is the brief fresh & large enough (≥ `min_intents`, recency sample)? |
-| **map** | `mapper` (`host.agent.task`) | Each theme classified `ALREADY-MODELED` / `ENRICH` / `GAP` against the *regenerated* gate inventory — never from memory. |
-| **decide** | `ranker` (`host.agent.ask`) | Which ENRICH/GAP item to ticket next (rank by #intents × mechanicalness). |
-| **author** | `author` (`host.agent.task`) | Gate + flow fixture authored; **accept is refused while `flows_green` is false**. |
-| **record** | `recorder` (`host.agent.ask`) | Can an existing gate drop a determinism rung (L2→L3→L4)? Empty result is valid. |
+| **prepare** | `host.starlark.run` (`scripts/plan_sources.star`) | Which transcript sources, artifact classes, enforcement limits, and L0-L4 ladder apply before any agent mines. |
+| **mine** | `miner` (`host.agent.task`) | Is the brief fresh & large enough (>= `min_intents`) across the prepared Claude/Codex sources, with unavailable signals called out? |
+| **mapping** | `mapper` (`host.agent.task`) | Announce mapping before MAP review, classify each opportunity against regenerated inventory, then write `OPPORTUNITY_MAP.md`. |
+| **map** | existing `map_artifact` | Review the linked opportunity map and decide whether the classifications are acceptable. |
+| **decide** | `ranker` (`host.agent.ask`) | Which actionable item to apply next (rank by #intents x mechanicalness x Kitsoki-adoption leverage). |
+| **author** | `author` (`host.agent.task`) | Improvement + no-LLM coverage authored, with a real unified diff artifact; **accept is refused while `flows_green` is false**. |
+| **record** | `recorder` (`host.agent.task`) | Writes `FINAL_REPORT.md` and checks whether an existing gate can drop a determinism rung (L2->L3->L4). Empty ladder moves are valid. |
 
-Each phase produces a schema-validated artifact in its `on_enter` (idempotent
+Each producer phase emits a schema-validated artifact in `on_enter` (idempotent
 via `once:` — reload-safe; the refine/restart arms clear the bind to force a
-fresh run). The view renders the artifact; the operator (or the LLM judge)
-accepts / refines / restarts / quits.
+fresh run). Review phases render those artifacts; the operator (or the LLM
+judge) accepts / refines / restarts / quits.
 
 ## Judge polymorphism
 
@@ -50,16 +53,35 @@ One `world.judge_mode` flag selects who answers every checkpoint (mirrors
 
 - **Entry state:** `idle`.
 - **Exits:**
-  - `done` — `requires: [record_artifact]` — a gate was authored (or a ladder
-    move recorded). An importer maps it via `imports.<alias>.exits.done.to`.
+  - `done` — `requires: [record_artifact]` — an improvement was authored (or a
+    ladder move recorded). An importer maps it via
+    `imports.<alias>.exits.done.to`.
   - `abandoned` — operator quit or a phase budget was exhausted.
-- **`world_in` contract (optional overrides):** `job`, `project_dir`
-  (transcripts dir; empty → current repo), `stories_dir` (tree to enrich,
-  default `stories`), `min_intents`, `judge_mode`, `judge_confidence_threshold`.
+- **`world_in` contract (optional overrides):** `job`, `transcript_sources`
+  (`claude,codex` by default), `project_dir` (Claude transcript dir; empty ->
+  current repo slug), `codex_sessions_dir`, `stories_dir`, `target_artifacts`,
+  `automation_goal`, `min_intents`, `judge_mode`,
+  `judge_confidence_threshold`.
 - **Intent surface:** exports `start, accept, refine, restart_from, quit, look`.
-- **Hosts required:** `host.run`, `host.agent.task`, `host.agent.ask`,
-  `host.agent.decide`. No `host_interfaces` — the story runs standalone with no
-  transport registry; the phase artifacts are the durable record.
+- **Hosts required:** `host.starlark.run`, `host.run`, `host.agent.task`,
+  `host.agent.ask`, `host.agent.decide`. No `host_interfaces` — the story runs
+  standalone with no transport registry; the phase artifacts are the durable
+  record.
+
+## Progressive determinism and enforcement limits
+
+`prepare` is intentionally deterministic. It records the source matrix and the
+L0-L4 ladder before any mining agent runs:
+
+- L2 is the default target for new story/script skeletons: deterministic effects
+  plus named recorded gates.
+- L3/L4 changes require recorded gate decisions; the `record` phase proposes
+  rung drops only when the data supports them.
+- Claude Code can be routed through a pre-model Kitsoki hook.
+- Codex cannot be hard-intercepted before the model sees a prompt today. Codex
+  enforcement should be represented as launch/workflow routing, MCP dispatch,
+  guidance, transcript mining feedback, or an explicit `ENFORCEMENT-LIMIT` item -
+  not as a fabricated hook.
 
 ## Run it
 
@@ -72,13 +94,18 @@ kitsoki test flows stories/dev-story-mining/app.yaml
 ```
 
 Flows: `flows/happy_human.yaml` (accept through to `@exit:done`),
-`flows/map_refine_budget.yaml` (refine past the map budget bails to
-`@exit:abandoned`).
+`flows/prepare_refine_budget.yaml` (refine past the source-planning budget bails),
+and `flows/map_refine_budget.yaml` (refine past the map budget bails to
+`@exit:abandoned`). `happy_human` stubs the `plan_sources` host envelope and
+uses seeded artifacts for later LLM-producing phases, so it remains LLM-free;
+`plan_sources.star` is validated separately with the Starlark checker.
 
 ## Not yet wired
 
 The `miner` / `author` personas describe the real kit and authoring loop in
 their prompts, but this story does not yet ship cassettes for a recorded
-end-to-end run against a live agent — the flow fixtures cover the state machine
-only. Recording those (and a `dev-story` / `kitsoki-dev` hub room that offers
-"improve myself" as an entry into this story) is the natural next step.
+end-to-end run against a live agent. The deterministic demo fixture includes
+reviewable markdown and diff artifacts under `demo-artifacts/`; the next step is
+to record a real run that applies one improvement, convert its trace with
+`kitsoki trace to-flow`, and replace the demo fixture with that trace-derived
+bundle.

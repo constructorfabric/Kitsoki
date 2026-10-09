@@ -1,0 +1,254 @@
+# object-graph — @kitsoki/object-graph's sole provided story. Declares the
+# kit's one host_interfaces surface, "graph": load/lint/diff/apply/project
+# default straight to the engine's generic host.graph.* verbs (D1 — no Go in
+# the kit, the substrate is engine infrastructure); "presentation" resolves
+# to the SAME "host.graph" Go entry point, which for that one op delegates to
+# this kit's own scripts/presentation.star (D2.1 — see
+# internal/host/graph_handlers.go's package doc for exactly how).
+#
+# This story is a thin, standalone-loadable shell around that interface: it
+# has no UI of its own (the kit's Vue viewer lives under ui/, served at
+# /kit/kitsoki/object-graph/ui/graph.mjs and calling this same interface over
+# JSON-RPC/kit_call) and exists mainly so
+# internal/kitendpoint.Dispatcher.resolveInterface has a provided story to
+# find "graph" declared on, and so the kit has something
+# `kitsoki kit verify`'s conformance flows can exercise end to end (see
+# flows/basic.yaml, which drives it against example/catalog.yaml, the kit's
+# own small seed catalog).
+app:
+  id: kit-object-graph-viewer
+  version: 0.1.0
+
+host_interfaces:
+  graph:
+    description: "The project object graph engine substrate (internal/graph), exposed generically."
+    operations:
+      load:
+        input: { catalog_path: string, overlay_path: string }
+        output: { node_count: int, node_ids: list, warnings: list }
+      lint:
+        input: { catalog_path: string }
+        output: { issues: list, issue_count: int, clean: bool }
+      diff:
+        input: { catalog_path: string, overlay_path: string }
+        output: { nodes: list }
+      apply:
+        input: { catalog_path: string, changeset_id: string, dry_run: bool }
+        output: { rejected: bool, reject_reasons: list, lint_issues: list, changed_files: list }
+      propose:
+        input: { catalog_path: string, title: string, operations: list, visibility: string, provenance: object }
+        output: { changeset_id: string, status: string, lint: list, rejected: bool, reject_reasons: list }
+      authorize:
+        input: { catalog_path: string, changeset_id: string }
+        output: { rejected: bool, reject_reasons: list, lint_issues: list, changed_files: list }
+      withdraw:
+        input: { catalog_path: string, changeset_id: string }
+        output: { rejected: bool, reject_reasons: list, lint_issues: list, changed_files: list }
+      rebase:
+        input: { catalog_path: string, changeset_id: string }
+        output: { rejected: bool, reject_reasons: list, lint_issues: list, changed_files: list }
+      project:
+        input: { catalog_path: string, overlay_path: string, graph_id: string }
+        output: { graph: object }
+      presentation:
+        input: {}
+        output: { layers: list }
+      query:
+        input: { catalog_path: string, mode: string, target: string, to_type: string }
+        output: { type_id: string, schema: string, extends: string, summary: string, required_fields: list, edge_fields: list, ancestry: list }
+      get:
+        input: { catalog_path: string, ids: list, fields: list }
+        output: { nodes: list, missing: list }
+      find:
+        input: { catalog_path: string, type: string, status: list, visibility: string, text: string, limit: int, offset: int, count_only: bool }
+        output: { total: int, rows: list, truncated: bool }
+      neighbors:
+        input: { catalog_path: string, id: string, direction: string, edges: list, depth: int, limit: int }
+        output: { triples: list, rows: list }
+      type_census:
+        input: { catalog_path: string, type_id: string }
+        output: { instance_count: int, status_breakdown: object, types: list }
+      changeset:
+        input: { catalog_path: string, action: string, changeset_id: string, node_id: string }
+        output: { changesets: list, status_counts: object, id: string, title: string, status: string, operations: list, touching: list }
+    default: host.graph
+
+world:
+  catalog_path: { type: string, default: "" }
+  node_count: { type: int, default: 0 }
+  lint_clean: { type: bool, default: false }
+  issue_count: { type: int, default: 0 }
+  query_type_id: { type: string, default: "" }
+  get_missing: { type: list, default: [] }
+  find_total: { type: int, default: 0 }
+  neighbors_rows: { type: list, default: [] }
+  census_instance_count: { type: int, default: 0 }
+  changeset_status_counts: { type: object, default: {} }
+
+intents:
+  start:
+    description: "Load the catalog at world.catalog_path."
+    examples: ["start", "load"]
+  lint:
+    description: "Lint the loaded catalog."
+    examples: ["lint"]
+  query:
+    description: "Explain the feature type via host.graph.query."
+    examples: ["query", "explain-type"]
+  get:
+    description: "Fetch a full node envelope via host.graph.get."
+    examples: ["get"]
+  find:
+    description: "Search for feature-typed nodes via host.graph.find."
+    examples: ["find"]
+  neighbors:
+    description: "Walk a node's neighbors via host.graph.neighbors."
+    examples: ["neighbors"]
+  census:
+    description: "Take a type census via host.graph.type_census."
+    examples: ["census"]
+  changesets:
+    description: "List changesets via host.graph.changeset."
+    examples: ["changesets"]
+  finish:
+    description: "Finish."
+    examples: ["finish", "done"]
+
+exports:
+  intents: [start]
+
+exits:
+  done:
+    description: "Loaded and linted the catalog, and exercised every read op."
+    requires: [node_count]
+
+root: idle
+
+states:
+  idle:
+    description: "Ready. catalog_path={{ world.catalog_path }}"
+    view: "Ready."
+    on:
+      start:
+        - target: loaded
+
+  loaded:
+    description: "Catalog loaded: {{ world.node_count }} node(s)."
+    view: "Loaded {{ world.node_count ?? \"(pending)\" }} node(s)."
+    on_enter:
+      - invoke: iface.graph.load
+        with:
+          catalog_path: "{{ world.catalog_path }}"
+        bind:
+          node_count: node_count
+        on_error: idle
+    on:
+      lint:
+        - target: linted
+
+  linted:
+    description: "Lint: clean={{ world.lint_clean }}, issues={{ world.issue_count }}."
+    view: "Lint clean={{ world.lint_clean ?? \"(pending)\" }}."
+    on_enter:
+      - invoke: iface.graph.lint
+        with:
+          catalog_path: "{{ world.catalog_path }}"
+        bind:
+          lint_clean: clean
+          issue_count: issue_count
+        on_error: idle
+    on:
+      query:
+        - target: queried
+
+  queried:
+    description: "Query explain-type(feature) -> {{ world.query_type_id }}."
+    view: "Explained type {{ world.query_type_id ?? \"(pending)\" }}."
+    on_enter:
+      - invoke: iface.graph.query
+        with:
+          catalog_path: "{{ world.catalog_path }}"
+          mode: explain-type
+          target: feature
+        bind:
+          query_type_id: type_id
+        on_error: idle
+    on:
+      get:
+        - target: fetched
+
+  fetched:
+    description: "Get feature-example-widget -> missing={{ world.get_missing }}."
+    view: "Fetched node envelope."
+    on_enter:
+      - invoke: iface.graph.get
+        with:
+          catalog_path: "{{ world.catalog_path }}"
+          ids: [feature-example-widget]
+        bind:
+          get_missing: missing
+        on_error: idle
+    on:
+      find:
+        - target: found
+
+  found:
+    description: "Find type=feature -> total={{ world.find_total }}."
+    view: "Found {{ world.find_total ?? \"(pending)\" }} feature(s)."
+    on_enter:
+      - invoke: iface.graph.find
+        with:
+          catalog_path: "{{ world.catalog_path }}"
+          type: feature
+        bind:
+          find_total: total
+        on_error: idle
+    on:
+      neighbors:
+        - target: neighbored
+
+  neighbored:
+    description: "Neighbors(feature-example-widget, out) -> {{ world.neighbors_rows }}."
+    view: "Walked neighbors."
+    on_enter:
+      - invoke: iface.graph.neighbors
+        with:
+          catalog_path: "{{ world.catalog_path }}"
+          id: feature-example-widget
+          direction: out
+        bind:
+          neighbors_rows: rows
+        on_error: idle
+    on:
+      census:
+        - target: censused
+
+  censused:
+    description: "Type census(feature) -> instance_count={{ world.census_instance_count }}."
+    view: "Censused feature type."
+    on_enter:
+      - invoke: iface.graph.type_census
+        with:
+          catalog_path: "{{ world.catalog_path }}"
+          type_id: feature
+        bind:
+          census_instance_count: instance_count
+        on_error: idle
+    on:
+      changesets:
+        - target: changesetlisted
+
+  changesetlisted:
+    description: "Changeset list -> status_counts={{ world.changeset_status_counts }}."
+    view: "Listed changesets."
+    on_enter:
+      - invoke: iface.graph.changeset
+        with:
+          catalog_path: "{{ world.catalog_path }}"
+          action: list
+        bind:
+          changeset_status_counts: status_counts
+        on_error: idle
+    on:
+      finish:
+        - target: "@exit:done"

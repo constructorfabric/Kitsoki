@@ -1,0 +1,45 @@
+# deck_video_embed - WM.4 gate for deterministic rrweb video embeds in PM decks.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: shipit.configure
+initial_world:
+  goal_slug: generalized-usage
+  goal_dir:  docs/goals/generalized-usage
+  work_dir:  .artifacts/goal/flow-video-embed
+  next_change_id: "WM.0"
+  shipit__worktree_path: ".worktrees/gu-WM.0"
+  shipit__gate_command: "true"
+  shipit__base_branch: "main"
+  shipit__main_worktree_path: "."
+
+host_handlers:
+  host.run:
+    by_call:
+      integrate_exec: { data: { ok: true, exit_code: 0, stdout_json: { outcome: integrated, integrated_sha: "wm0demo", last_op_ok: true, last_error: "" } } }
+      verify-rerun: { data: { ok: true, exit_code: 0, stdout: "ok" } }
+      cleanup_exec: { data: { ok: true, exit_code: 0, stdout_json: { outcome: cleaned, last_op_ok: true, last_error: "" } } }
+  host.agent.decide: { by_call: {} }
+
+turns:
+  - intent: { name: shipit__integrate_existing, slots: {} }
+    expect_state: record
+    expect_world: { shipped_sha: "wm0demo" }
+  - intent: { name: advance, slots: {} }
+    expect_state: evaluate
+  - intent: { name: report, slots: {} }
+    expect_state: report
+    expect_world:
+      report_status: written
+  - intent: { name: look, slots: {} }
+    expect_view_matches: "exec-summary.slidey.json"
+
+expect_files:
+  - path: ../../../.artifacts/goal/flow-video-embed/reports/exec-summary.md
+    content_matches: 'WM.0: `stories/goal-seeker/tours/clips/WM.0.rrweb.json`'
+  - path: ../../../.artifacts/goal/flow-video-embed/reports/exec-summary.slidey.json
+    content_matches: '"rrweb":"stories/goal-seeker/tours/clips/WM.0.rrweb.json"'
+  - path: ../../../.artifacts/goal/flow-video-embed/reports/changes/WM_0.slidey.json
+    content_matches: '"rrweb":"stories/goal-seeker/tours/clips/WM.0.rrweb.json".*"type":"video"'
+
+expect_no_errors: true

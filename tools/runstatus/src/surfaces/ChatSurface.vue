@@ -59,7 +59,8 @@
         <ChatTranscript
           class="surface__transcript"
           :transcript="store.chatEntries"
-          @rewind="onRewind"
+          @reroute="onReroute"
+          @feedback="onFeedback"
         />
         <!-- Streaming thinking bubble: visible while a turn is in flight —
              whether it was sent from the input bar (local `pending`) or
@@ -92,7 +93,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
-import { useRunStore } from "../stores/run.js";
+import { useRunStore, type TranscriptEntry } from "../stores/run.js";
 import { createDataSource } from "../data/source.js";
 import type { DataSource } from "../data/source.js";
 import { LiveSource } from "../data/live-source.js";
@@ -100,8 +101,17 @@ import type { StoryHeader } from "../data/live-source.js";
 import ActivityFeed from "../components/ActivityFeed.vue";
 import ChatTranscript from "../components/ChatTranscript.vue";
 import InputBar from "../components/InputBar.vue";
+import { resolveEmbedBoot } from "../lib/embedBoot.js";
+import { EmbedHost } from "../lib/embedHost.js";
 
 const store = useRunStore();
+
+// Embed boot (portal-kitsoki-chat-embed-plan.md §3.1/§3.2): a host page
+// (the POG portal popup) pins story/catalog/scope on the URL and drives the
+// surface headless — no picker, no manual Start click when autostart=1.
+// undefined outside an embed context (no listeners, no-op postMessage).
+const boot = resolveEmbedBoot();
+const embedHost = new EmbedHost(boot.origin);
 
 // One DataSource for the lifetime of the surface (DI; the transport auto-selects
 // Bridge in the webview / Http in the browser).
@@ -157,7 +167,9 @@ async function adopt(id: string | null): Promise<void> {
     // Populate the story picker in the background — the empty state renders
     // immediately; the picker (and the default selection) fill in once the list
     // lands. The Start button stays disabled until then.
-    void ensureStories();
+    void ensureStories().then(() => {
+      if (boot.autostart) void onStart();
+    });
   }
 }
 
@@ -175,8 +187,13 @@ async function ensureStories(): Promise<void> {
     if (!live) live = new LiveSource("/");
     const list = await live.listStories();
     stories.value = list;
-    const preferred = list.find((s) => s.app_id === "kitsoki-dev");
-    selectedStoryPath.value = (preferred ?? list[0])?.path ?? "";
+    // An embed's ?story= boot param (path or app_id) wins over the
+    // kitsoki-dev dogfood default — the host pinned this one deliberately.
+    const bootMatch = boot.story
+      ? list.find((s) => s.path === boot.story || s.app_id === boot.story)
+      : undefined;
+    const preferred = bootMatch ?? list.find((s) => s.app_id === "kitsoki-dev");
+    selectedStoryPath.value = (preferred ?? list[0])?.path ?? boot.story ?? "";
   } catch (e) {
     startError.value = errMsg(e);
   } finally {
@@ -184,8 +201,22 @@ async function ensureStories(): Promise<void> {
   }
 }
 
+// The boot context autostart's session.new folds into
+// initial_world.portal_context: a URL-delivered ?world_seed= payload when
+// the host supplied one (race-free — it exists before any script runs),
+// else the first `context` postMessage (or null once waitForContext's
+// bounded wait elapses; a host that posts later than that window silently
+// loses — hosts that care should send world_seed).
+let bootContext: Record<string, unknown> | null = null;
+
 onMounted(async () => {
   source = createDataSource();
+  embedHost.sendReady();
+  if (boot.worldSeed) {
+    bootContext = boot.worldSeed;
+  } else if (boot.story || boot.autostart) {
+    bootContext = (await embedHost.waitForContext()) as Record<string, unknown> | null;
+  }
   try {
     const current = await source.getCurrentSession();
     await adopt(current);
@@ -212,7 +243,7 @@ onUnmounted(() => {
  * but selectedStoryPath is still seeded to that lone story.
  */
 async function onStart(): Promise<void> {
-  const storyPath = selectedStoryPath.value || stories.value[0]?.path;
+  const storyPath = selectedStoryPath.value || boot.story || stories.value[0]?.path;
   if (!storyPath) {
     startError.value = "No story available to start a chat.";
     return;
@@ -221,10 +252,21 @@ async function onStart(): Promise<void> {
   startError.value = null;
   try {
     if (!live) live = new LiveSource("/");
-    const id = await live.newSession(storyPath);
+    // Embed contract §3.1/§3.2: catalog/scope ride the URL, richer context
+    // (node ids, filters, instruction) rides the one postMessage captured at
+    // boot — both fold into world.portal_context/catalog/scope_key so the
+    // agent's very first turn already has them via relevant_world.
+    const initialWorld: Record<string, unknown> = {};
+    if (boot.catalog) initialWorld.catalog = boot.catalog;
+    if (boot.scope) initialWorld.scope_key = boot.scope;
+    if (bootContext) initialWorld.portal_context = bootContext;
+    const id = await live.newSession(storyPath, { initialWorld });
     await adopt(id);
+    embedHost.sendEvent("session_started", { session_id: id });
   } catch (e) {
-    startError.value = errMsg(e);
+    const message = errMsg(e);
+    startError.value = message;
+    embedHost.sendEvent("error", { message });
   } finally {
     starting.value = false;
   }
@@ -236,8 +278,11 @@ async function runTurn(fn: () => Promise<unknown>): Promise<void> {
   error.value = null;
   try {
     await fn();
+    embedHost.sendEvent("turn_done", { session_id: sessionId.value ?? undefined });
   } catch (e) {
-    error.value = errMsg(e);
+    const message = errMsg(e);
+    error.value = message;
+    embedHost.sendEvent("error", { message });
   } finally {
     pending.value = false;
   }
@@ -253,13 +298,22 @@ function onIntent(name: string, slots: Record<string, unknown>, displayLabel?: s
   void runTurn(() => store.submitIntent(source!, sessionId.value!, name, slots, displayLabel));
 }
 
-// Rewind one CRR decision from its route-receipt chip: reverse the route and
-// re-dispatch the original utterance. Routes through runTurn so the in-flight
-// guard + error banner behave exactly like a normal turn; a non-rewindable
-// receipt never reaches here (the chip disables its control).
-function onRewind(decisionId: string): void {
+// Reroute one CRR decision from its route-receipt chip: reverse the route and
+// re-dispatch the original utterance under a selected class. Routes through
+// runTurn so the in-flight guard + error banner behave exactly like a normal
+// turn.
+function onReroute(decisionId: string, newClass: string): void {
   if (!source || !sessionId.value) return;
-  void runTurn(() => store.rewindRoute(source!, sessionId.value!, decisionId));
+  void runTurn(() =>
+    store.rewindRoute(source!, sessionId.value!, decisionId, newClass, "operator reroute")
+  );
+}
+
+// Routing-feedback thumbs up/down (WS-C C4): fire-and-forget, no in-flight
+// guard needed since it never advances the turn.
+function onFeedback(entry: TranscriptEntry, verdict: "up" | "down"): void {
+  if (!source || !sessionId.value) return;
+  void store.sendRoutingFeedback(source, sessionId.value!, entry, verdict);
 }
 
 function errMsg(e: unknown): string {

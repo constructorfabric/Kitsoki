@@ -1,0 +1,45 @@
+# The manifest is structurally fine both times lint sees it (the loop here
+# is driven by the adversarial REVIEW asking for changes, not a lint
+# failure) — the same content is read three times: lint's first pass,
+# lint's second pass after the decompose re-entry, and fleet.load's read.
+kind: inspect_cassette
+interactions:
+  - op: exists
+    target: .artifacts/deliver/decomposition.yaml
+    out: "false"
+  - op: read
+    target: .artifacts/deliver/decomposition.yaml
+    out: |
+      briefs:
+        - id: health-model
+          brief: Add a HealthStatus struct in internal/health/ with Status and Version fields.
+          gate_command: go test ./internal/health/...
+          deps: []
+        - id: health-handler
+          brief: Add a GET /health handler serialising HealthStatus to JSON.
+          gate_command: go test ./internal/handler/...
+          deps: [health-model]
+  - op: read
+    target: .artifacts/deliver/decomposition.yaml
+    out: |
+      briefs:
+        - id: health-model
+          brief: Add a HealthStatus struct in internal/health/ with Status and Version fields.
+          gate_command: go test ./internal/health/...
+          deps: []
+        - id: health-handler
+          brief: Add a GET /health handler serialising HealthStatus to JSON.
+          gate_command: go test ./internal/handler/...
+          deps: [health-model]
+  - op: read
+    target: .artifacts/deliver/decomposition.yaml
+    out: |
+      briefs:
+        - id: health-model
+          brief: Add a HealthStatus struct in internal/health/ with Status and Version fields.
+          gate_command: go test ./internal/health/...
+          deps: []
+        - id: health-handler
+          brief: Add a GET /health handler serialising HealthStatus to JSON.
+          gate_command: go test ./internal/handler/...
+          deps: [health-model]

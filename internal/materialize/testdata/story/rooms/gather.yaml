@@ -1,0 +1,9 @@
+states:
+  gather:
+    description: "Gathering context"
+    view: "Gathering context for {{ world.node_id }}."
+    on:
+      next:
+        - target: draft
+      look:
+        - target: gather

@@ -25,6 +25,7 @@ trap 'rm -rf "$TMP"' EXIT
 
 # Copy the whole story into the scratch dir so the relative app path resolves.
 cp -R stories/git-ops "$TMP/git-ops"
+chmod -R u+w "$TMP/git-ops"
 MUT_CLEANUP="$TMP/git-ops/rooms/cleanup.yaml"
 
 # MUTATION: re-introduce the pre-smoothing bug — an UNCONDITIONAL

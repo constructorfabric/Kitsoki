@@ -1,0 +1,93 @@
+# execute — dispatch the reusable product-journey-qa-driver for the CURRENT
+# transport leg (world.leg_index into world.legs). The handoff's `transport:`
+# field is a PIN that overrides the driver's usual cheapest-surface heuristic
+# (.agents/agents/product-journey-qa-driver.md) — this leg's evidence must
+# come from the named transport, not whichever surface looks cheapest.
+#
+# A dead/failed driver dispatch still routes forward to judge (on_error:
+# judge, mirroring stories/dogfood-marathon's driving→verifying split) —
+# judge independently grades whatever was actually captured; the driver's own
+# report is never the grade.
+
+states:
+
+  execute:
+    description: "Dispatching the reusable driver for the current transport check."
+    relevant_world: [run_id, run_dir, leg_index, leg_count, current_leg, drive_result, live_authorization_summary, status]
+    view:
+      - heading: "Scenario QA · execute"
+      - kv:
+          pairs:
+            Run: "{{ world.run_id }}"
+            Transport check: "{{ world.leg_index + 1 }} of {{ world.leg_count }}"
+            Scenario: "{{ world.current_leg.scenario }}"
+            Transport: "{{ world.current_leg.transport }}"
+            Visual surface: "{{ world.current_leg.visual_surface }}"
+            Evidence dir: "{{ world.current_leg.evidence_dir }}"
+      - kv:
+          pairs:
+            Live authorization: "{{ world.current_leg.live_authorization_note }}"
+        when: "world.current_leg.live_authorization_note != ''"
+      - prose: "Dispatching product-journey-qa-driver for `{{ world.current_leg.transport }}`. This transport pin overrides the driver's usual cheapest-surface heuristic. A missing or JSON-degraded visual surface is reported as a blocker, never fabricated."
+      # Plan-time announcement (issue group B / bug #105): every leg that
+      # needs interpretive/live drive and has no profile= authorization was
+      # already flagged, up front, before this or any other leg was driven --
+      # scripts/plan_legs.star computes this deterministically, not an LLM
+      # judgment call. Shown on every leg of a multi-transport check so the
+      # operator sees the whole plan's exposure, not just this leg's own note.
+      - heading: "Live authorization notes (all legs)"
+        when: "len(world.live_authorization_summary) > 0"
+      - code: |
+          {% for note in world.live_authorization_summary %}
+          - {{ note }}
+          {% endfor %}
+        when: "len(world.live_authorization_summary) > 0"
+    on_enter:
+      - invoke: host.starlark.run
+        id: pick_leg
+        with:
+          script: scripts/pick_leg.star
+          inputs:
+            legs: "{{ world.legs }}"
+            leg_index: "{{ world.leg_index }}"
+        bind:
+          current_leg: current_leg
+          current_leg_id: current_leg_id
+          current_leg_json: current_leg_json
+        on_error: idle
+      - set:
+          status: "judging"
+      - invoke: host.agent.task
+        id: drive_leg
+        with:
+          agent: driver
+          acceptance:
+            schema: schemas/drive_leg_result.json
+          # Prompt variables MUST live under context.args and be referenced as
+          # {{ args.<key> }} — the prompt renderer's env only exposes the args
+          # namespace; keys placed directly under context: silently render as
+          # empty (the first live drive shipped the driver a blank handoff).
+          context:
+            prompt: prompts/drive_leg.md
+            args:
+              leg_json: "{{ world.current_leg_json }}"
+              run_id: "{{ world.run_id }}"
+              run_dir: "{{ world.run_dir }}"
+              transport: "{{ world.current_leg.transport }}"
+              live_profile: "{{ world.live_profile }}"
+        bind:
+          drive_result: submitted
+        on_error: judge
+      # Guarded on an object-field read (drive_result defaults to `{}`) so
+      # this errors pre-bind and the engine defers it until drive_leg's bind
+      # actually lands, instead of firing immediately against a stale empty
+      # drive_result (see plan.yaml's header comment for the general gotcha).
+      - when: "world.drive_result.status != ''"
+        emit_intent: leg_driven
+    on:
+      leg_driven:
+        - target: judge
+      status:
+        - target: .
+      look:
+        - target: .

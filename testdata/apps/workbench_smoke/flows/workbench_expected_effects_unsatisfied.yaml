@@ -1,0 +1,24 @@
+# workbench_expected_effects_unsatisfied — the honest-incomplete companion to
+# workbench_expected_effects_satisfied.yaml: the cassette's close-out note
+# omits one of bench_expected_effects's entries, so the engine's own join
+# must report candidate_completed = false even though the dispatch itself
+# succeeded (no on_error redirect) — proving the signal is never hardcoded
+# true once an expected_effects join input is present.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: bench
+initial_world:
+  bench_expected_effects: ["ran the flaky test", "filed a ticket"]
+
+host_cassette: workbench_expected_effects_unsatisfied_cassette.yaml
+
+turns:
+  - intent: { name: bench_capture, slots: { request: "fix the flaky test and file a ticket" } }
+    expect_state: bench
+    expect_world:
+      bench_request: "fix the flaky test and file a ticket"
+      bench_note:
+        summary: "Ran the flaky test until it passed."
+
+expect_no_errors: false

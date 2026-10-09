@@ -10,7 +10,8 @@ import (
 )
 
 // RegisterHostStubs installs the flow-fixture host_handlers stubs onto reg,
-// using host.Replace so a stub overrides any builtin of the same name. It is
+// using host.ReplacePreservingCapabilities so a stub overrides any builtin of
+// the same name without changing its declared capability class. It is
 // the single registration path shared by the deterministic flow-test runner
 // (RunFlows) and any other surface that wants to drive a session against a
 // flow's canned host responses — notably `kitsoki web --flow`, which serves a
@@ -27,7 +28,7 @@ import (
 func RegisterHostStubs(reg *host.Registry, handlers map[string]HostStub) {
 	for name, stub := range handlers {
 		stub := stub // capture for closure
-		reg.Replace(name, func(hctx context.Context, args map[string]any) (host.Result, error) {
+		reg.ReplacePreservingCapabilities(name, func(hctx context.Context, args map[string]any) (host.Result, error) {
 			// 1. Simulated delay using the clock from context.
 			if stub.Delay != "" {
 				d, parseErr := app.ParseDuration(stub.Delay)

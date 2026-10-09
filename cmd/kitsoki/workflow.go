@@ -42,15 +42,34 @@ func workflowService(rootDir string) *dynamicworkflow.Service {
 
 func workflowCreateCmd(rootDir *string) *cobra.Command {
 	var slug string
+	var briefPath string
 	var jsonOut bool
 	cmd := &cobra.Command{
 		Use:   "create <goal>",
 		Short: "Create a new dynamic workflow draft",
-		Args:  cobra.MinimumNArgs(1),
+		Args: func(cmd *cobra.Command, args []string) error {
+			if strings.TrimSpace(briefPath) != "" {
+				return nil
+			}
+			return cobra.MinimumNArgs(1)(cmd, args)
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			svc := workflowService(*rootDir)
-			goal := strings.Join(args, " ")
-			receipt, err := svc.Create(cmd.Context(), dynamicworkflow.CreateRequest{Goal: goal, Slug: slug})
+			req := dynamicworkflow.CreateRequest{Goal: strings.Join(args, " "), Slug: slug}
+			if strings.TrimSpace(briefPath) != "" {
+				brief, err := dynamicworkflow.ReadCreateRequest(briefPath)
+				if err != nil {
+					return err
+				}
+				if strings.TrimSpace(req.Goal) != "" {
+					brief.Goal = req.Goal
+				}
+				if strings.TrimSpace(slug) != "" {
+					brief.Slug = slug
+				}
+				req = brief
+			}
+			receipt, err := svc.Create(cmd.Context(), req)
 			if err != nil {
 				return err
 			}
@@ -58,6 +77,7 @@ func workflowCreateCmd(rootDir *string) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&slug, "slug", "", "workflow slug (default: derived from the goal)")
+	cmd.Flags().StringVar(&briefPath, "brief", "", "YAML/JSON structured workflow brief with goal, defaults, and items")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "print the receipt as JSON")
 	return cmd
 }
@@ -184,6 +204,13 @@ func renderWorkflowReceipt(cmd *cobra.Command, receipt *dynamicworkflow.Receipt,
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), "workflow %s\n", receipt.WorkflowID)
 	fmt.Fprintf(cmd.OutOrStdout(), "goal: %s\n", receipt.Goal)
+	if receipt.ModelPolicy.Model != "" {
+		tracePolicy := "trace model optional"
+		if receipt.ModelPolicy.RequireTraceModel {
+			tracePolicy = "trace model required"
+		}
+		fmt.Fprintf(cmd.OutOrStdout(), "model policy: %s / %s / %s (%s)\n", receipt.ModelPolicy.Harness, receipt.ModelPolicy.Profile, receipt.ModelPolicy.Model, tracePolicy)
+	}
 	fmt.Fprintf(cmd.OutOrStdout(), "draft: %s\n", receipt.DraftDir)
 	fmt.Fprintf(cmd.OutOrStdout(), "manifest: %s\n", receipt.ManifestPath)
 	fmt.Fprintf(cmd.OutOrStdout(), "story: %s\n", receipt.AppPath)
@@ -206,6 +233,11 @@ func renderWorkflowReceipt(cmd *cobra.Command, receipt *dynamicworkflow.Receipt,
 	}
 	if receipt.ExportReportPath != "" {
 		fmt.Fprintf(cmd.OutOrStdout(), "export report: %s\n", receipt.ExportReportPath)
+	}
+	if receipt.ExportReport != nil {
+		if summary := dynamicworkflow.FormatStarterFlowReplay(receipt.ExportReport.StarterFlowReplay); summary != "" {
+			fmt.Fprintf(cmd.OutOrStdout(), "starter flow replay: %s\n", summary)
+		}
 	}
 	return nil
 }

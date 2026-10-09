@@ -10,7 +10,7 @@ initial_world:
   status: matrix_created
 
 host_handlers:
-  host.run:
+  host.product_journey.run:
     by_call:
       validate_product_journey_matrix_strict:
         data:
@@ -39,7 +39,7 @@ turns:
       validation_warnings: 0
       validation_issue_summary: matrix-target-proof
     expect_host_calls:
-      - handler: host.run
+      - handler: host.product_journey.run
         args: { call: validate_product_journey_matrix_strict }
     expect_view_matches: "MATRIX CREATED[\\s\\S]*Validation[\\s\\S]*invalid[\\s\\S]*Validation errors[\\s\\S]*1[\\s\\S]*Validation issues[\\s\\S]*matrix-target-proof[\\s\\S]*Status[\\s\\S]*matrix_strict_validated"
 

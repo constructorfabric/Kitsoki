@@ -1,0 +1,35 @@
+# G-FLOW gate teeth, negative case (never-silent-runtime, Task 2.2).
+#
+# do_thing_silently → host.run fails (injected domain error) → on_error:
+# bounced_silent. bounced_silent's on_enter clears world.last_error before
+# render, so applyErrorBannerSeam (host_dispatch.go) — gated on last_error
+# being non-empty — never fires. The rendered view is a bare "Back at the
+# lobby..." with no trace of the failure: a genuine silent bounce even though
+# the shared banner seam exists.
+#
+# This fixture intentionally omits expect_view_matches so the ONLY thing that
+# can fail this turn is the automatic G-FLOW gate
+# (assertNoSilentOnErrorBounce in internal/testrunner/flows.go), proving the
+# gate fires on its own without an opt-in assertion. See
+# internal/testrunner/gflow_gate_test.go for the assertion on RunFlows'
+# report (must be Failed, must name this file, the arc, and the banner
+# marker).
+#
+# To run:
+#   go run ./cmd/kitsoki test flows testdata/apps/error_banner/app.yaml
+
+test_kind: flow
+app: ../app.yaml
+initial_state: lobby
+
+host_handlers:
+  host.run:
+    error: "simulated silent host failure"
+
+turns:
+  - intent: { name: do_thing_silently, slots: {} }
+    expect_state: bounced_silent
+    expect_world:
+      last_error: ""
+
+expect_terminal: true

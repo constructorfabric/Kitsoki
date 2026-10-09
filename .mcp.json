@@ -5,8 +5,32 @@
       "args": ["mcp", "--stories-dir", "stories"]
     },
     "slidey": {
+      "command": "/Users/brad/.local/bin/slidey-mcp",
+      "args": ["--root", "/Users/brad/code/Kitsoki"]
+    },
+    "stagehand": {
       "command": "node",
-      "args": ["/Users/brad/code/slidey/src/mcp.js", "--root", "/Users/brad/code/Kitsoki"]
+      "args": ["tools/stagehand-mcp/server.mjs"],
+      "env": {
+        "KITSOKI_REPO": ".",
+        "KITSOKI_AGENT_CMD": "kitsoki"
+      }
+    },
+    "frontend-mockup": {
+      "command": "node",
+      "args": ["tools/frontend-mockup-mcp/server.mjs"],
+      "env": {
+        "KITSOKI_REPO": ".",
+        "KITSOKI_AGENT_CMD": "kitsoki"
+      }
+    },
+    "browser-mcp": {
+      "command": "node",
+      "args": ["tools/browser-mcp/server.mjs"],
+      "env": {
+        "KITSOKI_REPO": ".",
+        "KITSOKI_AGENT_CMD": "kitsoki"
+      }
     }
   }
 }

@@ -1,5 +1,5 @@
 # Worktree confinement — `launch` mints a worktree (iface.workspace.create →
-# host.git_worktree) BEFORE the baseline gate, and every maker + gate call runs
+# host.capsule_workspace) BEFORE the baseline gate, and every maker + gate call runs
 # with its cwd pinned to that worktree. This fixture asserts the host-call
 # contract that makes confinement real: the worktree is created once, the maker
 # runs with working_dir = the worktree path, and the gate runs with cwd = the
@@ -10,7 +10,7 @@ app: ../app.yaml
 initial_state: configuring
 
 host_handlers:
-  host.git_worktree: { data: { ok: true, path: ".worktrees/cherny-loop" } }
+  host.capsule_workspace: { data: { ok: true, path: ".capsules/workspaces/cherny-loop" } }
   host.run:
     by_call:
       gate-0: { data: { ok: false, exit_code: 1, stdout: "--- FAIL: TestAllow_Burst" } }
@@ -35,29 +35,29 @@ turns:
     expect_world:
       goal_achieved:   true
       terminal_reason: "achieved"
-      worktree_path:   ".worktrees/cherny-loop"
+      worktree_path:   ".capsules/workspaces/cherny-loop"
     expect_host_calls:
       # Worktree minted exactly once, on the configured branch. The iface invoke
       # is rewritten at load to <binding>.<op>, so the recorded namespace is
-      # host.git_worktree.create (prefix-fallback resolves the stub).
-      - handler: host.git_worktree.create
+      # host.capsule_workspace.create (prefix-fallback resolves the stub).
+      - handler: host.capsule_workspace.create
         args: { name: "cherny-loop/run" }
         times: 1
       # Baseline gate ran INSIDE the worktree.
       - handler: host.run
-        args: { call: gate-0, cwd: ".worktrees/cherny-loop" }
+        args: { call: gate-0, cwd: ".capsules/workspaces/cherny-loop" }
         times: 1
       # The maker wrote INSIDE the worktree (working_dir pinned).
       - handler: host.agent.task
-        args: { call: maker-1, working_dir: ".worktrees/cherny-loop" }
+        args: { call: maker-1, working_dir: ".capsules/workspaces/cherny-loop" }
         times: 1
       # Loop gate ran INSIDE the worktree.
       - handler: host.run
-        args: { call: gate-1, cwd: ".worktrees/cherny-loop" }
+        args: { call: gate-1, cwd: ".capsules/workspaces/cherny-loop" }
         times: 1
       # Commit ran INSIDE the worktree (workdir pinned to worktree_path).
       - handler: host.git.commit
-        args: { workdir: ".worktrees/cherny-loop" }
+        args: { workdir: ".capsules/workspaces/cherny-loop" }
         times: 1
 
 expect_terminal: true

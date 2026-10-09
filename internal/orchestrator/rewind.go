@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"kitsoki/internal/app"
+	"kitsoki/internal/host"
 	"kitsoki/internal/roomchat"
 	"kitsoki/internal/store"
 	"kitsoki/internal/world"
@@ -38,9 +39,27 @@ import (
 // state/world, records a turn.context_route_overridden event, and re-dispatches
 // the original utterance under newClass. Foreground, one-decision deep (v1).
 // Returns the new outcome.
-func (o *Orchestrator) RewindRoute(ctx context.Context, sid app.SessionID, decisionID string, newClass ContextRouteClass, reason string) (*TurnOutcome, error) {
+func (o *Orchestrator) RewindRoute(ctx context.Context, sid app.SessionID, decisionID string, newClass ContextRouteClass, reason string, workspacePath string) (*TurnOutcome, error) {
 	if o.store == nil {
 		return nil, fmt.Errorf("orchestrator: RewindRoute: no store configured")
+	}
+
+	var parked *ParkedWorkspaceReceipt
+	if strings.TrimSpace(workspacePath) != "" {
+		parkRes, parkErr := host.ParkWorkspace(ctx, workspacePath, string(sid), reason)
+		if parkErr != nil {
+			return nil, fmt.Errorf("orchestrator: RewindRoute: park workspace: %w", parkErr)
+		}
+		if parkRes.Parked {
+			parked = &ParkedWorkspaceReceipt{
+				SourceWorkspace:   parkRes.SourceWorkspace,
+				RecoveryWorkspace: parkRes.RecoveryWorkspace,
+				RecoveryBranch:    parkRes.RecoveryBranch,
+				RecoveryCommit:    parkRes.RecoveryCommit,
+				Cleaned:           parkRes.Cleaned,
+				Reason:            parkRes.Reason,
+			}
+		}
 	}
 
 	// Parse decisionID = "<session_id>:<turn_number>".
@@ -66,7 +85,7 @@ func (o *Orchestrator) RewindRoute(ctx context.Context, sid app.SessionID, decis
 	startWorld := o.InitialWorld()
 	if hasSnap {
 		startState = snap.StatePath
-		if unmarshalErr := json.Unmarshal(snap.WorldJSON, &startWorld.Vars); unmarshalErr != nil {
+		if unmarshalErr := json.Unmarshal(snap.WorldJSON, &startWorld); unmarshalErr != nil {
 			sessMu.Unlock()
 			return nil, fmt.Errorf("orchestrator: RewindRoute: unmarshal snapshot world: %w", unmarshalErr)
 		}
@@ -109,7 +128,7 @@ func (o *Orchestrator) RewindRoute(ctx context.Context, sid app.SessionID, decis
 
 	// Snapshot at turnN with the pre-turn state so that the next LoadHistory
 	// (WHERE turn > turnN) skips the overridden turn-N events without deleting them.
-	worldJSON, err := json.Marshal(pre.World.Vars)
+	worldJSON, err := json.Marshal(pre.World)
 	if err != nil {
 		sessMu.Unlock()
 		return nil, fmt.Errorf("orchestrator: RewindRoute: marshal world: %w", err)
@@ -172,6 +191,7 @@ func (o *Orchestrator) RewindRoute(ctx context.Context, sid app.SessionID, decis
 			Reason:     reason,
 			DecisionID: decisionID,
 		}
+		outcome.ParkedWorkspace = parked
 
 	default:
 		// help / room_request / meta_edit — lane dispatch.
@@ -206,6 +226,7 @@ func (o *Orchestrator) RewindRoute(ctx context.Context, sid app.SessionID, decis
 				TargetLane:   string(kind),
 				DecisionID:   decisionID,
 			},
+			ParkedWorkspace: parked,
 		}
 	}
 

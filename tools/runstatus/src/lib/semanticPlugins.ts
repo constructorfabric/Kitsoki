@@ -3,13 +3,13 @@
  * semantic sidecar, mirroring the Go envelope in internal/host/semantic_sidecar.go
  * (SemanticSidecar / SemanticElement) EXACTLY.
  *
- * A producer (slidey today; any media producer tomorrow) emits a
- * `<name>.semantic.json` sidecar alongside its artifact, declaring the named,
- * clickable elements inside it. The envelope is producer-AGNOSTIC: a top-level
- * `plugin` names the producer, and each element carries an opaque `ref` that
- * kitsoki round-trips VERBATIM into a `semantic_element` anchor — it never
- * interprets `ref`. `label` / `selector` / `bbox` / `t_ms` are optional overlay
- * hints the picker uses.
+ * A producer emits a `<name>.semantic.json` sidecar alongside its artifact,
+ * declaring named, clickable fields or elements inside it. The envelope is
+ * producer-AGNOSTIC: a top-level `plugin` names the producer, and each element
+ * carries an opaque `ref` that kitsoki round-trips VERBATIM into a
+ * `semantic_element` anchor — it never interprets `ref`. `label`, `selector`,
+ * `text`/`value`, `data`, `bbox`, and `t_ms` are optional context/overlay hints
+ * the picker uses.
  *
  * The client registry maps a plugin → an optional label formatter (presentation
  * only — it never changes the emitted `ref`). An ABSENT plugin entry means
@@ -25,8 +25,17 @@ export interface SemanticElement {
   ref: string;
   /** Human-readable name for the marker (else `ref`). */
   label?: string;
+  /** Optional kind/category, e.g. "field", "control", "layout-node". */
+  kind?: string;
+  /** Optional prose describing what the element represents. */
+  description?: string;
   /** Optional DOM/CSS selector for html/rrweb artifacts. */
   selector?: string;
+  /** Optional visible text/value context for DOM/data-field artifacts. */
+  text?: string;
+  value?: string;
+  /** Optional producer-specific structured context; round-tripped as data. */
+  data?: Record<string, unknown>;
   /** The element's box [x,y,w,h] in natural pixels, when supplied. */
   bbox?: [number, number, number, number];
   /** The element's timestamp in ms for timeline-based artifacts. */
@@ -43,6 +52,8 @@ export interface SemanticElement {
 export interface SemanticSidecar {
   plugin: string;
   schema_version?: number;
+  /** Optional natural viewport for HTML/rrweb sidecars when media has no image dimensions. */
+  viewport?: { width: number; height: number };
   elements: SemanticElement[];
 }
 
@@ -86,12 +97,96 @@ export function toSemanticMap(
   media: string,
   natural: { width: number; height: number }
 ): SemanticMap {
+  const declaredNatural = validNatural(sidecar.viewport) ? sidecar.viewport : null;
   return {
     media,
     plugin: sidecar.plugin,
-    natural,
+    natural: declaredNatural ?? natural,
     elements: sidecar.elements ?? [],
   };
+}
+
+/**
+ * enrichSemanticMapFromDOM resolves sidecar `selector` hints against a live DOM
+ * root. This is what makes the sidecar contract useful for arbitrary HTML/data
+ * renderings: a producer may name fields by selector and ref without baking
+ * pixel boxes, and the annotator resolves the current box/text from the iframe
+ * or rrweb document.
+ */
+export function enrichSemanticMapFromDOM(
+  map: SemanticMap,
+  root: Document | null | undefined
+): SemanticMap {
+  if (!root) return map;
+  const natural = viewportOf(root, map.natural);
+  const elements = map.elements.map((el) => enrichElementFromDOM(el, root));
+  return { ...map, natural, elements };
+}
+
+function enrichElementFromDOM(el: SemanticElement, root: Document): SemanticElement {
+  if (!el.selector) return el;
+  let node: Element | null = null;
+  try {
+    node = root.querySelector(el.selector);
+  } catch {
+    return el;
+  }
+  if (!node) return el;
+  const rect = node.getBoundingClientRect();
+  const bbox: [number, number, number, number] =
+    el.bbox && el.bbox.length === 4
+      ? el.bbox
+      : [
+          Math.round(rect.left),
+          Math.round(rect.top),
+          Math.round(rect.width),
+          Math.round(rect.height),
+        ];
+  const text = el.text ?? collapsedText(node);
+  return {
+    ...el,
+    ...(text ? { text } : {}),
+    bbox,
+  };
+}
+
+function viewportOf(
+  root: Document,
+  fallback: { width: number; height: number }
+): { width: number; height: number } {
+  const win = root.defaultView;
+  const width = Math.round(win?.innerWidth || root.documentElement?.clientWidth || fallback.width);
+  const height = Math.round(win?.innerHeight || root.documentElement?.clientHeight || fallback.height);
+  return validNatural({ width, height }) ? { width, height } : fallback;
+}
+
+function validNatural(v: unknown): v is { width: number; height: number } {
+  const n = v as { width?: unknown; height?: unknown } | null | undefined;
+  return (
+    typeof n?.width === "number" &&
+    Number.isFinite(n.width) &&
+    n.width > 0 &&
+    typeof n?.height === "number" &&
+    Number.isFinite(n.height) &&
+    n.height > 0
+  );
+}
+
+function collapsedText(node: Element): string {
+  const win = node.ownerDocument.defaultView;
+  let raw: string;
+  if (
+    win &&
+    (node instanceof win.HTMLInputElement ||
+      node instanceof win.HTMLTextAreaElement ||
+      node instanceof win.HTMLSelectElement)
+  ) {
+    raw = node.value;
+  } else {
+    raw = node.textContent ?? "";
+  }
+  const text = raw.replace(/\s+/g, " ").trim();
+  return text.length > 120 ? text.slice(0, 119) + "…" : text;
 }
 
 /** A label formatter: given an element + its plugin, return the marker label. */

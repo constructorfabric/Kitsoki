@@ -2,6 +2,8 @@ package host_test
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -150,6 +152,24 @@ func TestSecretsContext(t *testing.T) {
 	got := host.SecretsFromContext(ctx)
 	if got["API_KEY"] != "abc123" {
 		t.Fatalf("expected API_KEY=abc123, got %v", got)
+	}
+}
+
+func TestRegistry_InvokeInjectsLoadedSecrets(t *testing.T) {
+	t.Setenv("KITSOKI_TEST_SECRET", "abc123")
+	r := host.NewRegistry()
+	r.Register("host.secret_probe", func(ctx context.Context, args map[string]any) (host.Result, error) {
+		return host.Result{Data: map[string]any{
+			"secret": host.SecretsFromContext(ctx)["KITSOKI_TEST_SECRET"],
+		}}, nil
+	})
+
+	res, err := r.Invoke(context.Background(), "host.secret_probe", nil)
+	if err != nil {
+		t.Fatalf("invoke: %v", err)
+	}
+	if res.Data["secret"] != "abc123" {
+		t.Fatalf("secret = %v, want abc123", res.Data["secret"])
 	}
 }
 
@@ -511,6 +531,37 @@ func TestRunHandler_ArgsArgvMode(t *testing.T) {
 	want := "[" + jql + "]\n[--limit]\n[25]\n"
 	if stdout != want {
 		t.Fatalf("argv mode: stdout mismatch\n got: %q\nwant: %q", stdout, want)
+	}
+}
+
+// TestRunHandler_ScriptPathIsAppRelative pins the imported-story-safe script
+// contract. The script is a separate argv element resolved from the app root,
+// rather than shell text that expands the process-global KITSOKI_APP_DIR (which
+// can name a parent wrapper or be unset in a long-lived driver).
+func TestRunHandler_ScriptPathIsAppRelative(t *testing.T) {
+	appDir := t.TempDir()
+	scriptPath := filepath.Join(appDir, "scripts", "echo.sh")
+	if err := os.MkdirAll(filepath.Dir(scriptPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(scriptPath, []byte("printf '%s\\n' \"$1\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(host.AppDirEnv, appDir)
+
+	result, err := host.RunHandler(context.Background(), map[string]any{
+		"cmd":    "bash",
+		"script": "scripts/echo.sh",
+		"args":   []any{"onboarding-ok"},
+	})
+	if err != nil {
+		t.Fatalf("host.run infra error: %v", err)
+	}
+	if result.Error != "" {
+		t.Fatalf("unexpected domain error: %v", result.Error)
+	}
+	if got := result.Data["stdout"]; got != "onboarding-ok\n" {
+		t.Fatalf("stdout = %q, want %q", got, "onboarding-ok\\n")
 	}
 }
 

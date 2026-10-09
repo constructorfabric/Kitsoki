@@ -14,13 +14,15 @@ initial_state: core.prd_published
 initial_world:
   judge_mode: "human"
   core__workdir:               "."
-  core__prd__prd_file:         "docs/prd/trace-pet.md"
+  core__prd__prd_file:         "/tmp/kitsoki-prd-fixtures/trace-pet.md"
   core__design_durable_path:   "docs/proposals"
   core__design_doc_filename:   ""
   core__design_template_dir:   "docs/proposals/templates"
   core__design_ticket_dir:     "issues/features"
 
 host_handlers:
+  host.fs.writable_dir:
+    data: { path: "docs/proposals", used_fallback: false }
   host.ide.open_file:
     data: { ok: true, connected: false }
   host.agent.search:
@@ -37,7 +39,7 @@ host_handlers:
           ok: true
           submitted:
             items:
-              - { path: "docs/prd/trace-pet.md", sections: "§5", rationale: "the PRD this design realizes" }
+              - { path: "/tmp/kitsoki-prd-fixtures/trace-pet.md", sections: "§5", rationale: "the PRD this design realizes" }
       brief_check:
         data:
           ok: true
@@ -120,13 +122,22 @@ host_handlers:
             ticket_id:    "F-2026-06-23T120000Z-trace-pet"
             ticket_path:  "issues/features/F-2026-06-23T120000Z-trace-pet.md"
             ticket_title: "kitsoki trace-column pet"
+  host.starlark.run:
+    by_call:
+      publish:
+        data:
+          design_file:  "docs/proposals/trace-pet.md"
+          ticket_id:    "F-2026-06-23T120000Z-trace-pet"
+          ticket_path:  "issues/features/F-2026-06-23T120000Z-trace-pet.md"
+          ticket_title: "kitsoki trace-column pet"
+          ticket_url:   "docs/proposals/trace-pet.md"
 
 turns:
   - intent: { name: core__continue, slots: {} }
-    expect_state: core.design
-  - intent: { name: core__discuss, slots: { message: "realize the trace-pet PRD as a kitsoki web design" } }
     expect_state: core.design_search
   - intent: { name: core__confirm, slots: {} }
+    expect_state: core.design_refine
+  - intent: { name: core__discuss, slots: { message: "realize the trace-pet PRD as a kitsoki web design" } }
     expect_state: core.design_refine
   - intent: { name: core__discuss, slots: { message: "name the sprite component and the trace-column dock seam, and the idle animation" } }
     expect_state: core.design_refine

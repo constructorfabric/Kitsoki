@@ -17,7 +17,7 @@ import (
 func (srv *Server) registerWorkflowTools() {
 	mcpsdk.AddTool(srv.mcpSrv, &mcpsdk.Tool{
 		Name:        "workflow.create",
-		Description: "Create a new dynamic workflow draft from a free-text goal. {goal, slug?} → receipt with workflow id, draft package, manifest, validation report, and launch command.",
+		Description: "Create a new dynamic workflow draft from a goal and optional structured items. {goal, slug?, defaults?, items?} → receipt with workflow id, model_policy, draft package, manifest, validation report, and launch command.",
 	}, srv.handleWorkflowCreate)
 
 	mcpsdk.AddTool(srv.mcpSrv, &mcpsdk.Tool{
@@ -42,8 +42,10 @@ func (srv *Server) registerWorkflowTools() {
 }
 
 type WorkflowCreateArgs struct {
-	Goal string `json:"goal"`
-	Slug string `json:"slug,omitempty"`
+	Goal     string                            `json:"goal"`
+	Slug     string                            `json:"slug,omitempty"`
+	Defaults *dynamicworkflow.ManifestDefaults `json:"defaults,omitempty"`
+	Items    []dynamicworkflow.CreateItem      `json:"items,omitempty"`
 }
 
 type WorkflowIDArgs struct {
@@ -83,7 +85,16 @@ func (srv *Server) handleWorkflowCreate(
 	if strings.TrimSpace(args.Goal) == "" {
 		return buildToolError(ErrBadRequest, "workflow.create: goal is required"), nil, nil
 	}
-	receipt, err := srv.workflowService().Create(ctx, dynamicworkflow.CreateRequest{Goal: args.Goal, Slug: args.Slug})
+	svc := srv.workflowService()
+	if stale := workflowFreshnessError(svc.RootDir, "workflow.create"); stale != "" {
+		return buildToolError(ErrBadRequest, stale), nil, nil
+	}
+	receipt, err := svc.Create(ctx, dynamicworkflow.CreateRequest{
+		Goal:     args.Goal,
+		Slug:     args.Slug,
+		Defaults: args.Defaults,
+		Items:    args.Items,
+	})
 	if err != nil {
 		return buildToolError(ErrBadRequest, err.Error()), nil, nil
 	}
@@ -122,16 +133,24 @@ func (srv *Server) handleWorkflowLaunch(
 		return buildToolError(ErrBadRequest, "workflow.launch: workflow_id is required"), nil, nil
 	}
 	svc := srv.workflowService()
+	if stale := workflowFreshnessError(svc.RootDir, "workflow.launch"); stale != "" {
+		return buildToolError(ErrBadRequest, stale), nil, nil
+	}
 	receipt, err := svc.Launch(ctx, args.WorkflowID)
 	if err != nil {
 		return buildToolError(ErrBadRequest, err.Error()), nil, nil
 	}
 	if srv.sess != nil {
+		initialWorld, werr := dynamicworkflow.LaunchInitialWorld(svc.RootDir, receipt.LaunchBasisPath)
+		if werr != nil {
+			return buildToolError(ErrBadRequest, "workflow.launch: "+werr.Error()), nil, nil
+		}
 		handle, herr := srv.sess.OpenDrivingSession(ctx, OpenDrivingSessionParams{
-			Mode:           HarnessReplay,
+			Mode:           workflowLaunchHarnessMode(receipt.ModelPolicy.Harness),
 			StoryPath:      filepath.Join(receipt.AppPath, "app.yaml"),
 			TracePath:      receipt.TracePath,
-			InitialWorld:   map[string]any{"manifest_path": receipt.ManifestPath},
+			Profile:        strings.TrimSpace(receipt.ModelPolicy.Profile),
+			InitialWorld:   initialWorld,
 			ImportResolver: srv.importResolver,
 		})
 		if herr != nil {
@@ -150,6 +169,7 @@ func (srv *Server) handleWorkflowLaunch(
 		"at":              time.Now().UTC(),
 		"app_path":        receipt.AppPath,
 		"manifest_path":   receipt.ManifestPath,
+		"model_policy":    receipt.ModelPolicy,
 		"trace_path":      receipt.TracePath,
 		"session_id":      receipt.SessionID,
 		"session_handle":  receipt.SessionHandle,
@@ -173,6 +193,19 @@ func (srv *Server) handleWorkflowLaunch(
 		}
 	}
 	return nil, receipt, nil
+}
+
+func workflowLaunchHarnessMode(policyHarness string) HarnessMode {
+	switch strings.TrimSpace(policyHarness) {
+	case string(HarnessReplay):
+		return HarnessReplay
+	default:
+		// Dynamic-workflow manifests use "live" for the normal worker posture and
+		// "ladder" when the punch-list story should apply its per-call fallback
+		// ladder. Both require a live Studio session; only an explicit replay
+		// policy should install replay fail-closed host.agent handlers.
+		return HarnessLive
+	}
 }
 
 func (srv *Server) handleWorkflowStatus(
@@ -206,6 +239,15 @@ func (srv *Server) handleWorkflowExport(
 		return buildToolError(ErrBadRequest, err.Error()), nil, nil
 	}
 	return nil, receipt, nil
+}
+
+func workflowFreshnessError(root, toolName string) string {
+	ping := buildPingOK()
+	head := pingGitOutput(root, "rev-parse", "HEAD")
+	if head == "" || ping.Revision == "" || head == ping.Revision {
+		return ""
+	}
+	return toolName + ": attached Studio MCP server is stale for this checkout: server revision " + ping.Revision + ", checkout HEAD " + head + ". Restart or reconnect the Kitsoki Studio MCP server for " + root + ", then retry."
 }
 
 func appendWorkflowValidationEvent(receipt *dynamicworkflow.Receipt) error {

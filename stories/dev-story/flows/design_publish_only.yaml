@@ -1,7 +1,7 @@
 # design_publish_only — publish a proposal without filing a feature ticket.
 #
 # Starts at the draft review checkpoint with the draft already present. The
-# fixture only covers the accept_no_ticket arc: publish_design.py gets an empty
+# fixture only covers the accept_no_ticket arc: publish_design.star gets an empty
 # ticket_dir/repo, design_done renders the no-ticket copy, and the implement
 # action is hidden because ticket_id remains empty.
 
@@ -35,21 +35,40 @@ initial_world:
       Add a repeatable routing-tuning loop with fixtures, reports, and session-mined cases.
 
 host_handlers:
-  host.ide.open_file:
-    data: { ok: true, connected: true }
   host.run:
     by_call:
-      publish:
+      roadmap_ledger_proposal_published:
         data:
           ok: true
           exit_code: 0
-          stdout: '{"design_file":"docs/proposals/routing-tuning.md","ticket_id":"","ticket_path":"","ticket_title":"","ticket_url":"docs/proposals/routing-tuning.md"}'
           stdout_json:
-            design_file: "docs/proposals/routing-tuning.md"
-            ticket_id: ""
-            ticket_path: ""
-            ticket_title: ""
-            ticket_url: "docs/proposals/routing-tuning.md"
+            ok: true
+            ledger: ".artifacts/roadmap/progress.yaml"
+            event_id: "evt-routing-tuning"
+            item_id: "proposal/routing-tuning"
+            changed: true
+  host.ide.open_file:
+    data: { ok: true, connected: true }
+  host.starlark.run:
+    by_call:
+      publish:
+        data:
+          design_file: "docs/proposals/routing-tuning.md"
+          ticket_id: ""
+          ticket_path: ""
+          ticket_title: "Story: routing tuning"
+          ticket_url: "docs/proposals/routing-tuning.md"
+      roadmap_ledger_proposal_published:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: '{"ok":true,"ledger":".artifacts/roadmap/progress.yaml","event_id":"evt-routing-tuning","item_id":"proposal/routing-tuning","changed":true}'
+          stdout_json:
+            ok: true
+            ledger: ".artifacts/roadmap/progress.yaml"
+            event_id: "evt-routing-tuning"
+            item_id: "proposal/routing-tuning"
+            changed: true
 
 turns:
   - intent: { name: accept_no_ticket, slots: {} }
@@ -59,9 +78,17 @@ turns:
       ticket_id: ""
       ticket_type: ""
       design_ticket_path: ""
+      roadmap_ledger_result:
+        ok: true
+        ledger: ".artifacts/roadmap/progress.yaml"
+        event_id: "evt-routing-tuning"
+        item_id: "proposal/routing-tuning"
+        changed: true
     expect_host_calls:
-      - handler: host.run
+      - handler: host.starlark.run
         args: { call: "publish" }
-    expect_view_matches: "Published without filing a feature ticket\\."
+      - handler: host.run
+        args: { call: "roadmap_ledger_proposal_published" }
+    expect_view_matches: "Roadmap ledger[\\s\\S]*Published without filing a feature ticket\\."
 
 expect_no_errors: true

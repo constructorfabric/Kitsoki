@@ -1,0 +1,18 @@
+inputs:
+  workspace:     { type: string }
+  slug:          { type: string, required: true }
+  draft_path:    { type: string, required: true }
+  workdir:       { type: string }
+  durable:       { type: string }
+  change_target: { type: string }
+  doc_filename:  { type: string }
+outputs:
+  prd_file:       { type: string }
+  # publish_status is only ever returned on a successful main() return — any
+  # write/mkdir/permission failure raises via fail(), which never reaches a
+  # return statement, so this output existing is itself the success signal.
+  # The accept arc's bind: (rooms/drafting.yaml) binds world.status from
+  # THIS field (not a plain unconditional `set:`) so an accept that redirects
+  # to on_error never flips world.status to "done" — see the fix for
+  # product-journey QA finding O1 (silent publish failure).
+  publish_status: { type: string }

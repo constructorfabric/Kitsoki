@@ -1,0 +1,44 @@
+# Rendered YAML numeric inputs arrive at Starlark as floats. Integral values
+# are canonicalized; fractional budgets must fail rather than be truncated.
+
+test_kind: flow
+app: ../app.yaml
+# The compiler is attached to proposing.accept, so seed proposing with an
+# already-bound proposal and exercise that transition directly.
+initial_state: proposing
+initial_world:
+  implementation_mode: codeact_decomposed
+  judge_mode: human
+  propose_fix_artifact:
+    summary_title: "Reject fractional work budget"
+    summary_markdown: "A bounded work item cannot be assigned a fractional number of CodeAct steps."
+    fix_description: "Keep the execution budget integral."
+    root_cause: "A rendered numeric plan boundary produced a fractional budget."
+    affected_files: [internal/parser/state.go]
+    confidence: 0.8
+    reasoning: "A fractional step count would otherwise be silently truncated."
+    implementation_plan:
+      - id: unsafe-budget
+        depends_on: []
+        objective: "Attempt a fractional budget."
+        evidence_refs: ["proposal: fractional steps"]
+        read_paths: [internal/parser/state.go]
+        write_paths: [internal/parser/state.go]
+        invariants: [Other files remain inaccessible.]
+        acceptance_commands: [go test ./internal/parser -count=1]
+        expected_artifacts: [internal/parser/state.go]
+        max_steps: 2.5
+        fallback_reason_allowlist: []
+
+host_handlers:
+  host.inbox.add:
+    data: { ok: true }
+
+turns:
+  - intent: { name: accept, slots: {} }
+    expect_state: idle
+    expect_world:
+      last_error: "host.starlark.run: starlark: main(ctx): fail: implementation_plan item unsafe-budget max_steps must be an integer from 1 through 5"
+    expect_host_calls: [{ handler: host.starlark.run, call: compile_implementation_plan }]
+
+expect_no_errors: true

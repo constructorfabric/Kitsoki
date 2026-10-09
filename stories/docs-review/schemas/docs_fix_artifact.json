@@ -3,7 +3,7 @@
   "title":   "docs_fix_artifact",
   "description": "Artifact produced by the fixing room: a record of the doc edits the docs_writer agent applied to the working tree (uncommitted) in response to the stale_docs listing carried by the verdict.",
   "type":    "object",
-  "required": ["applied", "summary", "files_changed"],
+  "required": ["applied", "summary", "report_path", "files_changed"],
   "properties": {
     "applied": {
       "type": "boolean",
@@ -11,8 +11,13 @@
     },
     "summary": {
       "type": "string",
-      "minLength": 10,
-      "description": "One-paragraph narrative of what was changed and why — should cite each touched doc."
+      "minLength": 1,
+      "description": "Compact checkpoint note; the durable documentation-change report is report_path."
+    },
+    "report_path": {
+      "type": "string",
+      "minLength": 4,
+      "description": "Workspace-relative report written during the documentation repair, under .artifacts/docs-review/."
     },
     "files_changed": {
       "type": "array",

@@ -114,7 +114,7 @@ func validateBashProfile(verb string, tools []string, agent Agent) (bool, string
 func buildBaseCLIArgs(ctx context.Context, verb sysprompt.Verb, args map[string]any, agent Agent) []string {
 	cliArgs := []string{
 		"-p",
-		"--permission-mode", "bypassPermissions",
+		"--permission-mode", effectivePermissionMode(args, agent, "bypassPermissions"),
 	}
 	cliArgs = appendSettingSourcesFlag(cliArgs)
 	cliArgs = appendDisableSlashCommandsFlag(cliArgs)
@@ -131,5 +131,6 @@ func buildBaseCLIArgs(ctx context.Context, verb sysprompt.Verb, args map[string]
 	// `-p` has no TTY, so the CLI auto-resolves it with empty answers and the
 	// model proceeds on a guess (see alwaysDeniedTools).
 	cliArgs = appendDisallowedToolsFlag(cliArgs, alwaysDeniedTools)
+	cliArgs = appendDisallowedToolsFlag(cliArgs, effectiveDisallowedTools(args, agent))
 	return cliArgs
 }

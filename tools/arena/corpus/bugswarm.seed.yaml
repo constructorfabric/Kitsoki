@@ -1,0 +1,344 @@
+kind: arena_bugswarm_source
+version: 1
+source: bugswarm
+generated_from: tools/arena/corpus/bugswarm.seed-artifacts.json
+task_count: 13
+tasks:
+  - id: bugswarm-square-okio-140452393
+    repo: okio
+    repo_label: square/okio
+    archetype: bugfix_test_repair
+    source: bugswarm
+    image_tag: square-okio-140452393
+    failed_job_id: 140452393
+    passed_job_id: 140452394
+    ticket: "Repair BugSwarm artifact square-okio-140452393: CI job 140452393 fails and job 140452394 passes."
+    split: heldout
+    verified_red: false
+    verified_green: false
+    oracle:
+      kind: bugswarm_fail_pass_pair
+      image_tag: square-okio-140452393
+      failed_job_id: 140452393
+      passed_job_id: 140452394
+      red_rule: failed job script exits non-zero inside the BugSwarm artifact
+      green_rule: passed job script exits zero inside the same BugSwarm artifact
+    meta:
+      language: Java
+      build_system: Maven
+      classification: tutorial-seed
+      reproducibility: reproducible
+      source_url: https://www.bugswarm.org/docs/tutorials/setting-up-an-experiment/
+      selection_note: "Official BugSwarm tutorial artifact; the tutorial documents run_failed.sh and run_passed.sh execution in fresh containers."
+  - id: bugswarm-square-retrofit-201300817
+    repo: retrofit
+    repo_label: square/retrofit
+    archetype: bugfix_test_repair
+    source: bugswarm
+    image_tag: square-retrofit-201300817
+    failed_job_id: 201300817
+    passed_job_id: 201301494
+    ticket: "Repair BugSwarm artifact square-retrofit-201300817: CI job 201300817 fails and job 201301494 passes."
+    split: heldout
+    verified_red: false
+    verified_green: false
+    oracle:
+      kind: bugswarm_fail_pass_pair
+      image_tag: square-retrofit-201300817
+      failed_job_id: 201300817
+      passed_job_id: 201301494
+      red_rule: failed job script exits non-zero inside the BugSwarm artifact
+      green_rule: passed job script exits zero inside the same BugSwarm artifact
+    meta:
+      language: Java
+      build_system: Maven
+      classification: filtered-candidate:code-fix-small-diff
+      reproducibility: "reproducible (5/5 BugSwarm reproduce_successes at query time)"
+      source_url: https://github.com/square/retrofit/commit/25b6bac7b2b90b80605273bf3886ad56519d6f08
+      selection_note: "BugSwarm REST API filter (queried 2026-07-11): lang in [Java,Python], reproduce_successes=5 (non-flaky), num_of_changed_files<=3, changes<=15, classification.code=Yes (genuine code fix, not build/test-only), 1<=num_tests_failed<=5 (bounded, not mass breakage: 3/343 tests). Exception(s) at failure: AssertionError. Not yet live-verified (verified_red/verified_green false until bugswarm_verify_source.py --execute runs)."
+  - id: bugswarm-apache-commons-lang-224267191
+    repo: commons-lang
+    repo_label: apache/commons-lang
+    archetype: bugfix_test_repair
+    source: bugswarm
+    image_tag: apache-commons-lang-224267191
+    failed_job_id: 224267191
+    passed_job_id: 224269234
+    ticket: "Repair BugSwarm artifact apache-commons-lang-224267191: CI job 224267191 fails and job 224269234 passes."
+    split: heldout
+    verified_red: false
+    verified_green: false
+    oracle:
+      kind: bugswarm_fail_pass_pair
+      image_tag: apache-commons-lang-224267191
+      failed_job_id: 224267191
+      passed_job_id: 224269234
+      red_rule: failed job script exits non-zero inside the BugSwarm artifact
+      green_rule: passed job script exits zero inside the same BugSwarm artifact
+    meta:
+      language: Java
+      build_system: Maven
+      classification: filtered-candidate:code-fix-small-diff
+      reproducibility: "reproducible (5/5 BugSwarm reproduce_successes at query time)"
+      source_url: https://github.com/apache/commons-lang/commit/314b6b56bec4af56dba667d66a25c1613f4bc800
+      selection_note: "BugSwarm REST API filter (queried 2026-07-11): lang in [Java,Python], reproduce_successes=5 (non-flaky), num_of_changed_files<=3, changes<=15, classification.code=Yes (genuine code fix, not build/test-only), 1<=num_tests_failed<=5 (bounded, not mass breakage: 2/4004 tests). Exception(s) at failure: ComparisonFailure. Not yet live-verified (verified_red/verified_green false until bugswarm_verify_source.py --execute runs)."
+  - id: bugswarm-scikit-learn-scikit-learn-77914145
+    repo: scikit-learn
+    repo_label: scikit-learn/scikit-learn
+    archetype: bugfix_test_repair
+    source: bugswarm
+    image_tag: scikit-learn-scikit-learn-77914145
+    failed_job_id: 77914145
+    passed_job_id: 77914671
+    ticket: "Repair BugSwarm artifact scikit-learn-scikit-learn-77914145: CI job 77914145 fails and job 77914671 passes."
+    split: heldout
+    verified_red: false
+    verified_green: false
+    oracle:
+      kind: bugswarm_fail_pass_pair
+      image_tag: scikit-learn-scikit-learn-77914145
+      failed_job_id: 77914145
+      passed_job_id: 77914671
+      red_rule: failed job script exits non-zero inside the BugSwarm artifact
+      green_rule: passed job script exits zero inside the same BugSwarm artifact
+    meta:
+      language: Python
+      build_system: NA
+      classification: filtered-candidate:code-fix-small-diff
+      reproducibility: "reproducible (5/5 BugSwarm reproduce_successes at query time)"
+      source_url: https://github.com/scikit-learn/scikit-learn/commit/242aaca0661f1f78395a97a429f96c8f1ed05ef3
+      selection_note: "BugSwarm REST API filter (queried 2026-07-11): lang in [Java,Python], reproduce_successes=5 (non-flaky), num_of_changed_files<=3, changes<=15, classification.code=Yes (genuine code fix, not build/test-only), 1<=num_tests_failed<=5 (bounded, not mass breakage: 1/5491 tests). Exception(s) at failure: ValueError. Not yet live-verified (verified_red/verified_green false until bugswarm_verify_source.py --execute runs)."
+  - id: bugswarm-owlcs-owlapi-93793148
+    repo: owlapi
+    repo_label: owlcs/owlapi
+    archetype: bugfix_test_repair
+    source: bugswarm
+    image_tag: owlcs-owlapi-93793148
+    failed_job_id: 93793148
+    passed_job_id: 93794423
+    ticket: "Repair BugSwarm artifact owlcs-owlapi-93793148: CI job 93793148 fails and job 93794423 passes."
+    split: heldout
+    verified_red: false
+    verified_green: false
+    oracle:
+      kind: bugswarm_fail_pass_pair
+      image_tag: owlcs-owlapi-93793148
+      failed_job_id: 93793148
+      passed_job_id: 93794423
+      red_rule: failed job script exits non-zero inside the BugSwarm artifact
+      green_rule: passed job script exits zero inside the same BugSwarm artifact
+    meta:
+      language: Java
+      build_system: Maven
+      classification: filtered-candidate:code-fix-small-diff
+      reproducibility: "reproducible (5/5 BugSwarm reproduce_successes at query time)"
+      source_url: https://github.com/owlcs/owlapi/commit/691fc830c4610233826a8cba991904f3f58528ad
+      selection_note: "BugSwarm REST API filter (queried 2026-07-11): lang in [Java,Python], reproduce_successes=5 (non-flaky), num_of_changed_files<=3, changes<=15, classification.code=Yes (genuine code fix, not build/test-only), 1<=num_tests_failed<=5 (bounded, not mass breakage: 1/6512 tests). Exception(s) at failure: none recorded. Not yet live-verified (verified_red/verified_green false until bugswarm_verify_source.py --execute runs)."
+  - id: bugswarm-languagetool-org-languagetool-393031702
+    repo: languagetool
+    repo_label: languagetool-org/languagetool
+    archetype: bugfix_test_repair
+    source: bugswarm
+    image_tag: languagetool-org-languagetool-393031702
+    failed_job_id: 393031702
+    passed_job_id: 393031871
+    ticket: "Repair BugSwarm artifact languagetool-org-languagetool-393031702: CI job 393031702 fails and job 393031871 passes."
+    split: heldout
+    verified_red: false
+    verified_green: false
+    oracle:
+      kind: bugswarm_fail_pass_pair
+      image_tag: languagetool-org-languagetool-393031702
+      failed_job_id: 393031702
+      passed_job_id: 393031871
+      red_rule: failed job script exits non-zero inside the BugSwarm artifact
+      green_rule: passed job script exits zero inside the same BugSwarm artifact
+    meta:
+      language: Java
+      build_system: Maven
+      classification: filtered-candidate:code-fix-small-diff
+      reproducibility: "reproducible (5/5 BugSwarm reproduce_successes at query time)"
+      source_url: https://github.com/languagetool-org/languagetool/commit/e67ead69a3a123e3bd78ba30a6eff7f180af49d9
+      selection_note: "BugSwarm REST API filter (queried 2026-07-11): lang in [Java,Python], reproduce_successes=5 (non-flaky), num_of_changed_files<=3, changes<=15, classification.code=Yes (genuine code fix, not build/test-only), 1<=num_tests_failed<=5 (bounded, not mass breakage: 2/328 tests). Exception(s) at failure: NullPointerException. Not yet live-verified (verified_red/verified_green false until bugswarm_verify_source.py --execute runs)."
+  - id: bugswarm-square-okhttp-99758865
+    repo: okhttp
+    repo_label: square/okhttp
+    archetype: bugfix_test_repair
+    source: bugswarm
+    image_tag: square-okhttp-99758865
+    failed_job_id: 99758865
+    passed_job_id: 99766358
+    ticket: "Repair BugSwarm artifact square-okhttp-99758865: CI job 99758865 fails and job 99766358 passes."
+    split: heldout
+    verified_red: false
+    verified_green: false
+    oracle:
+      kind: bugswarm_fail_pass_pair
+      image_tag: square-okhttp-99758865
+      failed_job_id: 99758865
+      passed_job_id: 99766358
+      red_rule: failed job script exits non-zero inside the BugSwarm artifact
+      green_rule: passed job script exits zero inside the same BugSwarm artifact
+    meta:
+      language: Java
+      build_system: Maven
+      classification: filtered-candidate:code-fix-small-diff
+      reproducibility: "reproducible (5/5 BugSwarm reproduce_successes at query time)"
+      source_url: https://github.com/square/okhttp/commit/859d27bb6f61689113be0d5ff51c470c2690e859
+      selection_note: "BugSwarm REST API filter (queried 2026-07-11): lang in [Java,Python], reproduce_successes=5 (non-flaky), num_of_changed_files<=3, changes<=15, classification.code=Yes (genuine code fix, not build/test-only), 1<=num_tests_failed<=5 (bounded, not mass breakage: 1/1734 tests). Exception(s) at failure: ArrayIndexOutOfBoundsException. Not yet live-verified (verified_red/verified_green false until bugswarm_verify_source.py --execute runs)."
+  - id: bugswarm-joel-costigliola-assertj-core-309871149
+    repo: assertj-core
+    repo_label: joel-costigliola/assertj-core
+    archetype: bugfix_test_repair
+    source: bugswarm
+    image_tag: joel-costigliola-assertj-core-309871149
+    failed_job_id: 309871149
+    passed_job_id: 309872880
+    ticket: "Repair BugSwarm artifact joel-costigliola-assertj-core-309871149: CI job 309871149 fails and job 309872880 passes."
+    split: heldout
+    verified_red: false
+    verified_green: false
+    oracle:
+      kind: bugswarm_fail_pass_pair
+      image_tag: joel-costigliola-assertj-core-309871149
+      failed_job_id: 309871149
+      passed_job_id: 309872880
+      red_rule: failed job script exits non-zero inside the BugSwarm artifact
+      green_rule: passed job script exits zero inside the same BugSwarm artifact
+    meta:
+      language: Java
+      build_system: Maven
+      classification: filtered-candidate:code-fix-small-diff
+      reproducibility: "reproducible (5/5 BugSwarm reproduce_successes at query time)"
+      source_url: https://github.com/joel-costigliola/assertj-core/commit/f3baca43c21cbc10b90f1edf45ef2b63bebe3ab6
+      selection_note: "BugSwarm REST API filter (queried 2026-07-11): lang in [Java,Python], reproduce_successes=5 (non-flaky), num_of_changed_files<=3, changes<=15, classification.code=Yes (genuine code fix, not build/test-only), 1<=num_tests_failed<=5 (bounded, not mass breakage: 1/9846 tests). Exception(s) at failure: AssertionError. Not yet live-verified (verified_red/verified_green false until bugswarm_verify_source.py --execute runs)."
+  - id: bugswarm-pgjdbc-pgjdbc-117659967
+    repo: pgjdbc
+    repo_label: pgjdbc/pgjdbc
+    archetype: bugfix_test_repair
+    source: bugswarm
+    image_tag: pgjdbc-pgjdbc-117659967
+    failed_job_id: 117659967
+    passed_job_id: 117667147
+    ticket: "Repair BugSwarm artifact pgjdbc-pgjdbc-117659967: CI job 117659967 fails and job 117667147 passes."
+    split: heldout
+    verified_red: false
+    verified_green: false
+    oracle:
+      kind: bugswarm_fail_pass_pair
+      image_tag: pgjdbc-pgjdbc-117659967
+      failed_job_id: 117659967
+      passed_job_id: 117667147
+      red_rule: failed job script exits non-zero inside the BugSwarm artifact
+      green_rule: passed job script exits zero inside the same BugSwarm artifact
+    meta:
+      language: Java
+      build_system: Maven
+      classification: filtered-candidate:code-fix-small-diff
+      reproducibility: "reproducible (5/5 BugSwarm reproduce_successes at query time)"
+      source_url: https://github.com/pgjdbc/pgjdbc/commit/4bf3f41f45bf0bad49941793f46f8efc76b4255c
+      selection_note: "BugSwarm REST API filter (queried 2026-07-11): lang in [Java,Python], reproduce_successes=5 (non-flaky), num_of_changed_files<=3, changes<=15, classification.code=Yes (genuine code fix, not build/test-only), 1<=num_tests_failed<=5 (bounded, not mass breakage: 1/1419 tests). Exception(s) at failure: PSQLException. Not yet live-verified (verified_red/verified_green false until bugswarm_verify_source.py --execute runs)."
+  - id: bugswarm-raphw-byte-buddy-150449078
+    repo: byte-buddy
+    repo_label: raphw/byte-buddy
+    archetype: bugfix_test_repair
+    source: bugswarm
+    image_tag: raphw-byte-buddy-150449078
+    failed_job_id: 150449078
+    passed_job_id: 150478318
+    ticket: "Repair BugSwarm artifact raphw-byte-buddy-150449078: CI job 150449078 fails and job 150478318 passes."
+    split: heldout
+    verified_red: false
+    verified_green: false
+    oracle:
+      kind: bugswarm_fail_pass_pair
+      image_tag: raphw-byte-buddy-150449078
+      failed_job_id: 150449078
+      passed_job_id: 150478318
+      red_rule: failed job script exits non-zero inside the BugSwarm artifact
+      green_rule: passed job script exits zero inside the same BugSwarm artifact
+    meta:
+      language: Java
+      build_system: Maven
+      classification: filtered-candidate:code-fix-small-diff
+      reproducibility: "reproducible (5/5 BugSwarm reproduce_successes at query time)"
+      source_url: https://github.com/raphw/byte-buddy/commit/77a38ee10a8644e19c559e7fb32e24b6f1e7d8d9
+      selection_note: "BugSwarm REST API filter (queried 2026-07-11): lang in [Java,Python], reproduce_successes=5 (non-flaky), num_of_changed_files<=3, changes<=15, classification.code=Yes (genuine code fix, not build/test-only), 1<=num_tests_failed<=5 (bounded, not mass breakage: 4/6769 tests). Exception(s) at failure: AssertionError. Not yet live-verified (verified_red/verified_green false until bugswarm_verify_source.py --execute runs)."
+  - id: bugswarm-spring-projects-spring-data-jpa-94336959
+    repo: spring-data-jpa
+    repo_label: spring-projects/spring-data-jpa
+    archetype: bugfix_test_repair
+    source: bugswarm
+    image_tag: spring-projects-spring-data-jpa-94336959
+    failed_job_id: 94336959
+    passed_job_id: 94338428
+    ticket: "Repair BugSwarm artifact spring-projects-spring-data-jpa-94336959: CI job 94336959 fails and job 94338428 passes."
+    split: heldout
+    verified_red: false
+    verified_green: false
+    oracle:
+      kind: bugswarm_fail_pass_pair
+      image_tag: spring-projects-spring-data-jpa-94336959
+      failed_job_id: 94336959
+      passed_job_id: 94338428
+      red_rule: failed job script exits non-zero inside the BugSwarm artifact
+      green_rule: passed job script exits zero inside the same BugSwarm artifact
+    meta:
+      language: Java
+      build_system: Maven
+      classification: filtered-candidate:code-fix-small-diff
+      reproducibility: "reproducible (5/5 BugSwarm reproduce_successes at query time)"
+      source_url: https://github.com/spring-projects/spring-data-jpa/commit/b124825116e4e380e2f9eaa68b90b3b335b92580
+      selection_note: "BugSwarm REST API filter (queried 2026-07-11): lang in [Java,Python], reproduce_successes=5 (non-flaky), num_of_changed_files<=3, changes<=15, classification.code=Yes (genuine code fix, not build/test-only), 1<=num_tests_failed<=5 (bounded, not mass breakage: 1/1021 tests). Exception(s) at failure: AssertionError. Not yet live-verified (verified_red/verified_green false until bugswarm_verify_source.py --execute runs)."
+  - id: bugswarm-numpy-numpy-308844949
+    repo: numpy
+    repo_label: numpy/numpy
+    archetype: bugfix_test_repair
+    source: bugswarm
+    image_tag: numpy-numpy-308844949
+    failed_job_id: 308844949
+    passed_job_id: 308846914
+    ticket: "Repair BugSwarm artifact numpy-numpy-308844949: CI job 308844949 fails and job 308846914 passes."
+    split: heldout
+    verified_red: false
+    verified_green: false
+    oracle:
+      kind: bugswarm_fail_pass_pair
+      image_tag: numpy-numpy-308844949
+      failed_job_id: 308844949
+      passed_job_id: 308846914
+      red_rule: failed job script exits non-zero inside the BugSwarm artifact
+      green_rule: passed job script exits zero inside the same BugSwarm artifact
+    meta:
+      language: Python
+      build_system: NA
+      classification: filtered-candidate:code-fix-small-diff
+      reproducibility: "reproducible (5/5 BugSwarm reproduce_successes at query time)"
+      source_url: https://github.com/numpy/numpy/commit/b6eb0c41123b29282ed984e8585aae22e4979f3d
+      selection_note: "BugSwarm REST API filter (queried 2026-07-11): lang in [Java,Python], reproduce_successes=5 (non-flaky), num_of_changed_files<=3, changes<=15, classification.code=Yes (genuine code fix, not build/test-only), 1<=num_tests_failed<=5 (bounded, not mass breakage: 1/6792 tests). Exception(s) at failure: TypeError. Not yet live-verified (verified_red/verified_green false until bugswarm_verify_source.py --execute runs)."
+  - id: bugswarm-apache-dubbo-416671625
+    repo: dubbo
+    repo_label: apache/dubbo
+    archetype: bugfix_test_repair
+    source: bugswarm
+    image_tag: apache-dubbo-416671625
+    failed_job_id: 416671625
+    passed_job_id: 416678998
+    ticket: "Repair BugSwarm artifact apache-dubbo-416671625: CI job 416671625 fails and job 416678998 passes."
+    split: heldout
+    verified_red: false
+    verified_green: false
+    oracle:
+      kind: bugswarm_fail_pass_pair
+      image_tag: apache-dubbo-416671625
+      failed_job_id: 416671625
+      passed_job_id: 416678998
+      red_rule: failed job script exits non-zero inside the BugSwarm artifact
+      green_rule: passed job script exits zero inside the same BugSwarm artifact
+    meta:
+      language: Java
+      build_system: Maven
+      classification: filtered-candidate:code-fix-small-diff
+      reproducibility: "reproducible (5/5 BugSwarm reproduce_successes at query time)"
+      source_url: https://github.com/apache/dubbo/commit/cbb2aaf25cdace6bfe99f6b894d5d4e24071675a
+      selection_note: "BugSwarm REST API filter (queried 2026-07-11): lang in [Java,Python], reproduce_successes=5 (non-flaky), num_of_changed_files<=3, changes<=15, classification.code=Yes (genuine code fix, not build/test-only), 1<=num_tests_failed<=5 (bounded, not mass breakage: 1/1921 tests). Exception(s) at failure: NullPointerException. Not yet live-verified (verified_red/verified_green false until bugswarm_verify_source.py --execute runs)."

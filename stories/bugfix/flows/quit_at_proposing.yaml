@@ -15,7 +15,7 @@ host_handlers:
     data: { ok: true, message_id: "msg-1" }
   host.inbox.add:
     data: { ok: true, id: "ib-1" }
-  host.git_worktree:
+  host.capsule_workspace:
     data: { ok: true, log: "" }
   host.git:
     data: { ok: true, sha: "abc123", diff: "" }

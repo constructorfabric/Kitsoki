@@ -97,6 +97,18 @@ func AgentConverseHandler(ctx context.Context, args map[string]any) (Result, err
 	// selection. A no-op when no surface attached a bundle. See visual_ambient.go.
 	question = appendVisualAmbient(ctx, question)
 
+	sandbox, sandboxErr := parseAgentSandbox(args)
+	if sandboxErr != "" {
+		return Result{Error: "host.agent.converse: " + sandboxErr}, nil
+	}
+	policyWorkingDir, _ := args["working_dir"].(string)
+	if agent, ok := resolveAgent(ctx, args); ok {
+		policyWorkingDir = appendDefaultCwd(policyWorkingDir, agent)
+	}
+	if _, policyErr := RequireAgentLaunchAllowed(ctx, "converse", agentNameFromArgs(args), policyWorkingDir); policyErr != "" {
+		return Result{Error: "host.agent.converse: " + policyErr}, nil
+	}
+
 	// B-7: If an agent plugin registry is wired in context, route through
 	// host.Dispatch. For converse the prompt is the question.
 	withArgs, _ := args["with"].(map[string]any)
@@ -108,6 +120,16 @@ func AgentConverseHandler(ctx context.Context, args map[string]any) (Result, err
 	}
 
 	permMode, _ := args["permission_mode"].(string)
+	if permMode == "" {
+		if p, ok := args["permissions"].(map[string]any); ok {
+			permMode, _ = p["mode"].(string)
+		}
+	}
+	if permMode == "" {
+		if a, ok := resolveAgent(ctx, args); ok {
+			permMode = a.Permissions.Mode
+		}
+	}
 	if permMode == "" {
 		permMode = "bypassPermissions"
 	}
@@ -134,13 +156,12 @@ func AgentConverseHandler(ctx context.Context, args map[string]any) (Result, err
 	workingDir, _ := args["working_dir"].(string)
 	agent, _ := resolveAgent(ctx, args)
 	ctx, agent = applyProvider(ctx, args, agent)
-	systemPrompt := effectiveSystemPrompt(args, agent)
+	systemPrompt := converseSystemPrompt(args, agent)
 	workingDir = appendDefaultCwd(workingDir, agent)
-	tools := effectiveTools(ctx, args, agent)
-	// Enforce a read-only agent's declared posture: drop bypassPermissions so
-	// the allowlist binds, and hard-deny the mutating tool set. See
-	// converseToolPolicy.
-	permMode, disallowedTools := converseToolPolicy(permMode, agent)
+	policy := enforceToolbox(ctx, args, agent, permMode)
+	permMode = policy.CLIMode
+	tools := policy.AllowedTools
+	disallowedTools := policy.DeniedTools
 
 	callID := newUUID()
 	callStart := time.Now()
@@ -180,7 +201,7 @@ func AgentConverseHandler(ctx context.Context, args map[string]any) (Result, err
 	}
 
 	// Wave 3-agent: write AgentCalled to the JSONL sink at dispatch time.
-	appendAgentCalledEvent(ctx, callStart, callID, question, calledPayload)
+	appendAgentCalledEvent(ctx, callStart, callID, question, policy.AgentCalledFields(calledPayload))
 
 	cliArgs := []string{
 		"-p",
@@ -201,19 +222,39 @@ func AgentConverseHandler(ctx context.Context, args map[string]any) (Result, err
 	var opAskCleanup func()
 	cliArgs, tools, opAskCleanup, _ = attachOperatorAsk(ctx, cliArgs, tools)
 	defer opAskCleanup()
+	policy = policy.WithAllowed(tools)
+	if contractServers := attachStudioMCPServer(effectiveMCPServers(args, agent), tools); len(contractServers) > 0 {
+		contractMCPPath, contractMCPCleanup, mErr := writeMCPConfigTempfile(contractServers, "kitsoki-converse-contract-mcp")
+		if mErr != nil {
+			return Result{Error: fmt.Sprintf("host.agent.converse: write contract MCP config: %v", mErr)}, nil
+		}
+		defer contractMCPCleanup()
+		cliArgs = append(cliArgs, "--mcp-config", contractMCPPath)
+	}
 	cliArgs = appendAllowedToolsFlag(cliArgs, tools)
-	cliArgs = appendDisallowedToolsFlag(cliArgs, disallowedTools)
+	cliArgs = appendDisallowedToolsFlag(cliArgs, append(disallowedTools, effectiveDisallowedTools(args, agent)...))
 
 	cr, _, runErr := AgentStreamer{
 		Bin:        bin,
 		CLIArgs:    cliArgs,
 		Stdin:      question,
 		WorkingDir: workingDir,
+		Sandbox:    sandbox,
 	}.Run(ctx)
 	durationMS := time.Since(callStart).Milliseconds()
 
 	if runErr != nil {
-		return Result{}, runErr
+		msg := agentRunErrorMessage("converse", runErr, cr.Stderr)
+		converseInputDesc := map[string]any{
+			"messages": []map[string]any{{"role": "user", "content": question}},
+		}
+		emitConverseJournal(ctx, callID, callStart, durationMS, agentNameFromArgs(args), agent.Model,
+			systemPrompt, question, converseInputDesc, "", msg)
+		return Result{
+			Error:       msg,
+			FailureKind: FailureInfra,
+			Data:        map[string]any{"session_id": sessionID},
+		}, nil
 	}
 
 	converseInputDesc := map[string]any{
@@ -294,25 +335,50 @@ func emitConverseJournal(ctx context.Context, callID string, callStart time.Time
 	}
 }
 
+// converseSystemPrompt resolves the effective system prompt for a converse
+// call and appends the engine-composed `room_context` arg when present —
+// the orchestrator's off-ramp / conversation lane passes the resting room's
+// purpose, available commands, and relevant world through it so the agent
+// starts every turn already oriented (see
+// internal/orchestrator/offramp_conversation.go). Appended per call (it
+// rides --append-system-prompt / the composed prompt, not the transcript),
+// so a resumed chat always sees the CURRENT room state, not a stale copy.
+func converseSystemPrompt(args map[string]any, agent Agent) string {
+	sp := effectiveSystemPrompt(args, agent)
+	rc, _ := args["room_context"].(string)
+	if strings.TrimSpace(rc) == "" {
+		return sp
+	}
+	if strings.TrimSpace(sp) == "" {
+		return rc
+	}
+	return sp + "\n\n" + rc
+}
+
 // runConverseWithChat executes a chat-aware converse turn: appends user/assistant
 // messages to the transcript and stores the claude session ID on the chat row.
 func runConverseWithChat(ctx context.Context, cs ChatStore, chatID, question, permMode string, args map[string]any) (Result, error) {
 	workingDir, _ := args["working_dir"].(string)
 	agent, _ := resolveAgent(ctx, args)
 	ctx, agent = applyProvider(ctx, args, agent)
-	systemPrompt := effectiveSystemPrompt(args, agent)
+	systemPrompt := converseSystemPrompt(args, agent)
 	model := agent.Model
 	effort := effectiveEffort(args, agent)
 	workingDir = appendDefaultCwd(workingDir, agent)
-	tools := effectiveTools(ctx, args, agent)
-	// Enforce a read-only agent's declared posture (see converseToolPolicy):
-	// this is the path the proposal_interviewer takes (it passes a chat_id),
-	// so without this a read-only discovery agent could Write to the repo.
-	permMode, disallowedTools := converseToolPolicy(permMode, agent)
+	policy := enforceToolbox(ctx, args, agent, permMode)
+	permMode = policy.CLIMode
+	tools := policy.AllowedTools
+	disallowedTools := policy.DeniedTools
+	mcpServers := effectiveMCPServers(args, agent)
 
 	var out Result
 	lockErr := cs.WithLock(ctx, chatID, func(ctx context.Context) error {
-		inner, runErr := doConverseChatTurn(ctx, cs, chatID, question, workingDir, systemPrompt, model, effort, permMode, tools, disallowedTools, agent.InheritClaudeDefault)
+		sandbox, sandboxErr := parseAgentSandbox(args)
+		if sandboxErr != "" {
+			out = Result{Error: "host.agent.converse: " + sandboxErr}
+			return nil
+		}
+		inner, runErr := doConverseChatTurn(ctx, cs, chatID, question, workingDir, systemPrompt, model, effort, permMode, tools, disallowedTools, agent.InheritClaudeDefault, policy, sandbox, mcpServers)
 		out = inner
 		return runErr
 	})
@@ -329,7 +395,7 @@ func runConverseWithChat(ctx context.Context, cs ChatStore, chatID, question, pe
 //
 // Step ordering: allocate/persist the Claude session ID BEFORE appending the
 // user message to prevent orphan transcript rows on session-write failures.
-func doConverseChatTurn(ctx context.Context, cs ChatStore, chatID, question, workingDir, systemPrompt, model, effort, permMode string, tools, disallowedTools []string, inheritDefault bool) (Result, error) {
+func doConverseChatTurn(ctx context.Context, cs ChatStore, chatID, question, workingDir, systemPrompt, model, effort, permMode string, tools, disallowedTools []string, inheritDefault bool, policy ToolboxEnforcement, sandbox *AgentSandboxSpec, mcpServers map[string]any) (Result, error) {
 	callID := newUUID()
 	callStart := time.Now()
 	// Install the active call_id so the claude transport tees its stream-json
@@ -356,7 +422,7 @@ func doConverseChatTurn(ctx context.Context, cs ChatStore, chatID, question, wor
 	}
 
 	// Wave 3-agent: write AgentCalled to the JSONL sink at dispatch time.
-	appendAgentCalledEvent(ctx, callStart, callID, question, calledPayload)
+	appendAgentCalledEvent(ctx, callStart, callID, question, policy.AgentCalledFields(calledPayload))
 
 	chat, err := cs.GetOrEnsure(ctx, chatID)
 	if err != nil {
@@ -407,10 +473,27 @@ func doConverseChatTurn(ctx context.Context, cs ChatStore, chatID, question, wor
 	if e := strings.TrimSpace(effort); e != "" {
 		cliArgs = append(cliArgs, "--effort", e)
 	}
+	// This chat-aware path used to build no other --mcp-config (unlike the
+	// stateless path above), which silently dropped every story-declared
+	// agent.mcp.servers entry (e.g. stories/portal-graph-chat's
+	// kitsoki-graph server) for every chat-aware turn — the chat agent's
+	// tool surface named mcp__kitsoki-graph__* tools that could never
+	// actually connect. Mirror the stateless branch's
+	// effectiveMCPServers(args, agent) call (now threaded in as
+	// mcpServers) alongside the studio-tool attach.
+	if studioServers := attachStudioMCPServer(mcpServers, tools); len(studioServers) > 0 {
+		studioMCPPath, studioMCPCleanup, mErr := writeMCPConfigTempfile(studioServers, "kitsoki-converse-chat-studio-mcp")
+		if mErr != nil {
+			return Result{Error: fmt.Sprintf("host.agent.converse: write studio MCP config: %v", mErr)}, nil
+		}
+		defer studioMCPCleanup()
+		cliArgs = append(cliArgs, "--mcp-config", studioMCPPath)
+	}
 	// Forward operator questions into kitsoki when a live surface is attached.
 	var opAskCleanup func()
 	cliArgs, tools, opAskCleanup, _ = attachOperatorAsk(ctx, cliArgs, tools)
 	defer opAskCleanup()
+	policy = policy.WithAllowed(tools)
 	cliArgs = appendAllowedToolsFlag(cliArgs, tools)
 	cliArgs = appendDisallowedToolsFlag(cliArgs, disallowedTools)
 
@@ -419,11 +502,26 @@ func doConverseChatTurn(ctx context.Context, cs ChatStore, chatID, question, wor
 		CLIArgs:    cliArgs,
 		Stdin:      question,
 		WorkingDir: workingDir,
+		Sandbox:    sandbox,
 	}.Run(ctx)
 	durationMS := time.Since(callStart).Milliseconds()
 
 	if runErr != nil {
-		return Result{}, runErr
+		msg := agentRunErrorMessage("converse", runErr, cr.Stderr)
+		converseInputDesc := map[string]any{
+			"messages": []map[string]any{{"role": "user", "content": question}},
+		}
+		emitConverseJournal(ctx, callID, callStart, durationMS, "", model,
+			systemPrompt, question, converseInputDesc, "", msg)
+		return Result{
+			Error:       msg,
+			FailureKind: FailureInfra,
+			Data: map[string]any{
+				"session_id":        claudeSID,
+				"chat_id":           chatID,
+				"claude_session_id": claudeSID,
+			},
+		}, nil
 	}
 
 	// Self-heal a stale/foreign resume id. A chat may hold a session id the
@@ -452,10 +550,25 @@ func doConverseChatTurn(ctx context.Context, cs ChatStore, chatID, question, wor
 				CLIArgs:    retry,
 				Stdin:      question,
 				WorkingDir: workingDir,
+				Sandbox:    sandbox,
 			}.Run(ctx)
 			durationMS = time.Since(callStart).Milliseconds()
 			if runErr != nil {
-				return Result{}, runErr
+				msg := agentRunErrorMessage("converse", runErr, cr.Stderr)
+				converseInputDesc := map[string]any{
+					"messages": []map[string]any{{"role": "user", "content": question}},
+				}
+				emitConverseJournal(ctx, callID, callStart, durationMS, "", model,
+					systemPrompt, question, converseInputDesc, "", msg)
+				return Result{
+					Error:       msg,
+					FailureKind: FailureInfra,
+					Data: map[string]any{
+						"session_id":        claudeSID,
+						"chat_id":           chatID,
+						"claude_session_id": claudeSID,
+					},
+				}, nil
 			}
 		}
 	}

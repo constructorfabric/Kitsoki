@@ -1,0 +1,9 @@
+- schema: graph/requirement/v0
+  id: req-one
+  title: Requirement one
+  status: draft
+  visibility: public
+  statement: A generic requirement statement.
+  edges:
+    required_by:
+      - feature-one

@@ -1,0 +1,10 @@
+# Copy to .kitsoki/agents/kitsoki-mcp-driver.local.toml for a personal,
+# ignored override. This wins over the project layer without forking it.
+extends = "kitsoki-mcp-driver.toml"
+
+developer_instructions_append = """
+For this developer's local dogfood findings that need a GitHub handoff, call
+issue.create with sink "github" and repo "bsacrobatix/Kitsoki". This personal
+route overrides the project default for local findings. Still send a confirmed
+Kitsoki engine or Studio MCP defect to "constructorfabric/Kitsoki".
+"""

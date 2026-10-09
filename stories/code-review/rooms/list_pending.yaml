@@ -56,7 +56,7 @@ states:
     relevant_world: [pending_count, pending_prs, pr_id, pr_title]
     on_enter:
       # Fetch the list. The default host.git binding doesn't actually
-      # filter (Wave 3 host handler is stubbed); cyber-repo's parent
+      # filter (Wave 3 host handler is stubbed); focused-engineering's parent
       # rebinds iface.vcs.pr_status to a real GitHub list query.
       - invoke: iface.vcs.pr_status
         with:

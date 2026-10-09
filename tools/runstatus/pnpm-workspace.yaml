@@ -1,3 +1,13 @@
 allowBuilds:
   esbuild: true
   vue-demi: true
+# pnpm 11 introduced verify-deps-before-run=install as the default, which runs
+# `pnpm install` before executing any script when node_modules appears out of
+# sync with the lockfile. The out-of-sync detection compares the absolute project
+# path recorded in node_modules/.pnpm-workspace-state-v1.json against the current
+# workspace directory. When node_modules is served via the capsule shared cache
+# (a symlink to a read-only cache entry created in a different workspace), the
+# path mismatch triggers an install attempt that fails with EACCES because the
+# cache target is intentionally read-only. Disable the check here; explicit
+# `pnpm install` is managed by the Makefile and runstatus-node-modules-cache.sh.
+verifyDepsBeforeRun: false

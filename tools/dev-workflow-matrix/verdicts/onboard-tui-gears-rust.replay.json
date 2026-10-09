@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.1.0",
+  "check_type": "replay",
+  "verdict": "solved",
+  "health": "model:result",
+  "metrics": {
+    "cost_usd": 0.2543557,
+    "wall_time_s": 90
+  },
+  "evidence_refs": [
+    "stories/dev-story/flows/onboard_gears_rust.yaml",
+    "stories/dev-story/flows/onboard_gears_rust.cassette.yaml",
+    ".context/dwf3-a3-recording-notes.md"
+  ],
+  "summary": "kitsoki test flows stories/dev-story/app.yaml --flows stories/dev-story/flows/onboard_gears_rust.yaml replays the recorded gears-rust onboard (landing_capture -> init_discovered -> draft_profile -> profile_drafted -> quit -> confirm_init -> init_applied) green, no-LLM, from a committed local flow+cassette; the A2 external-ticket passthrough auto-binds tracker/ticket_repo from the real git remote (see the cassette's discover episode).",
+  "notes": "WS-A A3: recorded live (one real subscription-backed Claude call, the draft_profile host.agent.decide) against a fresh `git clone --local` of the real bsacrobatix/gears-rust checkout with .kitsoki.yaml/.kitsoki/ stripped; converted via `kitsoki trace to-flow`. Fixed a real story bug this recording surfaced: init_profile_validate's view used a `!= {}` map-literal expr the whitelist unconditionally rejects (internal/expr/expr.go MapNode case), hard-erroring every LIVE render of that state while `kitsoki test flows` silently swallowed the same render error absent an expect_view_matches assertion. Fixed to `len(...) > 0` and pinned with a new expect_view_matches in stories/dev-story/flows/init_llm_profile_draft.yaml.",
+  "job_type": "dev-workflow-matrix",
+  "target_id": "gears-rust",
+  "axis": { "workflow": "onboard", "surface": "tui" },
+  "trace_ref": "~/.kitsoki/sessions/dev-story/7ea0fa8e-local-gears-onboard.jsonl"
+}

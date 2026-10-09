@@ -1,0 +1,2657 @@
+schema: project-object-graph/seed-catalog/v0
+catalog:
+  id: kitsoki-catalog
+  title: kitsoki — product object graph
+  status: active
+  visibility: public
+  purpose: product-catalog
+  # Curated from docs/proposals/project-object-graph/seed-objects.yaml: the
+  # core product capabilities (not the demo/tour story features), with their
+  # requirements and use cases, re-rooted under a product node so per-repo
+  # portals and the POG program rollup read the same containment shape.
+  source_window:
+    branch: main
+    sampled_at: "2026-07-05"
+    inputs:
+      - id: source-seed-objects
+        kind: document
+        path: docs/proposals/project-object-graph/seed-objects.yaml
+      - id: source-readme
+        kind: document
+        path: README.md
+      - id: source-feature-specs
+        kind: document
+        path: features/feature.schema.json
+      - id: source-product-journey-personas
+        kind: document
+        path: tools/product-journey/personas.json
+      - id: source-product-journey-scenarios
+        kind: document
+        path: tools/product-journey/scenarios.json
+type_registry:
+  - id: core-node
+    schema: graph-type/v0
+    extends: null
+    summary: Shared envelope for every kitsoki product graph node.
+    required_fields:
+      - id
+      - schema
+      - title
+      - status
+      - visibility
+      - sources
+      - edges
+  - id: product
+    schema: graph-type/v0
+    extends: core-node
+    summary: The product root node.
+  # Single-product programs live here, in the product's own catalog (POG
+  # taxonomy 2026-07-12): a program is a scoped initiative with phases;
+  # cross-product programs live in the POG portfolio catalog instead.
+  - id: program
+    schema: graph-type/v0
+    extends: core-node
+    summary: A scoped single-product initiative with its own phases.
+    edge_fields:
+      - id: part_of
+        target_type: product
+        cardinality: one
+  - id: phase
+    schema: graph-type/v0
+    extends: core-node
+    summary: A plan phase of a program; ordered by after.
+    edge_fields:
+      - id: part_of
+        target_type: program
+        cardinality: one
+      - id: after
+        target_type: phase
+        cardinality: one
+        acyclic: true
+  - id: feature
+    schema: graph-type/v0
+    extends: core-node
+    summary: A shipped or planned product capability.
+    edge_fields:
+      - id: part_of
+        target_type: product
+        cardinality: one
+      - id: requirements
+        target_type: requirement
+        cardinality: many
+      - id: use_cases
+        target_type: use-case
+        cardinality: many
+  - id: requirement
+    schema: graph-type/v0
+    extends: core-node
+    summary: Durable, testable statement a feature must satisfy.
+    edge_fields:
+      - id: part_of
+        target_type: product
+        cardinality: one
+      - id: required_by
+        target_type: feature
+        cardinality: many
+      - id: motivated_by
+        target_type: use-case
+        cardinality: many
+  - id: use-case
+    schema: graph-type/v0
+    extends: core-node
+    summary: An actor scenario that motivates features and requirements.
+    edge_fields:
+      - id: part_of
+        target_type: product
+        cardinality: one
+      - id: exercises
+        target_type: feature
+        cardinality: many
+      - id: acceptance
+        target_type: requirement
+        cardinality: many
+      - id: for_persona
+        target_type: persona
+        cardinality: many
+  # Intent-context layer — POG portfolio taxonomy (Features level: feature,
+  # requirement, use-case, scenario, persona). Personas mirror the persona-QA
+  # profiles in tools/product-journey/personas.json (the same profiles
+  # seed-objects.yaml models as persona nodes); scenarios mirror the journey
+  # definitions in tools/product-journey/scenarios.json. Both are REAL
+  # product-journey inputs — run.py pairs one persona with one scenario per
+  # journey run — not portal-invented content.
+  - id: persona
+    schema: graph-type/v0
+    extends: core-node
+    summary: Concrete profile of a user perspective — experience, surface preference, risk focus — that persona-QA journeys run as.
+    edge_fields:
+      - id: part_of
+        target_type: product
+        cardinality: one
+  - id: scenario
+    schema: graph-type/v0
+    extends: core-node
+    summary: A reference operating story — a persona-QA journey definition a persona walks end to end.
+    edge_fields:
+      - id: part_of
+        target_type: product
+        cardinality: one
+      - id: for_persona
+        target_type: persona
+        cardinality: many
+      - id: realizes
+        target_type: use-case
+        cardinality: many
+  # Deliverable layer — POG materialization-first taxonomy (2026-07-11):
+  # deliverable nodes are SPECS of real evidence/functionality artifacts
+  # (demos, docs, tutorials, test evidence); "work" is the act of
+  # materializing them, and a deliverable is REAL exactly when its latest
+  # materialize run's Starlark gate check passes. Status uses the derived
+  # EvidenceStatus vocabulary (missing | planned | in-progress | failed |
+  # verified | stale) — flipped by runs, never hand-curated. Spec-only here
+  # (no producer stories bound yet); the POG program repo carries the full
+  # contract these types graduate into.
+  - id: test-suite
+    schema: graph-type/v0
+    extends: core-node
+    summary: Recorded deterministic test/flow evidence; real when the recorded runs are clean.
+    edge_fields:
+      - id: part_of
+        target_type: product
+        cardinality: one
+      - id: proves
+        target_type: requirement
+        cardinality: many
+    artifact:
+      schema: kitsoki/artifact/flow-evidence/v0
+      format: json
+      presentation: document
+  - id: demo
+    schema: graph-type/v0
+    extends: core-node
+    summary: A recorded demonstration packet (tours + rrweb clips) of a use case.
+    edge_fields:
+      - id: part_of
+        target_type: product
+        cardinality: one
+      - id: demonstrates
+        target_type: feature
+        cardinality: many
+    artifact:
+      schema: kitsoki/artifact/demo-packet/v0
+      format: json
+      presentation: media
+  - id: doc
+    schema: graph-type/v0
+    extends: core-node
+    summary: A generated document deliverable.
+    edge_fields:
+      - id: part_of
+        target_type: product
+        cardinality: one
+      - id: documents
+        target_type: feature
+        cardinality: many
+    artifact:
+      schema: kitsoki/artifact/doc/v0
+      format: markdown
+      presentation: document
+  - id: tutorial
+    schema: graph-type/v0
+    extends: core-node
+    summary: A step-by-step walkthrough teaching a use case.
+    edge_fields:
+      - id: part_of
+        target_type: product
+        cardinality: one
+      - id: teaches
+        target_type: feature
+        cardinality: many
+    artifact:
+      schema: kitsoki/artifact/doc/v0
+      format: markdown
+      presentation: document
+  # The structured write primitive: system-authored writes (materialize
+  # write-backs, derived status flips) land as changeset nodes.
+  - id: changeset
+    schema: graph-type/v0
+    extends: core-node
+    summary: A reviewable, structured edit to this catalog; content writes are changesets, lifecycle flips are direct writes with provenance.
+nodes:
+  - schema: kitsoki/product/v0
+    id: product-kitsoki
+    title: kitsoki
+    status: active
+    visibility: public
+    summary: A conversational workflow engine built on one commitment - make workflows as deterministic as possible, and confine the LLM to narrow, identified, traceable decision points. The runtime is a YAML state machine; the LLM is called for narrow sub-tasks and every decision is recorded in the trace.
+    sources: [source-readme]
+    edges: {}
+  # --- programs --------------------------------------------------------------
+  - schema: kitsoki/program/v0
+    id: program-kitsoki-ux-stabilization
+    title: kitsoki UX stabilization
+    status: active
+    visibility: internal
+    summary: Single-product program — users can naturally use the TUI, web UI, and the rest of the operator surfaces without tripping over rough edges; stabilize and polish the human-facing UX.
+    edges:
+      part_of: [product-kitsoki]
+  - schema: kitsoki/program/v0
+    id: program-kitsoki-agent-tooling
+    title: kitsoki as agent tooling
+    status: active
+    visibility: internal
+    summary: Single-product program — kitsoki as tooling FOR agents, via MCP servers and agent definitions (kitsoki agent launch); the agent-facing surface as a first-class product.
+    edges:
+      part_of: [product-kitsoki]
+  # --- features ------------------------------------------------------------
+  - schema: kitsoki/feature/v0
+    id: feature-operator-ask
+    title: "Operator questions forwarded from headless agents"
+    status: shipped
+    visibility: public
+    summary: "Dispatched agent questions become blocking operator UI questions instead of silent empty-answer defaults."
+    sources: [source-seed-objects]
+    edges:
+      part_of:
+        - product-kitsoki
+      requirements:
+        - req-operator-ask-no-silent-default
+        - req-operator-ask-blocking-round-trip
+        - req-operator-ask-multi-select
+      use_cases:
+        - usecase-maintainer-answers-blocked-agent
+  - schema: kitsoki/feature/v0
+    id: feature-agent-actions
+    title: "Agent action transcripts"
+    status: shipped
+    visibility: public
+    summary: "Every agent call captures and replays its native tool-use stream as typed action rows, guardrail arcs, waterfall timing, token/cost accrual, and cassette-vs-live drift."
+    sources: [source-seed-objects]
+    edges:
+      part_of:
+        - product-kitsoki
+      requirements:
+        - req-agent-actions-byte-stable-stream
+      use_cases:
+        - usecase-maintainer-inspects-agent-call
+  - schema: kitsoki/feature/v0
+    id: feature-trace-introspection
+    title: "Decision-first trace detail"
+    status: shipped
+    visibility: public
+    summary: "Frozen traces expose observation filters, decision verdicts, confidence, evidence, replay, tree, waterfall, and state-graph views."
+    sources: [source-seed-objects]
+    edges:
+      part_of:
+        - product-kitsoki
+      requirements:
+        - req-trace-introspection-decision-first
+      use_cases:
+        - usecase-maintainer-audits-frozen-run
+  - schema: kitsoki/feature/v0
+    id: feature-meta-mode
+    title: "Meta-mode edits and explains stories"
+    status: shipped
+    visibility: public
+    summary: "The running app can answer questions about kitsoki or a live story, then edit story YAML and hot-reload the session with the change recorded in the trace."
+    sources: [source-seed-objects]
+    edges:
+      part_of:
+        - product-kitsoki
+      requirements:
+        - req-meta-mode-story-aware-edit
+      use_cases:
+        - usecase-developer-edits-running-story
+  - schema: kitsoki/feature/v0
+    id: feature-dev-story-bugfix
+    title: "Bug triage to autonomous fix"
+    status: shipped
+    visibility: public
+    summary: "The dev-story routes a ticket through triage and into the autonomous bugfix pipeline: reproduce, propose, implement, test, review, validate, and open a PR."
+    sources: [source-seed-objects]
+    edges:
+      part_of:
+        - product-kitsoki
+      requirements:
+        - req-dev-story-bugfix-end-to-end
+      use_cases:
+        - usecase-developer-runs-bugfix-pipeline
+  - schema: kitsoki/feature/v0
+    id: feature-project-object-graph
+    title: "Project object graph"
+    status: proposed
+    visibility: public
+    summary: "Typed YAML project objects and typed edges make features, requirements, proposals, plans, tests, evidence, and roadmap deltas walkable by tools."
+    sources: [source-seed-objects]
+    edges:
+      part_of:
+        - product-kitsoki
+      requirements:
+        - req-project-objects-data-primary
+        - req-project-objects-typed-edges
+        - req-project-objects-delta-roadmap
+        - req-project-objects-provenance
+      use_cases:
+        - usecase-product-owner-computes-roadmap-delta
+        - usecase-agent-mines-backlog-into-graph
+  - schema: kitsoki/feature/v0
+    id: feature-graph-viewer
+    title: "Project object graph viewer"
+    status: active
+    visibility: public
+    summary: "One Vue app over the object graph with two projections of the same catalog - a catalog (list/detail/change-request) view and a Vue Flow + ELK graph canvas with layer filtering, focus neighborhoods, and edge navigation."
+    sources: [source-seed-objects]
+    edges:
+      part_of:
+        - product-kitsoki
+      requirements:
+        - req-viewer-multi-actor-lenses
+        - req-viewer-permission-visibility
+        - req-viewer-full-graph-traversal
+      use_cases:
+        - usecase-pm-scans-roadmap-delta
+        - usecase-developer-traces-requirement-to-proof
+  - schema: kitsoki/feature/v0
+    id: feature-chat-stream
+    title: "Live agent streaming in chat"
+    status: shipped
+    visibility: public
+    summary: "While an agent turn runs, the main chat streams its reasoning and tool calls live in a thinking bubble; when the turn finishes, the same interleaved activity feed stays reviewable — collapsed inside the agent's bubble, expandable to the exact feed you watched. The meta overlay renders agent work with the same shared components."
+    sources: [source-seed-objects]
+    edges:
+      part_of:
+        - product-kitsoki
+      requirements:
+        - req-chat-stream-behavior
+  - schema: kitsoki/feature/v0
+    id: feature-story-editor
+    title: "The story editor"
+    status: shipped
+    visibility: public
+    summary: "The per-story editor surface: the BFS-ordered room list, room detail with hook and domain model and IDE deep-link, the meta-chat column, and the Agent Workbench's contract cards and cassette browser."
+    sources: [source-seed-objects]
+    edges:
+      part_of:
+        - product-kitsoki
+      requirements:
+        - req-story-editor-behavior
+  - schema: kitsoki/feature/v0
+    id: feature-web-inbox
+    title: "The async inbox"
+    status: shipped
+    visibility: public
+    summary: "A background host call launched from the chat composer completes while you're elsewhere: the runtime auto-posts a completion notification over SSE, the global inbox badge increments, a toast appears, and one click teleports the session back to the originating room."
+    sources: [source-seed-objects]
+    edges:
+      part_of:
+        - product-kitsoki
+      requirements:
+        - req-web-inbox-behavior
+  - schema: kitsoki/feature/v0
+    id: feature-goal-seeker
+    title: "Goal-seeker — the loop that drives the plan through kitsoki itself"
+    status: shipped
+    visibility: public
+    summary: "goal-seeker is the generalized-usage stabilization loop, built as a kitsoki story rather than an out-of-engine script. It imports punch-list for the load -> drive -> verify -> report loop and ship-it for lost-work-safe integrate -> verify -> cleanup, then adds an evaluate gate that reads a bounded preamble over the plan's ledger and trace evidence and emits a verdict: keep dispatching, or done. The whole loop is flow-tested with no LLM, including adversarial cases (a false-done verdict, a worker self-reporting green, a not-RED change) that must be rejected deterministically rather than trusted."
+    sources: [source-seed-objects]
+    edges:
+      part_of:
+        - product-kitsoki
+      requirements:
+        - req-goal-seeker-behavior
+  - schema: kitsoki/feature/v0
+    id: feature-dynamic-workflows
+    title: "Dynamic workflows"
+    status: shipped
+    visibility: public
+    summary: "Dynamic workflows let the operator write one proposal-shaped goal, create a deterministic workflow draft, validate it, launch it as a tracked session, and export a starter story package plus flow/cassette artifacts. The demo uses an existing proposal in docs/proposals as the source example."
+    sources: [source-seed-objects]
+    edges:
+      part_of:
+        - product-kitsoki
+      requirements:
+        - req-dynamic-workflows-behavior
+  - schema: kitsoki/feature/v0
+    id: feature-kitsoki-doctor
+    title: "kitsoki doctor — provider, toolkit, and MCP readiness at a glance"
+    status: shipped
+    visibility: public
+    summary: "`kitsoki doctor` runs a preflight over the things that make onboarding silently fail elsewhere: provider/API-key presence, agent toolkit installation, and MCP server registration. It reports readiness instead of leaving a stranger to discover a broken setup mid-session. A top-level `init` alias and tiered `--help` output round out a CLI that used to present 46 flat commands with no on-ramp."
+    sources: [source-seed-objects]
+    edges:
+      part_of:
+        - product-kitsoki
+      requirements:
+        - req-kitsoki-doctor-behavior
+  - schema: kitsoki/feature/v0
+    id: feature-harness-picker
+    title: "The harness picker — pluggable operators, live"
+    status: shipped
+    visibility: public
+    summary: "kitsoki treats the LLM as a swappable operator. The run header carries a provider / model / effort picker — claude-native, codex, and synthetic backends — that takes effect on the next turn (substrate semantics, not a mid-call swap). Each agent call is stamped with the exact profile, model, and effort that produced it, shown inline on the trace row. The demo asks each operator to identify itself and watches the per-call provenance change as the picker switches — same recorded input, different operator, auditable output."
+    sources: [source-seed-objects]
+    edges:
+      part_of:
+        - product-kitsoki
+      requirements:
+        - req-harness-picker-behavior
+  # --- requirements --------------------------------------------------------
+  - schema: kitsoki/requirement/v0
+    id: req-operator-ask-no-silent-default
+    title: "Headless agents must not silently answer their own operator questions"
+    status: satisfied
+    visibility: public
+    summary: "A dispatched agent question must block or be forwarded; empty auto- resolution is forbidden for live operator workflows. Rationale: AskUserQuestion in headless dispatched agents silently resolves with empty answers, which can move a workflow through an unreviewed fork."
+    sources: [source-seed-objects]
+    edges:
+      part_of:
+        - product-kitsoki
+      required_by:
+        - feature-operator-ask
+      motivated_by:
+        - usecase-maintainer-answers-blocked-agent
+  - schema: kitsoki/requirement/v0
+    id: req-operator-ask-blocking-round-trip
+    title: "Operator answer must unblock the exact parked agent question"
+    status: satisfied
+    visibility: public
+    summary: "The UI answer is keyed to the original question id and resumes that parked agent turn only after the operator sends a complete answer."
+    sources: [source-seed-objects]
+    edges:
+      part_of:
+        - product-kitsoki
+      required_by:
+        - feature-operator-ask
+      motivated_by:
+        - usecase-maintainer-answers-blocked-agent
+  - schema: kitsoki/requirement/v0
+    id: req-operator-ask-multi-select
+    title: "Forwarded questions support single-select and multi-select answers"
+    status: satisfied
+    visibility: public
+    summary: "Operator forwarding must preserve the agent's single-select or multi-select answer shape and return the selected option set."
+    sources: [source-seed-objects]
+    edges:
+      part_of:
+        - product-kitsoki
+      required_by:
+        - feature-operator-ask
+      motivated_by:
+        - usecase-maintainer-answers-blocked-agent
+  - schema: kitsoki/requirement/v0
+    id: req-agent-actions-byte-stable-stream
+    title: "Agent calls expose byte-stable tool-use transcripts"
+    status: satisfied
+    visibility: public
+    summary: "Agent task, decide, ask, and converse calls must expose the captured tool-use stream with enough structure to replay, inspect, and compare it deterministically."
+    sources: [source-seed-objects]
+    edges:
+      part_of:
+        - product-kitsoki
+      required_by:
+        - feature-agent-actions
+      motivated_by:
+        - usecase-maintainer-inspects-agent-call
+  - schema: kitsoki/requirement/v0
+    id: req-trace-introspection-decision-first
+    title: "Trace detail must lead with decisions and provenance"
+    status: satisfied
+    visibility: public
+    summary: "Decision events must show verdict, confidence, evidence, and replay affordances before raw trace payloads."
+    sources: [source-seed-objects]
+    edges:
+      part_of:
+        - product-kitsoki
+      required_by:
+        - feature-trace-introspection
+      motivated_by:
+        - usecase-maintainer-audits-frozen-run
+  - schema: kitsoki/requirement/v0
+    id: req-meta-mode-story-aware-edit
+    title: "Running stories can be explained, edited, and hot-reloaded"
+    status: satisfied
+    visibility: public
+    summary: "Meta mode must support cross-app help, story-specific explanation, story YAML edits, and in-place reload of an active session."
+    sources: [source-seed-objects]
+    edges:
+      part_of:
+        - product-kitsoki
+      required_by:
+        - feature-meta-mode
+      motivated_by:
+        - usecase-developer-edits-running-story
+  - schema: kitsoki/requirement/v0
+    id: req-dev-story-bugfix-end-to-end
+    title: "Bugfix story must carry a ticket through reproducible delivery"
+    status: satisfied
+    visibility: public
+    summary: "The story must triage a ticket and then run the autonomous bugfix sequence through reproduction, proposal, implementation, tests, review, validation, and PR creation."
+    sources: [source-seed-objects]
+    edges:
+      part_of:
+        - product-kitsoki
+      required_by:
+        - feature-dev-story-bugfix
+      motivated_by:
+        - usecase-developer-runs-bugfix-pipeline
+  - schema: kitsoki/requirement/v0
+    id: req-project-objects-data-primary
+    title: "Project objects are structured data, not markdown free text"
+    status: proposed
+    visibility: public
+    summary: "Features, requirements, use cases, proposals, changesets, tests, and evidence must be schema-pinned records with markdown only inside typed fields. Rationale: Tools must traverse and validate the project state without parsing arbitrary prose conventions."
+    sources: [source-seed-objects]
+    edges:
+      part_of:
+        - product-kitsoki
+      required_by:
+        - feature-project-object-graph
+      motivated_by:
+        - usecase-agent-mines-backlog-into-graph
+  - schema: kitsoki/requirement/v0
+    id: req-project-objects-typed-edges
+    title: "Relationships use typed edge fields and resolvable ids"
+    status: proposed
+    visibility: public
+    summary: "Every relationship must be declared in a typed edge field with a target node type, and catalog lint must reject dangling ids and invalid edge targets."
+    sources: [source-seed-objects]
+    edges:
+      part_of:
+        - product-kitsoki
+      required_by:
+        - feature-project-object-graph
+      motivated_by:
+        - usecase-agent-mines-backlog-into-graph
+  - schema: kitsoki/requirement/v0
+    id: req-project-objects-delta-roadmap
+    title: "Roadmap is computed from current-state and desired-state graph deltas"
+    status: proposed
+    visibility: public
+    summary: "Roadmap views must be derived from durable desired/current objects plus transient changesets, not maintained as prose or a parallel hand-authored roadmap."
+    sources: [source-seed-objects]
+    edges:
+      part_of:
+        - product-kitsoki
+      required_by:
+        - feature-project-object-graph
+      motivated_by:
+        - usecase-product-owner-computes-roadmap-delta
+  - schema: kitsoki/requirement/v0
+    id: req-project-objects-provenance
+    title: "Graph nodes retain source provenance from proposals and context notes"
+    status: proposed
+    visibility: public
+    summary: "Nodes produced from backlog mining must carry structured source references so reviewers can trace every requirement or use case back to its proposal, feature catalog entry, or context note."
+    sources: [source-seed-objects]
+    edges:
+      part_of:
+        - product-kitsoki
+      required_by:
+        - feature-project-object-graph
+      motivated_by:
+        - usecase-agent-mines-backlog-into-graph
+  - schema: kitsoki/requirement/v0
+    id: req-viewer-multi-actor-lenses
+    title: "Each actor role gets a lens onto its part of the lifecycle"
+    status: proposed
+    visibility: public
+    summary: "The viewer must let each actor kind (product manager, developer, maintainer, agent) start from the layers that match its concerns - capabilities and delta for PMs, proof and implementation for developers - without forking into per-role apps. Rationale: PMs and developers care about different lifecycle stages of the same objects; one shared graph with role lenses keeps them coherent instead of maintaining parallel views of the truth."
+    sources: [source-seed-objects]
+    edges:
+      part_of:
+        - product-kitsoki
+      required_by:
+        - feature-graph-viewer
+      motivated_by:
+        - usecase-pm-scans-roadmap-delta
+        - usecase-developer-traces-requirement-to-proof
+  - schema: kitsoki/requirement/v0
+    id: req-viewer-permission-visibility
+    title: "Visibility is permission-managed but the graph stays whole"
+    status: proposed
+    visibility: public
+    summary: "Every rendered object passes through the visibility model (public/internal today, per-role permissions later); actors keep navigable visibility across the full graph, and objects outside their permission are absent from every projection rather than greyed out or leaked through edges. Rationale: Shared decision 5 of the epic - one system holds public promo surface and proprietary inner workings; the viewer is the first surface that must enforce reachability filtering, not just node filtering."
+    sources: [source-seed-objects]
+    edges:
+      part_of:
+        - product-kitsoki
+      required_by:
+        - feature-graph-viewer
+      motivated_by:
+        - usecase-pm-scans-roadmap-delta
+  - schema: kitsoki/requirement/v0
+    id: req-viewer-full-graph-traversal
+    title: "Any object is reachable from any other by walking typed edges"
+    status: satisfied
+    visibility: public
+    summary: "From any selected object, incoming and outgoing edge groups are walkable in both the catalog view and the graph canvas, and selection stays in sync when switching projections."
+    sources: [source-seed-objects]
+    edges:
+      part_of:
+        - product-kitsoki
+      required_by:
+        - feature-graph-viewer
+      motivated_by:
+        - usecase-developer-traces-requirement-to-proof
+  - schema: kitsoki/requirement/v0
+    id: req-chat-stream-behavior
+    title: "Live agent streaming in chat behaves as documented"
+    status: satisfied
+    visibility: public
+    summary: "Watch the agent think and act, streamed live into the conversation."
+    sources: [source-seed-objects]
+    edges:
+      part_of:
+        - product-kitsoki
+      required_by:
+        - feature-chat-stream
+  - schema: kitsoki/requirement/v0
+    id: req-story-editor-behavior
+    title: "The story editor behaves as documented"
+    status: satisfied
+    visibility: public
+    summary: "Rooms, hooks, domain model, and the Agent Workbench — one inspector."
+    sources: [source-seed-objects]
+    edges:
+      part_of:
+        - product-kitsoki
+      required_by:
+        - feature-story-editor
+  - schema: kitsoki/requirement/v0
+    id: req-web-inbox-behavior
+    title: "The async inbox behaves as documented"
+    status: satisfied
+    visibility: public
+    summary: "Background work notifies you when it lands — toast, badge, jump back."
+    sources: [source-seed-objects]
+    edges:
+      part_of:
+        - product-kitsoki
+      required_by:
+        - feature-web-inbox
+  - schema: kitsoki/requirement/v0
+    id: req-goal-seeker-behavior
+    title: "Goal-seeker — the loop that drives the plan through kitsoki itself behaves as documented"
+    status: satisfied
+    visibility: public
+    summary: "A kitsoki story that evaluates a decomposed plan, dispatches workers, integrates green work, and loops until done."
+    sources: [source-seed-objects]
+    edges:
+      part_of:
+        - product-kitsoki
+      required_by:
+        - feature-goal-seeker
+  - schema: kitsoki/requirement/v0
+    id: req-dynamic-workflows-behavior
+    title: "Dynamic workflows behaves as documented"
+    status: satisfied
+    visibility: public
+    summary: "Turn a proposal-shaped goal into a validated draft, a live session, and an exportable starter base."
+    sources: [source-seed-objects]
+    edges:
+      part_of:
+        - product-kitsoki
+      required_by:
+        - feature-dynamic-workflows
+  - schema: kitsoki/requirement/v0
+    id: req-kitsoki-doctor-behavior
+    title: "kitsoki doctor — provider, toolkit, and MCP readiness at a glance behaves as documented"
+    status: satisfied
+    visibility: public
+    summary: "One command reports whether your provider, agent toolkit, and MCP registration are actually ready."
+    sources: [source-seed-objects]
+    edges:
+      part_of:
+        - product-kitsoki
+      required_by:
+        - feature-kitsoki-doctor
+  - schema: kitsoki/requirement/v0
+    id: req-harness-picker-behavior
+    title: "The harness picker — pluggable operators, live behaves as documented"
+    status: satisfied
+    visibility: public
+    summary: "Switch provider, model, and reasoning effort from the run header; every call is stamped with the operator that answered it."
+    sources: [source-seed-objects]
+    edges:
+      part_of:
+        - product-kitsoki
+      required_by:
+        - feature-harness-picker
+  # --- use cases -------------------------------------------------------------
+  - schema: kitsoki/use-case/v0
+    id: usecase-maintainer-answers-blocked-agent
+    title: "Maintainer answers a blocked implementation agent"
+    status: supported
+    visibility: public
+    summary: "Trigger: A dispatched bugfix or implementation agent reaches a decision it cannot safely make alone. Outcome: The maintainer sees the exact question and options, answers in web or TUI, and the parked agent resumes with that answer recorded."
+    sources: [source-seed-objects]
+    edges:
+      part_of:
+        - product-kitsoki
+      exercises:
+        - feature-operator-ask
+      acceptance:
+        - req-operator-ask-no-silent-default
+        - req-operator-ask-blocking-round-trip
+        - req-operator-ask-multi-select
+      for_persona:
+        - persona-core-maintainer
+  - schema: kitsoki/use-case/v0
+    id: usecase-maintainer-inspects-agent-call
+    title: "Maintainer inspects why an agent call behaved the way it did"
+    status: supported
+    visibility: public
+    summary: "Trigger: A run contains a costly, surprising, rejected, or drift- prone agent call. Outcome: The maintainer opens the call transcript, sees each tool call and guardrail step in order, and can compare deterministic replay against live drift."
+    sources: [source-seed-objects]
+    edges:
+      part_of:
+        - product-kitsoki
+      exercises:
+        - feature-agent-actions
+      acceptance:
+        - req-agent-actions-byte-stable-stream
+  - schema: kitsoki/use-case/v0
+    id: usecase-maintainer-audits-frozen-run
+    title: "Maintainer audits a frozen run without spending model calls"
+    status: supported
+    visibility: public
+    summary: "Trigger: A recorded run needs review, explanation, or regression comparison. Outcome: The maintainer filters the trace by observation kind, opens a decision, reads the verdict and evidence, and inspects the same trace through tree, waterfall, and state-graph views."
+    sources: [source-seed-objects]
+    edges:
+      part_of:
+        - product-kitsoki
+      exercises:
+        - feature-trace-introspection
+      acceptance:
+        - req-trace-introspection-decision-first
+      for_persona:
+        - persona-core-maintainer
+  - schema: kitsoki/use-case/v0
+    id: usecase-developer-edits-running-story
+    title: "Developer asks a running story to explain or edit itself"
+    status: supported
+    visibility: public
+    summary: "Trigger: A story needs explanation or a small change while a session is running. Outcome: The developer asks meta mode for story context, requests a YAML edit, and sees the live session reload against the changed story."
+    sources: [source-seed-objects]
+    edges:
+      part_of:
+        - product-kitsoki
+      exercises:
+        - feature-meta-mode
+      acceptance:
+        - req-meta-mode-story-aware-edit
+      for_persona:
+        - persona-ide-first-engineer
+  - schema: kitsoki/use-case/v0
+    id: usecase-developer-runs-bugfix-pipeline
+    title: "Developer hands a selected bug to the autonomous fix pipeline"
+    status: supported
+    visibility: public
+    summary: "Trigger: A triage queue contains a fixable bug that should move through implementation without ad hoc prompting. Outcome: The developer selects the ticket, watches each deterministic room advance, and receives a validated PR-ready fix with trace evidence."
+    sources: [source-seed-objects]
+    edges:
+      part_of:
+        - product-kitsoki
+      exercises:
+        - feature-dev-story-bugfix
+      acceptance:
+        - req-dev-story-bugfix-end-to-end
+      for_persona:
+        - persona-dependency-debugger
+        - persona-hobbyist-contributor
+  - schema: kitsoki/use-case/v0
+    id: usecase-product-owner-computes-roadmap-delta
+    title: "Product owner computes roadmap work from desired-state gaps"
+    status: proposed
+    visibility: public
+    summary: "Trigger: A strategic review identifies desired capabilities, shipped capabilities, and proposal debt across docs/proposals and .context. Outcome: The product owner sees a computed work graph with dependencies, ready sets, evidence gaps, and transient changesets needed to close the gap."
+    sources: [source-seed-objects]
+    edges:
+      part_of:
+        - product-kitsoki
+      exercises:
+        - feature-project-object-graph
+      acceptance:
+        - req-project-objects-delta-roadmap
+        - req-project-objects-typed-edges
+        - req-project-objects-provenance
+  - schema: kitsoki/use-case/v0
+    id: usecase-agent-mines-backlog-into-graph
+    title: "Agent converts proposal backlog and context notes into graph objects"
+    status: proposed
+    visibility: public
+    summary: "Trigger: The repo contains many proposals plus transient .context notes that describe features, requirements, decisions, and cleanup work in prose. Outcome: The agent emits typed feature, requirement, use-case, proposal, evidence, and change nodes with source refs and edges, then deterministic lint reports gaps for human review."
+    sources: [source-seed-objects]
+    edges:
+      part_of:
+        - product-kitsoki
+      exercises:
+        - feature-project-object-graph
+      acceptance:
+        - req-project-objects-data-primary
+        - req-project-objects-typed-edges
+        - req-project-objects-provenance
+  - schema: kitsoki/use-case/v0
+    id: usecase-pm-scans-roadmap-delta
+    title: "Product manager reviews the open roadmap delta"
+    status: supported
+    visibility: public
+    summary: "Trigger: A planning pass needs to answer what work is open, why it exists, and which capability gaps it closes. Outcome: The PM filters to the delta layer, walks proposals and work items back to the requirements and use cases that motivate them, and never has to read implementation-level objects to do it."
+    sources: [source-seed-objects]
+    edges:
+      part_of:
+        - product-kitsoki
+      exercises:
+        - feature-graph-viewer
+      acceptance:
+        - req-viewer-multi-actor-lenses
+        - req-viewer-permission-visibility
+  - schema: kitsoki/use-case/v0
+    id: usecase-developer-traces-requirement-to-proof
+    title: "Developer traces a requirement to its implementation and proof"
+    status: supported
+    visibility: public
+    summary: "Trigger: A developer picks up a change and needs to see what already implements or verifies the touched requirements. Outcome: The developer focuses the requirement in the graph canvas, expands the neighborhood, and lands on the implementing code paths and verifying evidence without leaving the viewer."
+    sources: [source-seed-objects]
+    edges:
+      part_of:
+        - product-kitsoki
+      exercises:
+        - feature-graph-viewer
+      acceptance:
+        - req-viewer-full-graph-traversal
+      for_persona:
+        - persona-docs-minded-contributor
+  # --- personas (tools/product-journey/personas.json) -----------------------
+  # The five persona-QA profiles product-journey runs journeys as. Fields
+  # (experience, surface_preference, risk_focus) are carried verbatim from
+  # personas.json; the use-case links mirror seed-objects.yaml's curated
+  # participates_in edges (inverted onto the use cases' for_persona below).
+  - schema: kitsoki/persona/v0
+    id: persona-core-maintainer
+    title: Core maintainer
+    status: active
+    visibility: public
+    experience: Senior; maintains a mature repository and is skeptical of bot-generated churn.
+    surface_preference: terminal-first
+    risk_focus: [reviewability, house-style, minimal diffs]
+    summary: Maintainer persona that judges every journey by whether the resulting change is reviewable, house-style, and minimally invasive.
+    sources: [source-product-journey-personas]
+    edges:
+      part_of: [product-kitsoki]
+  - schema: kitsoki/persona/v0
+    id: persona-dependency-debugger
+    title: Dependency debugger
+    status: active
+    visibility: public
+    experience: Experienced developer using Kitsoki to fix a bug in a dependency blocking their own project.
+    surface_preference: web-first
+    risk_focus: [time-to-repro, test confidence, handoff artifacts]
+    summary: Developer persona optimizing for fast reproduction and a credible handoff, not long-term ownership of the repo being fixed.
+    sources: [source-product-journey-personas]
+    edges:
+      part_of: [product-kitsoki]
+  - schema: kitsoki/persona/v0
+    id: persona-docs-minded-contributor
+    title: Docs-minded contributor
+    status: active
+    visibility: public
+    experience: Values clear onboarding and follows documented paths before improvising.
+    surface_preference: docs-first
+    risk_focus: [stale docs, missing prerequisites, broken demos]
+    summary: Developer persona whose journeys fail when documentation, prerequisites, or demos drift from the shipped behavior.
+    sources: [source-product-journey-personas]
+    edges:
+      part_of: [product-kitsoki]
+  - schema: kitsoki/persona/v0
+    id: persona-ide-first-engineer
+    title: IDE-first engineer
+    status: active
+    visibility: public
+    experience: Expects editor and visual surfaces to explain state without terminal archaeology.
+    surface_preference: vscode-first
+    risk_focus: [visual state, operator questions, navigation clarity]
+    summary: Developer persona that exercises the editor and visual surfaces and blocks on anything that requires dropping to the terminal to understand state.
+    sources: [source-product-journey-personas]
+    edges:
+      part_of: [product-kitsoki]
+  - schema: kitsoki/persona/v0
+    id: persona-hobbyist-contributor
+    title: Hobbyist contributor
+    status: active
+    visibility: public
+    experience: Contributes in spare time and needs a low-context path from issue selection to a credible small change.
+    surface_preference: docs-and-web-first
+    risk_focus: [time budget, setup friction, clear next step]
+    summary: Contributor persona with a strict time budget — journeys fail on setup friction or an unclear next step.
+    sources: [source-product-journey-personas]
+    edges:
+      part_of: [product-kitsoki]
+  # --- scenarios (tools/product-journey/scenarios.json) ---------------------
+  # The six persona-QA journey definitions, verbatim from scenarios.json
+  # (task → summary, success_criteria → outcome). for_persona links follow
+  # each persona's documented risk_focus; realizes is only set where an
+  # existing use case genuinely captures the journey's job — the gaps are
+  # honest (e.g. no use case yet models PRD authoring or product discovery).
+  - schema: kitsoki/scenario/v0
+    id: scenario-product-discovery
+    title: Product discovery walkthrough
+    status: reference
+    visibility: public
+    stage: Discover the product
+    trigger: A newcomer needs to understand what Kitsoki does, who it is for, and what the first credible action should be — without private repo context.
+    outcome: The persona identifies the product category, finds a documented next action, and files broken links, stale media, or confusing claims as product findings.
+    summary: Walk the Kitsoki product overview story (stories/product-site) end to end and explain what Kitsoki does, who it is for, and what the first credible action should be.
+    sources: [source-product-journey-scenarios]
+    edges:
+      part_of: [product-kitsoki]
+      for_persona: [persona-docs-minded-contributor, persona-hobbyist-contributor]
+  - schema: kitsoki/scenario/v0
+    id: scenario-project-onboarding
+    title: Project onboarding
+    status: reference
+    visibility: public
+    stage: Onboard a project
+    trigger: An assigned repository needs Kitsoki configured for it before any bugfix or design work can launch.
+    outcome: Generated project config names real commands and relevant project files, the persona can state the next Kitsoki command or room to use, and no silent operator-question defaulting occurs.
+    summary: Use the documented Kitsoki onboarding path (stories/dev-story) to configure the assigned repository and explain how bugfix/design work should be launched.
+    sources: [source-product-journey-scenarios]
+    edges:
+      part_of: [product-kitsoki]
+      for_persona: [persona-hobbyist-contributor, persona-docs-minded-contributor]
+  - schema: kitsoki/scenario/v0
+    id: scenario-bugfix-hidden-oracle
+    title: Bug fix with hidden oracle
+    status: reference
+    visibility: public
+    stage: Fix a bug
+    trigger: Public issue/repro material describes a bug; the fix must be scored by a deterministic oracle the workflow never sees.
+    outcome: The hidden oracle passes, the full suite passes or the failure is classified, and the patch shape is reviewable for the persona's project.
+    summary: Start from public issue/repro material, drive Kitsoki's bugfix workflow (stories/bugfix), and score the resulting worktree with the project's deterministic oracle.
+    sources: [source-product-journey-scenarios]
+    edges:
+      part_of: [product-kitsoki]
+      for_persona: [persona-dependency-debugger, persona-core-maintainer]
+      realizes: [usecase-developer-runs-bugfix-pipeline]
+  - schema: kitsoki/scenario/v0
+    id: scenario-prd-design
+    title: PRD and design workflow
+    status: reference
+    visibility: public
+    stage: Plan project work
+    trigger: A project improvement idea needs to become a PRD/design artifact grounded in real repository files, conventions, and tests.
+    outcome: Artifacts cite real repository files and commands, scope is small enough for review, and open questions are explicit instead of hidden in generated prose.
+    summary: Use Kitsoki (stories/dev-story) to turn a project improvement idea into a PRD/design artifact grounded in repository files, conventions, and tests.
+    sources: [source-product-journey-scenarios]
+    edges:
+      part_of: [product-kitsoki]
+      for_persona: [persona-core-maintainer]
+  - schema: kitsoki/scenario/v0
+    id: scenario-feature-implementation
+    title: Feature implementation
+    status: reference
+    visibility: public
+    stage: Plan project work
+    trigger: A small accepted design slice is ready to implement and must be validated with the project's own tests.
+    outcome: The implementation follows the design artifact, tests are targeted and deterministic, and remaining work is separated from completed work.
+    summary: Use Kitsoki (stories/dev-story) to implement a small accepted design slice and validate it with project tests.
+    sources: [source-product-journey-scenarios]
+    edges:
+      part_of: [product-kitsoki]
+      for_persona: [persona-ide-first-engineer, persona-core-maintainer]
+  - schema: kitsoki/scenario/v0
+    id: scenario-evidence-backed-product-bug
+    title: Evidence-backed product bug
+    status: reference
+    visibility: public
+    stage: File a product issue
+    trigger: Confusing or broken Kitsoki behavior observed during a journey should become a useful product bug report instead of a lost impression.
+    outcome: The report includes expected-versus-actual behavior and deterministic reproduction context, with sensitive local data redacted or explicitly marked local-only.
+    summary: Convert any confusing or broken Kitsoki behavior observed during the journey into a useful product bug report with visual and trace evidence.
+    sources: [source-product-journey-scenarios]
+    edges:
+      part_of: [product-kitsoki]
+      for_persona: [persona-ide-first-engineer, persona-docs-minded-contributor]
+  # --- deliverables (evidence/functionality nodes) --------------------------
+  - schema: kitsoki/test-suite/v0
+    id: ts-materialize-package
+    title: Materialize package test suite (gate checks + host-verb rig)
+    status: verified
+    visibility: public
+    summary: go test ./internal/materialize — covers the engine-run Starlark gate-check stages (pass/fail/unresolved), the sandbox fs-root pinning, and the private drive rig's host registry (producer stories' host.run invokes are real, not silent no-ops). Verified on every kitsoki landing via the standard test gate.
+    sources: [source-readme]
+    edges:
+      part_of: [product-kitsoki]
+      proves: []
+  - schema: kitsoki/demo/v0
+    id: demo-object-graph-portal
+    title: Recorded demo — the object-graph kit UI over a real catalog
+    status: missing
+    visibility: public
+    summary: Spec of a captured demo packet showing /graph served from the @kitsoki/object-graph kit against a real catalog. Does not exist yet; sits in the derived work queue until captured.
+    sources: [source-readme]
+    edges:
+      part_of: [product-kitsoki]
+      demonstrates: []
+  # --- product-site features & deliverables ---------------------------------
+  # GENERATED by pog/sync-product-site.mjs — edit specs in features/*.yaml
+  # and rerun; everything below this marker is replaced in place.
+  # Spec-first model: a committed tour/capture spec is the sole durable demo evidence.
+  # rrweb and mp4 replays are ephemeral render outputs and are never listed here.
+  - schema: kitsoki/demo/v0
+    id: demo-agent-actions
+    title: "Demo — Agent action transcripts"
+    status: verified
+    visibility: public
+    summary: "Committed tour-driven source tools/runstatus/tests/playwright/agent-actions-video.spec.ts; render an ephemeral replay on demand."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "Agent action transcripts — tour-driven source spec"
+        path: tools/runstatus/tests/playwright/agent-actions-video.spec.ts
+    edges:
+      part_of: [product-kitsoki]
+      demonstrates: [feature-agent-actions]
+  - schema: kitsoki/demo/v0
+    id: demo-chat-stream
+    title: "Demo — Live agent streaming in chat"
+    status: verified
+    visibility: public
+    summary: "Committed tour-driven source tools/runstatus/tests/playwright/chat-stream-video.spec.ts; render an ephemeral replay on demand."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "Live agent streaming in chat — tour-driven source spec"
+        path: tools/runstatus/tests/playwright/chat-stream-video.spec.ts
+    edges:
+      part_of: [product-kitsoki]
+      demonstrates: [feature-chat-stream]
+  - schema: kitsoki/feature/v0
+    id: feature-complete-product-tour
+    title: "The complete product tour"
+    status: shipped
+    visibility: public
+    summary: "A ~10-minute walkthrough that takes a first-time evaluator from the thesis, through a real run, into the audit surfaces that PROVE (not assert) determinism, into live self-authoring, and out across breadth — closing on the punchline that the film itself is a passing deterministic test. Stitched from eight chaptered sections; the master and each section are generated from this one catalog, so they can never diverge."
+    sources: [source-feature-specs]
+    edges:
+      part_of: [product-kitsoki]
+  - schema: kitsoki/feature/v0
+    id: feature-design-walkthrough
+    title: "Design pipeline walkthrough"
+    status: shipped
+    visibility: public
+    summary: "The dev-story design pipeline end to end on a realistic idea: intake, the prior-art scout, the refined brief, the brief judge, the generated draft, and the published design document — every advancing turn visible on the interactive chat surface."
+    sources: [source-feature-specs]
+    edges:
+      part_of: [product-kitsoki]
+  - schema: kitsoki/demo/v0
+    id: demo-design-walkthrough
+    title: "Demo — Design pipeline walkthrough"
+    status: verified
+    visibility: public
+    summary: "Committed tour-driven source tools/runstatus/tests/playwright/design-walkthrough.spec.ts; render an ephemeral replay on demand."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "Design pipeline walkthrough — tour-driven source spec"
+        path: tools/runstatus/tests/playwright/design-walkthrough.spec.ts
+    edges:
+      part_of: [product-kitsoki]
+      demonstrates: [feature-design-walkthrough]
+  - schema: kitsoki/demo/v0
+    id: demo-dev-story-bugfix
+    title: "Demo — Bug triage to autonomous fix"
+    status: verified
+    visibility: public
+    summary: "Committed tour-driven source tools/runstatus/tests/playwright/dev-story-bugfix-video.spec.ts; render an ephemeral replay on demand."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "Bug triage to autonomous fix — tour-driven source spec"
+        path: tools/runstatus/tests/playwright/dev-story-bugfix-video.spec.ts
+    edges:
+      part_of: [product-kitsoki]
+      demonstrates: [feature-dev-story-bugfix]
+  - schema: kitsoki/feature/v0
+    id: feature-diagram-showcase
+    title: "The state diagram, four ways"
+    status: shipped
+    visibility: public
+    summary: "The StateDiagram's four route-centric views on a live run: the metro stepper with the traveled leg and amber current station, the 1-hop ego-graph, the path-and-horizon breadcrumb with live chips, and the full static machine."
+    sources: [source-feature-specs]
+    edges:
+      part_of: [product-kitsoki]
+  - schema: kitsoki/demo/v0
+    id: demo-diagram-showcase
+    title: "Demo — The state diagram, four ways"
+    status: verified
+    visibility: public
+    summary: "Committed tour-driven source tools/runstatus/tests/playwright/diagram-showcase.spec.ts; render an ephemeral replay on demand."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "The state diagram, four ways — tour-driven source spec"
+        path: tools/runstatus/tests/playwright/diagram-showcase.spec.ts
+    edges:
+      part_of: [product-kitsoki]
+      demonstrates: [feature-diagram-showcase]
+  - schema: kitsoki/demo/v0
+    id: demo-dynamic-workflows
+    title: "Demo — Dynamic workflows"
+    status: verified
+    visibility: public
+    summary: "Committed tour-driven source tools/runstatus/tests/playwright/dynamic-workflows-video.spec.ts; render an ephemeral replay on demand."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "Dynamic workflows — tour-driven source spec"
+        path: tools/runstatus/tests/playwright/dynamic-workflows-video.spec.ts
+    edges:
+      part_of: [product-kitsoki]
+      demonstrates: [feature-dynamic-workflows]
+  - schema: kitsoki/demo/v0
+    id: demo-harness-picker
+    title: "Demo — The harness picker — pluggable operators, live"
+    status: verified
+    visibility: public
+    summary: "Committed tour-driven source tools/runstatus/tests/playwright/harness-picker-video.spec.ts; render an ephemeral replay on demand."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "The harness picker — pluggable operators, live — tour-driven source spec"
+        path: tools/runstatus/tests/playwright/harness-picker-video.spec.ts
+    edges:
+      part_of: [product-kitsoki]
+      demonstrates: [feature-harness-picker]
+  - schema: kitsoki/feature/v0
+    id: feature-meta-improvement
+    title: "Meta improvement reports"
+    status: shipped
+    visibility: public
+    summary: "Meta improvement mode closes the loop after a run. When a story reaches a terminal state, Kitsoki recommends reviewing the session; one click opens `/meta improve`, streams the read-only story-improver agent, and produces a report about false starts, prompt/tool/script changes, permission cleanup, and no-LLM regression coverage. The web report path writes the same evidence bundle shape as Report Bug - redacted trace, rrweb playback, HAR, console state, screenshot, and posting metadata - so story authors can keep private iterations local, route community or engine issues to GitHub, or hand private-story findings to a custom ticket provider."
+    sources: [source-feature-specs]
+    edges:
+      part_of: [product-kitsoki]
+  - schema: kitsoki/demo/v0
+    id: demo-meta-improvement
+    title: "Demo — Meta improvement reports"
+    status: verified
+    visibility: public
+    summary: "Committed tour-driven source tools/runstatus/tests/playwright/meta-improve-video.spec.ts; render an ephemeral replay on demand."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "Meta improvement reports — tour-driven source spec"
+        path: tools/runstatus/tests/playwright/meta-improve-video.spec.ts
+    edges:
+      part_of: [product-kitsoki]
+      demonstrates: [feature-meta-improvement]
+  - schema: kitsoki/demo/v0
+    id: demo-meta-mode
+    title: "Demo — Meta-mode — the machine edits its own story"
+    status: verified
+    visibility: public
+    summary: "Committed tour-driven source tools/runstatus/tests/playwright/meta-mode.spec.ts; render an ephemeral replay on demand."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "Meta-mode — the machine edits its own story — tour-driven source spec"
+        path: tools/runstatus/tests/playwright/meta-mode.spec.ts
+    edges:
+      part_of: [product-kitsoki]
+      demonstrates: [feature-meta-mode]
+  - schema: kitsoki/feature/v0
+    id: feature-mockup-video
+    title: "Mockup Video Studio"
+    status: shipped
+    visibility: public
+    summary: "The mockup-video story's produce → review → refine loop: brief discovery in intake, the authored deck, a deterministic render, inline playback with the /review feedback pointer, and the final gallery with the scenarios it covers."
+    sources: [source-feature-specs]
+    edges:
+      part_of: [product-kitsoki]
+  - schema: kitsoki/demo/v0
+    id: demo-mockup-video
+    title: "Demo — Mockup Video Studio"
+    status: verified
+    visibility: public
+    summary: "Committed tour-driven source tools/runstatus/tests/playwright/mockup-video-demo.spec.ts; render an ephemeral replay on demand."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "Mockup Video Studio — tour-driven source spec"
+        path: tools/runstatus/tests/playwright/mockup-video-demo.spec.ts
+    edges:
+      part_of: [product-kitsoki]
+      demonstrates: [feature-mockup-video]
+  - schema: kitsoki/feature/v0
+    id: feature-multi-story
+    title: "The full product walk"
+    status: shipped
+    visibility: public
+    summary: "The end-to-end product demo: the story catalogue, a fresh PRD run narrated turn-by-turn on the chat surface, then the product's defining seam — a full page reload that the active session survives — landing back on the home active-sessions table."
+    sources: [source-feature-specs]
+    edges:
+      part_of: [product-kitsoki]
+  - schema: kitsoki/demo/v0
+    id: demo-multi-story
+    title: "Demo — The full product walk"
+    status: verified
+    visibility: public
+    summary: "Committed tour-driven source tools/runstatus/tests/playwright/multi-story.spec.ts; render an ephemeral replay on demand."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "The full product walk — tour-driven source spec"
+        path: tools/runstatus/tests/playwright/multi-story.spec.ts
+    edges:
+      part_of: [product-kitsoki]
+      demonstrates: [feature-multi-story]
+  - schema: kitsoki/feature/v0
+    id: feature-onboarding-tour
+    title: "The kitsoki web UI, in five minutes"
+    status: shipped
+    visibility: public
+    summary: "The in-app onboarding tour: from the story library through a live run — chat, intent buttons, the live trace diagram and timeline, meta mode, and the read-only observer. It anchors only to elements every story ships, so it works for any first-time user on any story, and replays anytime from the “?” button."
+    sources: [source-feature-specs]
+    edges:
+      part_of: [product-kitsoki]
+  - schema: kitsoki/demo/v0
+    id: demo-onboarding-tour
+    title: "Demo — The kitsoki web UI, in five minutes"
+    status: verified
+    visibility: public
+    summary: "Committed tour-driven source tools/runstatus/tests/playwright/tour-video.spec.ts; render an ephemeral replay on demand."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "The kitsoki web UI, in five minutes — tour-driven source spec"
+        path: tools/runstatus/tests/playwright/tour-video.spec.ts
+    edges:
+      part_of: [product-kitsoki]
+      demonstrates: [feature-onboarding-tour]
+  - schema: kitsoki/feature/v0
+    id: feature-operation-handles
+    title: "Operation handles"
+    status: shipped
+    visibility: public
+    summary: "Autonomous and supervised background operations surface as first-class handles in the session UI: while work runs the banner shows status, mode, phase facts, and a Drive action; when it lands the same handle shows the terminal artifact. This demo uses a tiny no-LLM story so the running and completed states are deterministic."
+    sources: [source-feature-specs]
+    edges:
+      part_of: [product-kitsoki]
+  - schema: kitsoki/demo/v0
+    id: demo-operation-handles
+    title: "Demo — Operation handles"
+    status: verified
+    visibility: public
+    summary: "Committed tour-driven source tools/runstatus/tests/playwright/operation-handles-video.spec.ts; render an ephemeral replay on demand."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "Operation handles — tour-driven source spec"
+        path: tools/runstatus/tests/playwright/operation-handles-video.spec.ts
+    edges:
+      part_of: [product-kitsoki]
+      demonstrates: [feature-operation-handles]
+  - schema: kitsoki/demo/v0
+    id: demo-operator-ask
+    title: "Demo — Operator questions, forwarded"
+    status: verified
+    visibility: public
+    summary: "Committed tour-driven source tools/runstatus/tests/playwright/operator-ask-video.spec.ts; render an ephemeral replay on demand."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "Operator questions, forwarded — tour-driven source spec"
+        path: tools/runstatus/tests/playwright/operator-ask-video.spec.ts
+    edges:
+      part_of: [product-kitsoki]
+      demonstrates: [feature-operator-ask]
+  - schema: kitsoki/feature/v0
+    id: feature-persona-qa
+    title: "Persona QA"
+    status: shipped
+    visibility: public
+    summary: "Persona QA is the scenario-qa story workflow: preview a plain-language QA request by transport, create a run bundle, drive one transport-pinned check at a time, judge captured evidence, then fold report.md and deck.slidey.json from the recorded outcomes and replay evidence."
+    sources: [source-feature-specs]
+    edges:
+      part_of: [product-kitsoki]
+  - schema: kitsoki/demo/v0
+    id: demo-persona-qa
+    title: "Demo — Persona QA"
+    status: verified
+    visibility: public
+    summary: "Committed tour-driven source tools/runstatus/tests/playwright/persona-qa-video.spec.ts; render an ephemeral replay on demand."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "Persona QA — tour-driven source spec"
+        path: tools/runstatus/tests/playwright/persona-qa-video.spec.ts
+    edges:
+      part_of: [product-kitsoki]
+      demonstrates: [feature-persona-qa]
+  - schema: kitsoki/feature/v0
+    id: feature-punch-list
+    title: "Punch-list story"
+    status: shipped
+    visibility: public
+    summary: "The punch-list story consumes a punch-list/v1 manifest, enforces profile/model policy, delegates live story driving, gates results on deterministic verification, and writes a report. This demo drives the top-10 GPT-5.5 dogfood manifest through a no-LLM flow so the full loop is reproducible while the policy and evidence surfaces stay visible."
+    sources: [source-feature-specs]
+    edges:
+      part_of: [product-kitsoki]
+  - schema: kitsoki/demo/v0
+    id: demo-punch-list
+    title: "Demo — Punch-list story"
+    status: verified
+    visibility: public
+    summary: "Committed tour-driven source tools/runstatus/tests/playwright/punch-list-video.spec.ts; render an ephemeral replay on demand."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "Punch-list story — tour-driven source spec"
+        path: tools/runstatus/tests/playwright/punch-list-video.spec.ts
+    edges:
+      part_of: [product-kitsoki]
+      demonstrates: [feature-punch-list]
+  - schema: kitsoki/feature/v0
+    id: feature-review
+    title: "Video review and feedback"
+    status: shipped
+    visibility: public
+    summary: "The /review surface for produced videos: a chapter timeline synced to playback, a flag list for frame-anchored feedback, and a detail pane per flag — the feedback half of the produce → review → refine loop."
+    sources: [source-feature-specs]
+    edges:
+      part_of: [product-kitsoki]
+  - schema: kitsoki/demo/v0
+    id: demo-review
+    title: "Demo — Video review and feedback"
+    status: verified
+    visibility: public
+    summary: "Committed tour-driven source tools/runstatus/tests/playwright/review-video.spec.ts; render an ephemeral replay on demand."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "Video review and feedback — tour-driven source spec"
+        path: tools/runstatus/tests/playwright/review-video.spec.ts
+    edges:
+      part_of: [product-kitsoki]
+      demonstrates: [feature-review]
+  - schema: kitsoki/feature/v0
+    id: feature-session-media-workbench
+    title: "Session Media Workbench"
+    status: shipped
+    visibility: public
+    summary: "A browser session can now pin a produced markdown/html/slidey/video artifact into a stable resizable media pane while the chat remains beside it and trace/graph devtools can dock right, dock bottom, float, or pop out."
+    sources: [source-feature-specs]
+    edges:
+      part_of: [product-kitsoki]
+  - schema: kitsoki/demo/v0
+    id: demo-session-media-workbench
+    title: "Demo — Session Media Workbench"
+    status: verified
+    visibility: public
+    summary: "Committed tour-driven source tools/runstatus/tests/playwright/session-media-workbench-video.spec.ts; render an ephemeral replay on demand."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "Session Media Workbench — tour-driven source spec"
+        path: tools/runstatus/tests/playwright/session-media-workbench-video.spec.ts
+    edges:
+      part_of: [product-kitsoki]
+      demonstrates: [feature-session-media-workbench]
+  - schema: kitsoki/feature/v0
+    id: feature-slidey-architect-design
+    title: "Architect → design on the slidey repo"
+    status: shipped
+    visibility: public
+    summary: "Phase 2 of the slidey dev-story hybrid: the architect half. Carrying the published speaker-notes-export PRD into design intake, an architect reviews the requirements, refines the brief conversationally (name the notes collector, the CLI seam in src/index.js, the per-scene Markdown shape), and the design author writes a slidey runtime design — an epic, three implementation slices, two ADRs, and a mermaid spec→collectNotes→renderNotesMarkdown→out.md data-flow — published to docs/proposals/speaker-notes-export.md with a feature ticket auto-minted at issues/features/. Every beat is a deterministic state-machine step replayed from slidey-themed stubs — no real LLM, no API cost."
+    sources: [source-feature-specs]
+    edges:
+      part_of: [product-kitsoki]
+  - schema: kitsoki/demo/v0
+    id: demo-slidey-architect-design
+    title: "Demo — Architect → design on the slidey repo"
+    status: verified
+    visibility: public
+    summary: "Committed tour-driven source tools/runstatus/tests/playwright/slidey-architect-design-video.spec.ts; render an ephemeral replay on demand."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "Architect → design on the slidey repo — tour-driven source spec"
+        path: tools/runstatus/tests/playwright/slidey-architect-design-video.spec.ts
+    edges:
+      part_of: [product-kitsoki]
+      demonstrates: [feature-slidey-architect-design]
+  - schema: kitsoki/feature/v0
+    id: feature-slidey-bugfix
+    title: "Fix a real bug in slidey, end to end"
+    status: shipped
+    visibility: public
+    summary: "The bugfix pipeline run against the real slidey repo (a Node/Vue narrated-deck renderer), fixing a frame-timing drift: grid `cards` scenes with more than six items had their narration desynced because the frame estimator over-counted each card beyond the table by ten frames. Every room is a deterministic state-machine beat: reproduce the drift with a failing unit test, propose the one-line root-cause fix, implement it in an isolated worktree, run slidey's real node --test suite, self-review the diff, validate end to end, and close out — ready to open a PR. The content is replayed verbatim from a real fix run; the render is no-LLM and deterministic."
+    sources: [source-feature-specs]
+    edges:
+      part_of: [product-kitsoki]
+  - schema: kitsoki/demo/v0
+    id: demo-slidey-bugfix
+    title: "Demo — Fix a real bug in slidey, end to end"
+    status: verified
+    visibility: public
+    summary: "Committed tour-driven source tools/runstatus/tests/playwright/slidey-bugfix-video.spec.ts; render an ephemeral replay on demand."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "Fix a real bug in slidey, end to end — tour-driven source spec"
+        path: tools/runstatus/tests/playwright/slidey-bugfix-video.spec.ts
+    edges:
+      part_of: [product-kitsoki]
+      demonstrates: [feature-slidey-bugfix]
+  - schema: kitsoki/feature/v0
+    id: feature-slidey-decomposition
+    title: "Design → validated work plan on the slidey repo"
+    status: shipped
+    visibility: public
+    summary: "Phase 3 of the slidey dev-story hybrid: design → execution plan. The deliver story picks up the speaker-notes-export epic and fans it into a work plan: the decomposer returns three slidey briefs (a SceneNotes model, a handout renderer, and a `--notes` CLI flag) each carrying its own `go test` gate and dependency order; a structural lint passes; and the run lands in fleet.load with a validated decomposition at .artifacts/deliver/decomposition.yaml. Every beat is a deterministic state-machine step replayed from slidey-themed stubs — no real LLM, no API cost."
+    sources: [source-feature-specs]
+    edges:
+      part_of: [product-kitsoki]
+  - schema: kitsoki/demo/v0
+    id: demo-slidey-decomposition
+    title: "Demo — Design → validated work plan on the slidey repo"
+    status: verified
+    visibility: public
+    summary: "Committed tour-driven source tools/runstatus/tests/playwright/slidey-decomposition-rrweb-capture.spec.ts; render an ephemeral replay on demand."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "Design → validated work plan on the slidey repo — tour-driven source spec"
+        path: tools/runstatus/tests/playwright/slidey-decomposition-rrweb-capture.spec.ts
+    edges:
+      part_of: [product-kitsoki]
+      demonstrates: [feature-slidey-decomposition]
+  - schema: kitsoki/feature/v0
+    id: feature-slidey-dev-prd-design
+    title: "PM idea → PRD on the slidey repo"
+    status: shipped
+    visibility: public
+    summary: "The dev-story PRD discovery pipeline pointed at the real slidey repo (a Node/Vue narrated-deck renderer), via the slidey-dev instance (imports @kitsoki/dev-story as core). A product manager starts with one idea — a `slidey deck.json --notes out.md` flag that exports a printable per-scene speaker-notes handout from the same deck spec the video/PDF/web outputs share — and the pipeline shapes it through discovery, a prior-art scan, structured clarification (actor + success metric), and a drafted PRD, published to docs/prd/speaker-notes-export.md. Every beat is a deterministic state-machine step replayed from slidey-themed stubs — no real LLM, no API cost."
+    sources: [source-feature-specs]
+    edges:
+      part_of: [product-kitsoki]
+  - schema: kitsoki/demo/v0
+    id: demo-slidey-dev-prd-design
+    title: "Demo — PM idea → PRD on the slidey repo"
+    status: verified
+    visibility: public
+    summary: "Committed tour-driven source tools/runstatus/tests/playwright/slidey-pm-idea-video.spec.ts; render an ephemeral replay on demand."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "PM idea → PRD on the slidey repo — tour-driven source spec"
+        path: tools/runstatus/tests/playwright/slidey-pm-idea-video.spec.ts
+    edges:
+      part_of: [product-kitsoki]
+      demonstrates: [feature-slidey-dev-prd-design]
+  - schema: kitsoki/feature/v0
+    id: feature-slidey-open-pr
+    title: "Open the PR for the slidey fix"
+    status: shipped
+    visibility: public
+    summary: "Phase 6 of the slidey hybrid deck: the PR-refinement pipeline (stories/pr-refinement) takes the proven slidey-128 fix — grid `cards` scenes with more than six items drifted their narration because the frame estimator's per-card fallback disagreed with the renderer's hold — and walks it to a landed merge. Every room is a deterministic state-machine beat: open the PR on the fix/grid-cards-narration branch, monitor CI to green, land the squash-merge, and close out. No-LLM (human judge); the render is deterministic and replayable, no API cost."
+    sources: [source-feature-specs]
+    edges:
+      part_of: [product-kitsoki]
+  - schema: kitsoki/demo/v0
+    id: demo-slidey-open-pr
+    title: "Demo — Open the PR for the slidey fix"
+    status: verified
+    visibility: public
+    summary: "Committed tour-driven source tools/runstatus/tests/playwright/slidey-open-pr-video.spec.ts; render an ephemeral replay on demand."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "Open the PR for the slidey fix — tour-driven source spec"
+        path: tools/runstatus/tests/playwright/slidey-open-pr-video.spec.ts
+    edges:
+      part_of: [product-kitsoki]
+      demonstrates: [feature-slidey-open-pr]
+  - schema: kitsoki/demo/v0
+    id: demo-story-editor
+    title: "Demo — The story editor"
+    status: verified
+    visibility: public
+    summary: "Committed tour-driven source tools/runstatus/tests/playwright/story-editor-video.spec.ts; render an ephemeral replay on demand."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "The story editor — tour-driven source spec"
+        path: tools/runstatus/tests/playwright/story-editor-video.spec.ts
+    edges:
+      part_of: [product-kitsoki]
+      demonstrates: [feature-story-editor]
+  - schema: kitsoki/feature/v0
+    id: feature-trace-features
+    title: "Trace introspection, live"
+    status: shipped
+    visibility: public
+    summary: "Every trace-introspection capability on a live run: view modes, the latency waterfall, observation category chips, decision-first detail with the confidence bar and alternatives, annotation, and deterministic replay."
+    sources: [source-feature-specs]
+    edges:
+      part_of: [product-kitsoki]
+  - schema: kitsoki/demo/v0
+    id: demo-trace-features
+    title: "Demo — Trace introspection, live"
+    status: verified
+    visibility: public
+    summary: "Committed tour-driven source tools/runstatus/tests/playwright/trace-features-video.spec.ts; render an ephemeral replay on demand."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "Trace introspection, live — tour-driven source spec"
+        path: tools/runstatus/tests/playwright/trace-features-video.spec.ts
+    edges:
+      part_of: [product-kitsoki]
+      demonstrates: [feature-trace-features]
+  - schema: kitsoki/demo/v0
+    id: demo-trace-introspection
+    title: "Demo — Decision-first trace detail"
+    status: verified
+    visibility: public
+    summary: "Committed tour-driven source tools/runstatus/tests/playwright/trace-introspection-demo.spec.ts; render an ephemeral replay on demand."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "Decision-first trace detail — tour-driven source spec"
+        path: tools/runstatus/tests/playwright/trace-introspection-demo.spec.ts
+    edges:
+      part_of: [product-kitsoki]
+      demonstrates: [feature-trace-introspection]
+  - schema: kitsoki/feature/v0
+    id: feature-weather-report
+    title: "Weather & Climate (Starlark host)"
+    status: shipped
+    visibility: public
+    summary: "The host.starlark.run example story: the lobby intent picker, a free-text forecast producing a 5-day report, the live trace lighting up with the real Starlark call and its replayed GETs, a climate-mode look-up, and the clean fail() path on an unknown place."
+    sources: [source-feature-specs]
+    edges:
+      part_of: [product-kitsoki]
+  - schema: kitsoki/demo/v0
+    id: demo-weather-report
+    title: "Demo — Weather & Climate (Starlark host)"
+    status: verified
+    visibility: public
+    summary: "Committed tour-driven source tools/runstatus/tests/playwright/weather-report-tour.spec.ts; render an ephemeral replay on demand."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "Weather & Climate (Starlark host) — tour-driven source spec"
+        path: tools/runstatus/tests/playwright/weather-report-tour.spec.ts
+    edges:
+      part_of: [product-kitsoki]
+      demonstrates: [feature-weather-report]
+  - schema: kitsoki/demo/v0
+    id: demo-web-inbox
+    title: "Demo — The async inbox"
+    status: verified
+    visibility: public
+    summary: "Committed tour-driven source tools/runstatus/tests/playwright/web-inbox-video.spec.ts; render an ephemeral replay on demand."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "The async inbox — tour-driven source spec"
+        path: tools/runstatus/tests/playwright/web-inbox-video.spec.ts
+    edges:
+      part_of: [product-kitsoki]
+      demonstrates: [feature-web-inbox]
+  # Product-tour rows retained until they gain a feature-spec source.
+  - schema: kitsoki/doc/v0
+    id: doc-agent-actions
+    title: "Docs — Agent action transcripts"
+    status: verified
+    visibility: public
+    summary: "Authored documentation: docs/tracing/run-status-ui.md."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "docs/tracing/run-status-ui.md"
+        path: docs/tracing/run-status-ui.md
+    edges:
+      part_of: [product-kitsoki]
+      documents: [feature-agent-actions]
+  - schema: kitsoki/tutorial/v0
+    id: tutorial-agent-actions
+    title: "Guided tour — Agent action transcripts"
+    status: verified
+    visibility: public
+    summary: "In-product guided tour, 17 steps, shipped with the app (generated manifest agent-actions.ts)."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "Agent action transcripts — generated tour manifest"
+        path: .artifacts/site-tours/agent-actions.ts
+    edges:
+      part_of: [product-kitsoki]
+      teaches: [feature-agent-actions]
+  - schema: kitsoki/doc/v0
+    id: doc-chat-stream
+    title: "Docs — Live agent streaming in chat"
+    status: verified
+    visibility: public
+    summary: "Authored documentation: docs/web/README.md."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "docs/web/README.md"
+        path: docs/web/README.md
+    edges:
+      part_of: [product-kitsoki]
+      documents: [feature-chat-stream]
+  - schema: kitsoki/tutorial/v0
+    id: tutorial-chat-stream
+    title: "Guided tour — Live agent streaming in chat"
+    status: verified
+    visibility: public
+    summary: "In-product guided tour, 17 steps, shipped with the app (generated manifest chat-stream.ts)."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "Live agent streaming in chat — generated tour manifest"
+        path: .artifacts/site-tours/chat-stream.ts
+    edges:
+      part_of: [product-kitsoki]
+      teaches: [feature-chat-stream]
+  - schema: kitsoki/doc/v0
+    id: doc-complete-product-tour
+    title: "Docs — The complete product tour"
+    status: verified
+    visibility: public
+    summary: "Authored documentation: docs/evaluate-kitsoki.md, docs/site/README.md."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "docs/evaluate-kitsoki.md"
+        path: docs/evaluate-kitsoki.md
+      - kind: doc
+        title: "docs/site/README.md"
+        path: docs/site/README.md
+    edges:
+      part_of: [product-kitsoki]
+      documents: [feature-complete-product-tour]
+  - schema: kitsoki/tutorial/v0
+    id: tutorial-design-walkthrough
+    title: "Guided tour — Design pipeline walkthrough"
+    status: verified
+    visibility: public
+    summary: "In-product guided tour, 14 steps, shipped with the app (generated manifest design-walkthrough.ts)."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "Design pipeline walkthrough — generated tour manifest"
+        path: .artifacts/site-tours/design-walkthrough.ts
+    edges:
+      part_of: [product-kitsoki]
+      teaches: [feature-design-walkthrough]
+  - schema: kitsoki/doc/v0
+    id: doc-dev-story-bugfix
+    title: "Docs — Bug triage to autonomous fix"
+    status: verified
+    visibility: public
+    summary: "Authored documentation: docs/case-studies/bug-fix.md."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "docs/case-studies/bug-fix.md"
+        path: docs/case-studies/bug-fix.md
+    edges:
+      part_of: [product-kitsoki]
+      documents: [feature-dev-story-bugfix]
+  - schema: kitsoki/tutorial/v0
+    id: tutorial-dev-story-bugfix
+    title: "Guided tour — Bug triage to autonomous fix"
+    status: verified
+    visibility: public
+    summary: "In-product guided tour, 18 steps, shipped with the app (generated manifest dev-story-bugfix.ts)."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "Bug triage to autonomous fix — generated tour manifest"
+        path: .artifacts/site-tours/dev-story-bugfix.ts
+    edges:
+      part_of: [product-kitsoki]
+      teaches: [feature-dev-story-bugfix]
+  - schema: kitsoki/doc/v0
+    id: doc-diagram-showcase
+    title: "Docs — The state diagram, four ways"
+    status: verified
+    visibility: public
+    summary: "Authored documentation: docs/tracing/run-status-ui.md."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "docs/tracing/run-status-ui.md"
+        path: docs/tracing/run-status-ui.md
+    edges:
+      part_of: [product-kitsoki]
+      documents: [feature-diagram-showcase]
+  - schema: kitsoki/tutorial/v0
+    id: tutorial-diagram-showcase
+    title: "Guided tour — The state diagram, four ways"
+    status: verified
+    visibility: public
+    summary: "In-product guided tour, 12 steps, shipped with the app (generated manifest diagram-showcase.ts)."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "The state diagram, four ways — generated tour manifest"
+        path: .artifacts/site-tours/diagram-showcase.ts
+    edges:
+      part_of: [product-kitsoki]
+      teaches: [feature-diagram-showcase]
+  - schema: kitsoki/doc/v0
+    id: doc-dynamic-workflows
+    title: "Docs — Dynamic workflows"
+    status: verified
+    visibility: public
+    summary: "Authored documentation: docs/stories/dynamic-workflows.md, docs/architecture/mcp-studio.md."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "docs/stories/dynamic-workflows.md"
+        path: docs/stories/dynamic-workflows.md
+      - kind: doc
+        title: "docs/architecture/mcp-studio.md"
+        path: docs/architecture/mcp-studio.md
+    edges:
+      part_of: [product-kitsoki]
+      documents: [feature-dynamic-workflows]
+  - schema: kitsoki/tutorial/v0
+    id: tutorial-dynamic-workflows
+    title: "Guided tour — Dynamic workflows"
+    status: verified
+    visibility: public
+    summary: "In-product guided tour, 11 steps, shipped with the app (generated manifest dynamic-workflows.ts)."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "Dynamic workflows — generated tour manifest"
+        path: .artifacts/site-tours/dynamic-workflows.ts
+    edges:
+      part_of: [product-kitsoki]
+      teaches: [feature-dynamic-workflows]
+  - schema: kitsoki/doc/v0
+    id: doc-harness-picker
+    title: "Docs — The harness picker — pluggable operators, live"
+    status: verified
+    visibility: public
+    summary: "Authored documentation: docs/tracing/run-status-ui.md."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "docs/tracing/run-status-ui.md"
+        path: docs/tracing/run-status-ui.md
+    edges:
+      part_of: [product-kitsoki]
+      documents: [feature-harness-picker]
+  - schema: kitsoki/doc/v0
+    id: doc-meta-improvement
+    title: "Docs — Meta improvement reports"
+    status: verified
+    visibility: public
+    summary: "Authored documentation: docs/stories/meta-mode.md, docs/web/README.md, docs/site/README.md."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "docs/stories/meta-mode.md"
+        path: docs/stories/meta-mode.md
+      - kind: doc
+        title: "docs/web/README.md"
+        path: docs/web/README.md
+      - kind: doc
+        title: "docs/site/README.md"
+        path: docs/site/README.md
+    edges:
+      part_of: [product-kitsoki]
+      documents: [feature-meta-improvement]
+  - schema: kitsoki/tutorial/v0
+    id: tutorial-meta-improvement
+    title: "Guided tour — Meta improvement reports"
+    status: verified
+    visibility: public
+    summary: "In-product guided tour, 13 steps, shipped with the app (generated manifest meta-improvement.ts)."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "Meta improvement reports — generated tour manifest"
+        path: .artifacts/site-tours/meta-improvement.ts
+    edges:
+      part_of: [product-kitsoki]
+      teaches: [feature-meta-improvement]
+  - schema: kitsoki/doc/v0
+    id: doc-meta-mode
+    title: "Docs — Meta-mode — the machine edits its own story"
+    status: verified
+    visibility: public
+    summary: "Authored documentation: docs/tracing/trace-format.md."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "docs/tracing/trace-format.md"
+        path: docs/tracing/trace-format.md
+    edges:
+      part_of: [product-kitsoki]
+      documents: [feature-meta-mode]
+  - schema: kitsoki/doc/v0
+    id: doc-mockup-video
+    title: "Docs — Mockup Video Studio"
+    status: verified
+    visibility: public
+    summary: "Authored documentation: docs/stories/mockup-video.md."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "docs/stories/mockup-video.md"
+        path: docs/stories/mockup-video.md
+    edges:
+      part_of: [product-kitsoki]
+      documents: [feature-mockup-video]
+  - schema: kitsoki/tutorial/v0
+    id: tutorial-mockup-video
+    title: "Guided tour — Mockup Video Studio"
+    status: verified
+    visibility: public
+    summary: "In-product guided tour, 12 steps, shipped with the app (generated manifest mockup-video.ts)."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "Mockup Video Studio — generated tour manifest"
+        path: .artifacts/site-tours/mockup-video.ts
+    edges:
+      part_of: [product-kitsoki]
+      teaches: [feature-mockup-video]
+  - schema: kitsoki/doc/v0
+    id: doc-multi-story
+    title: "Docs — The full product walk"
+    status: verified
+    visibility: public
+    summary: "Authored documentation: docs/web/README.md."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "docs/web/README.md"
+        path: docs/web/README.md
+    edges:
+      part_of: [product-kitsoki]
+      documents: [feature-multi-story]
+  - schema: kitsoki/tutorial/v0
+    id: tutorial-multi-story
+    title: "Guided tour — The full product walk"
+    status: verified
+    visibility: public
+    summary: "In-product guided tour, 12 steps, shipped with the app (generated manifest multi-story.ts)."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "The full product walk — generated tour manifest"
+        path: .artifacts/site-tours/multi-story.ts
+    edges:
+      part_of: [product-kitsoki]
+      teaches: [feature-multi-story]
+  - schema: kitsoki/doc/v0
+    id: doc-onboarding-tour
+    title: "Docs — The kitsoki web UI, in five minutes"
+    status: verified
+    visibility: public
+    summary: "Authored documentation: docs/web/README.md."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "docs/web/README.md"
+        path: docs/web/README.md
+    edges:
+      part_of: [product-kitsoki]
+      documents: [feature-onboarding-tour]
+  - schema: kitsoki/tutorial/v0
+    id: tutorial-onboarding-tour
+    title: "Guided tour — The kitsoki web UI, in five minutes"
+    status: verified
+    visibility: public
+    summary: "In-product guided tour, 13 steps, shipped with the app (generated manifest onboarding-tour.ts)."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "The kitsoki web UI, in five minutes — generated tour manifest"
+        path: .artifacts/site-tours/onboarding-tour.ts
+    edges:
+      part_of: [product-kitsoki]
+      teaches: [feature-onboarding-tour]
+  - schema: kitsoki/tutorial/v0
+    id: tutorial-operation-handles
+    title: "Guided tour — Operation handles"
+    status: verified
+    visibility: public
+    summary: "In-product guided tour, 9 steps, shipped with the app (generated manifest operation-handles.ts)."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "Operation handles — generated tour manifest"
+        path: .artifacts/site-tours/operation-handles.ts
+    edges:
+      part_of: [product-kitsoki]
+      teaches: [feature-operation-handles]
+  - schema: kitsoki/doc/v0
+    id: doc-operator-ask
+    title: "Docs — Operator questions, forwarded"
+    status: verified
+    visibility: public
+    summary: "Authored documentation: docs/architecture/operator-ask.md."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "docs/architecture/operator-ask.md"
+        path: docs/architecture/operator-ask.md
+    edges:
+      part_of: [product-kitsoki]
+      documents: [feature-operator-ask]
+  - schema: kitsoki/tutorial/v0
+    id: tutorial-operator-ask
+    title: "Guided tour — Operator questions, forwarded"
+    status: verified
+    visibility: public
+    summary: "In-product guided tour, 13 steps, shipped with the app (generated manifest operator-ask.ts)."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "Operator questions, forwarded — generated tour manifest"
+        path: .artifacts/site-tours/operator-ask.ts
+    edges:
+      part_of: [product-kitsoki]
+      teaches: [feature-operator-ask]
+  - schema: kitsoki/doc/v0
+    id: doc-persona-qa
+    title: "Docs — Persona QA"
+    status: planned
+    visibility: public
+    summary: "Doc set partially authored (0/1 present): docs/persona-qa.md."
+    sources: [source-feature-specs]
+    edges:
+      part_of: [product-kitsoki]
+      documents: [feature-persona-qa]
+  - schema: kitsoki/tutorial/v0
+    id: tutorial-persona-qa
+    title: "Guided tour — Persona QA"
+    status: verified
+    visibility: public
+    summary: "In-product guided tour, 11 steps, shipped with the app (generated manifest persona-qa.ts)."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "Persona QA — generated tour manifest"
+        path: .artifacts/site-tours/persona-qa.ts
+    edges:
+      part_of: [product-kitsoki]
+      teaches: [feature-persona-qa]
+  - schema: kitsoki/doc/v0
+    id: doc-punch-list
+    title: "Docs — Punch-list story"
+    status: verified
+    visibility: public
+    summary: "Authored documentation: docs/stories/punch-list.md."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "docs/stories/punch-list.md"
+        path: docs/stories/punch-list.md
+    edges:
+      part_of: [product-kitsoki]
+      documents: [feature-punch-list]
+  - schema: kitsoki/tutorial/v0
+    id: tutorial-punch-list
+    title: "Guided tour — Punch-list story"
+    status: verified
+    visibility: public
+    summary: "In-product guided tour, 11 steps, shipped with the app (generated manifest punch-list.ts)."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "Punch-list story — generated tour manifest"
+        path: .artifacts/site-tours/punch-list.ts
+    edges:
+      part_of: [product-kitsoki]
+      teaches: [feature-punch-list]
+  - schema: kitsoki/doc/v0
+    id: doc-review
+    title: "Docs — Video review and feedback"
+    status: verified
+    visibility: public
+    summary: "Authored documentation: docs/tui/video-review.md."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "docs/tui/video-review.md"
+        path: docs/tui/video-review.md
+    edges:
+      part_of: [product-kitsoki]
+      documents: [feature-review]
+  - schema: kitsoki/tutorial/v0
+    id: tutorial-review
+    title: "Guided tour — Video review and feedback"
+    status: verified
+    visibility: public
+    summary: "In-product guided tour, 10 steps, shipped with the app (generated manifest review.ts)."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "Video review and feedback — generated tour manifest"
+        path: .artifacts/site-tours/review.ts
+    edges:
+      part_of: [product-kitsoki]
+      teaches: [feature-review]
+  - schema: kitsoki/doc/v0
+    id: doc-session-media-workbench
+    title: "Docs — Session Media Workbench"
+    status: planned
+    visibility: public
+    summary: "Doc set partially authored (0/1 present): docs/web/session-media-workbench.md."
+    sources: [source-feature-specs]
+    edges:
+      part_of: [product-kitsoki]
+      documents: [feature-session-media-workbench]
+  - schema: kitsoki/tutorial/v0
+    id: tutorial-session-media-workbench
+    title: "Guided tour — Session Media Workbench"
+    status: verified
+    visibility: public
+    summary: "In-product guided tour, 11 steps, shipped with the app (generated manifest session-media-workbench.ts)."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "Session Media Workbench — generated tour manifest"
+        path: .artifacts/site-tours/session-media-workbench.ts
+    edges:
+      part_of: [product-kitsoki]
+      teaches: [feature-session-media-workbench]
+  - schema: kitsoki/doc/v0
+    id: doc-slidey-architect-design
+    title: "Docs — Architect → design on the slidey repo"
+    status: verified
+    visibility: public
+    summary: "Authored documentation: stories/slidey-dev/app.yaml, stories/dev-story/README.md."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "stories/slidey-dev/app.yaml"
+        path: stories/slidey-dev/app.yaml
+      - kind: doc
+        title: "stories/dev-story/README.md"
+        path: stories/dev-story/README.md
+    edges:
+      part_of: [product-kitsoki]
+      documents: [feature-slidey-architect-design]
+  - schema: kitsoki/tutorial/v0
+    id: tutorial-slidey-architect-design
+    title: "Guided tour — Architect → design on the slidey repo"
+    status: verified
+    visibility: public
+    summary: "In-product guided tour, 8 steps, shipped with the app (generated manifest slidey-architect-design.ts)."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "Architect → design on the slidey repo — generated tour manifest"
+        path: .artifacts/site-tours/slidey-architect-design.ts
+    edges:
+      part_of: [product-kitsoki]
+      teaches: [feature-slidey-architect-design]
+  - schema: kitsoki/doc/v0
+    id: doc-slidey-bugfix
+    title: "Docs — Fix a real bug in slidey, end to end"
+    status: verified
+    visibility: public
+    summary: "Authored documentation: stories/slidey-bugfix/app.yaml, stories/bugfix/README.md."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "stories/slidey-bugfix/app.yaml"
+        path: stories/slidey-bugfix/app.yaml
+      - kind: doc
+        title: "stories/bugfix/README.md"
+        path: stories/bugfix/README.md
+    edges:
+      part_of: [product-kitsoki]
+      documents: [feature-slidey-bugfix]
+  - schema: kitsoki/tutorial/v0
+    id: tutorial-slidey-bugfix
+    title: "Guided tour — Fix a real bug in slidey, end to end"
+    status: verified
+    visibility: public
+    summary: "In-product guided tour, 13 steps, shipped with the app (generated manifest slidey-bugfix.ts)."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "Fix a real bug in slidey, end to end — generated tour manifest"
+        path: .artifacts/site-tours/slidey-bugfix.ts
+    edges:
+      part_of: [product-kitsoki]
+      teaches: [feature-slidey-bugfix]
+  - schema: kitsoki/doc/v0
+    id: doc-slidey-decomposition
+    title: "Docs — Design → validated work plan on the slidey repo"
+    status: verified
+    visibility: public
+    summary: "Authored documentation: stories/deliver/app.yaml."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "stories/deliver/app.yaml"
+        path: stories/deliver/app.yaml
+    edges:
+      part_of: [product-kitsoki]
+      documents: [feature-slidey-decomposition]
+  - schema: kitsoki/tutorial/v0
+    id: tutorial-slidey-decomposition
+    title: "Guided tour — Design → validated work plan on the slidey repo"
+    status: verified
+    visibility: public
+    summary: "In-product guided tour, 6 steps, shipped with the app (generated manifest slidey-decomposition.ts)."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "Design → validated work plan on the slidey repo — generated tour manifest"
+        path: .artifacts/site-tours/slidey-decomposition.ts
+    edges:
+      part_of: [product-kitsoki]
+      teaches: [feature-slidey-decomposition]
+  - schema: kitsoki/doc/v0
+    id: doc-slidey-dev-prd-design
+    title: "Docs — PM idea → PRD on the slidey repo"
+    status: verified
+    visibility: public
+    summary: "Authored documentation: stories/slidey-dev/app.yaml, stories/dev-story/README.md."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "stories/slidey-dev/app.yaml"
+        path: stories/slidey-dev/app.yaml
+      - kind: doc
+        title: "stories/dev-story/README.md"
+        path: stories/dev-story/README.md
+    edges:
+      part_of: [product-kitsoki]
+      documents: [feature-slidey-dev-prd-design]
+  - schema: kitsoki/tutorial/v0
+    id: tutorial-slidey-dev-prd-design
+    title: "Guided tour — PM idea → PRD on the slidey repo"
+    status: verified
+    visibility: public
+    summary: "In-product guided tour, 9 steps, shipped with the app (generated manifest slidey-dev-prd-design.ts)."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "PM idea → PRD on the slidey repo — generated tour manifest"
+        path: .artifacts/site-tours/slidey-dev-prd-design.ts
+    edges:
+      part_of: [product-kitsoki]
+      teaches: [feature-slidey-dev-prd-design]
+  - schema: kitsoki/doc/v0
+    id: doc-slidey-open-pr
+    title: "Docs — Open the PR for the slidey fix"
+    status: verified
+    visibility: public
+    summary: "Authored documentation: stories/pr-refinement/app.yaml, stories/pr-refinement/README.md."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "stories/pr-refinement/app.yaml"
+        path: stories/pr-refinement/app.yaml
+      - kind: doc
+        title: "stories/pr-refinement/README.md"
+        path: stories/pr-refinement/README.md
+    edges:
+      part_of: [product-kitsoki]
+      documents: [feature-slidey-open-pr]
+  - schema: kitsoki/tutorial/v0
+    id: tutorial-slidey-open-pr
+    title: "Guided tour — Open the PR for the slidey fix"
+    status: verified
+    visibility: public
+    summary: "In-product guided tour, 10 steps, shipped with the app (generated manifest slidey-open-pr.ts)."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "Open the PR for the slidey fix — generated tour manifest"
+        path: .artifacts/site-tours/slidey-open-pr.ts
+    edges:
+      part_of: [product-kitsoki]
+      teaches: [feature-slidey-open-pr]
+  - schema: kitsoki/doc/v0
+    id: doc-story-editor
+    title: "Docs — The story editor"
+    status: verified
+    visibility: public
+    summary: "Authored documentation: docs/tui/story-editor.md."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "docs/tui/story-editor.md"
+        path: docs/tui/story-editor.md
+    edges:
+      part_of: [product-kitsoki]
+      documents: [feature-story-editor]
+  - schema: kitsoki/tutorial/v0
+    id: tutorial-story-editor
+    title: "Guided tour — The story editor"
+    status: verified
+    visibility: public
+    summary: "In-product guided tour, 14 steps, shipped with the app (generated manifest story-editor.ts)."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "The story editor — generated tour manifest"
+        path: .artifacts/site-tours/story-editor.ts
+    edges:
+      part_of: [product-kitsoki]
+      teaches: [feature-story-editor]
+  - schema: kitsoki/doc/v0
+    id: doc-trace-features
+    title: "Docs — Trace introspection, live"
+    status: verified
+    visibility: public
+    summary: "Authored documentation: docs/tracing/run-status-ui.md."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "docs/tracing/run-status-ui.md"
+        path: docs/tracing/run-status-ui.md
+    edges:
+      part_of: [product-kitsoki]
+      documents: [feature-trace-features]
+  - schema: kitsoki/tutorial/v0
+    id: tutorial-trace-features
+    title: "Guided tour — Trace introspection, live"
+    status: verified
+    visibility: public
+    summary: "In-product guided tour, 18 steps, shipped with the app (generated manifest trace-features.ts)."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "Trace introspection, live — generated tour manifest"
+        path: .artifacts/site-tours/trace-features.ts
+    edges:
+      part_of: [product-kitsoki]
+      teaches: [feature-trace-features]
+  - schema: kitsoki/doc/v0
+    id: doc-trace-introspection
+    title: "Docs — Decision-first trace detail"
+    status: verified
+    visibility: public
+    summary: "Authored documentation: docs/tracing/trace-format.md, docs/tracing/run-status-ui.md."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "docs/tracing/trace-format.md"
+        path: docs/tracing/trace-format.md
+      - kind: doc
+        title: "docs/tracing/run-status-ui.md"
+        path: docs/tracing/run-status-ui.md
+    edges:
+      part_of: [product-kitsoki]
+      documents: [feature-trace-introspection]
+  - schema: kitsoki/tutorial/v0
+    id: tutorial-trace-introspection
+    title: "Guided tour — Decision-first trace detail"
+    status: verified
+    visibility: public
+    summary: "In-product guided tour, 10 steps, shipped with the app (generated manifest trace-introspection.ts)."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "Decision-first trace detail — generated tour manifest"
+        path: .artifacts/site-tours/trace-introspection.ts
+    edges:
+      part_of: [product-kitsoki]
+      teaches: [feature-trace-introspection]
+  - schema: kitsoki/doc/v0
+    id: doc-weather-report
+    title: "Docs — Weather & Climate (Starlark host)"
+    status: verified
+    visibility: public
+    summary: "Authored documentation: docs/architecture/hosts/local.md, docs/architecture/hosts.md."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "docs/architecture/hosts/local.md"
+        path: docs/architecture/hosts/local.md
+      - kind: doc
+        title: "docs/architecture/hosts.md"
+        path: docs/architecture/hosts.md
+    edges:
+      part_of: [product-kitsoki]
+      documents: [feature-weather-report]
+  - schema: kitsoki/tutorial/v0
+    id: tutorial-weather-report
+    title: "Guided tour — Weather & Climate (Starlark host)"
+    status: verified
+    visibility: public
+    summary: "In-product guided tour, 11 steps, shipped with the app (generated manifest weather-report.ts)."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "Weather & Climate (Starlark host) — generated tour manifest"
+        path: .artifacts/site-tours/weather-report.ts
+    edges:
+      part_of: [product-kitsoki]
+      teaches: [feature-weather-report]
+  - schema: kitsoki/tutorial/v0
+    id: tutorial-web-inbox
+    title: "Guided tour — The async inbox"
+    status: verified
+    visibility: public
+    summary: "In-product guided tour, 9 steps, shipped with the app (generated manifest web-inbox.ts)."
+    sources: [source-feature-specs]
+    evidence:
+      - kind: doc
+        title: "The async inbox — generated tour manifest"
+        path: .artifacts/site-tours/web-inbox.ts
+    edges:
+      part_of: [product-kitsoki]
+      teaches: [feature-web-inbox]
+  - created_at: "2026-07-12T13:13:18Z"
+    id: cs-1
+    operations:
+      - after:
+          edges: {}
+          id: feature-migrate-touroverlay-vue-onto-tools-tour-player
+          schema: kitsoki/feature/v0
+          sources:
+            - source-plan
+          status: planned
+          summary: Rework tools/runstatus's TourOverlay.vue into a thin wrapper over the new framework-free tools/tour-player library, per the browser-mcp/tour implementation brief's remaining follow-ups.
+          title: Migrate TourOverlay.vue onto tools/tour-player
+          visibility: internal
+        kind: added
+    schema: graph/changeset/v1
+    status: proposed
+    title: 'Add Features: Migrate TourOverlay.vue onto tools/tour-player'
+    visibility: internal
+  - authored_by: agent:portal-graph-chat
+    created_at: "2026-07-12T22:34:19Z"
+    id: cs-2
+    operations:
+      - after:
+          edges:
+            part_of:
+              - product-kitsoki
+          fields:
+            summary: Absorb tools/frontend-mockup-mcp mockup_tour_start/step/export and act-to-click-fallback capabilities into tools/browser-mcp, per the remaining follow-up named in .context/2026-07-12-browser-mcp-tour-implementation-brief.md; only the duplicated harness LLM-client bridge was retired so far.
+          id: feature-browser-mcp-absorb-mockup-tools
+          schema: kitsoki/feature/v0
+          sources:
+            - source-feature-specs
+          status: planned
+          title: Fold frontend-mockup-mcp browser-driving tools onto tools/browser-mcp
+          type_id: feature
+          visibility: internal
+        kind: added
+    schema: graph/changeset/v1
+    status: proposed
+    title: 'Add Feature: Fold frontend-mockup-mcp browser-driving tools onto tools/browser-mcp'
+    visibility: internal
+  - authored_by: agent:portal-graph-chat
+    created_at: "2026-07-12T22:36:53Z"
+    id: cs-3
+    operations:
+      - after:
+          id: feature-smoke-glm
+          part_of: product-kitsoki
+          status: planned
+          summary: Smoke-test entity for validating multi-model chat robustness across kitsoki's LLM operator layer.
+          title: Multi-model smoke test (glm-5.2)
+          type: feature
+        kind: added
+    schema: graph/changeset/v1
+    status: proposed
+    title: 'Add Feature: Multi-model smoke test (glm-5.2)'
+    visibility: internal
+  - authored_by: agent:portal-graph-chat
+    created_at: "2026-07-12T22:37:16Z"
+    id: cs-4
+    operations:
+      - after:
+          id: feature-smoke-luna
+          part_of: product-kitsoki
+          status: planned
+          summary: A smoke-test entity that validates multi-model chat robustness by exercising the gpt-5.6-luna model end-to-end through kitsoki's operator pipeline.
+          title: Multi-model smoke test (gpt-5.6-luna)
+          type: feature
+        kind: added
+    schema: graph/changeset/v1
+    status: proposed
+    title: 'Add feature-smoke-luna: Multi-model smoke test (gpt-5.6-luna)'
+    visibility: internal
+  - authored_by: agent:portal-graph-chat
+    created_at: "2026-07-12T22:45:11Z"
+    id: cs-5
+    operations:
+      - after:
+          id: feature-constructor-studio
+          part_of: product-kitsoki
+          status: planned
+          summary: An interactive mockup editing environment that supports both static (still-frame) and demo-video output styles, letting authors compose, annotate, and iterate on mockups without leaving kitsoki.
+          title: Constructor Studio — interactive mockup editing
+          type: feature
+        kind: added
+    schema: graph/changeset/v1
+    status: proposed
+    title: 'Add feature-constructor-studio: Interactive mockup editing (static + demo video)'
+    visibility: internal
+  - created_at: "2026-07-13T04:56:34Z"
+    id: cs-6
+    operations:
+      - after:
+          fields:
+            edges:
+              part_of:
+                - product-kitsoki
+            summary: Once Kitsoki queue and graph-claim APIs are available, Slidey must require claim -> capsule workspace -> capsule-ci receipt -> queue submit -> steward landing, with direct-to-main and double-claim refusal.
+          id: req-slidey-capsule-queue-adoption
+          schema: kitsoki/requirement/v0
+          sources:
+            - slidey/.context/parallel-agent-gitflow-slidey-brief.md
+          status: proposed
+          title: Slidey agent landing must use claimed capsules and queue receipts
+          type_id: requirement
+          visibility: internal
+        kind: added
+      - after:
+          fields:
+            edges:
+              part_of:
+                - product-kitsoki
+            summary: The Slidey adopter envelope must declare which deterministic checks run for each changed-path class and reject unknown or stale path-scope entries instead of silently widening the gate.
+          id: req-slidey-ci-path-scope-contract
+          schema: kitsoki/requirement/v0
+          sources:
+            - slidey/.context/parallel-agent-gitflow-slidey-brief.md
+          status: proposed
+          title: Capsule CI must expose a validated project path-scope contract
+          type_id: requirement
+          visibility: internal
+        kind: added
+    schema: graph/changeset/v1
+    status: proposed
+    title: Slidey parallel-agent gitflow adoption requirements
+    visibility: internal
+  - authored_by: pog-gitflow-brief
+    created_at: "2026-07-13T05:14:12Z"
+    id: cs-7
+    operations:
+      - after:
+          fields:
+            edges:
+              part_of:
+                - product-kitsoki
+            summary: 'Parallel agents clobber each other in git today: lost work, rebase-test-ff-fail race loops, duplicate work on the same node, free-form launches that bypass launch policy and commit to main. Target load: a 24/7 GX10 workstation running decomposed single-shot inference at high parallelism, fronted by a federated queue on Brad''s workstation. Kitsoki ships the engine primitives (merge queue, graph-claim semantics, launch enforcement, capsule workspace generalization, disk-pressure lifecycle); POG, slidey, and studio-sassfully are adopters. Ruled decisions (2026-07-13): D-Q1 queue is a first-class `kitsoki queue` subcommand; D-Q2 capsule workspaces are the fleet standard ASAP, .worktrees/ deprecated; D-Q3 claims have no fixed TTL, best-effort dead-agent detection with zombie-wins arbitration on return; D-Q4 federated queues route to multiple execution backends from day one.'
+          id: program-parallel-agent-gitflow
+          schema: kitsoki/program/v0
+          sources:
+            - .context/parallel-agent-gitflow-kitsoki-brief.md
+          status: in-progress
+          title: Parallel-agent gitflow
+          type_id: program
+          visibility: internal
+        kind: added
+      - after:
+          fields:
+            edges:
+              part_of:
+                - program-parallel-agent-gitflow
+            gate: A red-team script (template shipped in the pack as scripts/launch-policy-gate.sh) that attempts (a) bare checkout of a main-adjacent branch in the primary checkout, (b) direct commit to main, (c) agent launch from repo root, (d) file write into a sibling repo — all must be refused; exit 0 only when all blocked.
+            summary: 'Day-one enforcement: the conventions pack must install, together, in any consumer repo: the reference-transaction git hook (pin primary checkout to main tip), .claude/hooks/block-bare-checkout.sh, .claude/settings.json PreToolUse wiring, and a seeded agent_launch_policy: block for .kitsoki.local.yaml, via one make setup-style entrypoint. claude/codex shell aliases plus KITSOKI_AGENT_{CLAUDE,CODEX,...}_BIN shims route every launch through `kitsoki agent launch --exec` with a repo-default profile; a bare `claude` in a protected root must refuse to start with a teaching-shaped error. Launch policy protected_roots covers sibling repo paths; agents needing a foreign-repo change graph_propose a requirement/bug into that repo''s federated catalog instead. POG-side observation (2026-07-13): `kitsoki agent launch` already enforces agent_launch_policy protected_roots today (confirmed via a red-team gate run in POG), and `capsule ci` / `capsule workspace` subcommands already ship — what''s still open is the canonical pack-template distribution (POG hand-ported the hooks as a stopgap) and the claude/codex alias shims.'
+          id: phase-k1-enforcement-layer
+          schema: kitsoki/phase/v0
+          sources:
+            - .context/parallel-agent-gitflow-kitsoki-brief.md
+          status: in-progress
+          title: K1 — Enforcement layer
+          type_id: phase
+          visibility: internal
+        kind: added
+      - after:
+          fields:
+            edges:
+              after:
+                - phase-k1-enforcement-layer
+              part_of:
+                - program-parallel-agent-gitflow
+            gate: Adversarial flow tests — two candidates with conflicting hunks submitted concurrently land exactly one and eject the other with evidence; ten path-disjoint candidates land in bounded time with fewer full-gate runs than candidates.
+            summary: '`queue submit` takes a candidate = branch + passing capsule-ci-receipt/v1 bound to the exact candidate SHA. A serializer constructs the speculative merge state (queue-head = main + all queued candidates ahead), runs the gate against that predicted post-merge tree, and fast-forwards main only on green; a red candidate is ejected with the failing evidence attached as a typed rejection. Reuses capsule workspaces for the speculative build, receipts as the admission ticket, and the provider quota: .lock pattern for the queue''s single-writer lock. Smart change detection skips the full gate when a candidate''s changed-path set is path-disjoint from everything queued ahead, keyed by a per-check path-scope manifest consumer repos declare. Federated backend seam (D-Q4): job to backend routing plus a subscription/dispatch protocol so Brad''s workstation queue can dispatch to VM/GX10/Docker/native subscribers. POG-side observation (2026-07-13): only `kitsoki chat queue {add,list,dismiss,dispatch}` exists today — no top-level `kitsoki queue` subcommand found in cmd/kitsoki/*.go.'
+          id: phase-k2-queue-primitive
+          schema: kitsoki/phase/v0
+          sources:
+            - .context/parallel-agent-gitflow-kitsoki-brief.md
+          status: planned
+          title: K2 — kitsoki queue (new primitive)
+          type_id: phase
+          visibility: internal
+        kind: added
+      - after:
+          fields:
+            edges:
+              after:
+                - phase-k1-enforcement-layer
+              part_of:
+                - program-parallel-agent-gitflow
+            gate: 'Extend graph-mcp-changeset-acceptance.sh: double-claim refused; claim steal after simulated holder death; zombie-return arbitration (zombie work accepted, replacement cancelled); cross-repo requirement lands as a proposed node in the foreign catalog.'
+            summary: 'Add claim semantics on graph nodes: graph_claim/graph_release (or a claim op inside graph_apply) — lifecycle flip with provenance via the existing direct-writes-with-provenance channel. Claims carry actor + branch + liveness handle; a second claim on a live node is refused with a pointer to the holder. Dead-agent detector per D-Q3: heartbeat/liveness best effort; on presumed death the claim transfers. Zombie-return arbitration: the zombie''s candidate wins, the replacement is cancelled — the queue/claim registry decides, no steward sign-off needed. Steward remains the only authorize/apply authority; fleet agents run --mode propose with --actor stamped by the launcher. The same liveness signal drives the workspace reaper (K4). POG-side observation (2026-07-13): no graph_claim/graph_release tool or cobra command found anywhere in the Kitsoki source or the live MCP tool surface.'
+          id: phase-k3-graph-claims-dead-detection
+          schema: kitsoki/phase/v0
+          sources:
+            - .context/parallel-agent-gitflow-kitsoki-brief.md
+          status: planned
+          title: K3 — Graph MCP claims + dead detection
+          type_id: phase
+          visibility: internal
+        kind: added
+      - after:
+          fields:
+            edges:
+              after:
+                - phase-k2-queue-primitive
+              part_of:
+                - program-parallel-agent-gitflow
+            gate: Disk-pressure drill — fill toward threshold, verify the reaper reclaims orphans/caches/temp automatically and the queue refuses admission until headroom returns; a marathon run ends with no net workspace/temp growth.
+            summary: 'First-class, not cleanup-later — the disk fills 2-3x/day and breaks fleets as reliably as git races. Lease + reap: every workspace/capsule the fleet creates has an owner + liveness signal; a reaper continuously removes workspaces whose owner is dead and whose branch is landed or ejected. Budgeted caches: per-repo cache roots get size caps + LRU eviction; capsule environments/ci.yaml locked caches declare a max size the reconciler enforces. Session-scoped temp: agent launches get a per-run temp dir the launcher deletes on exit and the reaper deletes on dead-owner detection. Disk as admission signal: queue and launcher check free-space headroom before a speculative build or launch, running the reaper first and refusing admission if still insufficient. POG-side observation (2026-07-13): capsule workspace {create,list,status,exec,commit,integrate,close} is already generic and usable from a consumer repo, and a manual `kitsoki capsule cleanup plan|apply` exists (count/age heuristics), but Instance.Lease/ExpiresAt fields exist with nothing enforcing or continuously reaping them yet — this is what currently blocks POG''s marathon-grade disk-safety gate.'
+          id: phase-k4-disk-pressure-lifecycle
+          schema: kitsoki/phase/v0
+          sources:
+            - .context/parallel-agent-gitflow-kitsoki-brief.md
+          status: in-progress
+          title: K4 — Disk-pressure lifecycle
+          type_id: phase
+          visibility: internal
+        kind: added
+      - after:
+          fields:
+            edges:
+              after:
+                - phase-k4-disk-pressure-lifecycle
+              part_of:
+                - program-parallel-agent-gitflow
+            gate: 'Runs in POG, needs K1-K4: dogfood-marathon run — N>=8 parallel workers through the queue on real POG backlog nodes; measure gate runs per landed change, duplicate-work incidents (target 0), main green throughout.'
+            summary: 'A stories_first posture on agent launch profiles (system-prompt overlay + tool allowlist) so claude-backed workers reach for `kitsoki run <story>` before ad-hoc bash. Generalize the kitsoki-mcp-driver pattern: worker profiles whose tool surface is graph MCP + the relevant story, nothing else. Where a task decomposes to classify/extract/patch, run story rooms making single-shot inference calls (deterministic Starlark backbone, LLM only at judgment points). Smaller/faster models per room via harness_profiles.models + effort; the quota: bucket already arbitrates spend.'
+          id: phase-k5-decomposed-single-shot-posture
+          schema: kitsoki/phase/v0
+          sources:
+            - .context/parallel-agent-gitflow-kitsoki-brief.md
+          status: planned
+          title: K5 — Decomposed single-shot posture (GX10 efficiency)
+          type_id: phase
+          visibility: internal
+        kind: added
+    schema: graph/changeset/v1
+    status: proposed
+    title: Model parallel-agent gitflow (K1-K5) as a program with phases
+    visibility: internal
+  - authored_by: pog-gitflow-brief
+    created_at: "2026-07-13T05:17:05Z"
+    id: cs-8
+    operations:
+      - after:
+          fields:
+            edges:
+              part_of:
+                - product-kitsoki
+            summary: 'Brad (2026-07-13): ''we need to be able to propose edges and nodes together, across different repos as a unified changeset with the saga pattern for merge failures/rejections/revisions.'' Motivating case: this same session filed program-parallel-agent-gitflow + phase-k1..k5 into this catalog (cs-7) and three separate upstream-ask nodes into POG''s own pog-program-catalog (cs-6/7/8), with zero structural linkage between the two catalogs -- only prose cross-references that can drift as either side''s ids or content change independently, since edge_fields target_type resolves only within one catalog''s own node id space today. Requirement: (1) a federated changeset that stages node+edge operations across N named catalog aliases (per the mcp-graph server''s --catalog stringArray binding model) as one logical proposal, validated across all member catalogs before any commits -- extending today''s single-catalog validate_only guarantee to the whole federation; (2) a first-class cross-catalog edge reference (e.g. {catalog: alias, id: node-id}) so graph lint can check referential integrity across repos instead of falling back to unvalidated prose in summary/sources; (3) saga/compensation semantics for apply -- each catalog''s apply is a separate commit in a separate repo''s working tree, so a cross-catalog changeset''s apply needs a defined leg order plus automatic compensation (auto-withdraw/revert an already-applied leg, or a clearly surfaced partial-saga state with a retry/reconcile path) when a later leg is rejected by its own steward, fails post-apply lint, or hits a git merge conflict on the underlying catalog file; (4) a revision path so a partially-rejected saga''s surviving leg can be reopened/amended without restarting the whole proposal. Twin filed into POG''s own catalog as ask-federated-changeset-saga.'
+          id: req-federated-changeset-saga
+          schema: kitsoki/requirement/v0
+          sources:
+            - .context/parallel-agent-gitflow-kitsoki-brief.md
+          status: proposed
+          title: Federated (cross-catalog) changesets with saga-pattern rollback
+          type_id: requirement
+          visibility: internal
+        kind: added
+    schema: graph/changeset/v1
+    status: proposed
+    title: Federated (cross-catalog) changesets with saga-pattern rollback for graph_propose/apply
+    visibility: internal
+  - authored_by: pog-gitflow-brief
+    created_at: "2026-07-13T05:52:30Z"
+    id: cs-9
+    operations:
+      - after:
+          fields:
+            edges:
+              part_of:
+                - product-kitsoki
+            summary: 'An agent finishing a proposed changeset (or any artifact) needs a fire-and-forget way to hand it to the human steward: "here''s a link, go review and approve." Today''s closest primitives are mcp__operator__ask (synchronous, blocks for an answer, requires a live operator surface already attached — wrong shape for hand-off-and-continue) and feedback_report (durable + async, but pull-only: a human has to think to run feedback_list, and has no typed link/ref field — callers stuff a URL into the freeform `extra` map). POG-side observation (2026-07-13): built a workable-today version in POG by composing feedback_report (anchor.changeset + extra.link) with Claude Code''s own PushNotification tool, plus a new portal deep link (`#review=<changeset-id>` on CatalogPanel.vue, opens ReviewQueuePanel.vue pre-expanded/re-validated/scrolled to that row) — see AGENTS.md "Review handoff" section in POG. Requesting Kitsoki formalize the missing piece: (1) a typed `link`/`ref` field on feedback_report instead of prose-in-extra, and/or (2) an async non-blocking mode on the operator-ask bridge (queue-and-return instead of block-until-answered) so a fleet agent with no attached operator surface still gets a durable, structured hand-off instead of nothing.'
+          id: req-review-handoff-notification
+          schema: kitsoki/requirement/v0
+          sources:
+            - POG parallel-agent-gitflow brief, 2026-07-13
+          status: proposed
+          title: 'Review-handoff notification: async, link-carrying "go review and approve" primitive'
+          visibility: internal
+        kind: added
+    schema: graph/changeset/v1
+    status: proposed
+    title: 'Review-handoff notification: async, link-carrying "go review and approve" primitive'
+    visibility: internal
+  - authored_by: claude/pog-convergence
+    created_at: "2026-07-14T04:47:25Z"
+    id: cs-10
+    operations:
+      - after:
+          edges:
+            part_of:
+              - product-kitsoki
+          fields:
+            summary: 'Ruled by Brad 2026-07-14 (parallel-agent gitflow convergence): `kitsoki agent launch` must offer a "raw agent" mode that grants a full-power agent — MCPs + bash + direct filesystem read/write — as a sanctioned last resort when the governed story/capsule path cannot do the job. It must stay a last resort: every raw launch records why the governed path was insufficient (a typed feedback/requirement node filed at launch or exit, not optional prose), so each use sparks a concrete improvement that makes that workaround unnecessary next time. The existing `--raw --interactive` pass-through (policy-checked native CLI launch) is adjacent but does not carry the mandatory improvement-filing loop; the requirement is the loop, not just the flag. Non-goal: raw mode must still pass agent_launch_policy preflight (protected roots/branches) — raw relaxes the tool surface, not git discipline.'
+          id: req-agent-launch-raw-mode-improvement-loop
+          schema: kitsoki/requirement/v0
+          status: proposed
+          title: kitsoki agent launch provides a raw full-power mode whose every use must spark an improvement
+          type_id: requirement
+          visibility: internal
+        kind: added
+    schema: graph/changeset/v1
+    status: proposed
+    title: 'Raw-agent launch mode: sanctioned last-resort escape hatch that files its own obsolescence'
+    visibility: internal

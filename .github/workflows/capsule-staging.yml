@@ -1,0 +1,38 @@
+name: Capsule staging gate
+
+on:
+  push:
+    branches: ['staging/**']
+  pull_request:
+    branches: ['staging/**']
+  workflow_dispatch:
+
+concurrency:
+  group: capsule-staging-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  quick:
+    name: Capsule CI quick gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: tools/runstatus/pnpm-lock.yaml
+      - name: Run no-spend staging gate
+        env:
+          KITSOKI_CASSETTE_STRICT: '1'
+        run: make capsule-ci-quick

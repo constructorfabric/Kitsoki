@@ -1,0 +1,28 @@
+name: visual-story-two-revisions
+source:
+  synthetic: true
+  default_branch: main
+  steps:
+    - action: write
+      path: stories/demo/app.yaml
+      content: |
+        scene: one
+    - action: commit
+      message: one
+    - action: write
+      path: stories/demo/app.yaml
+      content: |
+        scene: two
+    - action: commit
+      message: two
+network: none
+verify:
+  probes:
+    - name: two-revisions
+      run: test "$(git rev-list --count HEAD)" = "2"
+      expect: zero
+    - name: clean-tree
+      run: git diff --quiet && git diff --cached --quiet
+      expect: zero
+scenario:
+  kind: git-flow

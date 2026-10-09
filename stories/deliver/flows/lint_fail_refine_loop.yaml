@@ -1,0 +1,37 @@
+# lint_fail_refine_loop — lint fail → decompose re-arms with refine_feedback
+# → second manifest passes → review accepts → fleet.load.
+#
+# Proves the B2b refine loop (proposal task 2.1/2.3): a lint failure no
+# longer hard-exits to @exit:needs-human; it routes back to decompose with
+# the specific lint error as refine_feedback and refine_cycle incremented,
+# decompose re-runs (once: bind cleared), and the second manifest lints
+# clean.
+#
+# The decomposer's mocked structured output is identical on both entries
+# (it only feeds the decomposition_briefs bind / once: guard); the manifest
+# CONTENT lint actually validates comes from the sequential
+# starlark_inspect_cassette reads below — first a dangling dep (fail),
+# then the same brief with the dep removed (pass).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: configure
+initial_world:
+  base_branch: main
+  main_worktree_path: "."
+
+host_cassette: ../cassettes/lint_fail_refine_loop.cassette.yaml
+starlark_inspect_cassette: ../cassettes/lint_fail_refine_loop.inspect.yaml
+
+turns:
+  - intent:
+      name: start
+      slots:
+        epic_path: "stories/deliver/testdata/fixture_epic.md"
+    expect_state: fleet.load
+    expect_world:
+      lint_route:      "ok"
+      refine_cycle:    1
+      refine_feedback: "brief 'slice-1' has dep 'slice-0' which is not a known brief id"
+
+expect_no_errors: true

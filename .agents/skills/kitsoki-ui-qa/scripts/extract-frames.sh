@@ -68,7 +68,10 @@ emit floor "fps=1/${interval}"
 pair_list="$tmp/pairs.tsv"; : > "$pair_list"
 collect() { # <subdir>
   local d="$tmp/$1" i=0 f
-  mapfile -t pts < <(grep -o 'pts_time:[0-9.]*' "$d/log" | sed 's/pts_time://')
+  local pts=()
+  while IFS= read -r pt; do
+    [ -n "$pt" ] && pts+=( "$pt" )
+  done < <(grep -o 'pts_time:[0-9.]*' "$d/log" | sed 's/pts_time://')
   for f in "$d"/*.png; do
     [ -e "$f" ] || continue
     printf '%s\t%s\n' "${pts[$i]:-0}" "$f" >> "$pair_list"

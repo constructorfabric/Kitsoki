@@ -1,0 +1,55 @@
+# greeter — the synthetic-kit's sole provided story. Standalone-loadable
+# (runs to a synthesised __exit__done terminal state when no parent maps the
+# exit) and importable, exercising world_in, host_interfaces default binding,
+# and exit mapping the same way testdata/apps/imports_smoke/sub_story does.
+app:
+  id: kit-synthetic-greeter
+  version: 0.1.0
+
+hosts:
+  - host.run
+
+host_interfaces:
+  reporter:
+    description: "Print a status line."
+    operations:
+      announce:
+        input: { message: string }
+        output: { ok: bool }
+    default: host.run
+
+world:
+  greeting: { type: string, default: "hello" }
+
+intents:
+  start:
+    description: "Begin the greeting."
+    examples: ["start", "go"]
+  finish:
+    description: "Finish."
+
+exports:
+  intents: [start]
+
+exits:
+  done:
+    description: "Finished greeting."
+
+root: idle
+
+states:
+  idle:
+    description: "Ready. {{ world.greeting }}"
+    view: |
+      {{ world.greeting }}! Ready.
+    on:
+      start:
+        - target: working
+
+  working:
+    description: "Greeting in progress. {{ world.greeting }}"
+    view: |
+      Working: {{ world.greeting }}.
+    on:
+      finish:
+        - target: "@exit:done"

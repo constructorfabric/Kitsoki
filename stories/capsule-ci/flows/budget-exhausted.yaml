@@ -1,0 +1,33 @@
+test_kind: flow
+app: capsule-ci
+initial_state: llm_review
+initial_world:
+  ci_job_id: job-budget
+  ci_pipeline: change
+  ci_review_cycle: 2
+  ci_review_budget: 2
+turns:
+  - intent: { name: refine_requested, slots: { feedback: "needs another edit" } }
+    expect_state: parked
+    expect_world:
+      ci_outcome: needs_input
+      ci_verdict:
+        schema: capsule-ci-verdict/v1
+        pipeline: change
+        outcome: needs_input
+        summary: "Review requested more refinement than the configured Capsule CI budget."
+        checks:
+          - id: deterministic
+            kind: deterministic
+            outcome: passed
+            evidence: ["capsule-ci:deterministic"]
+          - id: review-budget
+            kind: policy
+            outcome: failed
+            decision_ref: capsule-ci:budget
+        promotion_eligible: false
+        source_digest: null
+        story_digest: null
+        environment_digest: null
+        envelope_digest: null
+expect_no_errors: true

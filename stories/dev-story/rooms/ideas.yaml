@@ -9,7 +9,7 @@
 # backed by concrete evidence — plus a few writer's-block candidates.
 #
 # The decide is interpretation; the MUTATION is deterministic — `apply` hands
-# the persisted report to scripts/ideas_reconcile.py, which rewrites ideas.md
+# the persisted report to scripts/ideas_reconcile.star, which rewrites ideas.md
 # (the same decide→script discipline as the proposal slug step). The operator
 # confirms the moves first (this is a gate, not auto-apply).
 #
@@ -121,16 +121,19 @@ states:
       apply:
         - target: .
           effects:
-            - invoke: host.run
+            - invoke: host.starlark.run
               id: reconcile
               with:
-                cmd: python3
-                args:
-                  - "stories/dev-story/scripts/ideas_reconcile.py"
-                  - "{{ world.ideas_path }}"
-                  - "{{ world.ideas_review_path }}"
+                script: scripts/ideas_reconcile.star
+                capabilities:
+                  fs:
+                    read: ["**"]
+                    write: ["**"]
+                inputs:
+                  ideas_path:  "{{ world.ideas_path }}"
+                  review_path: "{{ world.ideas_review_path }}"
               bind:
-                ideas_apply_result: "stdout_json"
+                ideas_apply_result: "result"
               on_error: .
             - say: "Applied the section moves to {{ world.ideas_path }} — `regenerate` to re-scan the rewritten backlog."
 

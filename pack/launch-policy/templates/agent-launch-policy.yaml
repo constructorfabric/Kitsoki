@@ -1,0 +1,10 @@
+# Installed by Kitsoki's launch-policy pack. This file is machine-local because
+# protected roots depend on the operator's checkout layout.
+agent_launch_policy:
+  enabled: true
+  require_capsule: false
+  protected_roots:
+{{PROTECTED_ROOTS}}
+  protected_branches: [main]
+  allowed_roots:
+    - .capsules/workspaces

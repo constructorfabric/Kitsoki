@@ -46,11 +46,16 @@ the fan-out mechanics.
 
 ## `deliver`
 
-`deliver` is the author-facing entry point above `fleet`. It takes an epic,
-asks for or creates a decomposition manifest, runs the deterministic linter, and
-routes into `fleet.load` when the manifest is valid. This is the practical,
-shipped path that covers the earlier work-decomposition proposal's simpler
-validated-manifest lane.
+`deliver` is the author-facing entry point above `fleet`, and the canonical
+decomposition story: it takes an accepted epic, decomposes it into briefs
+(with a budgeted refine loop and an adversarial review gate), lints the
+result, and routes into `fleet.load` when the manifest is valid. It is also
+reachable directly from `stories/dev-story/` as the decompose-vs-direct
+sibling of the plain `impl` pipeline. See
+[`deliver.md`](deliver.md) for the full narrative (story graph, manifest
+contract, dev-story integration, per-surface proofs) and
+[`stories/deliver/README.md`](../../stories/deliver/README.md) for the
+room-by-room reference.
 
 ## Validation
 

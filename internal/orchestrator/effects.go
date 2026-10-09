@@ -87,6 +87,17 @@ func (o *Orchestrator) dispatchBackground(
 		},
 	}
 
+	// Thread the parent session id onto the job's context. The scheduler derives
+	// the handler ctx via context.WithoutCancel(ctx), which preserves values — so
+	// stamping it here makes host.WithKitsokiSessionID visible inside the background
+	// handler. Without this a background host.agent.task (background: true) runs with
+	// an empty kitsokiSessionIDFromCtx (the studio process env has no
+	// KITSOKI_SESSION_ID), which silently disabled the deterministic maker-seed
+	// backstop and dropped trace-continuity/lineage for the spawned subprocess. The
+	// foreground turn already carries this seam (session_runtime.go); background
+	// dispatch must too — principle of least surprise.
+	ctx = host.WithKitsokiSessionID(ctx, string(sid))
+
 	jobID, err := o.scheduler.Submit(ctx, spec)
 	if err != nil {
 		return nil, w, fmt.Errorf("dispatchBackground: scheduler.Submit: %w", err)
@@ -112,11 +123,11 @@ func (o *Orchestrator) dispatchBackground(
 			break
 		}
 	}
-	w.Vars[bindKey] = jobID
+	w.Set(bindKey, jobID)
 
 	// Always keep last_job_id up to date even if a custom key was used.
 	if bindKey != "last_job_id" {
-		w.Vars["last_job_id"] = jobID
+		w.Set("last_job_id", jobID)
 	}
 
 	// dispatchBackground always binds the job ID under bindKey AND under
@@ -124,13 +135,9 @@ func (o *Orchestrator) dispatchBackground(
 	// separate EffectApplied for each key so that on replay both are
 	// restored.  When bindKey == "last_job_id" a single event covers both.
 	var events []store.Event
-	events = append(events, newOrchestratorEvent(store.EffectApplied, map[string]any{
-		"set": map[string]any{bindKey: jobID},
-	}, 0))
+	events = append(events, newOrchestratorEvent(store.EffectApplied, operationWorldUpdatePayload(w, "set", map[string]any{bindKey: jobID}), 0))
 	if bindKey != "last_job_id" {
-		events = append(events, newOrchestratorEvent(store.EffectApplied, map[string]any{
-			"set": map[string]any{"last_job_id": jobID},
-		}, 0))
+		events = append(events, newOrchestratorEvent(store.EffectApplied, operationWorldUpdatePayload(w, "set", map[string]any{"last_job_id": jobID}), 0))
 	}
 	events = append(events, newOrchestratorEvent(store.JobSubmitted, map[string]any{
 		"namespace": hc.Namespace,

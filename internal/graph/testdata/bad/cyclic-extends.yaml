@@ -1,0 +1,9 @@
+schema: project-object-graph/seed-catalog/v0
+type_registry:
+  - id: type-a
+    schema: graph-type/v0
+    extends: type-b
+  - id: type-b
+    schema: graph-type/v0
+    extends: type-a
+nodes: []

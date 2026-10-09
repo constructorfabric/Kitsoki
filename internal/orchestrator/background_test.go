@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"kitsoki/internal/app"
+	"kitsoki/internal/clock"
 	"kitsoki/internal/host"
 	"kitsoki/internal/inbox"
 	"kitsoki/internal/jobs"
@@ -17,6 +18,60 @@ import (
 	"kitsoki/internal/orchestrator"
 	"kitsoki/internal/store"
 )
+
+func TestTimeoutCancelJobStopsBackgroundWork(t *testing.T) {
+	def := &app.AppDef{
+		App:     app.AppMeta{ID: "timeout-cancel-job"},
+		Root:    "init",
+		Hosts:   []string{"host.test.block"},
+		World:   map[string]app.VarDef{"last_job_id": {Type: "string", Default: ""}},
+		Intents: map[string]app.Intent{"enter": {Title: "Enter"}},
+		States: map[string]*app.State{
+			"init": {View: app.LegacyView("init"), On: map[string][]app.Transition{"enter": {{Target: "working"}}}},
+			"working": {
+				View:    app.LegacyView("working"),
+				Timeout: &app.TimeoutDef{After: "1s", Target: "timed_out", CancelJob: true},
+				OnEnter: []app.Effect{{Invoke: "host.test.block", Background: true, Bind: map[string]string{"last_job_id": "job_id"}}},
+			},
+			"timed_out": {Terminal: true, View: app.LegacyView("timed out")},
+		},
+	}
+	m, err := machine.New(def)
+	require.NoError(t, err)
+	s, err := store.OpenMemory()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+	jobStore, err := jobs.NewJobStore(s.DB())
+	require.NoError(t, err)
+	sched := jobs.NewScheduler(jobStore)
+	reg := host.NewRegistry()
+	started := make(chan struct{})
+	reg.Register("host.test.block", func(ctx context.Context, _ map[string]any) (host.Result, error) {
+		close(started)
+		<-ctx.Done()
+		return host.Result{}, ctx.Err()
+	})
+	clk := clock.NewFake(time.Unix(0, 0))
+	orch := orchestrator.New(def, m, s, &staticHarness{intentName: "enter"}, orchestrator.WithClock(clk), orchestrator.WithHostRegistry(reg), orchestrator.WithScheduler(sched), orchestrator.WithJobStore(jobStore))
+	sid, err := orch.NewSession(context.Background())
+	require.NoError(t, err)
+	_, err = orch.Turn(context.Background(), sid, "enter")
+	require.NoError(t, err)
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("background job did not start")
+	}
+	journey, err := orch.LoadJourney(sid)
+	require.NoError(t, err)
+	jobID, _ := journey.World.Vars["last_job_id"].(string)
+	require.NotEmpty(t, jobID)
+	clk.Advance(2 * time.Second)
+	require.Eventually(t, func() bool {
+		job, found := sched.Get(jobID)
+		return found && job.Status == jobs.JobCancelled
+	}, time.Second, time.Millisecond, "timeout must cancel the running background job")
+}
 
 // TestBackgroundJobEndToEnd verifies the full background-job lifecycle:
 //  1. A Turn that transitions INTO "lobby" fires lobby's on_enter: background:
@@ -288,6 +343,92 @@ func TestCustomBind_LastJobIDReplay(t *testing.T) {
 	}
 	require.True(t, foundMyKey, "EffectApplied{set:{my_key:...}} must be in event log")
 	require.True(t, foundLastJobID, "EffectApplied{set:{last_job_id:...}} must be in event log")
+}
+
+// TestBackgroundJob_ThreadsKitsokiSessionID guards the goal-seeker dogfood
+// blocker (2026-07-04): a `background: true` host effect must run with the parent
+// session id reachable via host.KitsokiSessionIDFromCtx, exactly like a foreground
+// turn. Before the fix the scheduler derived the job ctx via WithoutCancel(ctx)
+// but the dispatch ctx never carried the WithKitsokiSessionID seam (only
+// AgentCallCtx), and the studio process env has no KITSOKI_SESSION_ID — so the job
+// handler saw an empty session id. That silently disabled host.agent.task's
+// deterministic maker-seed backstop (RegisterPendingSeedFromTaskArgs bailed on the
+// empty id), stranding every background maker with an empty ticket_id. This runs a
+// real background job and asserts the handler sees the session id.
+func TestBackgroundJob_ThreadsKitsokiSessionID(t *testing.T) {
+	def := &app.AppDef{
+		App:   app.AppMeta{ID: "bg-sid-test"},
+		Root:  "init",
+		Hosts: []string{"host.test.capture"},
+		World: map[string]app.VarDef{
+			"last_job_id": {Type: "string", Default: ""},
+		},
+		Intents: map[string]app.Intent{"enter": {Title: "Enter"}},
+		States: map[string]*app.State{
+			"init": {
+				View: app.LegacyView("init"),
+				On:   map[string][]app.Transition{"enter": {{Target: "work"}}},
+			},
+			"work": {
+				View: app.LegacyView("work"),
+				OnEnter: []app.Effect{
+					{
+						Invoke:     "host.test.capture",
+						Background: true,
+						Bind:       map[string]string{"last_job_id": "job_id"},
+					},
+				},
+			},
+		},
+	}
+
+	m, err := machine.New(def)
+	require.NoError(t, err)
+
+	s, err := store.OpenMemory()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	jobStore, err := jobs.NewJobStore(s.DB())
+	require.NoError(t, err)
+	sched := jobs.NewScheduler(jobStore)
+
+	// The background handler records the session id it observes on its ctx.
+	captured := make(chan string, 1)
+	reg := host.NewRegistry()
+	reg.Register("host.test.capture", func(ctx context.Context, args map[string]any) (host.Result, error) {
+		captured <- host.KitsokiSessionIDFromCtx(ctx)
+		return host.Result{}, nil
+	})
+
+	// Guarantee the process env can't paper over a missing ctx seam.
+	t.Setenv("KITSOKI_SESSION_ID", "")
+
+	h := &staticHarness{intentName: "enter"}
+	orch := orchestrator.New(def, m, s, h,
+		orchestrator.WithHostRegistry(reg),
+		orchestrator.WithScheduler(sched),
+		orchestrator.WithJobStore(jobStore),
+	)
+
+	ctx := context.Background()
+	sid, err := orch.NewSession(ctx)
+	require.NoError(t, err)
+
+	_, err = orch.Turn(ctx, sid, "enter")
+	require.NoError(t, err)
+
+	waitCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	require.NoError(t, sched.WaitIdle(waitCtx))
+
+	select {
+	case got := <-captured:
+		require.Equal(t, string(sid), got,
+			"a background host job must see the parent session id via host.KitsokiSessionIDFromCtx (needed by the maker-seed backstop)")
+	default:
+		t.Fatal("background handler never ran")
+	}
 }
 
 // TestOnComplete_SayText verifies P0-5: when an on_complete chain includes a

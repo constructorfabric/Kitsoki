@@ -1,0 +1,169 @@
+# plan — build the run bundle (host.product_journey.run → run.py --emit-run --transport ...)
+# then resolve it into scenario x transport legs (scripts/plan_legs.star).
+#
+# Catalog mode passes the requested scenario id straight through; run.py's own
+# transport axis (S1: schema.json transports + --transport) already resolves
+# per-transport required_mcp/evidence/visual_surface into driver-plan.json's
+# "scenarios" list (one entry per LEG when --transport is passed). plan_legs
+# just reads that file back.
+#
+# Ad-hoc mode (a free-text `description`, no catalog scenario) has no catalog
+# entry to resolve, so run.py is still invoked — against a generic carrier
+# scenario ("bugfix", which already allows the reusable transport set) purely to
+# get real project/persona resolution and the transport leg skeleton (one leg
+# per requested transport, already MCP/evidence-contract-shaped). plan_legs
+# then DRAFTS the actual scenario (id/label/task/success_criteria) from the
+# description and splices it onto those legs, replacing every carrier-specific
+# field. This reuses run.py's authority for everything except the ad-hoc
+# scenario body itself, rather than reimplementing project/persona resolution
+# here.
+#
+# Two engine gotchas this room works around (do not "fix" by reverting them):
+#   - A derived value needed by a LATER invoke in the same on_enter (e.g. a
+#     repo-relative run dir string) must be computed INSIDE that invoke's own
+#     script/inputs, never via an intermediate `set:` — a `set:` resolves its
+#     template eagerly against the machine-time snapshot, before the engine's
+#     dispatch-time re-render of a later invoke's `with:`/`inputs:` (which DOES
+#     see the earlier invoke's bind) ever gets a chance to help. That's why
+#     plan_legs takes `run_id` (a plain scalar already fresh at machine-time
+#     from THIS on_enter's first invoke) and derives the repo-relative run dir
+#     itself, instead of this room pre-computing it into a `run_dir_rel` var.
+#   - A `when:`+`emit_intent:` that decides routing based on an invoke's OWN
+#     bind (e.g. "did plan_legs resolve any legs?") must reference an
+#     object field whose containing var defaults to `{}` (empty, no keys) —
+#     e.g. `len(world.legs.items) > 0` with `legs` defaulting to `{}`. Reading
+#     a field that doesn't exist yet on an empty map errors at machine-time,
+#     which the engine treats specially for emit_intent guards: it defers that
+#     one effect and re-evaluates it after the queued invoke's bind lands,
+#     continuing the cascade from there. A guard over a plain scalar (already
+#     declared with some default, e.g. an int) never errors, so it would
+#     decide immediately against STALE pre-bind data instead of waiting.
+#
+# world.parallel (P2.10 "parallel legs via arena", opt-in via `check ...
+# parallel=true`) routes the SAME resolved legs to rooms/parallel.yaml
+# instead of rooms/execute.yaml -- see that room's header comment for the
+# arena fold seam. Default ("false") is unchanged: the serial execute ->
+# judge -> recording loop this file has always routed to.
+
+states:
+
+  plan:
+    description: "Building the run bundle and resolving it into per-transport checks."
+    relevant_world: [mode, scenario_ref, scenario_description, transport_arg, persona, target, seed, scenario_workspace_root, run_id, run_dir, leg_count, live_authorization_summary, status]
+    view:
+      - heading: "Scenario QA · plan"
+      - kv:
+          pairs:
+            Mode: "{{ world.mode }}"
+            Scenario: "{{ world.scenario_ref }}"
+            Transport: "{{ world.transport_arg }}"
+            Capsule workspace: '{{ world.scenario_workspace_root|default:"(creating…)" }}'
+            Run: '{{ world.run_id|default:"(building…)" }}'
+            Transport checks: "{{ world.leg_count }}"
+        when: "world.mode != 'adhoc'"
+      - kv:
+          pairs:
+            Mode: "{{ world.mode }}"
+            Description: "{{ world.scenario_description }}"
+            Transport: "{{ world.transport_arg }}"
+            Capsule workspace: '{{ world.scenario_workspace_root|default:"(creating…)" }}'
+            Run: '{{ world.run_id|default:"(building…)" }}'
+            Transport checks: "{{ world.leg_count }}"
+        when: "world.mode == 'adhoc'"
+      - prose: "Building the scenario-qa run bundle and resolving the requested transport checks."
+      # Fail-closed harness selection (issue group B / bug #105): named per
+      # leg, up front, before any leg is driven -- see scripts/plan_legs.star.
+      - heading: "Live authorization notes"
+        when: "len(world.live_authorization_summary) > 0"
+      - code: |
+          {% for note in world.live_authorization_summary %}
+          - {{ note }}
+          {% endfor %}
+        when: "len(world.live_authorization_summary) > 0"
+    on_enter:
+      - invoke: host.product_journey.run
+        id: emit_scenario_qa_run
+        with:
+          args:
+            - --emit-run
+            - --scenario-qa-workspace
+            - --project
+            - "{{ world.target != '' ? world.target : 'gears-rust' }}"
+            - --persona
+            - "{{ world.persona }}"
+            - --seed
+            - "{{ world.seed }}"
+            - --scenarios
+            - "{{ world.mode == 'adhoc' ? 'bugfix' : world.scenario_ref }}"
+            - --transport
+            - "{{ world.transport_arg }}"
+            - --live-budget-minutes
+            - "{{ world.live_budget_minutes > 0 ? world.live_budget_minutes : 20 }}"
+            - --json-output
+          cwd: "."
+          fail_on_error: true
+        bind:
+          last_result: stdout_json
+          run_id: "stdout_json.run_id"
+          run_dir: "stdout_json.run_dir"
+          run_dir_rel: "stdout_json.run_dir_rel"
+          scenario_workspace: "stdout_json.scenario_qa_workspace"
+          scenario_workspace_root: "stdout_json.scenario_qa_workspace.root"
+          scenario_workspace_id: "stdout_json.scenario_qa_workspace.id"
+          driver_plan_path: "stdout_json.driver_plan_path"
+          execution_plan_path: "stdout_json.execution_plan_path"
+          agent_brief_path: "stdout_json.agent_brief_path"
+        on_error: idle
+      - invoke: host.starlark.run
+        id: plan_legs
+        with:
+          script: scripts/plan_legs.star
+          capabilities:
+            fs:
+              read: ["**"]
+          inputs:
+            mode: "{{ world.mode }}"
+            run_id: "{{ world.run_id }}"
+            description: "{{ world.scenario_description }}"
+            primary_story: "{{ world.target }}"
+            live_profile: "{{ world.live_profile }}"
+            last_result: "{{ world.last_result }}"
+        bind:
+          legs: legs
+          leg_count: leg_count
+          driver_agent: driver_agent
+          run_dir_rel: run_dir_rel
+          plan_status: plan_status
+          live_authorization_summary: live_authorization_summary
+        on_error: idle
+      # plan_status.resolved (see app.yaml's comment) errors pre-bind, so
+      # this triple of guards correctly defers until plan_legs's bind lands
+      # instead of deciding immediately against stale leg_count/legs.
+      # `world.parallel` (P2.10 "parallel legs via arena", opt-in via `check
+      # ... parallel=true`) is a plain scalar with an always-fresh default
+      # ("false"), so it never needs the same pre-bind deferral trick --
+      # only the plan_status/leg_count read does.
+      - when: "world.plan_status.resolved == true && world.leg_count > 0 && world.parallel != 'true'"
+        set:
+          status: "executing"
+          leg_index: 0
+        emit_intent: legs_ready
+      - when: "world.plan_status.resolved == true && world.leg_count > 0 && world.parallel == 'true'"
+        emit_intent: legs_ready_parallel
+      - when: "world.plan_status.resolved == true && world.leg_count == 0"
+        emit_intent: legs_unresolved
+    on:
+      legs_ready:
+        - target: execute
+      legs_ready_parallel:
+        - target: parallel
+      legs_unresolved:
+        - target: idle
+          effects:
+            - set:
+                last_error: "No transport checks resolved for this scenario/transport combination — check scenario/transport values."
+                status: "idle"
+      status:
+        - target: .
+      look:
+        - target: .

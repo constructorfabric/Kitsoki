@@ -12,6 +12,8 @@ package bugfile
 
 import (
 	"bufio"
+	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -19,6 +21,10 @@ import (
 	"strings"
 	"time"
 	"unicode"
+
+	"kitsoki/internal/capsule"
+	"kitsoki/internal/kitrepo"
+	"kitsoki/internal/reportmeta"
 
 	"gopkg.in/yaml.v3"
 )
@@ -41,6 +47,7 @@ type CreateRequest struct {
 
 	// classification / evidence
 	Severity string
+	Labels   []string
 	TraceRef string
 
 	// TargetDir overrides the resolved target-root (escape hatch); when
@@ -50,6 +57,10 @@ type CreateRequest struct {
 	// FiledBy records who filed the bug (frontmatter filed_by). Empty is
 	// allowed; the CLI passes $USER.
 	FiledBy string
+
+	// Runtime records the kitsoki engine/story versions active at filing time.
+	// When empty, Create captures engine metadata from the resolved target root.
+	Runtime reportmeta.Snapshot
 
 	// Now injects the filed-at clock for deterministic tests. Zero value
 	// means "use time.Now().UTC()".
@@ -120,7 +131,6 @@ func Create(req CreateRequest) (id string, relPath string, absPath string, err e
 		return "", "", "", fmt.Errorf("mkdir %s: %w", bugsDir, err)
 	}
 	filename := Filename(now, req.Title)
-	full := filepath.Join(bugsDir, filename)
 
 	rec := Record{
 		ID:         strings.TrimSuffix(filename, ".md"),
@@ -134,8 +144,13 @@ func Create(req CreateRequest) (id string, relPath string, absPath string, err e
 		StatePath:  statePath,
 		Component:  component,
 		Severity:   req.Severity,
+		Labels:     cleanLabels(req.Labels),
 		Status:     "open",
 		TraceRef:   req.TraceRef,
+		Runtime:    req.Runtime,
+	}
+	if rec.Runtime.Empty() {
+		rec.Runtime = reportmeta.Capture(root, nil)
 	}
 
 	// Pull the short git SHA at filing time for kitsoki-target bugs.
@@ -148,9 +163,40 @@ func Create(req CreateRequest) (id string, relPath string, absPath string, err e
 		}
 	}
 
-	content := RenderMarkdown(rec)
-	if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
-		return "", "", "", fmt.Errorf("write %s: %w", full, err)
+	var full string
+	baseID := rec.ID
+	for attempt := 1; ; attempt++ {
+		if attempt == 1 {
+			rec.ID = baseID
+		} else {
+			rec.ID = fmt.Sprintf("%s-%d", baseID, attempt)
+		}
+		filename = rec.ID + ".md"
+		full = filepath.Join(bugsDir, filename)
+		content := []byte(RenderMarkdown(rec))
+		file, openErr := os.OpenFile(full, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+		if openErr == nil {
+			if _, writeErr := file.Write(content); writeErr != nil {
+				_ = file.Close()
+				_ = os.Remove(full)
+				return "", "", "", fmt.Errorf("write %s: %w", full, writeErr)
+			}
+			if closeErr := file.Close(); closeErr != nil {
+				_ = os.Remove(full)
+				return "", "", "", fmt.Errorf("close %s: %w", full, closeErr)
+			}
+			break
+		}
+		if !errors.Is(openErr, os.ErrExist) {
+			return "", "", "", fmt.Errorf("create %s: %w", full, openErr)
+		}
+		existing, readErr := os.ReadFile(full)
+		if readErr != nil {
+			return "", "", "", fmt.Errorf("read existing %s: %w", full, readErr)
+		}
+		if bytes.Equal(existing, content) {
+			break
+		}
 	}
 
 	rel, relErr := filepath.Rel(root, full)
@@ -175,10 +221,16 @@ func NormaliseTarget(target string) (string, error) {
 
 // ResolveTargetRoot returns the directory that <target-root>/issues/bugs
 // lives under. target is assumed already normalised. --target-dir always
-// wins; otherwise story => $PWD, kitsoki => $KITSOKI_REPO.
+// wins; otherwise a managed capsule workspace resolves to its source checkout
+// root, story falls back to the nearest git root (or current working directory
+// if there is no git root), and kitsoki falls back to the resolved kitsoki repo
+// root.
 func ResolveTargetRoot(target, targetDir string) (string, error) {
 	if targetDir != "" {
 		return targetDir, nil
+	}
+	if root := capsule.ManagedSourceRootFromCWD(); root != "" {
+		return root, nil
 	}
 	switch target {
 	case "story":
@@ -186,9 +238,12 @@ func ResolveTargetRoot(target, targetDir string) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("resolve cwd: %w", err)
 		}
+		if top := gitToplevel(cwd); top != "" {
+			return top, nil
+		}
 		return cwd, nil
 	case "kitsoki":
-		repo := strings.TrimSpace(os.Getenv("KITSOKI_REPO"))
+		repo := strings.TrimSpace(kitrepo.Resolve())
 		if repo == "" {
 			return "", fmt.Errorf("--target kitsoki: kitsoki repo not found — run once from a kitsoki checkout to save it under ~/.kitsoki/repo, or pass --target-dir / set $KITSOKI_REPO")
 		}
@@ -212,6 +267,15 @@ func ReadShortGitSHA(root string) (string, error) {
 	return sha, nil
 }
 
+func gitToplevel(dir string) string {
+	cmd := exec.Command("git", "-C", dir, "rev-parse", "--show-toplevel")
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
 // Record is the in-memory representation of a single bug, passed to
 // RenderMarkdown.
 type Record struct {
@@ -229,11 +293,13 @@ type Record struct {
 	KitsokiRev string // kitsoki-only, short SHA at write time
 
 	// classification
-	Severity string // optional
-	Status   string // "open" default; for now always "open" on create
+	Severity string   // optional
+	Labels   []string // optional
+	Status   string   // "open" default; for now always "open" on create
 
 	// evidence
 	TraceRef string // optional, both
+	Runtime  reportmeta.Snapshot
 
 	// body
 	Body       string
@@ -322,6 +388,16 @@ func RenderMarkdown(r Record) string {
 		}
 	}
 
+	if fields := r.Runtime.Fields(); len(fields) > 0 {
+		sb.WriteString("\n# --- runtime -------------------------------------------------\n")
+		for _, f := range fields {
+			sb.WriteString(f.Key)
+			sb.WriteString(": ")
+			sb.WriteString(YAMLQuoteLine(f.Value))
+			sb.WriteString("\n")
+		}
+	}
+
 	sb.WriteString("\n# --- classification ------------------------------------------\n")
 	if r.Severity != "" {
 		sb.WriteString("severity: ")
@@ -335,7 +411,16 @@ func RenderMarkdown(r Record) string {
 	sb.WriteString("status: ")
 	sb.WriteString(YAMLQuoteLine(status))
 	sb.WriteString("\n")
-	sb.WriteString("labels: []\n")
+	if len(r.Labels) == 0 {
+		sb.WriteString("labels: []\n")
+	} else {
+		sb.WriteString("labels:\n")
+		for _, label := range r.Labels {
+			sb.WriteString("  - ")
+			sb.WriteString(YAMLQuoteLine(label))
+			sb.WriteString("\n")
+		}
+	}
 
 	sb.WriteString("\n# --- evidence ------------------------------------------------\n")
 	if r.TraceRef != "" {
@@ -358,6 +443,26 @@ func RenderMarkdown(r Record) string {
 		}
 	}
 	return sb.String()
+}
+
+func cleanLabels(labels []string) []string {
+	if len(labels) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(labels))
+	seen := map[string]struct{}{}
+	for _, label := range labels {
+		label = strings.TrimSpace(label)
+		if label == "" {
+			continue
+		}
+		if _, ok := seen[label]; ok {
+			continue
+		}
+		seen[label] = struct{}{}
+		out = append(out, label)
+	}
+	return out
 }
 
 // YAMLQuoteLine returns s wrapped in double quotes with inner quotes and

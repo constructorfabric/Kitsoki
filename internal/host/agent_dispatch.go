@@ -646,6 +646,9 @@ func appendAgentCalledEventWithEpisode(ctx context.Context, ts time.Time, callID
 			payload.Effort = ap.Provider.Effort
 		}
 	}
+	if payload.Backend == "" {
+		payload.Backend = AgentBackendFromContext(ctx).Name()
+	}
 
 	raw, err := json.Marshal(payload)
 	if err != nil {

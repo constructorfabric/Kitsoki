@@ -1,0 +1,5 @@
+inputs:
+  drive_result: { type: object, required: false }
+
+outputs:
+  drive_result_json: { type: string }

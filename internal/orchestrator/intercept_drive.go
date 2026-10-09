@@ -34,6 +34,7 @@ import (
 	"time"
 
 	"kitsoki/internal/app"
+	"kitsoki/internal/machine"
 	"kitsoki/internal/store"
 	"kitsoki/internal/trace"
 )
@@ -182,6 +183,11 @@ func (o *Orchestrator) DriveToRest(ctx context.Context, intent string, slots map
 		panicked  bool
 		panicInfo any
 	)
+	// Flag the drive context as an intercept drive so the machine's post-bind
+	// emit settle drives THROUGH an `intercept_drive: rest` room's multi-round
+	// auto-route (conflict_ready → resolver → rebase_continue → branch_ops)
+	// rather than resting at it the way a normal operator turn does.
+	driveCtx := machine.WithInterceptDrive(ctx)
 	func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -189,7 +195,7 @@ func (o *Orchestrator) DriveToRest(ctx context.Context, intent string, slots map
 				panicInfo = r
 			}
 		}()
-		last, driveErr = o.SubmitDirect(ctx, sid, intent, slots)
+		last, driveErr = o.SubmitDirect(driveCtx, sid, intent, slots)
 	}()
 
 	switch {

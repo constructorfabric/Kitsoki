@@ -1,0 +1,45 @@
+# A plan cannot widen CodeAct into a repository-wide writer. The real compiler
+# fails before implementation and the room surfaces the deterministic error.
+
+test_kind: flow
+app: ../app.yaml
+# The compiler is attached to proposing.accept, so seed proposing with an
+# already-bound proposal and exercise that transition directly.
+initial_state: proposing
+initial_world:
+  implementation_mode: codeact_decomposed
+  judge_mode: human
+  propose_fix_artifact:
+    summary_title: "Reject broad plan"
+    summary_markdown: "A sufficiently detailed proposal fixture used to prove a broad CodeAct write path is rejected before an implementation call can receive it."
+    fix_description: "Do not permit repository-wide writes."
+    root_cause: "A broad glob would let a bounded work item mutate unrelated files."
+    affected_files: [internal/parser/state.go]
+    confidence: 0.8
+    reasoning: "The plan compiler must reject broad paths deterministically instead of trusting the proposer."
+    implementation_plan:
+      - id: unsafe-write
+        depends_on: []
+        objective: "Attempt a repository-wide edit."
+        evidence_refs: ["proposal: broad path"]
+        read_paths: [internal/parser/state.go]
+        write_paths: ["**"]
+        invariants: [Unrelated files must remain inaccessible.]
+        acceptance_commands: [go test ./internal/parser -count=1]
+        expected_artifacts: [internal/parser/state.go]
+        max_steps: 2
+        fallback_reason_allowlist: []
+
+# Use the orchestrator-backed path so the real Starlark compiler is invoked.
+host_handlers:
+  host.inbox.add:
+    data: { ok: true }
+
+turns:
+  - intent: { name: accept, slots: {} }
+    expect_state: idle
+    expect_world:
+      last_error: "host.starlark.run: starlark: main(ctx): fail: implementation_plan[0].write_paths[0] must be a narrow repository-relative path or glob"
+    expect_host_calls: [{ handler: host.starlark.run, call: compile_implementation_plan }]
+
+expect_no_errors: true

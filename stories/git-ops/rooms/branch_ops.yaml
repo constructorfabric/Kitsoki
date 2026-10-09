@@ -7,20 +7,26 @@ states:
 
   branch_ops:
     description: "Feature-branch hub. Rebase, commit, squash, and merge to integration."
+    # Conversational lane: unmatched free text falls into ONE persistent
+    # per-room conversation, engine-owned (per-room chat, room context in
+    # the prompt, no re-render). See docs/architecture/room-workbench.md
+    # §"The conversational lane".
+    agent_off_ramp: { agent: git_assistant, capture_free_text: true }
     relevant_world: [current_branch, integration_branch, rebase_done, commits_ahead,
                      commits_behind, has_uncommitted, on_integration]
     view:
       - kv:
           pairs:
+            Status:        '{% if world.last_op_ok == false %}❌ last operation failed{% elif world.no_common_ancestor %}⚠️ no common ancestor{% elif world.has_uncommitted %}⚠️ uncommitted changes{% elif world.rebase_done == false %}⚠️ rebase needed before merge{% else %}✅ ready to merge{% endif %}'
             Branch:        '{{ world.current_branch|default:"(detecting…)" }}'
             Integration:   '{{ world.integration_branch }}'
-            Uncommitted:   '{% if world.has_uncommitted %}yes{% else %}clean{% endif %}'
-            Ahead:         '{{ world.commits_ahead }} commits ahead'
-            Behind:        '{{ world.commits_behind }} commits behind'
-            "Rebase done": '{% if world.rebase_done %}yes{% else %}no — rebase before merging{% endif %}'
-      - prose: "Last operation failed: {{ world.last_op_output|default:'(no output)' }}"
+            Uncommitted:   '{% if world.has_uncommitted %}⚠️ yes{% else %}✅ clean{% endif %}'
+            Ahead:         '{% if world.commits_ahead > 0 %}⚠️ {% else %}✅ {% endif %}{{ world.commits_ahead }} commits ahead'
+            Behind:        '{% if world.commits_behind > 0 %}⚠️ {% else %}✅ {% endif %}{{ world.commits_behind }} commits behind'
+            "Rebase done": '{% if world.rebase_done %}✅ yes{% else %}⚠️ no — rebase before merging{% endif %}'
+      - prose: "❌ Last operation failed: {{ world.last_op_output|default:'(no output)' }}"
         when: "world.last_op_ok == false"
-      - prose: "WARNING: no common ancestor with {{ world.integration_branch }}. Rebase and merge unavailable."
+      - prose: "⚠️ No common ancestor with {{ world.integration_branch }}. Rebase and merge unavailable."
         when: "world.no_common_ancestor == true"
       - prose: "Pre-rebase backup tag: {{ world.pre_rebase_tag }}"
         when: "world.pre_rebase_tag != ''"

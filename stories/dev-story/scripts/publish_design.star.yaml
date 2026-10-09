@@ -1,0 +1,17 @@
+inputs:
+  workspace: {type: string, required: true}
+  slug: {type: string, required: true}
+  change_target: {type: string}
+  title: {type: string}
+  idea: {type: string}
+  workdir: {type: string}
+  durable: {type: string}
+  doc_filename: {type: string}
+  ticket_dir: {type: string}
+  ticket_repo: {type: string}
+outputs:
+  design_file: {type: string}
+  ticket_id: {type: string}
+  ticket_path: {type: string}
+  ticket_title: {type: string}
+  ticket_url: {type: string}

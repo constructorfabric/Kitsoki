@@ -1,0 +1,103 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.product_journey.run:
+    by_call:
+      load_product_journey_run:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: run_loaded
+            run_id: run-marathon-stale
+            run_dir: .artifacts/product-journey/run-marathon-stale
+            project: vscode
+            persona: core-maintainer
+            seed: marathon-stale
+            issue_count: 1
+            finding_total_count: 1
+            proof_evidence_count: 5
+            missing_proof_evidence_count: 0
+            autonomous_control_status: ready_for_driver
+            autonomous_control_summary: "cadence=24h, next_due=2026-07-06T00:00:00+00:00, budget=6m/scenario, heartbeat=15m, watchdog=45m"
+            autonomous_control_path: .artifacts/product-journey/run-marathon-stale/autonomous-marathon-control.json
+      autonomous_product_journey_marathon_finalize:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: autonomous_marathon_invalid
+            autonomous_marathon_status: autonomous_marathon_invalid
+            autonomous_marathon_summary: "watchdog=fail: stale heartbeat: 46m since run creation; watchdog=45m; stop before spend"
+            autonomous_marathon_report_path: .artifacts/product-journey/run-marathon-stale/autonomous-marathon-report.md
+            autonomous_control_path: .artifacts/product-journey/run-marathon-stale/autonomous-marathon-control.json
+            autonomous_control_markdown_path: .artifacts/product-journey/run-marathon-stale/autonomous-marathon-control.md
+            autonomous_control_status: ready_for_driver
+            autonomous_control_summary: "cadence=24h, next_due=2026-07-06T00:00:00+00:00, budget=6m/scenario, heartbeat=15m, watchdog=45m"
+            autonomous_watchdog_status: autonomous_watchdog_blocked
+            autonomous_watchdog_summary: "stale heartbeat: 46m since run creation; watchdog=45m; stop before spend"
+            autonomous_watchdog_path: .artifacts/product-journey/run-marathon-stale/autonomous-marathon-watchdog.json
+            autonomous_watchdog_markdown_path: .artifacts/product-journey/run-marathon-stale/autonomous-marathon-watchdog.md
+            autonomous_watchdog_age_minutes: 46
+            autonomous_fix_status: not_run
+            autonomous_gate_summary: "watchdog=fail, filing=not_run, gh_agent=not_run, independent_verify=fail, review=not_run, validation=fail"
+            independent_verify_status: fail
+            independent_verify_summary: "stale heartbeat: 46m since run creation; watchdog=45m; stop before spend"
+            validation_status: invalid
+            validation_errors: 1
+            validation_warnings: 0
+            validation_issue_summary: autonomous-watchdog
+            stats_status: not_run
+            stats_gate_status: fail
+            stats_gate_summary: watchdog failed before stats
+            stats_current_run_scanned: "no"
+            driver_journal_path: .artifacts/product-journey/run-marathon-stale/driver-journal.md
+            deck_path: .artifacts/product-journey/run-marathon-stale/deck.slidey.json
+            proof_evidence_count: 5
+            demo_evidence_count: 0
+            finding_total_count: 1
+            issue_count: 1
+            missing_evidence_count: 0
+            missing_proof_evidence_count: 0
+            proof_minimum_evidence_count: 3
+            minimum_evidence_count: 3
+            driver_contract_summary: "Driver contract: 1 scenarios (bugfix); 0 missing-proof rows; 4 final gates."
+
+turns:
+  - intent:
+      name: load
+      slots:
+        run_dir: .artifacts/product-journey/run-marathon-stale
+    expect_state: run_created
+    expect_world:
+      run_id: run-marathon-stale
+      run_dir: .artifacts/product-journey/run-marathon-stale
+      issue_count: 1
+    expect_host_calls:
+      - handler: host.product_journey.run
+        args: { call: load_product_journey_run }
+
+  - intent:
+      name: autonomous_marathon
+      slots:
+        ticket_repo: bsacrobatix/Kitsoki
+        gh_agent_public_base_url: https://agent.example
+    expect_state: run_created
+    expect_world:
+      status: autonomous_marathon_complete
+      autonomous_marathon_status: autonomous_marathon_invalid
+      autonomous_watchdog_status: autonomous_watchdog_blocked
+      autonomous_watchdog_age_minutes: 46
+      autonomous_fix_status: not_run
+      autonomous_gate_summary: "watchdog=fail, filing=not_run, gh_agent=not_run, independent_verify=fail, review=not_run, validation=fail"
+      validation_status: invalid
+      validation_issue_summary: autonomous-watchdog
+      stats_status: not_run
+    expect_view_matches: "RUN CREATED[\\s\\S]*Autonomous fix[\\s\\S]*not_run[\\s\\S]*Autonomous gates[\\s\\S]*watchdog=fail[\\s\\S]*Autonomous marathon[\\s\\S]*autonomous_marathon_invalid[\\s\\S]*Marathon watchdog[\\s\\S]*autonomous_watchdog_blocked[\\s\\S]*Watchdog age[\\s\\S]*46 min[\\s\\S]*Validation issues[\\s\\S]*autonomous-watchdog"
+    expect_host_calls:
+      - handler: host.product_journey.run
+        args: { call: autonomous_product_journey_marathon_finalize }
+
+expect_no_errors: true

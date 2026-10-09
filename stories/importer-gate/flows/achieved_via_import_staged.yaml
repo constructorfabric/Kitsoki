@@ -19,7 +19,7 @@ initial_state: idle
 mode: staged
 
 host_handlers:
-  host.git_worktree: { data: { ok: true, path: ".worktrees/cherny-loop" } }
+  host.capsule_workspace: { data: { ok: true, path: ".capsules/workspaces/cherny-loop" } }
   host.run:
     by_call:
       gate-0: { data: { ok: false, exit_code: 1, stdout: "--- FAIL: TestAllow_Burst" } }

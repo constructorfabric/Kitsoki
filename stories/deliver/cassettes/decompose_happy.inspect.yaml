@@ -1,0 +1,43 @@
+kind: inspect_cassette
+interactions:
+  - op: exists
+    target: .artifacts/deliver/decomposition.yaml
+    out: "false"
+  - op: read
+    target: .artifacts/deliver/decomposition.yaml
+    out: |
+      briefs:
+        - id: health-model
+          brief: |
+            Add HealthStatus struct in internal/health/ with Status and Version fields. Gate: go test ./internal/health/...
+          gate_command: go test ./internal/health/...
+          deps: []
+        - id: health-handler
+          brief: |
+            Add GET /health handler serialising HealthStatus to JSON. Gate: go test ./internal/handler/...
+          gate_command: go test ./internal/handler/...
+          deps: [health-model]
+        - id: health-route
+          brief: |
+            Register the health handler in the router and smoke-test /health. Gate: go test ./internal/router/...
+          gate_command: go test ./internal/router/...
+          deps: [health-handler]
+  - op: read
+    target: .artifacts/deliver/decomposition.yaml
+    out: |
+      briefs:
+        - id: health-model
+          brief: |
+            Add HealthStatus struct in internal/health/ with Status and Version fields. Gate: go test ./internal/health/...
+          gate_command: go test ./internal/health/...
+          deps: []
+        - id: health-handler
+          brief: |
+            Add GET /health handler serialising HealthStatus to JSON. Gate: go test ./internal/handler/...
+          gate_command: go test ./internal/handler/...
+          deps: [health-model]
+        - id: health-route
+          brief: |
+            Register the health handler in the router and smoke-test /health. Gate: go test ./internal/router/...
+          gate_command: go test ./internal/router/...
+          deps: [health-handler]

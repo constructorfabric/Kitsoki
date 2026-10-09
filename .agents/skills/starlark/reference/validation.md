@@ -43,7 +43,7 @@ you want to prove *"a function can't reference `http`"*, run it with a
 
 `-kitsoki` pins the exact `host.starlark.run` sandbox surface so a single
 command answers *"would this load and dispatch in kitsoki?"* without booting an
-app. It is equivalent to `-predeclared=json,math -require-def=main` with every
+app. It is equivalent to `-predeclared=json,math,yaml -require-def=main` with every
 dialect relaxation off (strict), mirroring `internal/host/starlark/run.go`:
 
 ```bash
@@ -53,7 +53,7 @@ go run . -kitsoki -r stories/<story>/scripts/        # whole scripts dir
 
 It catches the two kitsoki authoring mistakes a plain resolve misses: an entry
 point named anything but `main`, and a reference to a name outside `{json,
-math}` (e.g. `time`, `random`) — both reported in one pass. It does **not**
+math, yaml}` (e.g. `time`, `random`) — both reported in one pass. It does **not**
 check the `.star.yaml` sidecar or run the script; for those, use `kitsoki test
 flows` (below). Full authoring loop: [kitsoki.md](kitsoki.md).
 
@@ -107,7 +107,7 @@ make test-flows                                   # every story's fixtures
 The fixture names its cassette via `starlark_http_cassette:`. See
 [kitsoki.md §The validation loop](kitsoki.md#the-validation-loop-fast--thorough-all-no-llm)
 for the fixture shape and the cassette record/replay workflow, and
-[hosts.md](../../../architecture/hosts.md#record--replay-http-cassettes) for the
+[hosts.md](../../../../docs/architecture/hosts.md#record--replay-http-cassettes) for the
 authoritative cassette format.
 
 ## Recommended toolchain

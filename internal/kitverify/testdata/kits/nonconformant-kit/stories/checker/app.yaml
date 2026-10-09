@@ -1,0 +1,51 @@
+# checker — nonconformant-kit's sole provided story (S4 negative fixture).
+# See ../../conformant-kit/stories/checker/app.yaml for the passing twin;
+# this file breaks the same three things on purpose (see kit.yaml's comment).
+app:
+  id: kit-nonconformant-checker
+  version: 0.1.0
+
+host_interfaces:
+  ticket:
+    description: "Issue tracker abstraction — deliberately mismatched vs host.local_files.ticket's registered opschema."
+    operations:
+      search:
+        input: { query: string, limit: string }
+        output: { tickets: list, note: string }
+    default: host.local_files.ticket
+
+world:
+  pr_url: { type: string, default: "" }
+
+intents:
+  start:
+    description: "Begin."
+    examples: ["start", "go"]
+  finish:
+    description: "Finish WITHOUT recording pr_url."
+    examples: ["finish"]
+
+exports:
+  intents: [start, ghost]
+
+exits:
+  done:
+    description: "Finished; requires pr_url but no transition sets it."
+    requires: [pr_url]
+
+root: idle
+
+states:
+  idle:
+    description: "Ready."
+    view: "Ready."
+    on:
+      start:
+        - target: working
+
+  working:
+    description: "Working."
+    view: "Working."
+    on:
+      finish:
+        - target: "@exit:done"

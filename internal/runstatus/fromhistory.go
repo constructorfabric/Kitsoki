@@ -179,6 +179,7 @@ func FromHistory(hist store.History, def *app.AppDef, sessionID string) (Snapsho
 			Turn:         lastTurn,
 			StartedAt:    started,
 			Terminal:     terminal,
+			OperationRun: operationRunSummaryFromTraceEvents(events),
 		},
 		App: def,
 		Mermaid: MermaidSnapshot{

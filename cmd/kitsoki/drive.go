@@ -24,7 +24,10 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"kitsoki/internal/app"
 	"kitsoki/internal/harness"
+	"kitsoki/internal/host"
+	"kitsoki/internal/inbox"
 	"kitsoki/internal/orchestrator"
 	"kitsoki/internal/store"
 	"kitsoki/internal/tui"
@@ -48,6 +51,9 @@ type driveFrame struct {
 	Exit string `json:"exit"`
 	// HostCalls summarises the host.* invocations this turn made (empty when none).
 	HostCalls []driveHostCall `json:"host_calls,omitempty"`
+	// OperationDrive summarises an automatic background operation drive, or an
+	// explicit --drive-operation drive.
+	OperationDrive *driveOperationFrame `json:"operation_drive,omitempty"`
 }
 
 // driveHostCall is a compact summary of one host.* invocation observed in the
@@ -55,6 +61,15 @@ type driveFrame struct {
 type driveHostCall struct {
 	Namespace string `json:"namespace"`
 	State     string `json:"state,omitempty"`
+}
+
+// driveOperationFrame is additive metadata emitted when a background operation
+// auto-runs after an operator/scripted turn, or when --drive-operation asks the
+// operation driver to continue an active autonomous/supervised operation.
+type driveOperationFrame struct {
+	Turns      int    `json:"turns"`
+	StopReason string `json:"stop_reason,omitempty"`
+	LastIntent string `json:"last_intent,omitempty"`
 }
 
 const (
@@ -66,15 +81,17 @@ const (
 
 func driveCmd() *cobra.Command {
 	var (
-		tracePath   string
-		harnessType string
-		cassette    string
-		recordMode  string
-		cols        int
-		rows        int
-		scriptPath  string
-		profileName string
-		configPath  string
+		tracePath      string
+		harnessType    string
+		cassette       string
+		recordMode     string
+		cols           int
+		rows           int
+		scriptPath     string
+		profileName    string
+		configPath     string
+		warpBasisPath  string
+		driveOperation bool
 	)
 
 	cmd := &cobra.Command{
@@ -85,7 +102,9 @@ func driveCmd() *cobra.Command {
 		Long: `Run the real orchestrator turn loop against a persistent JSONL trace,
 reading one free-text line per turn (stdin or --script) and routing it through
 the live or replay harness. Each turn emits one JSON object on stdout: the
-slice-1 Frame plus { routed_intent, confidence, exit, host_calls }.
+slice-1 Frame plus { routed_intent, confidence, exit, host_calls }. Background
+operation handles auto-drive after accepted turns; --drive-operation force-drives
+any active autonomous/supervised operation handle.
 
 VCR record modes (over the routing cassette):
   none  replay on hit; ERROR on miss (pure deterministic, no live calls)
@@ -105,16 +124,18 @@ Examples:
 				appPath = args[0]
 			}
 			return runDrive(cmd, driveCmdConfig{
-				appPath:     appPath,
-				tracePath:   tracePath,
-				harnessType: harnessType,
-				cassette:    cassette,
-				recordMode:  recordMode,
-				cols:        cols,
-				rows:        rows,
-				scriptPath:  scriptPath,
-				profileName: profileName,
-				configPath:  configPath,
+				appPath:        appPath,
+				tracePath:      tracePath,
+				harnessType:    harnessType,
+				cassette:       cassette,
+				recordMode:     recordMode,
+				cols:           cols,
+				rows:           rows,
+				scriptPath:     scriptPath,
+				profileName:    profileName,
+				configPath:     configPath,
+				warpBasisPath:  warpBasisPath,
+				driveOperation: driveOperation,
 			})
 		},
 	}
@@ -128,22 +149,26 @@ Examples:
 	cmd.Flags().StringVar(&scriptPath, "script", "", "optional batch input file (newline-separated; CI smoke)")
 	cmd.Flags().StringVar(&profileName, "profile", "", "harness profile from .kitsoki.yaml/.kitsoki.local.yaml; supplies backend, model, quota, and provider env")
 	cmd.Flags().StringVar(&configPath, "config", webconfig.DefaultConfigFile, "config file used with --profile")
+	cmd.Flags().StringVar(&warpBasisPath, "warp", "", "path to a warp-basis YAML (state + world overrides); applied as the first action after session create. Same file the TUI's /warp file:<path> loads.")
+	cmd.Flags().BoolVar(&driveOperation, "drive-operation", false, "after each accepted turn, force-drive any active autonomous/supervised operation until it rests")
 
 	return cmd
 }
 
 // driveCmdConfig carries the parsed flags for runDrive.
 type driveCmdConfig struct {
-	appPath     string
-	tracePath   string
-	harnessType string
-	cassette    string
-	recordMode  string
-	cols        int
-	rows        int
-	scriptPath  string
-	profileName string
-	configPath  string
+	appPath        string
+	tracePath      string
+	harnessType    string
+	cassette       string
+	recordMode     string
+	cols           int
+	rows           int
+	scriptPath     string
+	profileName    string
+	configPath     string
+	warpBasisPath  string
+	driveOperation bool
 
 	// harnessOverride, when non-nil, replaces buildDriveHarness — the DI seam
 	// tests use to inject a stub live harness (or a failing live harness behind
@@ -200,8 +225,29 @@ func runDrive(cmd *cobra.Command, cfg driveCmdConfig) error {
 	// trace already carries turns (a resumed session): re-running on_enter would
 	// double-apply entry effects.
 	if isFreshTrace(ts.Sink) {
-		if err := ts.Orch.RunInitialOnEnter(ctx, ts.SID); err != nil {
-			return infraError("run initial on_enter: %v", err)
+		if cfg.warpBasisPath != "" {
+			resolved, basis, basisErr := tui.LoadWarpBasis(cfg.warpBasisPath, cfg.appPath)
+			if basisErr != nil {
+				ts.Close()
+				return infraError("--warp %q: %v", cfg.warpBasisPath, basisErr)
+			}
+			if basis.State == "" {
+				ts.Close()
+				return infraError("--warp %s: missing required `state:` field", resolved)
+			}
+			_, warpErr := ts.Orch.Teleport(ctx, ts.SID, inbox.TeleportTarget{
+				State: app.StatePath(basis.State),
+				Slots: basis.World,
+			})
+			if warpErr != nil {
+				ts.Close()
+				return infraError("--warp %s: teleport: %v", resolved, warpErr)
+			}
+		} else {
+			if err := ts.Orch.RunInitialOnEnter(ctx, ts.SID); err != nil {
+				ts.Close()
+				return infraError("run initial on_enter: %v", err)
+			}
 		}
 	}
 
@@ -239,18 +285,46 @@ func runDrive(cmd *cobra.Command, cfg driveCmdConfig) error {
 
 		histBefore := len(ts.Sink.History())
 		outcome, turnErr := ts.Orch.Turn(ctx, ts.SID, line)
+		model = model.ApplyTurnOutcome(outcome, line, turnErr)
+		finalOutcome := outcome
+		finalErr := turnErr
+		var opFrame *driveOperationFrame
+
+		if shouldDriveOperationAfterTurn(outcome, turnErr) {
+			var drive *orchestrator.OperationDriveOutcome
+			var driveErr error
+			if cfg.driveOperation {
+				drive, driveErr = ts.Orch.DriveOperation(ctx, ts.SID)
+			} else {
+				drive, driveErr = ts.Orch.DriveBackgroundOperation(ctx, ts.SID)
+			}
+			if drive != nil {
+				opFrame = &driveOperationFrame{
+					Turns:      drive.Turns,
+					StopReason: drive.StopReason,
+					LastIntent: drive.LastIntent,
+				}
+				if drive.Final != nil {
+					model = model.ApplyTurnOutcome(drive.Final, "Drive operation", driveErr)
+					finalOutcome = drive.Final
+				}
+			}
+			if driveErr != nil {
+				finalErr = driveErr
+			}
+		}
+
 		histAfter := ts.Sink.History()
 		newEvents := histAfter[histBefore:]
-
-		model = model.ApplyTurnOutcome(outcome, line, turnErr)
 		frame := tui.ComposeFrame(&model, cfg.cols, cfg.rows)
 
 		df := driveFrame{
-			Frame:        frame,
-			RoutedIntent: routedIntentFromEvents(newEvents),
-			Confidence:   driveConfidence(h),
-			Exit:         driveExit(outcome, turnErr),
-			HostCalls:    hostCallsFromEvents(newEvents),
+			Frame:          frame,
+			RoutedIntent:   routedIntentFromEvents(newEvents),
+			Confidence:     driveConfidence(h),
+			Exit:           driveExit(finalOutcome, finalErr),
+			HostCalls:      hostCallsFromEvents(newEvents),
+			OperationDrive: opFrame,
 		}
 		if encErr := enc.Encode(df); encErr != nil {
 			return fmt.Errorf("encode frame: %w", encErr)
@@ -258,7 +332,7 @@ func runDrive(cmd *cobra.Command, cfg driveCmdConfig) error {
 
 		// Stop driving once the story reaches a terminal state — there is no
 		// further turn to take.
-		if outcome != nil && outcome.Mode == orchestrator.ModeCompleted {
+		if finalOutcome != nil && finalOutcome.Mode == orchestrator.ModeCompleted {
 			break
 		}
 	}
@@ -267,6 +341,13 @@ func runDrive(cmd *cobra.Command, cfg driveCmdConfig) error {
 	}
 
 	return nil
+}
+
+func shouldDriveOperationAfterTurn(out *orchestrator.TurnOutcome, err error) bool {
+	if err != nil || out == nil {
+		return false
+	}
+	return out.Mode == orchestrator.ModeTransitioned
 }
 
 // buildDriveHarness constructs the routing harness for drive: a LiveHarness or
@@ -338,6 +419,19 @@ func newDriveLiveHarness(cfg driveCmdConfig, activeProfile *orchestrator.Harness
 	if activeProfile != nil {
 		env = activeProfile.Env
 		model = activeProfile.Model
+		// A named native-Claude profile is subscription-backed: route through
+		// the Claude CLI, which owns that login, rather than requiring a direct
+		// Anthropic API credential before the CLI is ever invoked.
+		if activeProfile.Backend == "claude" && len(env) == 0 {
+			profile := host.ActiveProfile{
+				Name:     activeProfile.Name,
+				Provider: host.Provider{Backend: activeProfile.Backend, Model: model},
+			}
+			claudeExec := func(ctx context.Context, bin string, args []string, stdin, workingDir string) (string, error) {
+				return host.RunClaudeOneShotForHarness(host.WithActiveProfile(ctx, profile), bin, args, stdin, workingDir)
+			}
+			return harness.NewClaudeCLI(def, harness.ClaudeCLIConfig{Model: model, Exec: claudeExec})
+		}
 	}
 	client, _, err := newLiveClientWithEnv(env)
 	if err != nil {

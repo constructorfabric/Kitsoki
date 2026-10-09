@@ -1,0 +1,60 @@
+{
+  "items": [
+    {
+      "kind": "session_trace",
+      "notes": "Recording notes summarizing the live session (real trace kept locally at ~/.kitsoki/sessions/dev-story/7ea0fa8e-local-gears-onboard.jsonl; not committed, 4.4MB and machine-local paths).",
+      "path": ".context/dwf3-a3-recording-notes.md",
+      "scenario": "project-onboarding",
+      "source": "local",
+      "status": "captured",
+      "updated_at": "2026-07-05T22:55:55+00:00"
+    },
+    {
+      "kind": "rendered_tui_frame",
+      "notes": "Attach from visual MCP, Kitsoki MCP trace, oracle runner, or generated artifact.",
+      "path": "",
+      "scenario": "project-onboarding",
+      "source": "unknown",
+      "status": "missing"
+    },
+    {
+      "kind": "generated_config_diff",
+      "notes": "Attach from visual MCP, Kitsoki MCP trace, oracle runner, or generated artifact.",
+      "path": "",
+      "scenario": "project-onboarding",
+      "source": "unknown",
+      "status": "missing"
+    },
+    {
+      "kind": "onboarding_smoke_result",
+      "notes": "Attach from visual MCP, Kitsoki MCP trace, oracle runner, or generated artifact.",
+      "path": "",
+      "scenario": "project-onboarding",
+      "source": "unknown",
+      "status": "missing"
+    },
+    {
+      "kind": "key_interaction_video",
+      "notes": "Attach from visual MCP, Kitsoki MCP trace, oracle runner, or generated artifact.",
+      "path": "",
+      "scenario": "project-onboarding",
+      "source": "unknown",
+      "status": "missing"
+    },
+    {
+      "kind": "flow-fixture",
+      "notes": "Real recorded onboard of a fresh gears-rust clone, converted via kitsoki trace to-flow; replays no-LLM via kitsoki test flows stories/dev-story/app.yaml --flows stories/dev-story/flows/onboard_gears_rust.yaml",
+      "path": "stories/dev-story/flows/onboard_gears_rust.yaml",
+      "scenario": "project-onboarding",
+      "source": "local",
+      "status": "captured",
+      "updated_at": "2026-07-05T22:55:45+00:00"
+    }
+  ],
+  "run_id": "20260705T225534Z-gears-rust-core-maintainer-dwf3-a3-onboard",
+  "summary": {
+    "missing": 4,
+    "present": 2,
+    "required": 6
+  }
+}

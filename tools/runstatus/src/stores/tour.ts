@@ -33,8 +33,8 @@ function isSnapshot(): boolean {
 
 /**
  * Under browser automation (Playwright/Selenium) the tour must never auto-pop:
- * its spotlight backdrop would intercept the clicks the other UI specs make.
- * The tour-video spec opts in explicitly via window.__startTour / start(true).
+ * its popover can still intercept the clicks other UI specs make. The
+ * tour-video spec opts in explicitly via window.__startTour / start(true).
  */
 function isAutomated(): boolean {
   return typeof navigator !== "undefined" && navigator.webdriver === true;
@@ -89,9 +89,9 @@ export const useTourStore = defineStore("tour", () => {
     active.value = true;
   }
 
-  /** First-login auto-start: skip if completed, in snapshot, or under automation. */
-  function maybeAutoStart(): void {
-    if (completed.value || isSnapshot() || isAutomated()) return;
+  /** First-login auto-start: skip if completed, in snapshot, under automation, or in an already-onboarded project. */
+  function maybeAutoStart(opts: { projectOnboarded?: boolean } = {}): void {
+    if (opts.projectOnboarded || completed.value || isSnapshot() || isAutomated()) return;
     start();
   }
 

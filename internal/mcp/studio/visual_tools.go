@@ -25,6 +25,8 @@ import (
 
 	"kitsoki/internal/orchestrator"
 	"kitsoki/internal/tui"
+	"kitsoki/internal/tui/blocks"
+	"kitsoki/internal/tui/shot"
 )
 
 // VisualKind names a UI surface family. The first implementation binds web and
@@ -381,6 +383,49 @@ type VisualGitDiffOK struct {
 	ToSnapshot     VisualSnapshotInfo `json:"to_snapshot"`
 }
 
+// VisualTUIGitDiffArgs captures the same story scene rendered by the TUI
+// rasteriser at two git revisions and compares the resulting screenshots. It
+// mirrors VisualGitDiffArgs but drops the web-only DOM query/assert-text
+// fields and adds terminal geometry — TUI rendering needs no browser seam, so
+// there is no query-selector concept to thread through.
+type VisualTUIGitDiffArgs struct {
+	Dir           string         `json:"dir"`
+	From          string         `json:"from"`
+	To            string         `json:"to"`
+	StoryPath     string         `json:"story_path"`
+	State         string         `json:"state"`
+	World         map[string]any `json:"world,omitempty"`
+	Cols          int            `json:"cols,omitempty"`
+	Rows          int            `json:"rows,omitempty"`
+	Theme         string         `json:"theme,omitempty"`
+	Region        string         `json:"region,omitempty"`
+	Overlay       string         `json:"overlay,omitempty"`
+	Scale         string         `json:"scale,omitempty"`
+	MaxPixels     int            `json:"max_pixels,omitempty"`
+	IncludeImages string         `json:"include_images,omitempty"`
+}
+
+// VisualTUIGitDiffOK is the TUI counterpart of VisualGitDiffOK: the same
+// compact pixel-regression result, captured via the in-process ANSI
+// rasteriser (render.tui_png's path) instead of a browser.
+type VisualTUIGitDiffOK struct {
+	OK             bool               `json:"ok"`
+	RepoRoot       string             `json:"repo_root"`
+	From           string             `json:"from"`
+	To             string             `json:"to"`
+	StoryPath      string             `json:"story_path"`
+	State          string             `json:"state"`
+	FromImageID    string             `json:"from_image_id"`
+	ToImageID      string             `json:"to_image_id"`
+	Same           bool               `json:"same"`
+	Changed        bool               `json:"changed"`
+	Reasons        []string           `json:"reasons,omitempty"`
+	ChangedRegions []string           `json:"changed_regions,omitempty"`
+	ChangedBBox    *VisualBBox        `json:"changed_bbox,omitempty"`
+	FromSnapshot   VisualSnapshotInfo `json:"from_snapshot"`
+	ToSnapshot     VisualSnapshotInfo `json:"to_snapshot"`
+}
+
 // VisualRecordArgs starts or stops a semantic visual recording.
 type VisualRecordArgs struct {
 	VisualHandle string `json:"visual_handle,omitempty"`
@@ -426,6 +471,10 @@ func (srv *Server) registerVisualTools() {
 		Name:        "visual.git_diff",
 		Description: "Render the same web scene from two git revisions, retain both screenshots, and return compact visual diff metadata. {dir, from, to, story_path, state, world?, query?, assert_text?, region?, overlay?, scale?, max_pixels?, include_images?:none|from|to|both}. Uses git archive temp trees; no LLM.",
 	}, srv.handleVisualGitDiff)
+	mcpsdk.AddTool(srv.mcpSrv, &mcpsdk.Tool{
+		Name:        "visual.tui_git_diff",
+		Description: "Render the same TUI scene from two git revisions via the in-process ANSI rasteriser (no browser/webShot seam needed) and return compact visual diff metadata. {dir, from, to, story_path, state, world?, cols?, rows?, theme?, region?, overlay?, scale?, max_pixels?, include_images?:none|from|to|both}. Uses git archive temp trees; no LLM.",
+	}, srv.handleVisualTUIGitDiff)
 	mcpsdk.AddTool(srv.mcpSrv, &mcpsdk.Tool{
 		Name:        "visual.record",
 		Description: "Start or stop a bounded semantic visual recording for evidence. Writes JSON sidecars under .artifacts/visual (or the injected artifacts dir) without invoking an LLM.",
@@ -539,8 +588,12 @@ func (srv *Server) handleVisualObserve(
 		},
 	}
 	if args.IncludeSemantic && (vh.Kind == VisualWeb || vh.Kind == VisualVSCode) {
-		if semantic, errs := srv.visualWebSemantic(ctx, vh); semantic != nil || len(errs) > 0 {
+		if semantic, errs, imageOK := srv.visualWebSemantic(ctx, vh); semantic != nil || len(errs) > 0 {
 			applyVisualSemantic(&out, semantic, errs)
+			if !imageOK {
+				out.ImageAvailable = false
+				out.Next.Reasons = append(out.Next.Reasons, "web image snapshot capture failed; see errors")
+			}
 		}
 	}
 	if !out.ImageAvailable {
@@ -889,6 +942,171 @@ func (srv *Server) handleVisualGitDiff(
 	return visualGitDiffResult(req, out, fromPNG, toPNG, includeImages), nil, nil
 }
 
+// handleVisualTUIGitDiff mirrors handleVisualGitDiff but captures via the
+// in-process ANSI rasteriser (specFrame + shot.RenderPNG, the same headless
+// path render.tui_png uses) instead of a browser. There is no webShot-style
+// seam to preflight: TUI rendering is pure Go and always available, so this
+// tool never degrades for want of a browser-capable host.
+func (srv *Server) handleVisualTUIGitDiff(
+	ctx context.Context,
+	req *mcpsdk.CallToolRequest,
+	args VisualTUIGitDiffArgs,
+) (*mcpsdk.CallToolResult, any, error) {
+	if strings.TrimSpace(args.Dir) == "" {
+		return buildToolError(ErrBadRequest, "visual.tui_git_diff: dir is required"), nil, nil
+	}
+	if strings.TrimSpace(args.From) == "" || strings.TrimSpace(args.To) == "" {
+		return buildToolError(ErrBadRequest, "visual.tui_git_diff: from and to are required"), nil, nil
+	}
+	if strings.TrimSpace(args.StoryPath) == "" || strings.TrimSpace(args.State) == "" {
+		return buildToolError(ErrBadRequest, "visual.tui_git_diff: story_path and state are required"), nil, nil
+	}
+	includeImages, ok := normalizeGitDiffIncludeImages(args.IncludeImages)
+	if !ok {
+		return buildToolError(ErrBadRequest, "visual.tui_git_diff: include_images must be none, from, to, or both"), nil, nil
+	}
+	cols, rows := geometry(args.Cols, args.Rows)
+	repoRoot, err := gitRepoRoot(ctx, args.Dir)
+	if err != nil {
+		return buildToolError(ErrBadRequest, fmt.Sprintf("visual.tui_git_diff: %v", err)), nil, nil
+	}
+	storyRel, err := gitSceneStoryRel(repoRoot, args.StoryPath)
+	if err != nil {
+		return buildToolError(ErrBadRequest, fmt.Sprintf("visual.tui_git_diff: %v", err)), nil, nil
+	}
+	fromRev, err := gitCommit(ctx, repoRoot, args.From)
+	if err != nil {
+		return buildToolError(ErrBadRequest, fmt.Sprintf("visual.tui_git_diff: from: %v", err)), nil, nil
+	}
+	toRev, err := gitCommit(ctx, repoRoot, args.To)
+	if err != nil {
+		return buildToolError(ErrBadRequest, fmt.Sprintf("visual.tui_git_diff: to: %v", err)), nil, nil
+	}
+	tmpRoot, err := os.MkdirTemp("", "kitsoki-visual-tui-gitdiff-*")
+	if err != nil {
+		return buildToolError(ErrBadRequest, fmt.Sprintf("visual.tui_git_diff: temp dir: %v", err)), nil, nil
+	}
+	defer os.RemoveAll(tmpRoot)
+	fromDir := filepath.Join(tmpRoot, "from")
+	toDir := filepath.Join(tmpRoot, "to")
+	if err := gitArchiveToDir(ctx, repoRoot, fromRev, fromDir); err != nil {
+		return buildToolError(ErrBadRequest, fmt.Sprintf("visual.tui_git_diff: archive from: %v", err)), nil, nil
+	}
+	if err := gitArchiveToDir(ctx, repoRoot, toRev, toDir); err != nil {
+		return buildToolError(ErrBadRequest, fmt.Sprintf("visual.tui_git_diff: archive to: %v", err)), nil, nil
+	}
+	fromPath := filepath.Join(fromDir, storyRel)
+	toPath := filepath.Join(toDir, storyRel)
+	if _, err := os.Stat(fromPath); err != nil {
+		return buildToolError(ErrBadRequest, fmt.Sprintf("visual.tui_git_diff: from story_path %q: %v", storyRel, err)), nil, nil
+	}
+	if _, err := os.Stat(toPath); err != nil {
+		return buildToolError(ErrBadRequest, fmt.Sprintf("visual.tui_git_diff: to story_path %q: %v", storyRel, err)), nil, nil
+	}
+	fromImage, fromInfo, fromPNG, err := srv.captureGitSceneTUI(ctx, fromPath, fromRev, args, cols, rows)
+	if err != nil {
+		return buildToolError(ErrBadRequest, fmt.Sprintf("visual.tui_git_diff: capture from: %v", err)), nil, nil
+	}
+	toImage, toInfo, toPNG, err := srv.captureGitSceneTUI(ctx, toPath, toRev, args, cols, rows)
+	if err != nil {
+		return buildToolError(ErrBadRequest, fmt.Sprintf("visual.tui_git_diff: capture to: %v", err)), nil, nil
+	}
+	diff := visualDiffImages(fromImage, toImage)
+	out := VisualTUIGitDiffOK{
+		OK:             true,
+		RepoRoot:       repoRoot,
+		From:           fromRev,
+		To:             toRev,
+		StoryPath:      storyRel,
+		State:          args.State,
+		FromImageID:    fromImage.ID,
+		ToImageID:      toImage.ID,
+		Same:           diff.Same,
+		Changed:        diff.Changed,
+		Reasons:        diff.Reasons,
+		ChangedRegions: diff.ChangedRegions,
+		ChangedBBox:    diff.ChangedBBox,
+		FromSnapshot:   fromInfo,
+		ToSnapshot:     toInfo,
+	}
+	return visualTUIGitDiffResult(req, out, fromPNG, toPNG, includeImages), nil, nil
+}
+
+// captureGitSceneTUI renders one TUI scene for visual.tui_git_diff: a
+// headless spec render (specFrame — the same in-process, no-LLM path
+// render.tui_png uses) rasterised to a PNG via shot.RenderPNG. Unlike
+// captureGitScene this needs no injected webShot seam — TUI rasterisation is
+// pure Go and always available, headless or otherwise.
+func (srv *Server) captureGitSceneTUI(ctx context.Context, storyPath, rev string, args VisualTUIGitDiffArgs, cols, rows int) (*VisualImage, VisualSnapshotInfo, []byte, error) {
+	frame, err := srv.specFrame(ctx, storyPath, args.State, args.World, cols, rows)
+	if err != nil {
+		return nil, VisualSnapshotInfo{}, nil, err
+	}
+	theme := blocks.ThemeByName(args.Theme)
+	var buf bytes.Buffer
+	if err := shot.RenderPNG(&buf, frame.ANSI, shot.Options{Theme: theme, Cols: cols, Rows: rows}); err != nil {
+		return nil, VisualSnapshotInfo{}, nil, fmt.Errorf("rasterise: %w", err)
+	}
+	processed, err := processVisualPNG(buf.Bytes(), args.Region, args.Overlay, args.Scale, args.MaxPixels, nil)
+	if err != nil {
+		return nil, VisualSnapshotInfo{}, nil, err
+	}
+	vh := &VisualHandle{
+		ID:       "git:" + rev,
+		Kind:     VisualTUI,
+		Handle:   storyPath,
+		Viewport: processed.Original,
+		Mode:     "git_diff",
+		Created:  time.Now().UTC(),
+	}
+	image := srv.storeVisualImage(vh, args.Region, args.Overlay, args.Scale, processed.PNG, processed)
+	info := VisualSnapshotInfo{
+		OK:           true,
+		VisualHandle: vh.ID,
+		ImageID:      image.ID,
+		Kind:         string(VisualTUI),
+		Handle:       storyPath,
+		Format:       "png",
+		Width:        image.Width,
+		Height:       image.Height,
+		Original:     image.Original,
+		CropBBox:     image.CropBBox,
+		ScaleFactor:  image.ScaleFactor,
+		MaxPixels:    processed.MaxPixels,
+		Visible:      visualImageActionHandles(image.Actions),
+		Bytes:        image.Bytes,
+		SHA256:       image.SHA256,
+	}
+	return image, info, processed.PNG, nil
+}
+
+// visualTUIGitDiffResult mirrors visualGitDiffResult for the TUI result type.
+func visualTUIGitDiffResult(req *mcpsdk.CallToolRequest, out VisualTUIGitDiffOK, fromPNG, toPNG []byte, include string) *mcpsdk.CallToolResult {
+	content := []mcpsdk.Content{&mcpsdk.TextContent{Text: mustJSON(out)}}
+	if !clientSupportsImages(req) {
+		return &mcpsdk.CallToolResult{Content: content}
+	}
+	switch strings.ToLower(strings.TrimSpace(include)) {
+	case "", "none":
+	case "from":
+		if len(fromPNG) > 0 {
+			content = append(content, &mcpsdk.ImageContent{Data: fromPNG, MIMEType: "image/png"})
+		}
+	case "to":
+		if len(toPNG) > 0 {
+			content = append(content, &mcpsdk.ImageContent{Data: toPNG, MIMEType: "image/png"})
+		}
+	case "both":
+		if len(fromPNG) > 0 {
+			content = append(content, &mcpsdk.ImageContent{Data: fromPNG, MIMEType: "image/png"})
+		}
+		if len(toPNG) > 0 {
+			content = append(content, &mcpsdk.ImageContent{Data: toPNG, MIMEType: "image/png"})
+		}
+	}
+	return &mcpsdk.CallToolResult{Content: content}
+}
+
 func (srv *Server) handleVisualRecord(
 	ctx context.Context,
 	req *mcpsdk.CallToolRequest,
@@ -1206,29 +1424,29 @@ func (srv *Server) visualWebSnapshot(ctx context.Context, req *mcpsdk.CallToolRe
 	return imageResult(req, mustJSON(info), processed.PNG, "image/png"), nil, nil
 }
 
-func (srv *Server) visualWebSemantic(ctx context.Context, vh *VisualHandle) (map[string]any, []string) {
+func (srv *Server) visualWebSemantic(ctx context.Context, vh *VisualHandle) (map[string]any, []string, bool) {
 	shotResult := srv.webShotResult
 	if shotResult == nil {
-		return nil, nil
+		return nil, nil, true
 	}
 	spec, rerr := srv.webSpec(RenderArgs{Handle: vh.Handle})
 	if rerr != nil {
-		return nil, []string{"visual.observe: web semantic observation could not resolve the session"}
+		return nil, []string{"visual.observe: web semantic observation could not resolve the session"}, false
 	}
 	result, err := shotResult(ctx, spec)
 	if err != nil {
-		return nil, []string{err.Error()}
+		return nil, []string{err.Error()}, false
 	}
 	semantic := compactSemantic(result.SemanticJSON)
 	if len(semantic) == 0 {
-		return nil, nil
+		return nil, nil, true
 	}
 	if ok, _ := semantic["ok"].(bool); !ok {
 		if msg, _ := semantic["error"].(string); msg != "" {
-			return semantic, []string{msg}
+			return semantic, []string{msg}, true
 		}
 	}
-	return semantic, nil
+	return semantic, nil, true
 }
 
 func applyVisualSemantic(out *VisualObserveOK, semantic map[string]any, errs []string) {
@@ -1652,6 +1870,7 @@ func fallbackTerminalBBox(frame tui.Frame, idx int) VisualBBox {
 func tuiSlashCandidates() []string {
 	return []string{
 		"/help",
+		"/stories",
 		"/intents",
 		"/work --all",
 		"/chat show <id>",

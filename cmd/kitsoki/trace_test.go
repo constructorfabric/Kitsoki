@@ -51,6 +51,38 @@ func TestDigestTurns(t *testing.T) {
 	assert.Contains(t, out, "transitioned → core.proposal")
 }
 
+func TestTraceRuntimeContractCmd(t *testing.T) {
+	trace := filepath.Join(t.TempDir(), "trace.jsonl")
+	require.NoError(t, os.WriteFile(trace, []byte("{\"kind\":\"agent.runtime.start\",\"call_id\":\"live\"}\n"), 0o600))
+	cmd := traceRuntimeContractCmd()
+	cmd.SetArgs([]string{trace})
+	var stdout, stderr bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "runtime lifecycle contract failed")
+	assert.Contains(t, stderr.String(), "runtime start has no matching end")
+}
+
+func TestTraceSequenceContractCmd(t *testing.T) {
+	trace := filepath.Join(t.TempDir(), "trace.jsonl")
+	require.NoError(t, os.WriteFile(trace, []byte(
+		"{\"kind\":\"session.header\",\"schema_version\":1}\n"+
+			"{\"turn\":1,\"seq\":0,\"kind\":\"turn.start\",\"payload\":{}}\n"+
+			"{\"turn\":1,\"seq\":2,\"kind\":\"turn.end\",\"payload\":{}}\n",
+	), 0o600))
+	cmd := traceSequenceContractCmd()
+	cmd.SetArgs([]string{trace})
+	var stdout, stderr bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "trace sequence contract failed")
+	assert.Contains(t, err.Error(), "gap in seq")
+}
+
 func TestDigestTurns_SurfacesErrors(t *testing.T) {
 	const tr = `{"turn":1,"kind":"turn.start","state_path":"implementing","payload":{"input":"go","routed_by":"deterministic"}}
 {"turn":1,"kind":"host.on_error.redirect","state_path":"implementing","payload":{"from":"implementing","to":"idle"}}
@@ -131,6 +163,9 @@ func TestResolveTraceArg(t *testing.T) {
 	base := time.Now().Add(-time.Hour)
 	mk("appA", "1111-old.jsonl", base)
 	newest := mk("kitsoki-dev", "7ca57b33-tui-x.jsonl", base.Add(time.Minute))
+	ticketTrace := mk("kitsoki", "308b5d05-tui-x.jsonl", base.Add(2*time.Minute))
+	require.NoError(t, os.WriteFile(ticketTrace, []byte(`{"turn":2,"kind":"world.update","payload":{"set":{"root__bf__ticket_id":"64","root__ticket_id":"64"}}}`+"\n"), 0o644))
+	require.NoError(t, os.Chtimes(ticketTrace, base.Add(2*time.Minute), base.Add(2*time.Minute)))
 
 	t.Run("stdin passthrough", func(t *testing.T) {
 		got, err := resolveTraceArg(root, "-", "")
@@ -152,10 +187,20 @@ func TestResolveTraceArg(t *testing.T) {
 		require.NoError(t, err)
 		assert.Contains(t, got, "appA")
 	})
+	t.Run("ticket filter matches qualified world ticket id", func(t *testing.T) {
+		got, err := resolveTraceArgWithOptions(root, "", traceResolveOptions{TicketID: "64"})
+		require.NoError(t, err)
+		assert.Equal(t, ticketTrace, got)
+	})
 	t.Run("no match is a clear error", func(t *testing.T) {
 		_, err := resolveTraceArg(root, "nope-nothing", "")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "no session trace found")
+	})
+	t.Run("ticket no match is a clear error", func(t *testing.T) {
+		_, err := resolveTraceArgWithOptions(root, "", traceResolveOptions{TicketID: "65"})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), `ticket_id "65"`)
 	})
 }
 

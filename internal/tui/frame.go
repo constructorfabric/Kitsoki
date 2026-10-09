@@ -1,11 +1,14 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
+	"kitsoki/internal/app"
+	"kitsoki/internal/storyauthoring"
 	"kitsoki/internal/tui/blocks"
 )
 
@@ -82,6 +85,7 @@ func ComposeFrame(m *RootModel, width, height int) Frame {
 	mm.width = width
 	mm.height = height
 	mm = mm.resize()
+	mm.tightenLiveOverlayRowLimit()
 
 	promptLine, bannerLine := composePromptAndBanner(mm)
 
@@ -119,6 +123,9 @@ func composeFrameMeta(m RootModel) FrameMeta {
 	}
 	w := m.orch.CurrentWorld(m.sid)
 	for _, ai := range m.orch.AllowedIntents(m.currentState, w) {
+		if ai.Hidden || storyauthoring.HideIntentFromMenu(string(m.currentState), ai.Name) {
+			continue
+		}
 		meta.AllowedIntents = append(meta.AllowedIntents, ai.Name)
 	}
 	meta.WorldDigest = w.Vars
@@ -145,21 +152,13 @@ func composePromptAndBanner(m RootModel) (promptLine, bannerLine string) {
 	m.prompt.SetHeight(promptHeightFor(&m.prompt))
 	switch m.mode {
 	case ModeChoosing:
-		if m.pendingDraft != "" {
-			promptLine = lipgloss.NewStyle().
-				Foreground(colorMuted).
-				Italic(true).
-				Render("(picker active — /input restores your prior draft)")
-		} else {
-			promptLine = lipgloss.NewStyle().
-				Foreground(colorMuted).
-				Italic(true).
-				Render("(picker active)")
-		}
+		promptLine = m.choicePromptLine()
 	case ModeMenu:
-		promptLine = m.menuSystem.View()
+		promptLine = m.menuSystem.ChromeView(m.width, m.liveOverlayRenderRows(liveOverlayPrompt))
 	case ModeMetaSessions:
-		promptLine = m.sessionsPanel.View()
+		promptLine = m.sessionsPanel.ChromeView(m.width, m.liveOverlayRenderRows(liveOverlayPrompt))
+	case ModeStorySelector:
+		promptLine = m.storySelector.ChromeView(m.width, m.liveOverlayRenderRows(liveOverlayPrompt))
 	case ModeAwaitingLLM:
 		caption := "thinking… (Ctrl+C to cancel)"
 		if m.pendingKind == pendingDeterministic {
@@ -208,8 +207,14 @@ func composeChromeParts(m RootModel, width int, promptLine, bannerLine string) [
 	if bannerLine != "" {
 		parts = append(parts, bannerLine)
 	}
+	if operationLine := operationRunChromeLine(m, width); operationLine != "" {
+		parts = append(parts, operationLine)
+	}
 	parts = append(parts, r.Divider())
 	parts = append(parts, promptLine)
+	if completion := m.slashCompletionView(width); completion != "" {
+		parts = append(parts, completion)
+	}
 	if line2 := footerStoryLine(m); line2 != "" {
 		parts = append(parts,
 			lipgloss.NewStyle().
@@ -227,6 +232,114 @@ func composeChromeParts(m RootModel, width int, promptLine, bannerLine string) [
 		Render(hint))
 	parts = append(parts, r.StatusRow(footerFrameworkLine(m), modeLabel(m.mode)))
 	return parts
+}
+
+func operationRunChromeLine(m RootModel, width int) string {
+	if m.orch == nil {
+		return ""
+	}
+	text := operationRunChromeText(m.orch.CurrentWorld(m.sid).Vars)
+	if text == "" {
+		return ""
+	}
+	return lipgloss.NewStyle().
+		Foreground(colorMuted).
+		Render(truncateFrameCell("operation: "+text, width))
+}
+
+func operationRunChromeText(vars map[string]any) string {
+	if len(vars) == 0 {
+		return ""
+	}
+	handle, ok := operationRunHandle(vars[app.OperationRunWorldKey])
+	if !ok {
+		return ""
+	}
+
+	operationID := operationRunString(handle, "operation_id")
+	policyID := operationRunString(handle, "policy_id")
+	title := operationRunString(handle, "title")
+	if title == "" {
+		title = policyID
+	}
+	if title == "" {
+		title = operationID
+	}
+	if title == "" {
+		title = "operation"
+	}
+
+	status := operationRunString(handle, "status")
+	if status == "" {
+		status = "running"
+	}
+	parts := []string{title, status}
+	switch status {
+	case "waiting":
+		if reason := operationRunString(handle, "stop_reason"); reason != "" {
+			parts = append(parts, "reason "+reason)
+		}
+		if detail := operationRunString(handle, "stop_detail"); detail != "" {
+			parts = append(parts, detail)
+		}
+	case "completed":
+		if terminal := operationRunString(handle, "terminal_state"); terminal != "" {
+			parts = append(parts, "terminal "+terminal)
+		}
+		if artifact := operationRunString(handle, "terminal_artifact"); artifact != "" {
+			parts = append(parts, "artifact "+artifact)
+		}
+	default:
+		if phase := operationRunDisplayPhase(handle); phase != "" {
+			parts = append(parts, "phase "+phase)
+		} else if from, to := operationRunString(handle, "from"), operationRunString(handle, "to"); from != "" && to != "" {
+			parts = append(parts, from+" -> "+to)
+		} else if intent := operationRunString(handle, "entry_intent"); intent != "" {
+			parts = append(parts, "intent "+intent)
+		}
+	}
+	return strings.Join(parts, " · ")
+}
+
+func operationRunDisplayPhase(handle map[string]any) string {
+	phase := operationRunString(handle, "phase")
+	phase = strings.TrimSpace(strings.TrimSuffix(phase, "_artifact"))
+	if phase == "" {
+		return ""
+	}
+	return strings.ReplaceAll(phase, "_", " ")
+}
+
+func operationRunHandle(v any) (map[string]any, bool) {
+	handle, ok := v.(map[string]any)
+	if !ok || len(handle) == 0 {
+		return nil, false
+	}
+	return handle, true
+}
+
+func operationRunString(handle map[string]any, key string) string {
+	v, ok := handle[key]
+	if !ok || v == nil {
+		return ""
+	}
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return fmt.Sprint(v)
+}
+
+func truncateFrameCell(s string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	if ansi.StringWidth(s) <= width {
+		return s
+	}
+	if width == 1 {
+		return ansi.Cut(s, 0, 1)
+	}
+	return ansi.Cut(s, 0, width-1) + "…"
 }
 
 // joinChromeParts assembles the final chrome string from the part list.

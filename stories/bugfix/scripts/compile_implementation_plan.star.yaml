@@ -1,0 +1,5 @@
+inputs:
+  implementation_plan: { type: list, required: true }
+outputs:
+  plan: { type: list }
+  capability_manifest: { type: object }

@@ -1,5 +1,23 @@
 # Repo-bakeoff remote operations (SSH)
 
+## VM connection
+
+The bake-off VM is a DigitalOcean droplet (Ubuntu 24.04, nyc1, 2vcpu/16gb):
+
+```bash
+ssh root@167.172.149.45          # public IP — reachable directly, no tunnel
+# private addrs: eth0 10.10.0.5 ; the 10.0.0.x / 10.130.0.x names in ~/.ssh/config
+# (dev-do, dev-do.slothattax.me) are behind WireGuard wg0 and were NOT up.
+```
+
+Checkout on the VM: `/opt/bakeoff/repos/kitsoki` (branch `vm-bakeoff`).
+Docker: 29.1.3. Register it as an arena placement host (docker context over SSH):
+
+```bash
+docker context create vm-1 --docker "host=ssh://root@167.172.149.45"
+docker --context vm-1 version --format '{{.Server.Version}}'   # sanity
+```
+
 Use this from SSH to check and control the VM bakeoff state from artifacts only.
 
 ```bash

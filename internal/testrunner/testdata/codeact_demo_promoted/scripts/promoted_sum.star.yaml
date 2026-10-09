@@ -1,0 +1,2 @@
+outputs:
+  total: { type: any, required: true }

@@ -1,0 +1,61 @@
+states:
+  running:
+    description: "Executing the no-LLM managed-delta transaction gate."
+    view:
+      - banner:
+          text: "Running"
+          subtitle: "The story is executing the native managed-delta transaction gate."
+          color: "#0F766E"
+      - kv:
+          pairs:
+            Status: "{{ world.status }}"
+            Review: "{{ world.review_summary }}"
+            Exit code: "{{ world.result_exit_code }}"
+            OK: "{{ world.result_ok }}"
+      - heading: "Output"
+      - code: '{{ world.result_stdout|default:"(pending - managed delta gate has not returned yet)" }}'
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "accept"
+              intent: accept
+            - label: "quit"
+              intent: quit
+            - label: "look"
+              intent: look
+    on_enter:
+      - invoke: host.starlark.run
+        id: managed_delta_gate
+        with:
+          script: scripts/decomposition_update.star
+          inputs:
+            op: self-test
+          capabilities:
+            host:
+              verbs: [host.decomposition.update]
+        bind:
+          result_stdout: "result.summary"
+          result_exit_code: "result.exit_code"
+          result_ok: "result.ok"
+        on_error: failed
+      - when: "world.result_stdout != '' && world.result_ok == false"
+        emit_intent: failed
+      - set: { status: "ready" }
+    on:
+      accept:
+        - when: "world.result_ok"
+          target: "@exit:done"
+        - target: failed
+          effects:
+            - set: { status: "failed" }
+      failed:
+        - target: failed
+          effects:
+            - set:
+                status: "failed"
+                last_error: "{{ world.result_stdout }}"
+      quit:
+        - target: "@exit:abandoned"
+      look:
+        - target: .

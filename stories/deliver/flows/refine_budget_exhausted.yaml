@@ -1,0 +1,32 @@
+# refine_budget_exhausted — the adversarial reviewer keeps asking for
+# revisions past the shared refine_cycle/refine_budget counter → the honest
+# @exit:needs-human exit fires with a specific last_error naming the last
+# review reason, instead of looping forever.
+#
+# refine_budget: 1 is seeded so the second revise verdict (refine_cycle
+# already at 1) trips the budget check. Lint passes both times — this flow
+# isolates the review-revise budget path from the lint-fail refine loop.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: configure
+initial_world:
+  base_branch: main
+  main_worktree_path: "."
+  refine_budget: 1
+
+host_cassette: ../cassettes/refine_budget_exhausted.cassette.yaml
+starlark_inspect_cassette: ../cassettes/refine_budget_exhausted.inspect.yaml
+
+turns:
+  - intent:
+      name: start
+      slots:
+        epic_path: "stories/deliver/testdata/fixture_epic.md"
+    expect_state: __exit__needs-human
+    expect_world:
+      refine_cycle: 1
+      last_error: "Refine budget exhausted after 1 cycles: adversarial review still requests revisions (A single brief with no acceptance criteria and no coverage_note is not a convincing completeness claim.)."
+
+expect_terminal: true
+expect_no_errors: true

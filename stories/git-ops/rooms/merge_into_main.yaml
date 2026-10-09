@@ -5,7 +5,7 @@
 # against the default world before any invoke binds.
 #
 # The script returns a JSON envelope with:
-#   outcome: "merged" | "re_rebase_needed" | "merge_in_progress" | "post_merge_test_fail"
+#   outcome: "merged" | "re_rebase_needed" | "merge_in_progress" | "dirty_target" | "post_merge_test_fail"
 #   descendant_ok: bool
 #   merge_in_progress: bool
 #   last_op_ok: bool
@@ -36,9 +36,13 @@ states:
         when: "world.last_op_outcome == 'merge_in_progress'"
       - prose: "MERGE_HEAD or rebase-in-progress detected in {{ world.main_worktree_path }}. Resolve or abort that operation first."
         when: "world.last_op_outcome == 'merge_in_progress'"
+      - heading: "Target worktree has uncommitted work"
+        when: "world.last_op_outcome == 'dirty_target'"
+      - prose: "Refusing to merge through {{ world.main_worktree_path }} while it has uncommitted changes. Commit, checkpoint, or clean that work first; git-ops will not use the shared stash stack for this merge. {{ world.last_op_output ?? '(pending)' }}"
+        when: "world.last_op_outcome == 'dirty_target'"
       - heading: "Post-merge build failed"
         when: "world.last_op_outcome == 'post_merge_test_fail'"
-      - prose: "Build failed after merge: {{ world.last_op_output }}. Use rollback to abort the merge or retry to recheck."
+      - prose: "Build failed after merge and the target worktree was reset to its pre-merge commit: {{ world.last_op_output ?? '(pending)' }}. Fix the branch, rebase if needed, then retry the merge."
         when: "world.last_op_outcome == 'post_merge_test_fail'"
       - heading: "Merge successful — cleanup offered"
         when: "world.last_op_outcome == 'merged'"
@@ -60,7 +64,7 @@ states:
               intent: retry
               when:  "world.last_op_outcome == 'post_merge_test_fail'"
             - label: "rollback"
-              hint:  "git merge --abort in the target worktree"
+              hint:  "already rolled back; return to the hub"
               intent: rollback
               when:  "world.last_op_outcome == 'post_merge_test_fail'"
             - label: "cleanup"
@@ -109,28 +113,27 @@ states:
                 exit 0
               fi
 
-              # Stash if target tree is dirty
-              DIRTY=$(git -C "$MAIN_WT" status --porcelain 2>/dev/null | grep -c . || true)
-              STASH_REF=""
-              if [ "$DIRTY" -gt 0 ]; then
-                STASH_OUT=$(git -C "$MAIN_WT" stash push -u -m 'git-ops-wip' 2>&1 || true)
-                STASH_REF=$(git -C "$MAIN_WT" stash list 2>/dev/null | head -1 | cut -d: -f1 || echo "")
-              fi
-
-              # Guard 3: merge with --no-ff in target worktree (no git checkout)
-              # || MERGE_EXIT=$? OUTSIDE the $(): a `|| true` inside would mask
-              # a conflicting merge as success and skip the stash-pop rollback.
-              MERGE_EXIT=0
-              MERGE_OUT=$(git -C "$MAIN_WT" merge --no-ff "$BRANCH" 2>&1) || MERGE_EXIT=$?
-              if [ "$MERGE_EXIT" -ne 0 ]; then
-                [ -n "$STASH_REF" ] && git -C "$MAIN_WT" stash pop 2>/dev/null || true
-                jq -n --arg out "$MERGE_OUT" --arg sr "$STASH_REF" \
-                  '{outcome:"merge_failed",descendant_ok:true,merge_in_progress:false,last_op_ok:false,last_op_output:$out,stash_ref:$sr,rebase_done:false}'
+              # Guard 3: never stash around the merge. The stash stack is shared
+              # across all linked worktrees in this repository; using it here can
+              # hide or interleave another operator's WIP. Stop loudly instead.
+              DIRTY=$(git -C "$MAIN_WT" status --porcelain 2>/dev/null || true)
+              if [ -n "$DIRTY" ]; then
+                jq -n --arg dirty "$DIRTY" \
+                  '{outcome:"dirty_target",descendant_ok:true,merge_in_progress:false,last_op_ok:false,last_op_output:$dirty,stash_ref:"",rebase_done:false}'
                 exit 0
               fi
 
-              # Pop stash
-              [ -n "$STASH_REF" ] && git -C "$MAIN_WT" stash pop 2>/dev/null || true
+              # Guard 4: merge with --no-ff in target worktree (no git checkout)
+              # || MERGE_EXIT=$? OUTSIDE the $(): a `|| true` inside would mask
+              # a conflicting merge as success.
+              PRE_MERGE_SHA=$(git -C "$MAIN_WT" rev-parse HEAD 2>/dev/null || echo "")
+              MERGE_EXIT=0
+              MERGE_OUT=$(git -C "$MAIN_WT" merge --no-ff "$BRANCH" 2>&1) || MERGE_EXIT=$?
+              if [ "$MERGE_EXIT" -ne 0 ]; then
+                jq -n --arg out "$MERGE_OUT" \
+                  '{outcome:"merge_failed",descendant_ok:true,merge_in_progress:false,last_op_ok:false,last_op_output:$out,stash_ref:"",rebase_done:false}'
+                exit 0
+              fi
 
               # Post-merge build check
               if [ "$BUILD_DISABLED" != "true" ]; then
@@ -139,14 +142,15 @@ states:
                 BUILD_EXIT=0
                 BUILD_OUT=$(bash -c "$BUILD_CMD" 2>&1) || BUILD_EXIT=$?
                 if [ "$BUILD_EXIT" -ne 0 ]; then
-                  jq -n --arg out "$BUILD_OUT" --arg sr "$STASH_REF" \
-                    '{outcome:"post_merge_test_fail",descendant_ok:true,merge_in_progress:false,last_op_ok:false,last_op_output:$out,stash_ref:$sr,rebase_done:false}'
+                  [ -n "$PRE_MERGE_SHA" ] && git -C "$MAIN_WT" reset --hard "$PRE_MERGE_SHA" >/dev/null 2>&1 || true
+                  jq -n --arg out "$BUILD_OUT" \
+                    '{outcome:"post_merge_test_fail",descendant_ok:true,merge_in_progress:false,last_op_ok:false,last_op_output:$out,stash_ref:"",rebase_done:false}'
                   exit 0
                 fi
               fi
 
-              jq -n --arg sr "$STASH_REF" \
-                '{outcome:"merged",descendant_ok:true,merge_in_progress:false,last_op_ok:true,last_op_output:"Merge successful",stash_ref:$sr,rebase_done:false}'
+              jq -n \
+                '{outcome:"merged",descendant_ok:true,merge_in_progress:false,last_op_ok:true,last_op_output:"Merge successful",stash_ref:"",rebase_done:false}'
           cwd: "{{ world.working_dir }}"
         bind:
           last_op_outcome:   "stdout_json.outcome"
@@ -178,17 +182,9 @@ states:
                 last_op_outcome: ""
       rollback:
         - when: "world.last_op_outcome == 'post_merge_test_fail'"
-          target: main_ops
+          target: branch_ops
           effects:
-            - invoke: host.run
-              id: merge_abort
-              with:
-                cmd: git
-                args: ["merge", "--abort"]
-                cwd: "{{ world.main_worktree_path }}"
-              bind:
-                last_op_ok: ok
-              on_error: merge_into_main
+            - say: "The failed merge was already reset to its pre-merge commit."
             - set:
                 last_op_outcome: ""
       cleanup:

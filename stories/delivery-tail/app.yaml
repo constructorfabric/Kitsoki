@@ -34,7 +34,6 @@ app:
 
 hosts:
   - host.run
-  - host.git_worktree
   - host.artifacts_dir
   - host.agent.task   # the imported conflict-resolve agent path
 

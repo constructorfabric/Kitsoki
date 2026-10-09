@@ -1,0 +1,381 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+# Product-facing campaign verbs should stay thin wrappers over the existing
+# product-journey evidence, issue/fix, stats, and deck gates.
+
+host_handlers:
+  host.product_journey.run:
+    by_call:
+      emit_product_journey_run:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: created
+            run_id: campaign-run-1
+            run_dir: .artifacts/product-journey/campaign-run-1
+            deck_path: .artifacts/product-journey/campaign-run-1/deck.slidey.json
+            execution_plan_path: .artifacts/product-journey/campaign-run-1/execution-plan.md
+            driver_plan_path: .artifacts/product-journey/campaign-run-1/driver-plan.md
+            driver_journal_path: .artifacts/product-journey/campaign-run-1/driver-journal.md
+            agent_brief_path: .artifacts/product-journey/campaign-run-1/agent-brief.md
+            driver_handoff_path: .artifacts/product-journey/campaign-run-1/driver-handoff.md
+            media_manifest_path: .artifacts/product-journey/campaign-run-1/media-manifest.json
+            scenario_outcomes_path: .artifacts/product-journey/campaign-run-1/scenario-outcomes.md
+            scenario_count: 4
+            live_budget_minutes: 0
+            persona_starting_surface: docs-and-mcp-first
+            persona_first_question: "Can I reuse this story for my own workflow?"
+            persona_evidence_emphasis: "docs, MCP session trace, web frame, and TUI frame"
+            persona_escalation_trigger: "private Kitsoki assumptions or missing story reuse instructions"
+            persona_finding_bias: "Prefer reusable workflow and evidence-contract findings."
+            proof_evidence_count: 0
+            demo_evidence_count: 0
+            finding_total_count: 0
+            strength_count: 0
+            weakness_count: 0
+            issue_count: 0
+            fix_count: 0
+            blocked_count: 0
+            missing_evidence_count: 16
+            missing_proof_evidence_count: 16
+            proof_minimum_evidence_count: 0
+            minimum_evidence_count: 16
+            missing_proof_summary: "docs-to-mcp-first-run: browser_screenshot, rendered_tui_frame; agent-launch-experience: session_trace"
+            driver_contract_summary: "Driver contract: 4 scenarios (docs-to-mcp-first-run, agent-launch-experience, remote-worker-campaign, campaign-rollup-review); 4 missing-proof rows; 4 final gates."
+            next_driver_capture: "Next capture: docs-to-mcp-first-run/browser_screenshot."
+            next_driver_attach_command: "host.product_journey.run --attach-evidence --run-dir .artifacts/product-journey/campaign-run-1 --scenario docs-to-mcp-first-run --evidence-kind browser_screenshot --evidence-path <path> --evidence-source <retained|external|local|cassette>"
+            next_driver_blocker_command: "host.product_journey.run --record-blocker --run-dir .artifacts/product-journey/campaign-run-1 --scenario docs-to-mcp-first-run --title <blocker-title> --summary <summary> --evidence-path <path>"
+      attach_product_journey_evidence:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: evidence_attached
+            deck_path: .artifacts/product-journey/campaign-run-1/deck.slidey.json
+            execution_plan_path: .artifacts/product-journey/campaign-run-1/execution-plan.md
+            driver_plan_path: .artifacts/product-journey/campaign-run-1/driver-plan.md
+            driver_journal_path: .artifacts/product-journey/campaign-run-1/driver-journal.md
+            agent_brief_path: .artifacts/product-journey/campaign-run-1/agent-brief.md
+            driver_handoff_path: .artifacts/product-journey/campaign-run-1/driver-handoff.md
+            media_manifest_path: .artifacts/product-journey/campaign-run-1/media-manifest.json
+            scenario_outcomes_path: .artifacts/product-journey/campaign-run-1/scenario-outcomes.md
+            persona_starting_surface: docs-and-mcp-first
+            persona_first_question: "Can I reuse this story for my own workflow?"
+            persona_evidence_emphasis: "docs, MCP session trace, web frame, and TUI frame"
+            persona_escalation_trigger: "private Kitsoki assumptions or missing story reuse instructions"
+            persona_finding_bias: "Prefer reusable workflow and evidence-contract findings."
+            proof_evidence_count: 1
+            demo_evidence_count: 0
+            finding_total_count: 1
+            strength_count: 0
+            weakness_count: 0
+            issue_count: 1
+            fix_count: 0
+            blocked_count: 0
+            missing_evidence_count: 15
+            missing_proof_evidence_count: 15
+            proof_minimum_evidence_count: 1
+            minimum_evidence_count: 16
+            missing_proof_summary: "agent-launch-experience: session_trace"
+            driver_contract_summary: "Driver contract: 4 scenarios; 3 missing-proof rows; 4 final gates."
+            next_driver_capture: "Next capture: agent-launch-experience/session_trace."
+            next_driver_attach_command: "host.product_journey.run --attach-evidence --run-dir .artifacts/product-journey/campaign-run-1 --scenario agent-launch-experience --evidence-kind session_trace --evidence-path <path> --evidence-source <retained|external|local|cassette>"
+            next_driver_blocker_command: "host.product_journey.run --record-blocker --run-dir .artifacts/product-journey/campaign-run-1 --scenario agent-launch-experience --title <blocker-title> --summary <summary> --evidence-path <path>"
+            evidence_source: retained
+      record_campaign_worker_receipt:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: campaign_worker_recorded
+            run_dir: .artifacts/product-journey/campaign-run-1
+            campaign_worker_backend: vm
+            campaign_worker_id: qa-vm-1
+            campaign_worker_status: ready
+            campaign_worker_ready_status: pass
+            campaign_worker_summary: "vm:qa-vm-1 ready; ready=pass; artifacts=1"
+            campaign_worker_receipt_path: .artifacts/product-journey/campaign-run-1/campaign-worker-receipt.json
+            campaign_worker_receipt_markdown_path: .artifacts/product-journey/campaign-run-1/campaign-worker-receipt.md
+            campaign_worker_imported_artifact_count: 1
+            campaign_worker_artifact_import_status: imported
+            deck_path: .artifacts/product-journey/campaign-run-1/deck.slidey.json
+            driver_handoff_path: .artifacts/product-journey/campaign-run-1/driver-handoff.md
+      autonomous_product_journey_fix:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: autonomous_fix_valid
+            autonomous_fix_status: autonomous_fix_valid
+            autonomous_fix_report_path: .artifacts/product-journey/campaign-run-1/autonomous-fix-report.md
+            autonomous_gate_summary: "filing=pass, gh_agent=pass, independent_verify=pass, review=needs_evidence, validation=pass"
+            autonomous_watchdog_status: autonomous_watchdog_ok
+            autonomous_watchdog_summary: "heartbeat age 4m within watchdog=45m"
+            autonomous_watchdog_path: .artifacts/product-journey/campaign-run-1/autonomous-marathon-watchdog.json
+            autonomous_watchdog_markdown_path: .artifacts/product-journey/campaign-run-1/autonomous-marathon-watchdog.md
+            autonomous_watchdog_age_minutes: 4
+            independent_verify_status: pass
+            independent_verify_summary: "verified=1/1"
+            issue_closeout_status: closed
+            issue_closeout_count: 1
+            issue_closeout_summary: "Closed 1 fixed GitHub issue."
+            filing_status: findings_filed
+            dry_run: "no"
+            findings_filed_count: 1
+            findings_skipped_count: 0
+            findings_failed_count: 0
+            findings_unfiled_count: 0
+            filed_issue_summary: "https://github.com/owner/repo/issues/42"
+            filing_summary: "Filed findings to owner/repo: 1 filed."
+            gh_agent_health_status: pass
+            gh_agent_health_summary: "https://agent.example/healthz: ok"
+            gh_agent_readiness_status: pass
+            gh_agent_readiness_summary: "https://agent.example/api/ready: ready for owner/repo"
+            gh_agent_enqueue_status: queued
+            gh_agent_enqueued_count: 1
+            gh_agent_skipped_count: 0
+            gh_agent_job_summary: "github:owner/repo/issue/42"
+            gh_agent_claim_status: claimed
+            gh_agent_claim_count: 1
+            gh_agent_claim_summary: "https://github.com/owner/repo/issues/42#issuecomment-claim"
+            gh_agent_drain_status: drained
+            gh_agent_drained_count: 1
+            gh_agent_done_count: 1
+            gh_agent_failed_count: 0
+            gh_agent_active_count: 0
+            gh_agent_run_summary: "github:owner/repo/issue/42=done https://agent.example/run/job-42"
+            gh_agent_fix_evidence_count: 2
+            gh_agent_missing_evidence_count: 0
+            gh_agent_triage_evidence_count: 1
+            gh_agent_missing_triage_count: 0
+            gh_agent_independent_verify_count: 1
+            gh_agent_missing_verify_count: 0
+            gh_agent_missing_run_url_count: 0
+            gh_agent_fix_evidence_summary: "fix-report.md; independent-verify.md"
+            gh_agent_missing_evidence_summary: ""
+            gh_agent_triage_evidence_summary: "triage-verdict.md"
+            gh_agent_missing_triage_summary: ""
+            gh_agent_independent_verify_summary: "independent-verify.md"
+            gh_agent_missing_verify_summary: ""
+            review_status: needs_evidence
+            review_summary: "needs_evidence: 21/24 checks passed, 1 warnings, 2 failures"
+            review_passed_count: 21
+            review_failed_count: 2
+            review_warning_count: 1
+            review_total_count: 24
+            review_backlog_summary: "fail: remaining-proof-evidence"
+            validation_status: valid
+            validation_errors: 0
+            validation_warnings: 0
+            validation_issue_summary: ""
+            deck_path: .artifacts/product-journey/campaign-run-1/deck.slidey.json
+            execution_plan_path: .artifacts/product-journey/campaign-run-1/execution-plan.md
+            driver_plan_path: .artifacts/product-journey/campaign-run-1/driver-plan.md
+            driver_journal_path: .artifacts/product-journey/campaign-run-1/driver-journal.md
+            agent_brief_path: .artifacts/product-journey/campaign-run-1/agent-brief.md
+            driver_handoff_path: .artifacts/product-journey/campaign-run-1/driver-handoff.md
+            media_manifest_path: .artifacts/product-journey/campaign-run-1/media-manifest.json
+            scenario_outcomes_path: .artifacts/product-journey/campaign-run-1/scenario-outcomes.md
+            proof_evidence_count: 1
+            demo_evidence_count: 0
+            finding_total_count: 1
+            strength_count: 0
+            weakness_count: 0
+            issue_count: 1
+            fix_count: 0
+            blocked_count: 0
+            missing_evidence_count: 15
+            missing_proof_evidence_count: 15
+            proof_minimum_evidence_count: 1
+            minimum_evidence_count: 16
+            missing_proof_summary: "agent-launch-experience: session_trace"
+            driver_contract_summary: "Driver contract: 4 scenarios; 3 missing-proof rows; 4 final gates."
+            next_driver_capture: "Next capture: agent-launch-experience/session_trace."
+            next_driver_attach_command: ""
+            next_driver_blocker_command: ""
+      derive_product_journey_stats:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: stats_derived
+            stats_root: .artifacts/product-journey
+            stats_output: .artifacts/product-journey/campaign-run-1/campaign-stats.json
+            runs_scanned: 1
+            findings_found_count: 1
+            findings_filed_count: 1
+            issues_fixed_count: 1
+            issues_reopened_count: 0
+            issues_unknown_state_count: 0
+            similar_pair_count: 0
+            issue_state_status: issue_state_cached
+            issue_state_output: .artifacts/product-journey/issue-state.json
+            issue_state_count: 1
+            issue_state_summary: "Used cached issue state."
+            stats_summary: "Derived product-journey stats: 1 found, 1 filed, 1 fixed."
+      review_product_journey_run:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            review_status: needs_evidence
+            summary: "needs_evidence: 21/24 checks passed, 1 warnings, 2 failures"
+            review_passed_count: 21
+            review_failed_count: 2
+            review_warning_count: 1
+            review_total_count: 24
+            review_backlog_summary: "fail: remaining-proof-evidence"
+            deck_path: .artifacts/product-journey/campaign-run-1/deck.slidey.json
+            execution_plan_path: .artifacts/product-journey/campaign-run-1/execution-plan.md
+            driver_plan_path: .artifacts/product-journey/campaign-run-1/driver-plan.md
+            driver_journal_path: .artifacts/product-journey/campaign-run-1/driver-journal.md
+            agent_brief_path: .artifacts/product-journey/campaign-run-1/agent-brief.md
+            driver_handoff_path: .artifacts/product-journey/campaign-run-1/driver-handoff.md
+            media_manifest_path: .artifacts/product-journey/campaign-run-1/media-manifest.json
+            scenario_outcomes_path: .artifacts/product-journey/campaign-run-1/scenario-outcomes.md
+            proof_evidence_count: 1
+            demo_evidence_count: 0
+            finding_total_count: 1
+            strength_count: 0
+            weakness_count: 0
+            issue_count: 1
+            fix_count: 0
+            blocked_count: 0
+            missing_evidence_count: 15
+            missing_proof_evidence_count: 15
+            proof_minimum_evidence_count: 1
+            minimum_evidence_count: 16
+            missing_proof_summary: "agent-launch-experience: session_trace"
+            driver_contract_summary: "Driver contract: 4 scenarios; 3 missing-proof rows; 4 final gates."
+
+turns:
+  - intent:
+      name: campaign_plan
+      slots:
+        project: gears-rust
+        persona: workflow-author
+        seed: universal-campaign
+        live_budget_minutes: 0
+    expect_state: run_created
+    expect_world:
+      status: run_created
+      campaign_status: planning
+      project: gears-rust
+      persona: workflow-author
+      seed: universal-campaign
+      scenario_scope: docs-to-mcp-first-run,agent-launch-experience,remote-worker-campaign,campaign-rollup-review
+      run_id: campaign-run-1
+      run_scenario_count: 4
+    expect_view_matches: "RUN CREATED[\\s\\S]*Campaign[\\s\\S]*planning[\\s\\S]*Scenario scope[\\s\\S]*docs-to-mcp-first-run[\\s\\S]*campaign-rollup-review[\\s\\S]*campaign_attach[\\s\\S]*campaign_issue_fix[\\s\\S]*campaign_deck_refresh"
+    expect_host_calls:
+      - handler: host.product_journey.run
+        args: { call: emit_product_journey_run }
+
+  - intent:
+      name: campaign_attach
+      slots:
+        scenario: docs-to-mcp-first-run
+        evidence_kind: browser_screenshot
+        evidence_path: .artifacts/product-journey/campaign-run-1/evidence/docs-home.png
+        source: retained
+        notes: "Docs entrypoint screenshot."
+    expect_state: run_created
+    expect_world:
+      status: campaign_evidence_attached
+      campaign_status: evidence_attached
+      scenario: docs-to-mcp-first-run
+      evidence_kind: browser_screenshot
+      evidence_source: retained
+      proof_evidence_count: 1
+      issue_count: 1
+    expect_host_calls:
+      - handler: host.product_journey.run
+        args: { call: attach_product_journey_evidence }
+
+  - intent:
+      name: campaign_worker
+      slots:
+        backend: vm
+        worker_id: qa-vm-1
+        status: ready
+        ready_status: pass
+        ready_summary: "healthz ok; arena receipt available"
+        budget_minutes: 15
+        receipt_source: vm://qa-vm-1/campaign/campaign-run-1
+        import_artifacts: .artifacts/product-journey/campaign-run-1/worker/receipt.json
+        summary: "VM worker is ready for bounded campaign capture."
+    expect_state: run_created
+    expect_world:
+      status: campaign_worker_recorded
+      campaign_status: worker_receipt_recorded
+      campaign_worker_backend: vm
+      campaign_worker_id: qa-vm-1
+      campaign_worker_status: ready
+      campaign_worker_ready_status: pass
+      campaign_worker_imported_artifact_count: 1
+      campaign_worker_artifact_import_status: imported
+      campaign_worker_receipt_markdown_path: .artifacts/product-journey/campaign-run-1/campaign-worker-receipt.md
+    expect_view_matches: "RUN CREATED[\\s\\S]*Campaign worker[\\s\\S]*vm / qa-vm-1 / ready[\\s\\S]*Worker readiness[\\s\\S]*pass[\\s\\S]*Worker receipt[\\s\\S]*campaign-worker-[\\s\\S]*receipt\\.md"
+    expect_host_calls:
+      - handler: host.product_journey.run
+        args: { call: record_campaign_worker_receipt }
+
+  - intent:
+      name: campaign_issue_fix
+      slots:
+        finding_sink: github
+        ticket_repo: owner/repo
+        gh_agent_public_base_url: https://agent.example
+    expect_state: run_created
+    expect_world:
+      status: autonomous_fix_complete
+      campaign_status: issue_fixing
+      campaign_finding_sink: github
+      filing_sink: github
+      ticket_repo: owner/repo
+      gh_agent_public_base_url: https://agent.example
+      autonomous_fix_status: autonomous_fix_valid
+      findings_filed_count: 1
+      gh_agent_done_count: 1
+      independent_verify_status: pass
+      validation_status: valid
+    expect_host_calls:
+      - handler: host.product_journey.run
+        args: { call: autonomous_product_journey_fix }
+
+  - intent:
+      name: campaign_stats
+      slots:
+        stats_root: .artifacts/product-journey
+        stats_output: .artifacts/product-journey/campaign-run-1/campaign-stats.json
+    expect_state: run_created
+    expect_world:
+      status: stats_derived
+      campaign_status: refreshing_stats
+      stats_status: stats_derived
+      stats_found_count: 1
+      stats_filed_count: 1
+      stats_fixed_count: 1
+    expect_host_calls:
+      - handler: host.product_journey.run
+        args: { call: derive_product_journey_stats }
+
+  - intent:
+      name: campaign_deck_refresh
+    expect_state: run_created
+    expect_world:
+      status: reviewed
+      campaign_status: refreshing_deck
+      review_status: needs_evidence
+      review_passed_count: 21
+      review_failed_count: 2
+      deck_path: .artifacts/product-journey/campaign-run-1/deck.slidey.json
+    expect_view_matches: "RUN CREATED[\\s\\S]*Campaign[\\s\\S]*refreshing_deck[\\s\\S]*Deck[\\s\\S]*deck\\.slidey\\.json[\\s\\S]*Review checks[\\s\\S]*21 / 24 passed"
+    expect_host_calls:
+      - handler: host.product_journey.run
+        args: { call: review_product_journey_run }
+
+expect_no_errors: true

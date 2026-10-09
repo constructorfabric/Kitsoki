@@ -7,6 +7,7 @@ app:
 
 hosts:
   - host.run
+  - host.starlark.run
 
 world:
   bench_manifest: { type: string, default: "stories/deliver/agent-bench/decompose_glm.yaml" }
@@ -22,6 +23,17 @@ world:
   score_error:     { type: string, default: "" }
   score_stdout:    { type: string, default: "" }
 
+  campaign_study: { type: string, default: "tools/arena/specs/bugfix-task-optimization-v1.yaml" }
+  campaign_output_dir: { type: string, default: ".artifacts/task-optimization" }
+  campaign_repeat_phase: { type: string, default: "screening" }
+  campaign_root: { type: string, default: "" }
+  campaign_plan: { type: string, default: "" }
+  campaign_markdown: { type: string, default: "" }
+  campaign_deck: { type: string, default: "" }
+  campaign_arm_receipt: { type: string, default: "" }
+  campaign_status: { type: string, default: "" }
+  campaign_error: { type: string, default: "" }
+
 intents:
   score:
     description: "Score the configured trace and produce review artifacts."
@@ -36,6 +48,22 @@ intents:
     description: "Clear current score artifacts and run the score again."
     examples: ["rescore", "score again"]
     priority: 80
+  campaign_review:
+    description: "Materialize an offline Arena campaign plan and Slidey review deck."
+    examples: ["review campaign", "plan campaign", "campaign review"]
+    priority: 85
+    slots:
+      study: { type: string, required: false }
+      output_dir: { type: string, required: false }
+      repeat_phase: { type: string, required: false }
+  campaign_arm:
+    description: "Record explicit no-dispatch campaign arming intent after review."
+    examples: ["arm campaign", "authorize campaign arm"]
+    priority: 84
+    slots:
+      study: { type: string, required: false }
+      output_dir: { type: string, required: false }
+      repeat_phase: { type: string, required: false }
   done:
     description: "Accept the scored evidence and finish."
     examples: ["done", "finish"]
@@ -53,6 +81,9 @@ exits:
   done:
     description: "The trace was scored and artifacts were produced."
     requires: [report_json, report_markdown, report_deck]
+  campaign_done:
+    description: "The offline campaign plan and review deck were produced."
+    requires: [campaign_plan, campaign_markdown, campaign_deck]
   abandoned:
     description: "The operator stopped before accepting the scored evidence."
 

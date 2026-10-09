@@ -49,8 +49,11 @@ func (d *captureDriver) DismissNotification(context.Context, string) error  { re
 func (d *captureDriver) Teleport(context.Context, string) (*orchestrator.TurnOutcome, error) {
 	return &orchestrator.TurnOutcome{}, nil
 }
-func (d *captureDriver) RewindRoute(context.Context, string, orchestrator.ContextRouteClass, string) (*orchestrator.TurnOutcome, error) {
+func (d *captureDriver) RewindRoute(context.Context, string, orchestrator.ContextRouteClass, string, string) (*orchestrator.TurnOutcome, error) {
 	return &orchestrator.TurnOutcome{}, nil
+}
+func (d *captureDriver) RecordRoutingFeedback(context.Context, string, string, string, string, orchestrator.RoutingFeedbackVerdict) error {
+	return nil
 }
 
 // stubSource is a do-nothing Source — the identity tests only exercise the

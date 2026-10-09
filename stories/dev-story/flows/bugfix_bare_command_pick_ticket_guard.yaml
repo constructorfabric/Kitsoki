@@ -1,0 +1,16 @@
+# bugfix_bare_command_pick_ticket_guard -- bare "fix bug" now flows into the
+# explicit bugfix-intake fast path so operators are sent to the quick inline
+# intake (no ticket required) instead of staying on landing.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+
+turns:
+  - intent:
+      name: go_bugfix
+    display_input: "fix bug"
+    expect_state: bugfix_intake
+    expect_no_host_calls: [host.agent.task]
+
+expect_no_errors: true

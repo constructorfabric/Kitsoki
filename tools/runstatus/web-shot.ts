@@ -129,6 +129,11 @@ async function performAction(page: import("@playwright/test").Page, args: Args):
       throw new Error("web-shot.ts: browser action requires --action-handle or --point");
     }
     const handle = args.actionHandle;
+    if (handle === "testid:meta-report-bug") {
+      await clickReportBugAction(page);
+      await page.waitForTimeout(500);
+      return;
+    }
     const bbox = await page.evaluate((h) => {
       const helper = (window as Window & { __kitsokiVisual?: { observe: () => any } }).__kitsokiVisual;
       const actions = helper?.observe?.()?.actions ?? [];
@@ -147,6 +152,27 @@ async function performAction(page: import("@playwright/test").Page, args: Args):
   } finally {
     for (const mod of [...args.modifiers].reverse()) await page.keyboard.up(mod);
   }
+}
+
+async function clickReportBugAction(page: import("@playwright/test").Page): Promise<void> {
+  const reportBug = page.locator('[data-testid="meta-report-bug"]');
+  if (!(await reportBug.isVisible().catch(() => false))) {
+    const metaButton = page.locator('[data-testid="meta-button"]');
+    if (!(await metaButton.isVisible().catch(() => false))) {
+      throw new Error('web-shot.ts: cannot open Report bug; "testid:meta-button" is not visible');
+    }
+    await metaButton.click();
+    await reportBug.waitFor({ state: "visible", timeout: 5000 });
+  }
+  await reportBug.evaluate((el) => {
+    if (!(el instanceof HTMLElement)) throw new Error('web-shot.ts: "testid:meta-report-bug" is not an HTMLElement');
+    el.click();
+  });
+  await Promise.race([
+    page.locator('[data-testid="bug-modal"]').waitFor({ state: "visible", timeout: 5000 }),
+    page.locator('[data-testid="bug-report-toast"]').waitFor({ state: "visible", timeout: 5000 }),
+    reportBug.waitFor({ state: "hidden", timeout: 5000 }),
+  ]).catch(() => undefined);
 }
 
 async function main(): Promise<void> {

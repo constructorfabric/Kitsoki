@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
- * ReviewPage — the /review feedback surface (proposal:
- * docs/proposals/video-feedback-mode.md). Two columns:
+ * ReviewPage — the /review feedback surface (shipped; see
+ * docs/tui/video-review.md). Two columns:
  *
  *   left  — the video player + chapter timeline + flag list
  *   right — the selected flag's still, source_ref, per-flag chat, dispatch

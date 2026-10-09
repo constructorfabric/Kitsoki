@@ -1,0 +1,57 @@
+# publish_write_failure — a real product bug (product-journey QA finding O1,
+# .artifacts/product-journey/20260705T232948Z-gears-rust-core-maintainer-scenario-qa):
+# when prd_publish.star's ctx.fs.write fails (permission denied / read-only
+# checkout / any disk error), the accept arc must NOT reach @exit:done with an
+# empty prd_file — it must stay put (in drafting) with last_error surfaced,
+# exactly like the author-task failure path a few lines above it in
+# rooms/drafting.yaml. Before the fix this fixture failed: the trailing `set:`
+# after the invoke ran unconditionally, so status flipped to "done" (and
+# last_error was cleared to "") even though the invoke's own on_error redirect
+# correctly kept the STATE at drafting — a split-brain world where the room
+# never left drafting but its own status/last_error vars claimed success.
+#
+# Intent-only (no LLM): the author task is stubbed; publish runs the real
+# Starlark helper against an inspect cassette with NO recorded `write`
+# interaction, so ReplayInspector.Write returns its loud miss error — the
+# deterministic stand-in for a real disk write failure (see the cassette's own
+# comment).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: drafting
+initial_world:
+  idea:                 "A CLI for X that helps developers do Y."
+  workdir:              "."
+  judge_mode:           "human"
+  publish_durable_path: "/tmp/kitsoki-prd-fixtures"
+  prd_slug:             "example-cli"
+  prd_workspace:        ".artifacts/prd/example-cli"
+
+starlark_inspect_cassette: ../cassettes/publish_write_failure.inspect.yaml
+
+host_handlers:
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        title:               "PRD: Example CLI"
+        summary_markdown:    "## PRD: Example CLI\n\nA sufficiently long summary body to satisfy the schema minimum length for the prd_artifact summary_markdown field, covering problem, users, goals, and metrics."
+        file_path:           ".artifacts/prd/example-cli/004-prd.md"
+        confidence:          0.84
+        needs_clarification: false
+        follow_up_questions: []
+
+turns:
+  # accept → publish's ctx.fs.write fails → on_error keeps the room at
+  # drafting: status must NOT flip to "done", prd_file must stay empty, and
+  # last_error must carry the failure (never silently cleared).
+  - intent: { name: accept, slots: {} }
+    expect_state: drafting
+    expect_world:
+      status:   ""
+      prd_file: ""
+    expect_host_calls:
+      - handler: host.starlark.run
+        args: { call: "publish" }
+
+expect_terminal: false

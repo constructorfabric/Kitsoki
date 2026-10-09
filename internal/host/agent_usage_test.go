@@ -97,6 +97,109 @@ func TestAgentAsk_UsageMeta(t *testing.T) {
 	}
 }
 
+// TestAgentAsk_UsageMeta_CacheFields asserts the claude CLI's
+// cache_read_input_tokens / cache_creation_input_tokens reach a named,
+// typed surface on AgentReturned.Meta.cache (host.CacheUsage) — not just the
+// raw Meta.usage map — per dispatch-context-floor task 1.2. Mirrors
+// internal/harness/live.go's UsageInfo cache fields.
+func TestAgentAsk_UsageMeta_CacheFields(t *testing.T) {
+	t.Parallel()
+
+	sink := &memSink{}
+	dir := t.TempDir()
+	promptPath := filepath.Join(dir, "p.md")
+	if err := os.WriteFile(promptPath, []byte("summarise"), 0o644); err != nil {
+		t.Fatalf("write prompt: %v", err)
+	}
+
+	ctx := host.WithAgentUsageBox(agentCtxForTest(sink))
+	ctx = host.WithClaudeRunner(ctx, fakeStreamRunner("final answer"))
+
+	if _, err := host.AgentAskHandler(ctx, map[string]any{"prompt_path": promptPath}); err != nil {
+		t.Fatalf("AgentAskHandler: %v", err)
+	}
+
+	returned := findEvent(t, sink.events, store.AgentReturned)
+	var payload struct {
+		Meta struct {
+			Cache *host.CacheUsage `json:"cache"`
+		} `json:"meta"`
+	}
+	if err := json.Unmarshal(returned.Payload, &payload); err != nil {
+		t.Fatalf("unmarshal AgentReturned.Payload: %v", err)
+	}
+	if payload.Meta.Cache == nil {
+		t.Fatal("Meta.cache is nil — cache usage was not surfaced")
+	}
+	if got := payload.Meta.Cache.ReadTokens; got != 900 {
+		t.Errorf("Meta.cache.read_tokens = %d, want 900", got)
+	}
+	if got := payload.Meta.Cache.CreationTokens; got != 50 {
+		t.Errorf("Meta.cache.creation_tokens = %d, want 50", got)
+	}
+	if !payload.Meta.Cache.Hit {
+		t.Error("Meta.cache.hit = false, want true (cache_read_input_tokens > 0)")
+	}
+}
+
+// fakeStreamRunnerNoCache mirrors fakeStreamRunner but reports a usage object
+// with no cache fields at all — the shape a transport with no cache
+// accounting (e.g. copilot) would produce.
+func fakeStreamRunnerNoCache(reply string) host.ClaudeRunner {
+	return func(_ context.Context, _ []string, _ string, _ string) (host.ClaudeRun, error) {
+		lines := []string{
+			`{"type":"system","subtype":"init","session_id":"sess-usage-2"}`,
+			`{"type":"result","subtype":"success","result":` + mustJSON(reply) +
+				`,"session_id":"sess-usage-2","total_cost_usd":0.01,` +
+				`"usage":{"input_tokens":100,"output_tokens":20}}`,
+		}
+		out := ""
+		for _, l := range lines {
+			out += l + "\n"
+		}
+		return host.ClaudeRun{Stdout: out}, nil
+	}
+}
+
+// TestAgentAsk_UsageMeta_CacheFields_Absent asserts Meta.cache stays omitted
+// (not a false all-zero CacheUsage) when the transport's usage object carries
+// no cache keys at all — the fallback case task 1.2 calls out for
+// cache-less transports.
+func TestAgentAsk_UsageMeta_CacheFields_Absent(t *testing.T) {
+	t.Parallel()
+
+	sink := &memSink{}
+	dir := t.TempDir()
+	promptPath := filepath.Join(dir, "p.md")
+	if err := os.WriteFile(promptPath, []byte("summarise"), 0o644); err != nil {
+		t.Fatalf("write prompt: %v", err)
+	}
+
+	ctx := host.WithAgentUsageBox(agentCtxForTest(sink))
+	ctx = host.WithClaudeRunner(ctx, fakeStreamRunnerNoCache("final answer"))
+
+	if _, err := host.AgentAskHandler(ctx, map[string]any{"prompt_path": promptPath}); err != nil {
+		t.Fatalf("AgentAskHandler: %v", err)
+	}
+
+	returned := findEvent(t, sink.events, store.AgentReturned)
+	var payload struct {
+		Meta struct {
+			Cache *host.CacheUsage `json:"cache"`
+			Usage map[string]any   `json:"usage"`
+		} `json:"meta"`
+	}
+	if err := json.Unmarshal(returned.Payload, &payload); err != nil {
+		t.Fatalf("unmarshal AgentReturned.Payload: %v", err)
+	}
+	if payload.Meta.Usage == nil {
+		t.Fatal("Meta.usage is nil — usage box wiring regressed")
+	}
+	if payload.Meta.Cache != nil {
+		t.Errorf("Meta.cache = %#v, want nil (no cache keys reported)", payload.Meta.Cache)
+	}
+}
+
 // TestAgentAsk_UsageMeta_NoBox asserts the call still succeeds (Meta omitted)
 // when no usage box is installed — degrading gracefully for paths that haven't
 // wired one.

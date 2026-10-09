@@ -7,14 +7,16 @@
 # a drawn region, or a point — and that anchor flows verbatim into a refine pass
 # that edits the EXACT scene the anchor points at.
 #
-# Rooms:  idle → drafting → rendering → reviewing → refining → done
-#   idle       deterministic: choose create-new or an existing deck spec to edit
-#   drafting   interpretive:  ONE host.agent.task authors/edits the deck JSON (mocked)
-#   rendering  deterministic: host.slidey.render → static HTML deck + .semantic.json sidecar; bind the media handle
-#   reviewing  deterministic: media(deck) inline + invite an anchored annotation
-#   refining   interpretive:  ONE host.agent.task consumes {{ args.visual.anchor }} + the operator
+# Rooms:  idle → preparing_workspace → loading_existing | drafting → rendering → reviewing → refining → done
+#   idle                deterministic: choose create-new or an existing deck spec to edit
+#   preparing_workspace deterministic: create/reuse a managed clone-backed capsule workspace
+#   loading_existing    deterministic: resolve a deck name/path before rendering it
+#   drafting            interpretive:  ONE host.agent.task authors/edits the deck JSON (mocked)
+#   rendering           deterministic: host.slidey.render → static HTML deck + .semantic.json sidecar; bind the media handle
+#   reviewing           deterministic: media(deck) inline + invite an anchored annotation
+#   refining            interpretive:  ONE host.agent.task consumes {{ args.visual.anchor }} + the operator
 #                             instruction, edits the spec, re-renders, shows before/after
-#   done       gallery of the final deck + the anchors that were addressed
+#   done          gallery of the final deck + the anchors that were addressed
 #
 # Deterministic + NO-LLM: flows/*.yaml stub every host call by invoke id; the
 # tour/web cassette (cassettes/deck_review.cassette.yaml) matches by handler.
@@ -33,22 +35,58 @@ hosts:
   - host.slidey.render
   - host.artifacts_dir
   - host.starlark.run
+  - host.git_worktree
+
+host_interfaces:
+  workspace:
+    description: "Working-copy manager. Local: scripted clone-backed capsule workspace."
+    operations:
+      create:
+        input:  { id: string, name: string, base: string, session_id: string }
+        output: { ok: bool, path: string }
+    default: host.git_worktree
 
 agents:
   drafter:
-    system_prompt: "You author a slidey deck JSON spec using only the schema and scene contract in the task prompt. Skills and slash commands are disabled for this dispatched agent; do not inspect or mention SKILL.md, .agents/skills, or .claude/skills. Only read an existing input deck when one is provided, and only write under the given workspace directory. Keep the deck tight; one idea per scene."
+    system_prompt: "You author a slidey deck JSON spec using only the Slidey MCP tools and the schema/scene contract in the task prompt. Skills, slash commands, shell access, and generic filesystem tools are disabled for this dispatched agent; do not inspect or mention SKILL.md, .agents/skills, or .claude/skills. Use slidey_workspace_tree only to discover editable deck specs under the MCP root, slidey_read_spec to inspect a supplied deck, slidey_write_spec or slidey_patch_spec to write the deck, and slidey_validate before submitting. If you are running in Codex and a Slidey tool is not visible, call tool_search for the slidey tool name before reporting it unavailable. Keep the deck tight; one idea per scene."
     model: claude-sonnet-4-6
-    tools: [Read, Write, Edit]
-    external_side_effect: false
+    tools: []
+    mcp: &slidey_mcp
+      servers:
+        slidey:
+          command: slidey-mcp
+          args: ["--root", "."]
+      tools:
+        - mcp__slidey__workspace_tree
+        - mcp__slidey__read_spec
+        - mcp__slidey__layout_gallery
+        - mcp__slidey__schema
+        - mcp__slidey__validate
+        - mcp__slidey__write_spec
+        - mcp__slidey__patch_spec
+        - mcp__slidey__remove_slide
+    permissions: &slidey_permissions
+      mode: ask
+      disallowed_tools: [Read, Grep, Glob, LS, NotebookRead, TodoRead, TodoWrite, Write, Edit, MultiEdit, NotebookEdit, Bash, WebFetch, WebSearch]
+    effect: write
   reviser:
-    system_prompt: "You edit the slidey deck behind a LOCATION-TIED annotation using only the schema and scene contract in the task prompt. Skills and slash commands are disabled for this dispatched agent; do not inspect or mention SKILL.md, .agents/skills, or .claude/skills. Resolve the anchor to the scene/element it targets and apply the instruction there. Comply with the directive; never silently drop it. Only write under the given workspace directory."
+    system_prompt: "You edit the slidey deck behind a LOCATION-TIED annotation using only the Slidey MCP tools and the schema/scene contract in the task prompt. Skills, slash commands, shell access, and generic filesystem tools are disabled for this dispatched agent; do not inspect or mention SKILL.md, .agents/skills, or .claude/skills. Resolve the anchor to the scene/element it targets, apply the instruction there with slidey_patch_spec or slidey_write_spec, and validate before submitting. If you are running in Codex and a Slidey tool is not visible, call tool_search for the slidey tool name before reporting it unavailable. Comply with the directive; never silently drop it."
     model: claude-sonnet-4-6
-    tools: [Read, Write, Edit]
-    external_side_effect: false
+    tools: []
+    mcp: *slidey_mcp
+    permissions: *slidey_permissions
+    effect: write
 
 world:
   # ── session / config ───────────────────────────────────────────────────────
+  session_id:       { type: string, default: "" }
+  web_base_url:     { type: string, default: "http://127.0.0.1:7777" }
   workspace:        { type: string, default: "stories/slidey-edit/baked" }
+  workdir:          { type: string, default: "" }
+  workspace_id:     { type: string, default: "" }
+  feature_branch:   { type: string, default: "" }
+  base_branch:      { type: string, default: "staging/local" }
+  workspace_prepared: { type: bool, default: false }
   # The project keeps all deck specs in one folder. A bare deck name on
   # edit_existing (e.g. "kitsoki-pitch") resolves to <decks_dir>/<name>.json.
   decks_dir:        { type: string, default: "docs/decks" }
@@ -56,9 +94,11 @@ world:
   # ── deck source ─────────────────────────────────────────────────────────────
   # spec_path is baked at the pre-rendered deck so `kitsoki tour`/web can drive
   # the loop without authoring (tour-needs-baked-world lesson).
-  deck:             { type: object, default: { spec_path: "stories/slidey-edit/baked/deck.json", summary: "Spatial-annotation explainer deck (3 scenes)." } }
+  deck:             { type: object, default: { spec_path: "stories/slidey-edit/baked/deck.json", workspace_spec_path: "deck.json", summary: "Spatial-annotation explainer deck (3 scenes)." } }
   source_deck:      { type: object, default: {} }   # existing deck passed into drafting; deck remains the draft output/cache
   draft_feedback:   { type: string, default: "" }
+  pending_deck_spec_path: { type: string, default: "" }
+  pending_deck_summary:   { type: string, default: "" }
 
   # ── render outputs ──────────────────────────────────────────────────────────
   deck_handle:      { type: string, default: "" }   # rendered HTML deck artifact handle
@@ -67,13 +107,18 @@ world:
   semantic_path:    { type: string, default: "" }
 
   # ── render auto-fix loop ────────────────────────────────────────────────────
-  # On a render failure the deck spec is auto-repaired and re-rendered, up to
-  # render_retry_budget attempts, before falling through to reviewing with the
-  # error surfaced. render_retries resets on any fresh attempt (start / rerender
-  # / refine). render_fix_result is the once: cache for the repair pass.
+  # On a deck-shaped render failure the deck spec is auto-repaired and
+  # re-rendered, up to render_retry_budget attempts, before falling through to
+  # reviewing with the error surfaced. Toolchain/runtime failures are classified
+  # first and skip the repair agent. render_retries resets on any fresh attempt
+  # (start / rerender / refine). render_fix_result is the once: cache for the
+  # repair pass.
   render_retries:      { type: int,    default: 0 }
   render_retry_budget: { type: int,    default: 2 }
   render_fix_result:   { type: object, default: {} }
+  render_error_repairable: { type: bool,   default: false }
+  render_error_kind:       { type: string, default: "" }
+  render_error_summary:    { type: string, default: "" }
 
   # ── annotation → refine loop ────────────────────────────────────────────────
   # annotation is the operator's location-tied feedback bundle. anchor mirrors
@@ -157,6 +202,14 @@ intents:
     description: "Re-render the current deck without editing it."
     examples: ["rerender", "render again"]
     priority: 60
+  troubleshoot:
+    description: "Classify the render failure; run the repair agent only when the error is deck-shaped."
+    examples: ["troubleshoot", "diagnose render failure", "repair render"]
+    priority: 62
+  retry_workspace:
+    description: "Retry managed workspace preparation."
+    examples: ["retry workspace", "try again"]
+    priority: 55
 
   # ── internal (emit_intent only — never user-routed) ──────────────────────────
   render_retry:

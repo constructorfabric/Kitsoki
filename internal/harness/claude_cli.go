@@ -223,6 +223,20 @@ acknowledgement; do not repeat the JSON.
 `
 }
 
+func buildStructuredSubmitInstruction(toolName string) string {
+	return `You are a scoped structured-output agent. Complete only the task in the user message.
+
+## Output Contract
+
+Call the tool ` + "`" + toolName + "`" + ` with one JSON object that matches the
+tool's attached schema. The schema is authoritative. Do not substitute an intent-
+routing payload unless the schema explicitly asks for one. If the tool rejects a
+payload, read the validation error, correct the object, and call it again.
+
+Once the tool returns OK, your turn is done. Do not repeat the JSON in prose.
+`
+}
+
 // RunTurn pipes the user utterance and app context to `claude -p` and extracts
 // the resulting IntentCall via the MCP validator's side-channel capture file.
 func (h *ClaudeCLIHarness) RunTurn(ctx context.Context, in TurnInput) (mcp.CallToolParams, error) {
@@ -371,6 +385,84 @@ func (h *ClaudeCLIHarness) RunTurn(ctx context.Context, in TurnInput) (mcp.CallT
 		slog.Float64("confidence", confidence),
 	)
 	return params, nil
+}
+
+// RunStructured executes an arbitrary schema-bound agent request through the
+// same CLI/backend adapter as routing, but with the caller's schema preserved
+// verbatim. It deliberately uses a fresh conversation: the persistent routing
+// session is primed with the transition contract and must never contaminate a
+// contextual-router, judge, or extractor call.
+func (h *ClaudeCLIHarness) RunStructured(ctx context.Context, in StructuredInput) (json.RawMessage, error) {
+	if len(in.SchemaJSON) == 0 {
+		return nil, errors.New("harness/claude-cli: structured schema is required")
+	}
+	claudeBin, err := h.resolveBin()
+	if err != nil {
+		return nil, err
+	}
+	kitsokiBin, err := h.resolveKitsokiBin()
+	if err != nil {
+		return nil, err
+	}
+
+	tmpDir, err := os.MkdirTemp("", "kitsoki-claude-structured-*")
+	if err != nil {
+		return nil, fmt.Errorf("harness/claude-cli: mkdir structured tempdir: %w", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	schemaPath := filepath.Join(tmpDir, "schema.json")
+	if err := os.WriteFile(schemaPath, in.SchemaJSON, 0o600); err != nil {
+		return nil, fmt.Errorf("harness/claude-cli: write structured schema: %w", err)
+	}
+	capturePath := filepath.Join(tmpDir, "capture.json")
+	configPath := filepath.Join(tmpDir, "config.json")
+	mcpConfig := map[string]any{
+		"mcpServers": map[string]any{
+			validatorServerName: map[string]any{
+				"command": kitsokiBin,
+				"args":    []any{"mcp-validator", "--schema", schemaPath, "--output", capturePath},
+			},
+		},
+	}
+	configBytes, err := json.Marshal(mcpConfig)
+	if err != nil {
+		return nil, fmt.Errorf("harness/claude-cli: marshal structured mcp-config: %w", err)
+	}
+	if err := os.WriteFile(configPath, configBytes, 0o600); err != nil {
+		return nil, fmt.Errorf("harness/claude-cli: write structured mcp-config: %w", err)
+	}
+
+	composed := sysprompt.Compose(sysprompt.Spec{
+		Verb:    sysprompt.AskStructured,
+		Project: projectLayer(h.appDef),
+		Task:    buildStructuredSubmitInstruction(h.cfg.validatorTool()),
+	})
+	args := buildClaudeArgs(h.cfg, configPath, composed.SystemPrompt, "", false)
+	if h.cfg.Exec == nil {
+		return nil, errors.New("harness/claude-cli: no ClaudeExec injected; wire host.RunClaudeOneShotForHarness at construction")
+	}
+	stdout, runErr := h.cfg.Exec(ctx, claudeBin, args, in.Prompt, "")
+	if runErr != nil {
+		return nil, runErr
+	}
+
+	captured, readErr := kitsokimcp.ReadCapturedPayload(capturePath)
+	if readErr != nil || len(captured) == 0 {
+		var env claudeJSONEnvelope
+		_ = json.Unmarshal([]byte(stdout), &env)
+		message := strings.TrimSpace(env.Result)
+		underlying := fmt.Errorf(
+			"harness/claude-cli: structured agent did not call %s (no validated payload captured); model said: %q",
+			h.cfg.validatorTool(), truncate(message, 200),
+		)
+		return nil, &ClarifyResponse{Message: message, Underlying: underlying}
+	}
+	var payload any
+	if err := json.Unmarshal(captured, &payload); err != nil {
+		return nil, fmt.Errorf("harness/claude-cli: parse structured payload: %w", err)
+	}
+	return json.RawMessage(captured), nil
 }
 
 // buildClaudeArgs returns the CLI argument list for `claude -p`. configPath

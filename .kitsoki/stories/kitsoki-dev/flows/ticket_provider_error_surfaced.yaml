@@ -1,0 +1,37 @@
+# ticket_provider_error_surfaced — failure class: host domain error caught by
+# an `on_error:` self-redirect on the bug-filing/pickup meta path.
+#
+# The bug-filing loop's story-side half is the ticket provider: bugs filed
+# via `/bug` / `kitsoki bug create` / the web Report Bug modal land under
+# issues/bugs/ (or GitHub), and ticket_search is where the operator picks
+# them up. When the provider itself fails (gh unavailable, bad repo, missing
+# scan root), ticket_search's on_enter `iface.ticket.search` errors and its
+# `on_error: ticket_search` holds in place — and the never-silent contract is
+# that the operator SEES the provider failure: world.last_error carries the
+# host error and the rendered view shows the "⚠ Action failed:" banner
+# (applyErrorBannerSeam), instead of an inexplicably empty ticket list.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: core.landing
+initial_world: {}
+
+host_handlers:
+  # Ticket iface — kitsoki-dev binds iface.ticket to host.ticket_federation.
+  # The composed provider fails outright (e.g. configuration is invalid).
+  host.ticket_federation:
+    error: "host.ticket_federation: no valid ticket sources"
+  host.append_to_file:
+    data: { ok: true, message_id: "msg-1" }
+
+turns:
+  # landing → ticket_search; on_enter's iface.ticket.search fails →
+  # on_error holds in ticket_search with the provider error surfaced.
+  - intent: { name: core__go_ticket_search, slots: {} }
+    expect_state: core.ticket_search
+    expect_world:
+      last_error: "host.ticket_federation: no valid ticket sources"
+    expect_view_matches: "Action failed"
+
+expect_terminal: false
+expect_no_errors: true

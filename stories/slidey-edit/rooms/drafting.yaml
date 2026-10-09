@@ -32,13 +32,14 @@ states:
         once: true
         with:
           agent: drafter
-          working_dir: "{{ world.workspace }}"
+          working_dir: "{{ hasPrefix(world.workspace, '/') ? world.workspace : (world.workdir != '' ? world.workdir + '/' + world.workspace : world.workspace) }}"
           acceptance:
             schema: schemas/deck.json
           context:
             prompt: prompts/author_deck.md
             args:
               workspace:      "{{ world.workspace }}"
+              workdir:        "{{ world.workdir }}"
               source_deck:    "{{ world.source_deck }}"
               deck:           "{{ world.deck }}"
               draft_feedback: "{{ world.draft_feedback }}"
@@ -48,7 +49,7 @@ states:
 
       # Auto-advance to render as soon as the agent has bound a deck spec —
       # no manual accept required.
-      - when: "world.deck.spec_path != ''"
+      - when: "world.deck.spec_path != nil && world.deck.spec_path != ''"
         emit_intent: accept
     on:
       accept:

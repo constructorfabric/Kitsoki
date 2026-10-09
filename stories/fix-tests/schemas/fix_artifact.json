@@ -3,7 +3,7 @@
   "title":   "fix_artifact",
   "description": "Record produced by the fixer for one cycle: what failed, what was changed, and whether a human decision is required.",
   "type":    "object",
-  "required": ["summary_title", "summary_markdown", "files_changed", "fixed_tests", "remaining_failures", "needs_decision", "confidence"],
+  "required": ["summary_title", "summary_markdown", "report_path", "files_changed", "fixed_tests", "remaining_failures", "needs_decision", "confidence"],
   "properties": {
     "summary_title": {
       "type": "string",
@@ -12,8 +12,13 @@
     },
     "summary_markdown": {
       "type": "string",
-      "minLength": 40,
-      "description": "Markdown narrative: which tests failed, the root cause, and the change applied (per file). Goes into the report."
+      "minLength": 1,
+      "description": "Compact cycle note; the durable diagnosis and repair record is report_path."
+    },
+    "report_path": {
+      "type": "string",
+      "minLength": 4,
+      "description": "Workspace-relative repair report written during this cycle, under .artifacts/fix-tests/."
     },
     "files_changed": {
       "type": "array",

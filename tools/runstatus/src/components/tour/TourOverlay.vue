@@ -16,20 +16,12 @@
       </div>
 
       <template v-else>
-        <!-- Spotlight: four strips around the target leave a clickable hole.
-             For a genuinely anchorless step (no target), one full backdrop. A
-             target step whose anchor hasn't been measured yet renders NO
-             backdrop, so it never blocks the real control's click. -->
+        <!-- Spotlight: keep the page fully visible. The ring highlights the
+             target without dimming or covering the rest of the UI. Anchorless
+             narration is just the popover. -->
         <template v-if="hole">
-          <template v-if="dimEnabled">
-            <div class="tour__backdrop" :style="strips.top"></div>
-            <div class="tour__backdrop" :style="strips.bottom"></div>
-            <div class="tour__backdrop" :style="strips.left"></div>
-            <div class="tour__backdrop" :style="strips.right"></div>
-          </template>
           <div class="tour__ring" :style="ringStyle"></div>
         </template>
-        <div v-else-if="isAnchorless && dimEnabled" class="tour__backdrop tour__backdrop--full"></div>
 
         <!-- Popover -->
         <div
@@ -226,13 +218,6 @@ const hole = computed<Rect | null>(() => {
   };
 });
 
-/** A step that deliberately has no anchor (welcome / done) gets a full backdrop. */
-const isAnchorless = computed<boolean>(() => !!tour.currentStep && !tour.currentStep.target);
-
-/** Whether to render the dimming backdrop. A step can opt out (dim: false) to
- *  keep the UI underneath fully visible — e.g. watching a live conversation. */
-const dimEnabled = computed<boolean>(() => tour.currentStep?.dim !== false);
-
 const ringStyle = computed<Record<string, string>>(() => {
   const h = hole.value;
   if (!h) return { display: "none" };
@@ -243,24 +228,6 @@ const ringStyle = computed<Record<string, string>>(() => {
     height: `${h.height}px`,
   };
   return style;
-});
-
-const strips = computed(() => {
-  const h = hole.value;
-  if (!h) {
-    const none = { display: "none" };
-    return { top: none, bottom: none, left: none, right: none };
-  }
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
-  const holeBottom = h.top + h.height;
-  const holeRight = h.left + h.width;
-  return {
-    top: { top: "0px", left: "0px", width: `${vw}px`, height: `${h.top}px` },
-    bottom: { top: `${holeBottom}px`, left: "0px", width: `${vw}px`, height: `${Math.max(0, vh - holeBottom)}px` },
-    left: { top: `${h.top}px`, left: "0px", width: `${h.left}px`, height: `${h.height}px` },
-    right: { top: `${h.top}px`, left: `${holeRight}px`, width: `${Math.max(0, vw - holeRight)}px`, height: `${h.height}px` },
-  };
 });
 
 // ── Advancement: route / state / click ───────────────────────────────────────
@@ -373,7 +340,7 @@ onMounted(() => {
   // the overlay's internal anchoring has drifted ahead of the driven step.
   win.__tourGoTo = (id: string) => tour.goTo(id);
   // Test hook: dismiss the overlay (e.g. the VS Code recorder clears it before
-  // an out-of-webview editor beat so the popover doesn't dim the editor frame).
+  // an out-of-webview editor beat so the popover doesn't cover the editor frame).
   win.__tourSkip = () => tour.skip();
   syncWatchdog();
   void refresh();
@@ -396,15 +363,6 @@ onUnmounted(() => {
   inset: 0;
   z-index: 1500;
   pointer-events: none;
-}
-
-.tour__backdrop {
-  position: fixed;
-  background: rgba(3, 7, 18, 0.72);
-  pointer-events: auto; /* absorb clicks on the dim, not the hole */
-}
-.tour__backdrop--full {
-  inset: 0;
 }
 
 .tour__ring {

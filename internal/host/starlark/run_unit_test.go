@@ -23,6 +23,13 @@ type fakeCall struct {
 	body    []byte
 }
 
+func httpCaps() starlarkhost.CapabilitySpec {
+	return starlarkhost.CapabilitySpec{
+		World: true,
+		HTTP:  starlarkhost.HTTPCapability{Enabled: true},
+	}
+}
+
 func (f *fakeHTTP) Do(_ context.Context, method, url string, headers map[string]string, body []byte) (*starlarkhost.HTTPResponse, error) {
 	f.calls = append(f.calls, fakeCall{method: method, url: url, headers: headers, body: body})
 	if r, ok := f.responses[method+" "+url]; ok {
@@ -47,6 +54,24 @@ func TestRun_TrivialScript(t *testing.T) {
 	}
 }
 
+func TestRun_YAMLDecode(t *testing.T) {
+	script := `
+def main(ctx):
+    doc = yaml.decode("items:\n  - id: one\n    count: 2\n")
+    return {"id": doc["items"][0]["id"], "count": doc["items"][0]["count"]}
+`
+	res, err := starlarkhost.Run(context.Background(), starlarkhost.Params{Script: "yaml.star", Source: []byte(script)})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got := res.Outputs["id"]; got != "one" {
+		t.Fatalf("id = %v, want one", got)
+	}
+	if got := res.Outputs["count"]; got != int64(2) {
+		t.Fatalf("count = %v (%T), want int64(2)", got, got)
+	}
+}
+
 // TestRun_HTTPGet_ThroughFakeClient confirms ctx.http.get routes through the
 // injected HTTPClient (a fake, no network) and that .status / .json() work.
 func TestRun_HTTPGet_ThroughFakeClient(t *testing.T) {
@@ -65,7 +90,7 @@ def main(ctx):
     body = resp.json()
     return {"status": resp.status, "name": body["name"], "qty": body["qty"]}
 `
-	res, err := starlarkhost.Run(ctx, starlarkhost.Params{Script: "get.star", Source: []byte(script)})
+	res, err := starlarkhost.Run(ctx, starlarkhost.Params{Script: "get.star", Source: []byte(script), Capabilities: httpCaps()})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -113,7 +138,7 @@ def main(ctx):
     resp = ctx.http.post("https://api.example.com/widgets", body={"name": "bolt"})
     return {"status": resp.status, "text": resp.text()}
 `
-	res, err := starlarkhost.Run(ctx, starlarkhost.Params{Script: "post.star", Source: []byte(script)})
+	res, err := starlarkhost.Run(ctx, starlarkhost.Params{Script: "post.star", Source: []byte(script), Capabilities: httpCaps()})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -153,7 +178,7 @@ def main(ctx):
     ok = True if resp else False
     return {"status": resp.status, "ok": ok}
 `
-	res, err := starlarkhost.Run(ctx, starlarkhost.Params{Script: "miss.star", Source: []byte(script)})
+	res, err := starlarkhost.Run(ctx, starlarkhost.Params{Script: "miss.star", Source: []byte(script), Capabilities: httpCaps()})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -165,8 +190,27 @@ def main(ctx):
 	}
 }
 
-// TestRun_NoHTTPClient_Denied confirms that with no client injected, ctx.http
-// fails loudly (deny-all) as a DomainError rather than silently reaching the
+func TestRun_HTTPWithoutCapability_HasNoCtxAttr(t *testing.T) {
+	script := `
+def main(ctx):
+    resp = ctx.http.get("https://api.example.com/x")
+    return {"status": resp.status}
+`
+	_, err := starlarkhost.Run(context.Background(), starlarkhost.Params{Script: "denied.star", Source: []byte(script)})
+	if err == nil {
+		t.Fatal("expected error from absent ctx.http")
+	}
+	msg, ok := starlarkhost.AsDomainError(err)
+	if !ok {
+		t.Fatalf("expected DomainError, got %T: %v", err, err)
+	}
+	if !strings.Contains(msg, ".http") {
+		t.Fatalf("error %q should mention missing ctx.http", msg)
+	}
+}
+
+// TestRun_NoHTTPClient_Denied confirms that when http is granted but no client
+// is injected, the capability fails loudly rather than silently reaching the
 // network.
 func TestRun_NoHTTPClient_Denied(t *testing.T) {
 	script := `
@@ -174,7 +218,7 @@ def main(ctx):
     resp = ctx.http.get("https://api.example.com/x")
     return {"status": resp.status}
 `
-	_, err := starlarkhost.Run(context.Background(), starlarkhost.Params{Script: "denied.star", Source: []byte(script)})
+	_, err := starlarkhost.Run(context.Background(), starlarkhost.Params{Script: "denied.star", Source: []byte(script), Capabilities: httpCaps()})
 	if err == nil {
 		t.Fatal("expected error from deny-all HTTP client")
 	}
@@ -230,5 +274,72 @@ def main(ctx):
 	}
 	if res.Outputs["absent_is_none"] != true {
 		t.Fatalf("absent_is_none = %v, want true", res.Outputs["absent_is_none"])
+	}
+}
+
+// TestRun_NormalizesExoticNumericKinds locks that inputs and world values
+// arriving as non-canonical Go integer kinds (uint64/int32/... — effect
+// templating and expression evaluation both produce these, e.g. a world
+// counter incremented by an expr) are normalized to int64 before sidecar
+// validation and ctx conversion. Without the normalization, a uint64 input
+// declared `int` fails validateInputs ("expected int, got uint64" — hit live
+// by scenario-qa's judge room passing leg_index) and a uint64 world value
+// errors goToStarlark's strict type switch on ctx.world.get.
+func TestRun_NormalizesExoticNumericKinds(t *testing.T) {
+	script := `
+def main(ctx):
+    return {"total": ctx.inputs["leg_index"] + ctx.world.get("count")}
+`
+	res, err := starlarkhost.Run(context.Background(), starlarkhost.Params{
+		Script: "numeric.star",
+		Source: []byte(script),
+		Sidecar: &starlarkhost.Sidecar{
+			Inputs:  map[string]starlarkhost.FieldSpec{"leg_index": {Type: "int"}},
+			Outputs: map[string]starlarkhost.FieldSpec{"total": {Type: "int"}},
+		},
+		Inputs: map[string]any{"leg_index": uint64(2)},
+		World:  map[string]any{"count": int32(3)},
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got := res.Outputs["total"]; got != int64(5) {
+		t.Fatalf("total = %v (%T), want int64(5)", got, got)
+	}
+}
+
+// TestRun_ConvertsGoNativeSliceAndMapTypes locks that goToStarlark accepts
+// concretely-typed Go slices/maps ([]string, []map[string]any, …), not just
+// the []any/map[string]any shapes a JSON decode produces. Go-native host
+// handlers (agent stubs, wrapped CLI output, structured records) commonly
+// build inputs by hand with these concrete types; hit live by a bugfix
+// dogfood smoke test whose stubbed agent artifact carried
+// affected_files []string and involved_components []map[string]any straight
+// into host.starlark.run's inputs.
+func TestRun_ConvertsGoNativeSliceAndMapTypes(t *testing.T) {
+	script := `
+def main(ctx):
+    return {
+        "files": ctx.inputs["files"],
+        "first_component": ctx.inputs["components"][0]["name"],
+    }
+`
+	res, err := starlarkhost.Run(context.Background(), starlarkhost.Params{
+		Script: "native_types.star",
+		Source: []byte(script),
+		Inputs: map[string]any{
+			"files":      []string{"a.go", "b.go"},
+			"components": []map[string]any{{"name": "internal/orchestrator"}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	files, ok := res.Outputs["files"].([]any)
+	if !ok || len(files) != 2 || files[0] != "a.go" || files[1] != "b.go" {
+		t.Fatalf("files = %#v, want [a.go b.go]", res.Outputs["files"])
+	}
+	if got := res.Outputs["first_component"]; got != "internal/orchestrator" {
+		t.Fatalf("first_component = %v, want internal/orchestrator", got)
 	}
 }

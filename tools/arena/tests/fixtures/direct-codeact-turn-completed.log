@@ -1,0 +1,2 @@
+ts=2026-07-12T10:00:00Z level=INFO type=turn.completed input_tokens=1008249 output_tokens=12703 cache_read_input_tokens=0 cache_creation_input_tokens=0
+ts=2026-07-12T10:00:00Z level=INFO type=turn.completed input_tokens=1008249 output_tokens=12703 cache_read_input_tokens=0 cache_creation_input_tokens=0

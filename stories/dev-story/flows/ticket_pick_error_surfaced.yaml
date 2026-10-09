@@ -1,0 +1,41 @@
+# A selected ticket can disappear or its remote provider can fail between the
+# search and get calls. Keep that failure visible instead of bouncing to idle.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world:
+  repo_root: ".artifacts"
+  ticket_github_repo: "origin"
+
+host_handlers:
+  host.local_files.ticket:
+    by_op:
+      search:
+        data:
+          tickets:
+            - id: "TKT-404"
+              title: "Ticket removed after search"
+              status: "open"
+              type: "bug"
+              source: "local"
+              url: ".artifacts/issues/bugs/TKT-404.md"
+      get:
+        error: "ticket.get: TKT-404 not found"
+
+turns:
+  - intent: { name: go_ticket_search, slots: {} }
+    expect_state: ticket_search
+
+  - intent: { name: pick_ticket, slots: { n: 1 } }
+    expect_state: ticket_pick_error
+    expect_world:
+      ticket_id: "TKT-404"
+      last_error: "ticket.get: TKT-404 not found"
+    expect_view_matches: "TICKET FETCH FAILED"
+
+  - intent: { name: go_back, slots: {} }
+    expect_state: ticket_search
+
+expect_terminal: false
+expect_no_errors: true

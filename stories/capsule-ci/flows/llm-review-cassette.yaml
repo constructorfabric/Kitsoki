@@ -1,0 +1,50 @@
+test_kind: flow
+app: capsule-ci
+initial_state: llm_review
+initial_world:
+  ci_job_id: job-review-cassette
+  ci_pipeline: change
+  ci_review:
+    deterministic_check:
+      id: deterministic
+      kind: deterministic
+      outcome: passed
+      evidence: ["capsule-ci:deterministic"]
+host_cassette: cassettes/llm-review.cassette.yaml
+turns:
+  - intent: { name: review_cassette, slots: {} }
+    expect_state: llm_review_cassette
+    expect_world:
+      ci_review_decision:
+        outcome: passed
+        summary: "Cassette review approved the sealed Capsule CI evidence."
+        evidence:
+          - capsule-ci:deterministic
+          - capsule-ci:sealed-envelope
+    expect_view_matches: "Cassette review approved"
+  - intent: { name: review_passed, slots: {} }
+    expect_state: adjudicate
+  - intent: { name: review_passed, slots: {} }
+    expect_state: passed
+    expect_world:
+      ci_outcome: passed
+      ci_verdict:
+        schema: capsule-ci-verdict/v1
+        pipeline: change
+        outcome: passed
+        summary: "Required deterministic checks and schema-bounded review passed."
+        checks:
+          - id: deterministic
+            kind: deterministic
+            outcome: passed
+            evidence: ["capsule-ci:deterministic"]
+          - id: review
+            kind: llm_decision
+            outcome: passed
+            decision_ref: capsule-ci:review-cassette
+        promotion_eligible: true
+        source_digest: null
+        story_digest: null
+        environment_digest: null
+        envelope_digest: null
+expect_no_errors: true

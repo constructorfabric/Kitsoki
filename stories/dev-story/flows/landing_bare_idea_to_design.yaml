@@ -1,0 +1,38 @@
+# A bare feature request is a design brief, not a workbench implementation.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world:
+  judge_mode: "human"
+
+host_handlers:
+  host.starlark.run:
+    data: { slug: "trace-comparison" }
+  host.fs.writable_dir:
+    data: { path: "docs/proposals", used_fallback: false }
+  host.agent.decide:
+    data:
+      ok: true
+      submitted:
+        overlaps: []
+        roadmap_fit: "No duplicate proposal found."
+
+turns:
+  - intent:
+      name: idea_brief
+      slots:
+        brief: "that lets operators compare two traces"
+    display_input: "make a feature that lets operators compare two traces"
+    expect_state: design_search
+    expect_world:
+      design_idea: "that lets operators compare two traces"
+      design_seed_idea: ""
+      design_slug: "trace-comparison"
+    expect_no_host_calls: [host.agent.task, host.agent.codeact]
+    expect_events:
+      - kind: machine.say
+        effect:
+          text: "Feature idea captured; starting the design intake without the general workbench."
+
+expect_no_errors: true

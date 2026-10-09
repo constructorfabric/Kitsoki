@@ -1,0 +1,33 @@
+app:
+  id: materialize-test-fixture
+  version: 0.1.0
+  title: "materialize package test fixture story"
+  author: "kitsoki"
+  license: "CC0"
+
+world:
+  node_id: { type: string, default: "" }
+  depth: { type: int, default: 2 }
+  audience: { type: string, default: "internal" }
+  gate: { type: string, default: "" }
+  artifact_path: { type: string, default: "" }
+  artifact_content: { type: string, default: "" }
+  status: { type: string, default: "" }
+
+intents:
+  next:
+    description: "Advance to the next stage."
+    examples: ["next"]
+    priority: 80
+  restart:
+    description: "Restart from the gather stage."
+    examples: ["restart"]
+    priority: 40
+  look:
+    description: "Re-render the current stage."
+    examples: ["look"]
+    priority: 10
+
+root: gather
+include:
+  - rooms/*.yaml

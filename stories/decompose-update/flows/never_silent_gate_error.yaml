@@ -1,0 +1,51 @@
+# never_silent_gate_error — native host failure is returned as structured data
+# and routed to the failed room without a silent bounce.
+#
+# The review agent approves, accept enters running, and the gate command
+# returns a domain-level failure. running's failure arc routes
+# to the failed room — and the never-silent contract is that the failure
+# reason is visible there: world.last_error carries the host error, and the
+# rendered view shows it directly in the failed room's output block.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  workdir: "."
+
+host_handlers:
+  host.agent.decide:
+    by_call:
+      review_delta:
+        data:
+          ok: true
+          submitted:
+            approved: true
+            summary: "Delta is provenance-backed, schema-gated, versioned, and report-visible."
+            findings: []
+  host.starlark.run:
+    by_call:
+      managed_delta_gate:
+        data:
+          result:
+            ok: false
+            exit_code: 1
+            summary: "delta.provenance mapping is required"
+            error: "delta.provenance mapping is required"
+
+turns:
+  - intent: { name: run, slots: {} }
+    expect_state: review
+    expect_world:
+      review_approved: true
+
+  # accept → running; the native gate returns failure → failed. The
+  # failure must be surfaced: last_error set, banner in the rendered view.
+  - intent: { name: accept, slots: {} }
+    expect_state: failed
+    expect_world:
+      last_error: "delta.provenance mapping is required"
+    expect_view_matches: "delta.provenance mapping is required"
+
+expect_terminal: false
+expect_no_errors: true

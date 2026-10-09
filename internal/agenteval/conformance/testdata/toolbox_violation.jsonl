@@ -1,0 +1,3 @@
+{"turn":1,"seq":1,"ts":"2026-07-04T00:00:00Z","kind":"agent.call.start","state_path":"work","call_id":"call-read","payload":{"verb":"task","agent":"worker","toolbox":"read_only","allowed_tools":["Read","Grep"],"denied_tools":["Edit","Write","Bash"],"effect":"read"}}
+{"turn":1,"seq":2,"ts":"2026-07-04T00:00:01Z","kind":"agent.stream","state_path":"work","call_id":"call-read","payload":{"type":"assistant","subtype":"tool_use","tool":"Edit","preview":"Edit internal/agenteval/types.go"}}
+{"turn":1,"seq":3,"ts":"2026-07-04T00:00:02Z","kind":"agent.call.complete","state_path":"work","call_id":"call-read","payload":{"verb":"task","duration_ms":10,"response":{"ok":true}}}

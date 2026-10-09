@@ -36,6 +36,13 @@ initial_world:
     acceptance_criteria: ["preset criterion"]
 
 host_handlers:
+  host.append_to_file:
+    data: { ok: true, message_id: "msg-1" }
+  host.inbox.add:
+    data: { ok: true, id: "ib-1" }
+  host.artifacts_dir:
+    data: { ok: true, path: ".artifacts/implementation-flow-artifact.md", message_id: "artifact-1" }
+
   # iface.ticket.get — cheap idempotent read, fires every entry (no once:).
   host.local_files.ticket:
     data:
@@ -54,12 +61,12 @@ host_handlers:
         acceptance_criteria: ["SHOULD-NOT-RUN"]
 
 turns:
-  # start → review_task_executing; its on_enter fires. task_summary_artifact
+  # start → review_task_executing → review_task_awaiting_reply; its on_enter fires. task_summary_artifact
   # is already set ⇒ the `once: true` decide is SKIPPED, so the preset
   # survives verbatim (summary_title still PRESET-SURVIVED) rather than being
   # clobbered by the stub's SHOULD-NOT-RUN value.
   - intent: { name: start, slots: {} }
-    expect_state: review_task_executing
+    expect_state: review_task_awaiting_reply
     expect_world:
       task_summary_artifact:
         summary_title:    "PRESET-SURVIVED"

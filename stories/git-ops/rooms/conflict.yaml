@@ -48,6 +48,13 @@ states:
         when: "world.last_op_outcome == 'build_failed'"
       - prose: "go.sum conflict resolved via go mod tidy — continuing rebase."
         when: "world.last_op_outcome == 'go_sum_fixed'"
+      - heading: "Rebase already in progress"
+        when: "world.last_op_outcome == 'no_conflict_files'"
+      - template: |
+          No conflicted files were detected, but a rebase is already underway:
+          {{ world.last_op_output }}
+          Choose continue to resume it, or abort to cancel.
+        when: "world.last_op_outcome == 'no_conflict_files'"
       - choice:
           mode: single
           prompt: "Actions"
@@ -56,6 +63,14 @@ states:
               hint:  "provide high-level guidance and retry agent"
               intent: guide
               when:  "world.conflict_verdict.resolved == false || world.last_op_outcome == 'build_failed'"
+            - label: "continue"
+              hint:  "git rebase --continue (resume the in-progress rebase)"
+              intent: rebase_continue
+              when:  "world.last_op_outcome == 'no_conflict_files'"
+            - label: "resolve"
+              hint:  "run the conflict resolver on the detected files"
+              intent: conflict_ready
+              when:  "world.conflict_scan_done == true && world.conflict_files != '' && world.conflict_agent_ready == false"
             - label: "abort"
               hint:  "git rebase --abort and return to hub"
               intent: abort
@@ -80,19 +95,25 @@ states:
                 GOSUM_ONLY=true
               fi
               jq -n --arg files "$FILES" --argjson gosum_only "$GOSUM_ONLY" \
-                '{conflict_files:$files, gosum_only:$gosum_only}'
+                '{conflict_files:$files, gosum_only:$gosum_only, conflict_scan_done:true}'
           cwd: "{{ world.working_dir }}"
         bind:
-          conflict_files: "stdout_json.conflict_files"
+          conflict_files:     "stdout_json.conflict_files"
+          conflict_scan_done: "stdout_json.conflict_scan_done"
         on_error: conflict
       # go.sum special case: fires only when conflict_files == 'go.sum ' (post-bind).
       # Default conflict_files="" → false in machine → does NOT fire prematurely.
-      - when: "world.conflict_files == 'go.sum '"
+      - when: "world.conflict_scan_done == true && world.conflict_files == 'go.sum '"
         emit_intent: gosum_fix
-      # Step 2: agent resolves conflicts (fires when conflict_files is set and not gosum only).
+      - when: "world.conflict_scan_done == true && world.conflict_files == ''"
+        emit_intent: rebase_stuck
+      - when: "world.conflict_scan_done == true && world.conflict_files != '' && world.conflict_files != 'go.sum ' && world.conflict_agent_ready == false"
+        emit_intent: conflict_ready
+      # Step 2: agent resolves conflicts (fires when conflict files have been scanned and primed).
       # once: skips when conflict_verdict is already set (non-empty object).
       # With: args re-rendered by orchestrator against post-bind world — correct conflict_files.
       - invoke: host.agent.task
+        when: "world.conflict_agent_ready == true && world.conflict_files != '' && world.conflict_files != 'go.sum '"
         once: true
         id: resolve_conflicts
         with:
@@ -101,7 +122,7 @@ states:
           agent:  conflict_resolver
           working_dir: "{{ world.working_dir }}"
           acceptance:
-            post_cmd: "git diff --check"
+            post_cmd: "git diff --check -- {{ world.conflict_files }}"
             schema: schemas/conflict_verdict.json
           args:
             conflict_files:           "{{ world.conflict_files }}"
@@ -155,11 +176,15 @@ states:
                   - |
                     set -e
                     export NO_COLOR=1 GIT_TERMINAL_PROMPT=0 GIT_PAGER=cat
-                    # Stage the agent's resolution before continuing: the
+                    # Stage only paths that were actually unmerged. The
                     # conflict_resolver is fenced to [Read, Edit] (no git), so
-                    # the story must `git add` the now-marker-free files — a
-                    # rebase --continue with unmerged paths in the index fails.
-                    git add -A 2>&1
+                    # the story must stage resolved conflict paths before
+                    # continuing, but `git add -A` would capture unrelated
+                    # dirty work in an operator checkout.
+                    git diff --diff-filter=U --name-only 2>/dev/null \
+                      | while IFS= read -r f; do
+                          [ -n "$f" ] && git add -- "$f" 2>&1
+                        done
                     # GIT_EDITOR=true keeps --continue non-interactive without a
                     # commit message editor. (`--no-edit` is NOT a valid rebase
                     # --continue option and errors out with a usage banner.)
@@ -167,19 +192,31 @@ states:
                     # a failed --continue as ok, falsely reporting resolution.
                     EXIT=0
                     OUTPUT=$(GIT_EDITOR=true git rebase --continue 2>&1) || EXIT=$?
+                    if [ "$EXIT" -ne 0 ] \
+                      && echo "$OUTPUT" | grep -qi "must edit all merge conflicts" \
+                      && ! git diff --diff-filter=U --name-only 2>/dev/null | grep -q . \
+                      && git status --porcelain 2>/dev/null | grep -q .; then
+                      DIRTY=$(git status --porcelain 2>/dev/null || true)
+                      OUTPUT=$(printf '%s\nRefusing to stash during rebase --continue because this repository has shared stash state. Review, stage, or checkpoint the remaining changes first:\n%s' "$OUTPUT" "$DIRTY")
+                      EXIT=1
+                    fi
                     NEW_CONFLICT=false
-                    if echo "$OUTPUT" | grep -qi "CONFLICT\|conflict markers"; then
+                    OUTCOME="build_failed"
+                    if echo "$OUTPUT" | grep -qi "^CONFLICT\|Merge conflict in\|Could not apply"; then
                       NEW_CONFLICT=true
+                      OUTCOME="conflict"
                     fi
                     jq -n \
                       --arg output "$OUTPUT" \
+                      --arg outcome "$OUTCOME" \
                       --argjson ok "$([ $EXIT -eq 0 ] && echo true || echo false)" \
                       --argjson new_conflict "$NEW_CONFLICT" \
-                      '{output:$output, ok:$ok, new_conflict:$new_conflict}'
+                      '{output:$output, ok:$ok, outcome:$outcome, new_conflict:$new_conflict}'
                 cwd: "{{ world.working_dir }}"
               bind:
-                last_op_output: "stdout_json.output"
-                last_op_ok:     "stdout_json.ok"
+                last_op_output:  "stdout_json.output"
+                last_op_ok:      "stdout_json.ok"
+                last_op_outcome: "stdout_json.outcome"
               on_error: conflict
             - when: "world.last_op_ok == true && !world.build_check_disabled"
               invoke: host.run
@@ -201,13 +238,41 @@ states:
                 last_op_outcome:          ""
             - when: "world.last_op_ok == true"
               emit_intent: conflict_resolved
-            - when: "world.last_op_ok == false"
+            - when: "world.last_op_ok == false && world.last_op_outcome == 'conflict'"
+              set:
+                conflict_files:           ""
+                conflict_scan_done:       false
+                conflict_agent_ready:     false
+                conflict_verdict:         {}
+                conflict_intent_guidance: ""
+            - when: "world.last_op_ok == false && world.last_op_outcome == 'conflict'"
+              emit_intent: rebase_conflict
+            - when: "world.last_op_ok == false && world.last_op_outcome != 'conflict'"
               set:
                 last_op_outcome: "build_failed"
       conflict_resolved:
         - when: "world.conflict_origin == 'pull'"
           target: main_ops
         - target: branch_ops
+      rebase_conflict:
+        - target: conflict
+          effects:
+            - set:
+                conflict_files:           ""
+                conflict_scan_done:       false
+                conflict_agent_ready:     false
+                conflict_verdict:         {}
+                conflict_intent_guidance: ""
+      conflict_ready:
+        - target: conflict
+          effects:
+            - set:
+                conflict_agent_ready: true
+      rebase_stuck:
+        - target: .
+          effects:
+            - set:
+                last_op_outcome: "no_conflict_files"
       guide:
         - target: conflict
           effects:
@@ -215,6 +280,8 @@ states:
                 conflict_intent_guidance: "{{ slots.intent }}"
                 conflict_verdict:         {}
                 conflict_files:           ""
+                conflict_scan_done:       false
+                conflict_agent_ready:     false
                 last_op_outcome:          ""
       abort:
         - target: .

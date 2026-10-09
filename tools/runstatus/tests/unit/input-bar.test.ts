@@ -294,6 +294,89 @@ describe("InputBar", () => {
     wrapper.unmount();
   });
 
+  it("applies an initial raw draft to the free-text floor", () => {
+    const wrapper = mount(InputBar, {
+      props: {
+        intents: [startIntent],
+        typedView: choiceOnlyView,
+        initialRawDraft: "work ticket B-123 titled Broken toast",
+      },
+      attachTo: document.body,
+    });
+    const input = wrapper.find('[data-testid="text-floor-input"]')
+      .element as HTMLTextAreaElement;
+    expect(input.value).toBe("work ticket B-123 titled Broken toast");
+    wrapper.unmount();
+  });
+
+  it("keeps an initial raw draft when the choice view arrives after mount", async () => {
+    const wrapper = mount(InputBar, {
+      props: {
+        intents: [],
+        initialRawDraft: "work ticket B-123 titled Broken toast",
+      },
+      attachTo: document.body,
+    });
+    expect(wrapper.find('[data-testid="text-floor-input"]').exists()).toBe(false);
+    await wrapper.setProps({ intents: [startIntent], typedView: choiceOnlyView });
+    const input = wrapper.find('[data-testid="text-floor-input"]')
+      .element as HTMLTextAreaElement;
+    expect(input.value).toBe("work ticket B-123 titled Broken toast");
+    wrapper.unmount();
+  });
+
+  it("warning choices recommend the first action and typed action prefixes beat raw search", async () => {
+    const warningChoiceView = {
+      Elements: [
+        {
+          Kind: "banner" as const,
+          Source: "Session warning",
+          Color: "blue",
+        },
+        {
+          Kind: "choice" as const,
+          ChoiceMode: "single",
+          ChoicePrompt: "Recommended actions",
+          ChoiceItems: [
+            { Label: "Reload story", Intent: "reload_story" },
+            { Label: "Dismiss warning", Intent: "dismiss_warning" },
+          ],
+        },
+      ],
+    };
+    const wrapper = mount(InputBar, {
+      props: { intents: [], typedView: warningChoiceView },
+    });
+
+    const first = wrapper.find('[data-testid="intent-btn-reload_story"]');
+    expect(first.classes()).toContain("input-bar__action-btn--warning-default");
+    expect(first.text()).toContain("recommended");
+
+    const input = wrapper.find<HTMLInputElement>('[data-testid="text-floor-input"]');
+    expect(input.attributes("placeholder")).toContain("Recommended: Reload story");
+
+    await input.trigger("keydown", { key: "Tab" });
+    expect((input.element as HTMLTextAreaElement).value).toBe("Reload story");
+
+    await input.setValue("");
+    await wrapper.find('[data-testid="text-floor"]').trigger("submit");
+    expect(wrapper.emitted("intent")![0]).toEqual([
+      "reload_story",
+      {},
+      "Reload story",
+    ]);
+
+    await input.setValue("dismiss");
+    await wrapper.find('[data-testid="text-floor"]').trigger("submit");
+    expect(wrapper.emitted("intent")![1]).toEqual([
+      "dismiss_warning",
+      {},
+      "Dismiss warning",
+    ]);
+    expect(wrapper.emitted("send")).toBeFalsy();
+    wrapper.unmount();
+  });
+
   it("choice actions can be manually collapsed and restored at normal height", async () => {
     const wrapper = mount(InputBar, {
       props: { intents: [startIntent], typedView: choiceOnlyView },

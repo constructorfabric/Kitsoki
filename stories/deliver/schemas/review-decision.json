@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ReviewDecision",
+  "description": "Adversarial feasibility/completeness verdict on a decomposition manifest.",
+  "type": "object",
+  "required": ["verdict", "reason", "questions"],
+  "additionalProperties": false,
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "enum": ["accept", "revise"],
+      "description": "accept — the manifest is buildable and complete; revise — send back to decompose."
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Concise justification for the verdict."
+    },
+    "questions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": [],
+      "description": "When verdict is 'revise', the specific gaps/questions to feed back to the decomposer."
+    }
+  }
+}

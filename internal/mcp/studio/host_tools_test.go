@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -144,6 +145,26 @@ func TestHostRun_NoTruncateWhenDisabled(t *testing.T) {
 	assert.Greater(t, len(got.Stdout), 4096, "full output returned when opted out")
 }
 
+func TestHostRun_CollapsesTerminalProgressRepaints(t *testing.T) {
+	ctx := context.Background()
+	cs := newStudioHostRunner(ctx, t)
+
+	res, err := callTool(ctx, cs, "host.run", map[string]any{
+		"dir": t.TempDir(),
+		"cmd": "printf 'clone 10%%\rclone 50%%\rclone 100%%\nDone\n'",
+	})
+	require.NoError(t, err)
+	require.False(t, res.IsError, contentText(res))
+
+	var got studio.HostRunOK
+	require.NoError(t, json.Unmarshal([]byte(contentText(res)), &got))
+	assert.True(t, got.OK)
+	assert.NotContains(t, got.Stdout, "clone 10%")
+	assert.NotContains(t, got.Stdout, "clone 50%")
+	assert.Contains(t, got.Stdout, "clone 100%")
+	assert.Contains(t, got.Stdout, "Done")
+}
+
 // TestHostRun_MissingDir rejects a call with no dir — a gate must name the tree
 // it gates, never silently run against the server's cwd. `dir` is a required
 // schema property, so the SDK rejects the call at the transport layer (the
@@ -169,4 +190,77 @@ func TestHostRun_BadDir(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, res.IsError, "non-existent dir must be a tool error")
 	assert.Contains(t, contentText(res), "not an accessible directory")
+}
+
+func TestHostPatch_AppliesAfterPreflight(t *testing.T) {
+	ctx := context.Background()
+	cs := newStudioHostRunner(ctx, t)
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "hello.txt"), []byte("old\n"), 0o644))
+
+	patch := "diff --git a/hello.txt b/hello.txt\n--- a/hello.txt\n+++ b/hello.txt\n@@ -1 +1 @@\n-old\n+new\n"
+	res, err := callTool(ctx, cs, "host.patch", map[string]any{
+		"dir":   dir,
+		"patch": patch,
+	})
+	require.NoError(t, err, "host.patch call")
+	require.False(t, res.IsError, "applicable patch must not be a tool error: %s", contentText(res))
+
+	var got studio.HostPatchOK
+	require.NoError(t, json.Unmarshal([]byte(contentText(res)), &got))
+	assert.True(t, got.OK)
+	assert.True(t, got.Applied)
+	assert.Equal(t, []string{"hello.txt"}, got.Files)
+	body, err := os.ReadFile(filepath.Join(dir, "hello.txt"))
+	require.NoError(t, err)
+	assert.Equal(t, "new\n", string(body))
+}
+
+func TestHostPatch_DryRunPreflightsWithoutApplying(t *testing.T) {
+	ctx := context.Background()
+	cs := newStudioHostRunner(ctx, t)
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "hello.txt"), []byte("old\n"), 0o644))
+
+	patch := "diff --git a/hello.txt b/hello.txt\n--- a/hello.txt\n+++ b/hello.txt\n@@ -1 +1 @@\n-old\n+new\n"
+	res, err := callTool(ctx, cs, "host.patch", map[string]any{
+		"dir":     dir,
+		"patch":   patch,
+		"dry_run": true,
+	})
+	require.NoError(t, err)
+	require.False(t, res.IsError, contentText(res))
+
+	var got studio.HostPatchOK
+	require.NoError(t, json.Unmarshal([]byte(contentText(res)), &got))
+	assert.True(t, got.OK)
+	assert.False(t, got.Applied)
+	body, err := os.ReadFile(filepath.Join(dir, "hello.txt"))
+	require.NoError(t, err)
+	assert.Equal(t, "old\n", string(body))
+}
+
+func TestHostPatch_PreflightFailureIsData(t *testing.T) {
+	ctx := context.Background()
+	cs := newStudioHostRunner(ctx, t)
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "hello.txt"), []byte("actual\n"), 0o644))
+
+	patch := "diff --git a/hello.txt b/hello.txt\n--- a/hello.txt\n+++ b/hello.txt\n@@ -1 +1 @@\n-expected\n+new\n"
+	res, err := callTool(ctx, cs, "host.patch", map[string]any{
+		"dir":   dir,
+		"patch": patch,
+	})
+	require.NoError(t, err)
+	require.False(t, res.IsError, "a rejected patch preflight is DATA, not a tool error: %s", contentText(res))
+
+	var got studio.HostPatchOK
+	require.NoError(t, json.Unmarshal([]byte(contentText(res)), &got))
+	assert.False(t, got.OK)
+	assert.False(t, got.Applied)
+	assert.Equal(t, []string{"hello.txt"}, got.Files)
+	assert.Contains(t, got.Stdout, "patch failed")
+	body, err := os.ReadFile(filepath.Join(dir, "hello.txt"))
+	require.NoError(t, err)
+	assert.Equal(t, "actual\n", string(body))
 }

@@ -1,0 +1,67 @@
+# The explicit fallback treatment does not broaden the action surface. A
+# schema-typed, item-allowlisted reason re-arms the same item exactly once;
+# arbitrary reasons remain needs-human through the ordinary blocked path.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: implementing
+initial_world:
+  ticket_id: TKT-DECOMPOSED-FALLBACK
+  ticket_title: Typed same-grant fallback fixture
+  thread: TKT-DECOMPOSED-FALLBACK
+  workdir: .
+  feature_branch: paired-task-codeact-decomposed-fallback
+  implementation_mode: codeact_decomposed_fallback
+  judge_mode: human
+  propose_fix_artifact: { summary_title: Retry a bounded item }
+  decomposed_active_item:
+    id: only-item
+  compiled_implementation_plan:
+    - id: only-item
+      depends_on: []
+      objective: Make the focused repair.
+      evidence_refs: ["reproduction: focused failure"]
+      read_paths: [README.md]
+      write_paths: [README.md]
+      invariants: [Other documentation remains unchanged.]
+      acceptance_commands: [test -f README.md]
+      acceptance_command: (test -f README.md)
+      acceptance_gate_command: 'set +e; (test -f README.md); rc=$?; printf "{\\"ok\\":true,\\"exit_code\\":0}\\n"; exit 0'
+      expected_artifacts: [README.md]
+      max_steps: 2
+      fallback_reason_allowlist: [capability_missing]
+      capabilities:
+        world: read
+        fs: { read: [README.md], write: [README.md], max_bytes: 65536 }
+        vcs: read
+  implement_artifact:
+    summary_title: Capability blocked
+    summary_markdown: The scoped writer could not apply this one item.
+    files_changed: [README.md]
+    applied: false
+    blockers: [The requested narrow capability is unavailable.]
+    fallback_reason: capability_missing
+
+host_handlers:
+  host.agent.codeact:
+    data:
+      terminated: done
+      payload:
+        summary_title: Retried under the same grant
+        summary_markdown: The retry retained the compiler-selected capability map.
+        files_changed: [README.md]
+        applied: true
+      steps: [{ observation: { changed: README.md } }]
+  host.git:
+    data: { ok: true, sha: fallback123, diff: README.md }
+
+turns:
+  - intent: { name: accept, slots: {} }
+    expect_state: implementing
+    expect_world:
+      decomposed_implementation_index: 0
+      decomposed_fallback_attempt: 1
+      decomposed_fallback_reason: capability_missing
+      decomposed_fallback_item_id: only-item
+
+expect_no_errors: true

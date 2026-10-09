@@ -18,9 +18,9 @@
 # design_done (was design_publish in the prior 6-stage pipeline).
 #
 # Decide calls are stubbed by their invoke `id:` (existing_scan,
-# references_research, brief_check); host.run sites (name_slug, uniquify,
-# publish) likewise; the task sites split by_call (refine_brief) vs the
-# default (draft author).
+# references_research, brief_check); Starlark workspace minting runs against
+# an inspect cassette; host.run still stubs publish. The task sites split
+# by_call (refine_brief) vs the default (draft author).
 
 test_kind: flow
 app: ../app.yaml
@@ -28,7 +28,23 @@ initial_state: design
 initial_world:
   judge_mode: "human"
 
+starlark_inspect_cassette: ../cassettes/design_happy_path.inspect.yaml
+
 host_handlers:
+  host.run:
+    by_call:
+      roadmap_ledger_proposal_published:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            ok: true
+            ledger: ".artifacts/roadmap/progress.yaml"
+            event_id: "evt-working-folder"
+            item_id: "proposal/working-folder-primitive"
+            changed: true
+  host.fs.writable_dir:
+    data: { path: "docs/proposals", used_fallback: false }
   host.ide.open_file:
     data: { ok: true, connected: true }
   host.agent.decide:
@@ -51,7 +67,7 @@ host_handlers:
   host.agent.search:
     data: { hits: [], top: null }
   host.artifacts_dir:
-    data: { ok: true, path: "docs/proposals/.workspace/first-class-working-folder/001-brief.md", message_id: "out#1" }
+    data: { ok: true, path: "docs/proposals/.workspace/working-folder-primitive/001-brief.md", message_id: "out#1" }
   host.agent.task:
     by_call:
       refine_brief:
@@ -64,38 +80,33 @@ host_handlers:
       # The un-id'd draft author task (design_draft.on_enter).
       ok: true
       submitted:
-        title:               "Runtime: first-class per-session working folder"
+        title:               "Runtime: working folder primitive"
         kind:                "runtime"
         summary_markdown:    "## Runtime: first-class per-session working folder\n\nThe engine establishes a gitignored, session-keyed working folder at session start, exposed as a reserved world.workdir, and cleans it up on exit."
-        file_path:           "docs/proposals/.workspace/first-class-working-folder/004-proposal.md"
+        file_path:           "docs/proposals/.workspace/working-folder-primitive/004-proposal.md"
         confidence:          0.82
         needs_clarification: false
         follow_up_questions: []
-  host.run:
+  host.starlark.run:
     by_call:
-      name_slug:
-        data:
-          ok: true
-          exit_code: 0
-          stdout: '{"slug":"first-class-working-folder","workspace":"docs/proposals/.workspace/first-class-working-folder"}'
-          stdout_json: { slug: "first-class-working-folder", workspace: "docs/proposals/.workspace/first-class-working-folder" }
-      uniquify:
-        data:
-          ok: true
-          exit_code: 0
-          stdout: '{"slug":"first-class-working-folder","workspace":"docs/proposals/.workspace/first-class-working-folder"}'
-          stdout_json: { slug: "first-class-working-folder", workspace: "docs/proposals/.workspace/first-class-working-folder" }
       publish:
         data:
+          design_file: "docs/proposals/working-folder-primitive.md"
+          ticket_id: "F-2026-06-11T120000Z-working-folder-primitive"
+          ticket_path: "issues/features/F-2026-06-11T120000Z-working-folder-primitive.md"
+          ticket_title: "Working folder primitive"
+          ticket_url: "docs/proposals/working-folder-primitive.md"
+      roadmap_ledger_proposal_published:
+        data:
           ok: true
           exit_code: 0
-          stdout: '{"design_file":"docs/proposals/first-class-working-folder.md","ticket_id":"F-2026-06-11T120000Z-first-class-working-folder","ticket_path":"issues/features/F-2026-06-11T120000Z-first-class-working-folder.md","ticket_title":"First-class working folder","ticket_url":"docs/proposals/first-class-working-folder.md"}'
+          stdout: '{"ok":true,"ledger":".artifacts/roadmap/progress.yaml","event_id":"evt-working-folder","item_id":"proposal/working-folder-primitive","changed":true}'
           stdout_json:
-            design_file: "docs/proposals/first-class-working-folder.md"
-            ticket_id:     "F-2026-06-11T120000Z-first-class-working-folder"
-            ticket_path:   "issues/features/F-2026-06-11T120000Z-first-class-working-folder.md"
-            ticket_title:  "First-class working folder"
-            ticket_url:    "docs/proposals/first-class-working-folder.md"
+            ok: true
+            ledger: ".artifacts/roadmap/progress.yaml"
+            event_id: "evt-working-folder"
+            item_id: "proposal/working-folder-primitive"
+            changed: true
 
 turns:
   # Stage 1: Intake — one message mints the candidate SLUG (no folder yet) and
@@ -104,15 +115,12 @@ turns:
   - intent: { name: discuss, slots: { message: "I want a per-session working folder primitive" } }
     expect_state: design_search
     expect_world:
-      design_slug: "first-class-working-folder"
       design_idea: "I want a per-session working folder primitive"
-      # No overlap folder minted yet.
-      design_workspace: ""
       design_existing_state:
         overlaps:     []
         roadmap_fit:  "A net-new runtime primitive; no overlap with the current queue."
     expect_host_calls:
-      - handler: host.run
+      - handler: host.starlark.run
         args: { call: "name_slug" }
       # Stage 2 on_enter — the scout only. No folder, no references here.
       - handler: host.agent.decide
@@ -130,19 +138,17 @@ turns:
     expect_state: design_refine
     expect_world:
       design_overlap_decision: "new"
-      # The folder is finally minted here, behind the gate.
-      design_workspace: "docs/proposals/.workspace/first-class-working-folder"
       design_existing_state:
         overlaps:     []
         roadmap_fit:  "A net-new runtime primitive; no overlap with the current queue."
       design_references:
         items:
           - { path: "docs/proposals/process-design.md", sections: "§4.3", rationale: "names the first-class workdir as a future runtime slice" }
-      design_brief_path: "docs/proposals/.workspace/first-class-working-folder/001-brief.md"
+      design_brief_path: "docs/proposals/.workspace/working-folder-primitive/001-brief.md"
       design_brief_cycle: 0
     expect_host_calls:
       # Materialize: folder + persisted scout report + references + persisted refs.
-      - handler: host.run
+      - handler: host.starlark.run
         args: { call: "uniquify" }
       - handler: host.artifacts_dir
         args: { thread: "002-existing-state" }
@@ -154,7 +160,7 @@ turns:
       - handler: host.artifacts_dir
         args: { thread: "001-brief" }
       - handler: host.ide.open_file
-        args: { path: "docs/proposals/.workspace/first-class-working-folder/001-brief.md" }
+        args: { path: "docs/proposals/.workspace/working-folder-primitive/001-brief.md" }
       - handler: host.agent.task
         args: { call: "refine_brief" }
 
@@ -182,18 +188,26 @@ turns:
   - intent: { name: accept, slots: {} }
     expect_state: design_done
     expect_world:
-      design_file: "docs/proposals/first-class-working-folder.md"
+      design_file: "docs/proposals/working-folder-primitive.md"
       # Publish also minted a feature ticket and pinned the routing keys so the
       # done room can drive straight into the impl pipeline.
-      design_ticket_path: "issues/features/F-2026-06-11T120000Z-first-class-working-folder.md"
-      ticket_id:   "F-2026-06-11T120000Z-first-class-working-folder"
+      design_ticket_path: "issues/features/F-2026-06-11T120000Z-working-folder-primitive.md"
+      ticket_id:   "F-2026-06-11T120000Z-working-folder-primitive"
       ticket_type: "feature"
-      ticket_url:  "docs/proposals/first-class-working-folder.md"
+      ticket_url:  "docs/proposals/working-folder-primitive.md"
+      roadmap_ledger_result:
+        ok: true
+        ledger: ".artifacts/roadmap/progress.yaml"
+        event_id: "evt-working-folder"
+        item_id: "proposal/working-folder-primitive"
+        changed: true
     expect_host_calls:
-      - handler: host.run
+      - handler: host.starlark.run
         args: { call: "publish" }
+      - handler: host.run
+        args: { call: "roadmap_ledger_proposal_published" }
     # The done room surfaces the published path as a discrete "Published" kv.
-    expect_view_matches: "Published.*first-class-working-folder\\.md"
+    expect_view_matches: "Roadmap ledger.*\\.artifacts/roadmap/progress\\.yaml"
 
   # Back to the day landing.
   - intent: { name: go_main, slots: {} }

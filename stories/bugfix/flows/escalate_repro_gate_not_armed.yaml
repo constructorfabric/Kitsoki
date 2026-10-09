@@ -1,9 +1,6 @@
-# escalate_repro_gate_not_armed — the #47-catcher. Identical un-armed gate setup
-# to bugfix_green_red_green_gate_refine (baseline NOT green ⇒ the reproduction
-# never cleanly/behaviorally armed the GREEN→RED gate), but with escalate_low_value
-# ON. Instead of refine-looping to @exit:abandoned, the reproducing room quits
-# EARLY to @exit:needs-human on turn 1 — a mis-scoped reproduction doesn't burn
-# the whole implement→test→review budget; a human is asked instead.
+# escalate_repro_gate_not_armed — a pre-existing red baseline is an environment
+# failure, independent of escalation policy. Once the deterministic gate exposes
+# it, the run must exit needs-human rather than refine-loop on that workspace.
 
 test_kind: flow
 app: ../app.yaml
@@ -28,7 +25,7 @@ initial_world:
 host_handlers:
   host.append_to_file: { data: { ok: true } }
   host.inbox.add:      { data: { ok: true } }
-  host.git_worktree:   { data: { ok: true, log: "", path: ".worktrees/grgesc-fix" } }
+  host.capsule_workspace:   { data: { ok: true, log: "", path: ".worktrees/grgesc-fix" } }
   host.git:            { data: { ok: true, sha: "abc", diff: "" } }
   host.local:          { data: { ok: true, log: "PASS", passed: 1, failed: 0 } }
   host.agent.task:
@@ -51,10 +48,6 @@ host_handlers:
     data: { ok: true, submitted: { summary_title: "ok", summary_markdown: "ok", outcome: "pass", status: "passed", verdict: "accept", intent: "accept", confidence: 0.9 } }
   host.run:
     by_call:
-      commit_repro_test:
-        data: { ok: true, exit_code: 0, stdout_json: { sha: "deadbeef", committed: true } }
-      # Gate FAILS: baseline NOT green ⇒ ok=false. escalate_low_value ON ⇒ the
-      # reproducing room escalates to needs-human instead of refine→abandon.
       repro_det_gate:
         data:
           ok: true
@@ -68,12 +61,13 @@ host_handlers:
             log:            "baseline(GREEN) test_cmd exit=2 on HEAD~1 | reproducer(RED) repro_command exit=101"
 
 turns:
-  # start → reproducing on_enter: reproducer authors a test, the deterministic
-  # gate runs and does NOT arm (baseline not green); escalate_low_value routes it
-  # to the needs-human-class @exit:not-reproducible carrying the question, instead
-  # of the refine→abandon grind.
+  # start → the gate reports the dirty baseline; strict mode exits without a
+  # reproducer retry. escalation policy is irrelevant to this hard invariant.
   - intent: { name: start, slots: {} }
     expect_state: __exit__needs-human
+    expect_host_calls:
+      - handler: host.agent.task
+        times: 1
     expect_world:
       status: "needs-human"
 

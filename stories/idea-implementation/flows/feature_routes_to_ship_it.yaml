@@ -1,0 +1,38 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: intake
+initial_world:
+  session_id: flowsess
+  base_branch: main
+
+host_handlers:
+  host.agent.decide:
+    by_call:
+      classify_idea:
+        data:
+          ok: true
+          submitted:
+            route: feature
+            confidence: 0.94
+            reason: "The idea requests a new health endpoint and names a testable server behavior."
+            questions: []
+            title: "Add /healthz endpoint"
+            brief: "Add a GET /healthz endpoint that returns 200 OK and a small JSON health payload."
+            gate_command: "go test ./internal/server -run TestHealthz"
+
+turns:
+  - intent:
+      name: implement
+      slots:
+        idea: "Add a /healthz endpoint that returns 200 and prove it with the server tests."
+    expect_state: ship.maker.configuring
+    expect_world:
+      status: running
+      ship__brief: "Add a GET /healthz endpoint that returns 200 OK and a small JSON health payload."
+      ship__gate_command: "go test ./internal/server -run TestHealthz"
+      ship__maker__goal_text: "Add a GET /healthz endpoint that returns 200 OK and a small JSON health payload."
+      ship__maker__gate_command: "go test ./internal/server -run TestHealthz"
+
+expect_operation_policy: ship__ship_it
+expect_operation_status: running
+expect_no_errors: true

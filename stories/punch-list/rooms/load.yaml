@@ -18,21 +18,25 @@ states:
             - { label: "quit", intent: quit }
             - { label: "look", intent: look }
     on_enter:
-      - invoke: host.run
+      - invoke: host.starlark.run
         id: punch_load
         once: true
         with:
-          cmd: python3
-          args:
-            - "stories/punch-list/scripts/punch_load.py"
-            - "{{ world.manifest_path }}"
-            - "{{ world.state_path }}"
+          script: scripts/punch_load.star
+          capabilities:
+            fs:
+              read: ["**"]
+              write: ["**"]
+          inputs:
+            manifest_path: "{{ world.manifest_path ?? '' }}"
+            state_path: "{{ world.state_path ?? '' }}"
+            run_id: "{{ world.trace_run_id ?? '' }}"
         bind:
-          punch_items: "stdout_json.items"
-          item_count: "stdout_json.item_count"
-          manifest_path: "stdout_json.manifest_path"
-          state_path: "stdout_json.state_path"
-          load_error: "stdout_json.error"
+          punch_items: "items"
+          item_count: "item_count"
+          manifest_path: "manifest_path"
+          state_path: "state_path"
+          load_error: "error"
         on_error: needs_human
     on:
       next_item:

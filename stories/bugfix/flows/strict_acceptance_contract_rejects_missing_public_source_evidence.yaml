@@ -1,0 +1,53 @@
+# A public ticket may name a compatibility term that must appear in the committed
+# source diff. A self-reported test receipt is insufficient when that term is
+# absent; this remains fully deterministic and oracle-free.
+test_kind: flow
+app: ../app.yaml
+initial_state: testing
+initial_world:
+  ticket_id: "TKT-PUBLIC-SOURCE-EVIDENCE"
+  ticket_title: "The public compatibility field must be present."
+  thread: "TKT-PUBLIC-SOURCE-EVIDENCE"
+  workdir: "/tmp/contract-stub"
+  bugfix_mode: "quick"
+  judge_mode: "human"
+  acceptance_contract:
+    - id: compatibility-field
+      description: "The public compatibility field is represented in source."
+      required_diff_contains: ["Cwd:"]
+  propose_fix_artifact: { summary_title: "stub", summary_markdown: "stub" }
+host_handlers:
+  host.local:
+    data: { ok: true, passed: 1, failed: 0, log: "green" }
+  host.run:
+    data:
+      ok: true
+      exit_code: 0
+      stdout: "diff --git a/internal/host/validator_sandbox.go b/internal/host/validator_sandbox.go\n+" 
+      stdout_json: { dirty: false, files: "" }
+  host.git:
+    data: { ok: true, sha: "abc" }
+  host.agent.task:
+    data:
+      submitted:
+        summary_title: "Receipt without source evidence"
+        summary_markdown: "The test receipt is present but the public source term is absent."
+        status: "passed"
+        tests_added: []
+        tests_run: { passed: 1, failed: 0, skipped: 0, log: "green" }
+        blockers: []
+        acceptance_coverage:
+          - { requirement_id: "compatibility-field", test_path: "internal/host/validator_sandbox_test.go", assertion: "compatibility field is exercised" }
+turns:
+  - intent: { name: refine, slots: { feedback: "run public source evidence gate" } }
+    expect_state: testing
+    expect_world:
+      acceptance_gate:
+        ok: false
+        missing: ["compatibility-field~Cwd:"]
+        summary: "missing direct assertion receipts for: compatibility-field~Cwd:"
+  - intent: { name: accept, slots: {} }
+    expect_state: implementing
+    expect_world:
+      refine_feedback: "Strict acceptance contract is incomplete: missing direct assertion receipts for: compatibility-field~Cwd:"
+expect_no_errors: true

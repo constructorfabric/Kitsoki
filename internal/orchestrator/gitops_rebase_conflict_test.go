@@ -37,63 +37,19 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"kitsoki/internal/app"
+	"kitsoki/internal/capsuletest"
 	"kitsoki/internal/host"
 	"kitsoki/internal/machine"
 	"kitsoki/internal/orchestrator"
 	"kitsoki/internal/store"
 )
 
-// setupConflictRepo builds a real git repo under t.TempDir() whose `feature`
-// branch is guaranteed to conflict with `main` on rebase: both branches edit
-// the same line of file.txt from a shared base. Returns the repo root, checked
-// out on `feature` (so git-ops's idle router routes to branch_ops).
+// setupConflictRepo opens the shared synthetic capsule whose `feature` branch
+// is guaranteed to conflict with `main` on rebase. Returns the repo root,
+// checked out on `feature` (so git-ops's idle router routes to branch_ops).
 func setupConflictRepo(t *testing.T) string {
 	t.Helper()
-	repoRoot := t.TempDir()
-
-	git := func(args ...string) {
-		t.Helper()
-		cmd := exec.Command("git", args...)
-		cmd.Dir = repoRoot
-		// Deterministic, non-interactive git regardless of the host config.
-		cmd.Env = append(os.Environ(),
-			"GIT_TERMINAL_PROMPT=0",
-			"GIT_AUTHOR_NAME=Conflict Test", "GIT_AUTHOR_EMAIL=conflict@test.invalid",
-			"GIT_COMMITTER_NAME=Conflict Test", "GIT_COMMITTER_EMAIL=conflict@test.invalid",
-		)
-		out, err := cmd.CombinedOutput()
-		require.NoError(t, err, "git %v failed: %s", args, string(out))
-	}
-	writeFile := func(name, body string) {
-		t.Helper()
-		require.NoError(t, os.WriteFile(filepath.Join(repoRoot, name), []byte(body), 0o644))
-	}
-
-	git("init", "--quiet", "--initial-branch=main")
-	git("config", "user.email", "conflict@test.invalid")
-	git("config", "user.name", "Conflict Test")
-
-	// Shared base commit on main.
-	writeFile("file.txt", "base line\n")
-	git("add", "-A")
-	git("commit", "--quiet", "-m", "base")
-
-	// feature edits the line one way…
-	git("checkout", "--quiet", "-b", "feature")
-	writeFile("file.txt", "feature change\n")
-	git("add", "-A")
-	git("commit", "--quiet", "-m", "feature edit")
-
-	// …main edits the SAME line another way → rebase conflict.
-	git("checkout", "--quiet", "main")
-	writeFile("file.txt", "main change\n")
-	git("add", "-A")
-	git("commit", "--quiet", "-m", "main edit")
-
-	// End on the feature branch: this is the state a user is in when they ask
-	// git-ops to "rebase onto main".
-	git("checkout", "--quiet", "feature")
-	return repoRoot
+	return capsuletest.Open(t, "rebase-conflict-ready")
 }
 
 // setupRerereConflictRepo builds the same guaranteed-conflict repo as

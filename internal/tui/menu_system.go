@@ -28,6 +28,8 @@ const (
 	menuActionHelp
 	// menuActionWorld opens the `/world` viewer for the current session.
 	menuActionWorld
+	// menuActionStories opens the `/stories` selector.
+	menuActionStories
 )
 
 // menuSystemChoiceMsg is emitted when the user selects a row. modeName
@@ -110,6 +112,7 @@ func newMenuSystemModel(metaEntries []metaMenuEntry) menuSystemModel {
 	// row indices stay stable.
 	entries = append(entries,
 		menuSystemEntry{action: menuActionHelp, label: "Help", hint: "list the slash commands (/help)"},
+		menuSystemEntry{action: menuActionStories, label: "Stories", hint: "choose another story (/stories)"},
 		menuSystemEntry{action: menuActionWorld, label: "World", hint: "inspect the world state (/world)"},
 	)
 	return menuSystemModel{entries: entries}
@@ -187,8 +190,25 @@ func (m menuSystemModel) View() string {
 	if !m.active {
 		return ""
 	}
-	var sb strings.Builder
-	sb.WriteString("menu (↑/↓ to move, Enter to pick, Esc to close)\n\n")
+	lines := []string{"menu (↑/↓ to move, Enter to pick, Esc to close)", ""}
+	lines = append(lines, m.rows()...)
+	return strings.Join(lines, "\n") + "\n"
+}
+
+// ChromeView renders the menu through the shared normal-screen row budget.
+// View remains the full logical projection for transcript/debug consumers.
+func (m menuSystemModel) ChromeView(width, maxRows int) string {
+	if !m.active {
+		return ""
+	}
+	return renderLiveOverlay(
+		[]string{"menu (↑/↓ to move, Enter to pick, Esc to close)"},
+		m.rows(), m.selected, width, maxRows,
+	)
+}
+
+func (m menuSystemModel) rows() []string {
+	rows := make([]string, 0, len(m.entries))
 	for i, e := range m.entries {
 		marker := "  "
 		label := menuItemStyle.Render(e.label)
@@ -196,12 +216,13 @@ func (m menuSystemModel) View() string {
 			marker = "▸ "
 			label = menuItemSelectedStyle.Render(e.label)
 		}
+		var sb strings.Builder
 		sb.WriteString(fmt.Sprintf("%s[%d] %s", marker, i+1, label))
 		if e.hint != "" {
 			sb.WriteString(" — ")
 			sb.WriteString(menuItemBlockedStyle.Render(e.hint))
 		}
-		sb.WriteString("\n")
+		rows = append(rows, sb.String())
 	}
-	return sb.String()
+	return rows
 }

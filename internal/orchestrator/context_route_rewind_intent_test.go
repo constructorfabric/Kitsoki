@@ -52,7 +52,7 @@ func TestRewindRoute_IntentClass(t *testing.T) {
 
 	// Operator rewinds and re-routes under the SAME (intent) class.
 	out2, err := orch.RewindRoute(ctx, sid, decisionID, orchestrator.ClassIntent,
-		"operator: keep it as an intent")
+		"operator: keep it as an intent", "")
 	require.NoError(t, err, "class=intent rewind must succeed")
 	require.NotNil(t, out2, "rewind must return a valid outcome")
 

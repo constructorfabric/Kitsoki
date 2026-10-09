@@ -1,0 +1,27 @@
+# onboarding_real_discover -- imported dev-story must execute its own discovery
+# script, not look under the project-owned wrapper's app directory. The real
+# host.run call is read-only and deterministic; no LLM or project files are
+# written.
+
+test_kind: flow
+app: ../app.yaml
+use_orchestrator: true
+initial_state: core.landing
+initial_world:
+  repo_root: "."
+  core__workdir: "."
+  core__repo_root: "."
+
+host_bindings:
+  host.run: host.run
+
+turns:
+  - intent: { name: core__go_init, slots: { target: "" } }
+    expect_state: core.init_discover
+    expect_world:
+      core__init_run_ok: true
+      core__init_discovery_error: ""
+      core__init_profile_status: "discovering"
+    expect_view_matches: "Stack:"
+
+expect_no_errors: true

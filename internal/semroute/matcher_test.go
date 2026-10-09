@@ -291,6 +291,30 @@ func TestMatch_BareSynonymShortStillMatches(t *testing.T) {
 	}
 }
 
+// TestMatch_ExactExampleBeatsSubsetSibling guards the command form used by
+// imported stories: "start the marathon" must resolve to the exact authored
+// example, not tie against a sibling intent whose generic "start" example is a
+// stem subset of the input.
+func TestMatch_ExactExampleBeatsSubsetSibling(t *testing.T) {
+	t.Parallel()
+	def := mkApp(t, map[string]app.Intent{
+		"start":          {Examples: []string{"start"}},
+		"start_marathon": {Examples: []string{"start the marathon"}},
+	})
+	m := mustCompile(t, def)
+
+	v := mustMatch(t, m, "dogfood.idle", []string{"start", "start_marathon"}, "start the marathon")
+	if v.Intent != "start_marathon" {
+		t.Fatalf("Intent: got %q, want start_marathon (verdict=%+v)", v.Intent, v)
+	}
+	if v.Confidence != ConfidenceWholeSynonym {
+		t.Errorf("Confidence: got %v, want %v", v.Confidence, ConfidenceWholeSynonym)
+	}
+	if v.MatchReason != "example:start the marathon" {
+		t.Errorf("MatchReason: got %q, want %q", v.MatchReason, "example:start the marathon")
+	}
+}
+
 // TestMatch_TwoIntentsShareSynonym pins the shared-synonym tie: when "leave" matches
 // both leave_store and cancel_purchase, the verdict carries
 // Confidence=0.50 + the candidate list.

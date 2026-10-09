@@ -26,6 +26,7 @@ import type {
 import { snapshotSessionEvents } from "../data/session-capture.js";
 import { recentConsole } from "../data/console-capture.js";
 import { gatherErrorInfo } from "../data/error-capture.js";
+import { snapshotNetworkHar } from "../data/network-capture.js";
 
 export type BugReportStatus =
   | "idle"
@@ -44,6 +45,7 @@ export type BugSource = Pick<
 /** Pluggable capture functions (defaults wired to the real modules). */
 export interface CaptureDeps {
   snapshotEvents: () => unknown[];
+  snapshotHar: () => unknown;
   recentConsole: () => Array<{ level: string; ts: unknown; text: string }>;
   gatherErrorInfo: (
     source?: BugSource
@@ -52,6 +54,7 @@ export interface CaptureDeps {
 
 const defaultDeps: CaptureDeps = {
   snapshotEvents: () => snapshotSessionEvents(),
+  snapshotHar: () => snapshotNetworkHar(),
   recentConsole: () => recentConsole(10),
   gatherErrorInfo: (source) => gatherErrorInfo(source),
 };
@@ -131,8 +134,8 @@ export const useBugReportStore = defineStore("bugReport", () => {
 
   /**
    * Capture everything and move to the review state. Gathers the rrweb session
-   * events, recent console, and error info, then calls bugPreview() for a
-   * scrubbed HAR + held capture_id. On any failure → error.
+   * events, browser HAR, recent console, and error info, then calls
+   * bugPreview() for a scrubbed held capture_id. On any failure → error.
    */
   async function trigger(opts: TriggerOptions): Promise<void> {
     const deps: CaptureDeps = { ...defaultDeps, ...opts.deps };
@@ -161,7 +164,17 @@ export const useBugReportStore = defineStore("bugReport", () => {
         errorInfo.value = null;
       }
 
-      const preview: BugPreviewResult = await opts.source.bugPreview();
+      let harJSON: string | undefined;
+      try {
+        const capturedHar = deps.snapshotHar();
+        if (capturedHar) harJSON = JSON.stringify(capturedHar);
+      } catch {
+        harJSON = undefined;
+      }
+
+      const preview: BugPreviewResult = await opts.source.bugPreview({
+        har_json: harJSON,
+      });
       captureId = preview.capture_id;
       har.value = preview.har ?? null;
       depth.value = preview.depth ?? 0;

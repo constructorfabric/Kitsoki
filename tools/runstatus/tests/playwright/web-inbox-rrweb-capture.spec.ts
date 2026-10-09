@@ -12,7 +12,7 @@
  * This is the "user reports a bug → it surfaces in the app inbox" beat that
  * precedes the GitHub front-door act in docs/decks/dev-story-hybrid.slidey.json.
  *
- * Artifacts (all under .artifacts/rrweb-eval/web-inbox/):
+ * Artifacts (all under .artifacts/web-inbox/):
  *   - web-inbox.rrweb.json          ← the captured rrweb event stream
  *   - web-inbox.rrweb.capture.json  ← viewport sidecar (width/height/dsf)
  *
@@ -38,8 +38,8 @@ const ADDR = "127.0.0.1:7793";
 const STORY_DIR = path.join(repoRoot, "stories", "inbox-demo");
 const FLOW = path.join(STORY_DIR, "flows", "background_notifies.yaml");
 
-const ARTIFACT_DIR = path.join(repoRoot, ".artifacts", "rrweb-eval", "web-inbox");
-const BASELINE_FRAMES_DIR = path.join(ARTIFACT_DIR, "baseline-frames");
+const ARTIFACT_DIR = path.join(repoRoot, ".artifacts", "web-inbox");
+const BASELINE_FRAMES_DIR = ARTIFACT_DIR;
 const EVENTS_JSON = path.join(ARTIFACT_DIR, "web-inbox.rrweb.json");
 const DIAG_LOG = path.join(ARTIFACT_DIR, "diagnostic.log");
 

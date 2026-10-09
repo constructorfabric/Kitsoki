@@ -1,0 +1,10 @@
+nodes:
+  - schema: graph/requirement/v0
+    id: req-two
+    title: Requirement two
+    status: draft
+    visibility: public
+    statement: A second requirement added by the overlay, not present in the base fixture.
+    edges:
+      required_by:
+        - feature-one

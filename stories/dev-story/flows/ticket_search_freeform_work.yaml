@@ -24,7 +24,7 @@ host_handlers:
 
 turns:
   - intent:
-      name: work
+      name: landing_capture
       slots:
         request: "we have a bunch of tickets saved in the repo itself we need to migrate to github"
     expect_state: landing
@@ -33,5 +33,9 @@ turns:
       landing_note:
         summary: "Identified the local issue migration path and the GitHub target."
         details: "Would inspect issues/, map local frontmatter to GitHub issue fields, and prepare a dry run."
+    expect_events:
+      - kind: machine.say
+        effect:
+          text: "Processing this request in the workbench: we have a bunch of tickets saved in the repo itself we need to migrate to github"
 
 expect_no_errors: true

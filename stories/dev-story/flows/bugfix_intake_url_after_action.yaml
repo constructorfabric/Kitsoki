@@ -1,0 +1,62 @@
+# bugfix_intake_url_after_action -- reproduces the real kitsoki-dev failure:
+# the operator selects Fix Bug with no picked ticket, then pastes a bare issue
+# URL. The URL must enter the provider-backed bugfix intake, never landing's
+# host.agent.task workbench.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world:
+  bugfix_mode: "triage"
+  judge_mode: "human"
+  ticket_repo: "acme/api"
+
+host_bindings:
+  ticket: host.gh.ticket
+
+host_handlers:
+  host.gh.ticket.get:
+    data:
+      id: "1202"
+      title: "Excluded findings need explicit outcomes"
+      body: "A product finding is silently omitted from the filing result."
+      status: "open"
+      type: "bug"
+      source: "github"
+      url: "https://github.com/acme/api/issues/1202"
+  host.agent.codeact:
+    data:
+      ok: true
+      terminated: "done"
+      payload:
+        verdict: "STILL-LIVE"
+        confidence: 0.9
+        summary_title: "STILL-LIVE - issue body loaded"
+        evidence: "The provider issue body reached triage."
+        summary_markdown: "The bugfix pipeline received the fetched ticket."
+        suggested_action: "drive the full bugfix pipeline"
+        fixed_in_ref: null
+        involved_components: []
+
+turns:
+  - intent: { name: go_bugfix }
+    display_input: "fix bug"
+    expect_state: bugfix_intake
+    expect_no_host_calls: [host.agent.task]
+    expect_view_matches: "workbench agent"
+  - intent:
+      name: bugfix_intake_capture
+      slots:
+        request: "https://github.com/acme/api/issues/1202"
+    expect_state: bf.triaging
+    expect_host_calls:
+      - handler: host.gh.ticket.get
+        args: { repo: "acme/api", id: "https://github.com/acme/api/issues/1202" }
+    expect_no_host_calls: [host.agent.task]
+    expect_world:
+      bf__ticket_id: "1202"
+      bf__ticket_title: "Excluded findings need explicit outcomes"
+      bf__ticket_source_mode: "remote"
+      bf__ticket_body: "A product finding is silently omitted from the filing result."
+
+expect_no_errors: true

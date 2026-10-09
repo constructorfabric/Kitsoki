@@ -34,6 +34,7 @@ package host
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -292,6 +293,7 @@ func VisualAmbientPreamble(ctx context.Context) string {
 	sb.WriteString(visualAmbientPreambleHeader)
 	sb.WriteString("\n\n")
 
+	anchor := amb.normalizedAnchor()
 	if amb.Element != nil {
 		// Descriptive element line: "Element: <selector> (role=button, text
 		// "Run") at (1180,540)." Each clause is omitted when its source is empty
@@ -313,6 +315,8 @@ func VisualAmbientPreamble(ctx context.Context) string {
 			sb.WriteString(" (" + strings.Join(attrs, ", ") + ")")
 		}
 		sb.WriteString(fmt.Sprintf(" at (%d,%d).", amb.Point.X, amb.Point.Y))
+	} else if anchor.Kind == AnchorSemanticElement && anchor.SemanticElement != nil {
+		writeSemanticElementPreamble(&sb, anchor.SemanticElement)
 	} else {
 		// No element resolved: ground by frame + point only.
 		sb.WriteString(fmt.Sprintf("The operator is pointing at (%d,%d) in the frame.", amb.Point.X, amb.Point.Y))
@@ -325,6 +329,54 @@ func VisualAmbientPreamble(ctx context.Context) string {
 		sb.WriteString(fmt.Sprintf("\nFrame: %s (Read it with your tools if you need to see the screen).", frame))
 	}
 	return sb.String()
+}
+
+func writeSemanticElementPreamble(sb *strings.Builder, se *AnchorSemanticElementTarget) {
+	label := strings.TrimSpace(se.Label)
+	if label == "" {
+		label = strings.TrimSpace(se.Ref)
+	}
+	if label == "" {
+		label = "(unnamed)"
+	}
+	sb.WriteString("Semantic element: ")
+	sb.WriteString(label)
+	var attrs []string
+	if plugin := strings.TrimSpace(se.Plugin); plugin != "" {
+		attrs = append(attrs, "plugin="+plugin)
+	}
+	if kind := strings.TrimSpace(se.SemanticKind); kind != "" {
+		attrs = append(attrs, "kind="+kind)
+	}
+	if ref := strings.TrimSpace(se.Ref); ref != "" {
+		attrs = append(attrs, "ref="+ref)
+	}
+	if selector := strings.TrimSpace(se.Selector); selector != "" {
+		attrs = append(attrs, "selector="+selector)
+	}
+	if text := strings.TrimSpace(se.Text); text != "" {
+		attrs = append(attrs, fmt.Sprintf("text %q", text))
+	}
+	if value := strings.TrimSpace(se.Value); value != "" {
+		attrs = append(attrs, fmt.Sprintf("value %q", value))
+	}
+	if desc := strings.TrimSpace(se.Description); desc != "" {
+		attrs = append(attrs, fmt.Sprintf("description %q", desc))
+	}
+	if se.Bbox != ([4]int{}) {
+		attrs = append(attrs, fmt.Sprintf("bbox=[%d,%d,%d,%d]", se.Bbox[0], se.Bbox[1], se.Bbox[2], se.Bbox[3]))
+	}
+	if len(attrs) > 0 {
+		sb.WriteString(" (" + strings.Join(attrs, ", ") + ")")
+	}
+	sb.WriteString(".")
+	if len(se.Data) > 0 {
+		if b, err := json.Marshal(se.Data); err == nil {
+			sb.WriteString("\nData: ")
+			sb.Write(b)
+			sb.WriteString(".")
+		}
+	}
 }
 
 // appendVisualAmbient returns prompt with the screen-context preamble appended

@@ -23,6 +23,9 @@ app:
 
 hosts:
   - host.local_files.ticket
+  - host.gh.ticket.comment
+  - host.gh.ticket.get
+  - host.gh.ticket.transition
   - host.git
   - host.local
   - host.git_worktree
@@ -31,9 +34,18 @@ hosts:
   - host.agent.ask
   - host.agent.decide
   - host.agent.task
+  - host.agent.codeact
   - host.diff.open
   - host.run
   - host.artifacts_dir
+  # bf's opt-in editor-awareness pull (WS-C C3, validating room). `hosts:
+  # declared` on the bf import is strict — every child host bind must be
+  # listed here even though bugfix_exit is pinned to open-PR below (the
+  # room still runs on_enter regardless of the exit slot).
+  - host.ide.get_diagnostics
+  - host.capsule_workspace
+  # bf's strict public acceptance-contract checker (77302c39c).
+  - host.starlark.run
 
 imports:
   bf:
@@ -50,6 +62,7 @@ imports:
       ticket_id:       "{{ world.ticket_id }}"
       ticket_title:    "{{ world.ticket_title }}"
       ticket_url:      "{{ world.ticket_url }}"
+      ticket_repo:     "{{ world.ticket_repo }}"
       thread:          "{{ world.thread }}"
       workspace_id:    "{{ world.workspace_id }}"
       workdir:         "{{ world.workdir }}"
@@ -71,6 +84,11 @@ imports:
       # bf triage-only mode terminal (unreachable here — full mode — but the
       # loader requires every child exit be mapped).
       triaged:          { to: shipped }
+      # bf's opt-in CI-watch/merge tail (WS-C C3, bugfix_exit=open-PR-merge).
+      # bugfix_exit is pinned to "open-PR" above so this is unreachable from
+      # this instance today — mapped so the loader's every-exit-covered
+      # check passes.
+      merged:           { to: shipped }
 
     # Surface a bare `start` intent for MCP and web composer users while
     # preserving namespaced bugfix intents for advanced flows.
@@ -82,6 +100,7 @@ world:
   ticket_id:       { type: string, default: "slidey-128" }
   ticket_title:    { type: string, default: "Grid `cards` scenes with more than 6 items desync narration (estimate vs render drift)" }
   ticket_url:      { type: string, default: "https://github.com/bradleysmith/slidey/issues/128" }
+  ticket_repo:     { type: string, default: "bradleysmith/slidey" }
   thread:          { type: string, default: "slidey-128" }
   workspace_id:    { type: string, default: "bf-slidey-128" }
   workdir:         { type: string, default: ".worktrees/bf-slidey-128" }

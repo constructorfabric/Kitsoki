@@ -1,0 +1,10 @@
+inputs:
+  goal_dir:           { type: string, required: true }   # docs/goals/<slug>/ — holds decomposition.yaml + runtime block
+  workdir:            { type: string }                   # current world.workdir ("." ⇒ resolve; else operator seed wins)
+  main_worktree_path: { type: string }                   # current world.main_worktree_path (echoed back when seeded)
+  base_branch:        { type: string }                   # current world.base_branch (kept unless runtime declares one)
+outputs:
+  workdir:            { type: string }   # resolved run root (the goal's worktree, or "." when direct/unlocated)
+  main_worktree_path: { type: string }   # resolved base-worktree cwd for redcheck/integrate
+  base_branch:        { type: string }   # runtime.base_branch when declared, else unchanged
+  resolved:           { type: string }   # seeded | direct | worktree | runtime_worktree | not_found (trace provenance)

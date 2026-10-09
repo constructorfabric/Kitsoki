@@ -1,0 +1,42 @@
+kind: inspect_cassette
+interactions:
+  - op: read
+    target: .artifacts/product-journey/scenario-qa-parallel-run/driver-plan.json
+    out: |
+      {
+        "driver_agent": ".agents/agents/product-journey-qa-driver.md",
+        "scenarios": [
+          {
+            "scenario": "bugfix",
+            "label": "Bugfix carrier scenario",
+            "primary_story": "stories/bugfix/app.yaml",
+            "task_prompt": "Drive the bugfix pipeline end to end.",
+            "evidence_dir": "evidence/gears-rust--core-maintainer/bugfix",
+            "transport": "tui",
+            "leg_id": "bugfix::tui",
+            "transport_evidence_contract": {
+              "primary_tool": "render.tui_png",
+              "evidence_kind": "rendered_tui_frame",
+              "level": "frame-level"
+            },
+            "required_mcp": ["session.new", "session.drive"],
+            "success_criteria": ["The bugfix pipeline completes on the TUI transport."]
+          },
+          {
+            "scenario": "bugfix",
+            "label": "Bugfix carrier scenario",
+            "primary_story": "stories/bugfix/app.yaml",
+            "task_prompt": "Drive the bugfix pipeline end to end.",
+            "evidence_dir": "evidence/gears-rust--core-maintainer/bugfix",
+            "transport": "web",
+            "leg_id": "bugfix::web",
+            "transport_evidence_contract": {
+              "primary_tool": "visual.snapshot",
+              "evidence_kind": "browser_screenshot",
+              "level": "frame-level"
+            },
+            "required_mcp": ["session.new", "session.drive"],
+            "success_criteria": ["The bugfix pipeline completes on the web transport."]
+          }
+        ]
+      }

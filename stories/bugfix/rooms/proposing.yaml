@@ -24,7 +24,7 @@ states:
             Summary:    '{{ world.propose_fix_artifact.summary_title|default:"(pending)" }}'
             Confidence: '{% if world.propose_fix_artifact.confidence %}{{ world.propose_fix_artifact.confidence|floatformat:2 }}{% else %}(pending){% endif %}'
       - heading: "Artifact"
-      - code: '{{ world.propose_fix_artifact.summary_markdown|default:"(pending — agent has not returned yet)" }}'
+      - template: '{{ world.propose_fix_artifact.summary_markdown|default:"(pending — agent has not returned yet)" }}'
       - choice:
           mode: single
           prompt: "Actions"
@@ -66,7 +66,7 @@ states:
             - label:  "look"
               hint:   "re-render"
               intent: look
-    relevant_world: [judge_mode, judge_confidence_threshold, ticket_id, ticket_title, thread, workdir, propose_fix_artifact, reproduction_artifact, llm_verdict, refine_feedback, cycle]
+    relevant_world: [judge_mode, judge_confidence_threshold, ticket_id, ticket_title, thread, workdir, implementation_mode, propose_fix_artifact, compiled_implementation_plan, implementation_capability_manifest, reproduction_artifact, llm_verdict, refine_feedback, cycle]
     on_enter:
       # (The synthesised-gate commit lives in implementing/on_enter — after the
       #  worktree is synced and the reproducer's RED-test file is provably on disk
@@ -94,6 +94,7 @@ states:
             ticket_title:          "{{ world.ticket_title }}"
             workdir:               "{{ world.workdir }}"
             reproduction_summary:  "{{ world.reproduction_artifact.summary_markdown }}"
+            implementation_mode:   "{{ world.implementation_mode }}"
             refine_feedback:       "{{ world.refine_feedback }}"
             cycle:                 "{{ world.cycle }}"
         bind:
@@ -128,7 +129,8 @@ states:
 
       - when: |
           world.judge_mode != 'human' &&
-          world.llm_verdict.confidence >= world.judge_confidence_threshold &&
+          (world.llm_verdict.verdict ?? '') != '' &&
+          (world.llm_verdict.confidence ?? 0) >= world.judge_confidence_threshold &&
           world.llm_verdict.verdict != 'uncertain' &&
           world.llm_verdict.intent != 'uncertain'
         emit_intent: "{{ world.llm_verdict.intent }}"
@@ -141,10 +143,10 @@ states:
       - when: |
           world.escalate_low_value &&
           world.judge_mode != 'human' &&
-          world.llm_verdict.verdict != '' &&
+          (world.llm_verdict.verdict ?? '') != '' &&
           (world.llm_verdict.verdict == 'uncertain' ||
            world.llm_verdict.intent == 'uncertain' ||
-           world.llm_verdict.confidence < world.judge_confidence_threshold)
+           (world.llm_verdict.confidence ?? 0) < world.judge_confidence_threshold)
         emit_intent: escalate_human
         slots:
           reason: "Judge uncertain/low-confidence on the fix proposal for {{ world.ticket_id }} (verdict {{ world.llm_verdict.verdict }}, confidence {{ world.llm_verdict.confidence }}): {{ world.llm_verdict.reason }}"
@@ -152,9 +154,32 @@ states:
       accept:
         - target: implementing
           effects:
+            # The proposal artifact binds during on_enter. Compile only on the
+            # accepted transition, when that binding is visible; compiling in
+            # the same on_enter pass saw the pre-dispatch empty value and left
+            # decomposed CodeAct with no item or write grant.
+            # A submitted plan is a safety boundary regardless of the selected
+            # implementation mode. Compile it before the proposal is posted:
+            # otherwise a malformed plan can evade validation merely because a
+            # caller changes modes between proposal and acceptance.
+            - when: "len(world.propose_fix_artifact.implementation_plan ?? []) > 0"
+              invoke: host.starlark.run
+              id: compile_implementation_plan
+              with:
+                script: scripts/compile_implementation_plan.star
+                inputs:
+                  implementation_plan: "{{ world.propose_fix_artifact.implementation_plan }}"
+              bind:
+                compiled_implementation_plan: plan
+                implementation_capability_manifest: capability_manifest
+              # A malformed plan must not be followed by proposal posting or
+              # an implementation transition.  Keep the compiler's explicit
+              # rejection visible in idle for correction.
+              on_error: idle
             - invoke: iface.transport.post
               with:
                 thread:   "{{ world.thread }}"
+                workdir:  "{{ world.workdir }}"
                 title:    "Fix proposal: {{ world.ticket_id }}"
                 body:     "{{ world.propose_fix_artifact.summary_markdown }}"
                 phase_id: "proposing_{{ world.ticket_id }}_{{ world.cycle }}"
@@ -162,6 +187,11 @@ states:
                 last_reply_author: "{{ slots.author ?? 'human' }}"
                 refine_feedback:   ""
                 cycle:             0
+                # A fresh proposal invalidates all implementation/test evidence
+                # from an earlier pass; re-enter implementing/test with clean
+                # once: binds so both agents actually re-run.
+                implement_artifact:        {}
+                implement_review_artifact: {}
 
       # (internal) active escalation → quit to a human with the question.
       escalate_human:

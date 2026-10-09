@@ -1,0 +1,50 @@
+# bugfix_intake_prose_after_action -- selecting Fix Bug without a ticket then
+# describing the failure creates a free-form bugfix ticket. It must not route
+# through landing's write-capable workbench agent.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world:
+  bugfix_mode: "triage"
+  judge_mode: "human"
+  session_id: "brief-intake-prose"
+
+host_handlers:
+  host.agent.codeact:
+    data:
+      ok: true
+      terminated: "done"
+      payload:
+        verdict: "UNCLEAR"
+        confidence: 0.4
+        summary_title: "UNCLEAR - need a reproducer"
+        evidence: "The operator's inline brief reached triage."
+        summary_markdown: "Ask for the exact failing command."
+        suggested_action: "request reproduction steps"
+        fixed_in_ref: null
+        involved_components: []
+
+turns:
+  - intent: { name: go_bugfix }
+    display_input: "fix a bug"
+    expect_state: bugfix_intake
+    expect_no_host_calls: [host.agent.task]
+  - intent:
+      name: bugfix_intake_capture
+      slots:
+        request: "After choosing Fix Bug, pasting an issue URL dispatches the workbench agent and it creates a worktree from main."
+    expect_state: bf.triaging
+    expect_no_host_calls: [host.agent.task]
+    expect_world:
+      bf__ticket_id: "complaint-brief-intake-prose"
+      bf__ticket_title: "Free-form bug report"
+      bf__ticket_source_mode: "freeform"
+      bf__ticket_source_ref: "operator complaint"
+      bf__ticket_body: "After choosing Fix Bug, pasting an issue URL dispatches the workbench agent and it creates a worktree from main."
+    expect_events:
+      - kind: machine.say
+        effect:
+          text: "Bug report captured; entering bugfix with the inline complaint."
+
+expect_no_errors: true

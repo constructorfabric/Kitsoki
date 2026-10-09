@@ -1,0 +1,41 @@
+# ticket_fetch_error_surfaces — review_task_executing's `iface.ticket.get` on_error
+# used to bounce straight back to `idle`, and idle's view has no ticket-fetch-
+# failure affordance — so a genuine failure (empty ticket_id, missing ticket
+# record) was silently swallowed: a headless driver (or an operator) would see
+# an unchanged idle screen with no indication anything went wrong, and could loop
+# idle → review_task_executing → idle forever (G3 — errors must surface).
+#
+# Fix: the ticket.get on_error now targets `review_task_ticket_error`, which
+# renders `world.last_error` (the engine-set failing-call message — see
+# internal/app/types.go's OnError doc) and gives an explicit retry/quit choice.
+# This is NOT the same shape as idle.yaml's own on_error: idle guard (that one is
+# an intentional idempotent-reentry guard for worktree provisioning, not a
+# swallowed failure).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  ticket_id:  "TKT-NO-SUCH-TICKET"
+  thread:     "TKT-NO-SUCH-TICKET"
+  judge_mode: "human"
+
+host_handlers:
+  # The file-backed ticket provider's domain-level "not found" error — exactly
+  # what a dispatcher-seeded ticket_id with no backing record produces.
+  host.local_files.ticket:
+    error: "ticket.get: TKT-NO-SUCH-TICKET not found"
+
+turns:
+  - intent: { name: start, slots: {} }
+    expect_state: review_task_ticket_error
+    expect_not_state: idle
+    expect_world:
+      ticket_id: "TKT-NO-SUCH-TICKET"
+      last_error: "ticket.get: TKT-NO-SUCH-TICKET not found"
+
+  - intent: { name: look, slots: {} }
+    expect_view_matches: "ticket.get: TKT-NO-SUCH-TICKET not found"
+
+expect_terminal: false
+expect_no_errors: true

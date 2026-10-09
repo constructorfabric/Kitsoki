@@ -50,7 +50,16 @@ states:
           text:     "PRD PUBLISHED"
           subtitle: "Your PRD is written — carry it into design?"
           color:    "#10B981"
-      - prose: "Your PRD is published at **{{ world.prd__prd_file }}**."
+      # world.prd__prd_file is a post-settlement host bind from prd's own
+      # publish step (see this file's header comment); that step's
+      # on_error: drafting keeps a failed publish from ever reaching this
+      # room (the "silent success, blank path" finding product-journey QA
+      # caught — see stories/prd/rooms/drafting.yaml's publish invoke
+      # comment), so a blank value here should be unreachable. The fallback
+      # below is defense-in-depth only: if it's ever blank anyway (e.g. a
+      # future publish-path regression), show that plainly instead of
+      # "published at **" trailing off with nothing after it.
+      - prose: "Your PRD is published at **{% if world.prd__prd_file %}{{ world.prd__prd_file }}{% else %}(no path reported — check the trace for the publish step){% endif %}**."
       # The PRD's feature mockup, embedded inline (slidey-dev only; blank for
       # instances that set no prd_mockup_path). The self-contained HTML boots in
       # the sandboxed slideshow iframe so the operator sees the mockup the PRD

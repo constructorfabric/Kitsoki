@@ -7,22 +7,29 @@ states:
 
   main_ops:
     description: "Integration-branch hub. Manage worktrees, merge branches, pull upstream."
-    relevant_world: [current_branch, integration_branch, has_uncommitted, commits_behind,
+    # Conversational lane: unmatched free text falls into ONE persistent
+    # per-room conversation, engine-owned (per-room chat, room context in
+    # the prompt, no re-render). See docs/architecture/room-workbench.md
+    # §"The conversational lane".
+    agent_off_ramp: { agent: git_assistant, capture_free_text: true }
+    relevant_world: [current_branch, integration_branch, has_uncommitted, commits_ahead, commits_behind,
                      worktree_list, on_integration, no_common_ancestor, merge_in_progress]
     view:
       - kv:
           pairs:
+            Status:      '{% if world.last_op_ok == false %}❌ last operation failed{% elif world.merge_in_progress %}⚠️ merge/rebase in progress{% elif world.no_common_ancestor %}⚠️ no common ancestor{% elif world.has_uncommitted %}⚠️ uncommitted changes{% elif world.commits_ahead > 0 and world.commits_behind > 0 %}⚔️ diverged from upstream{% elif world.commits_behind > 0 %}⚠️ behind upstream{% elif world.commits_ahead > 0 %}⚠️ ahead of upstream{% else %}✅ ready{% endif %}'
             Branch:      '{{ world.current_branch|default:"(detecting…)" }}'
-            Uncommitted: '{% if world.has_uncommitted %}yes{% else %}clean{% endif %}'
-            Behind:      '{{ world.commits_behind }} commits behind upstream'
+            Uncommitted: '{% if world.has_uncommitted %}⚠️ yes{% else %}✅ clean{% endif %}'
+            Ahead:       '{% if world.commits_ahead > 0 and world.commits_behind > 0 %}⚔️ {% elif world.commits_ahead > 0 %}⚠️ {% else %}✅ {% endif %}{{ world.commits_ahead|integer }} commits ahead upstream'
+            Behind:      '{% if world.commits_ahead > 0 and world.commits_behind > 0 %}⚔️ {% elif world.commits_behind > 0 %}⚠️ {% else %}✅ {% endif %}{{ world.commits_behind|integer }} commits behind upstream'
             Worktrees:   '{{ world.worktree_list.raw|default:"(none)" }}'
-      - prose: "Last operation failed: {{ world.last_op_output|default:'(no output)' }}"
+      - prose: "❌ Last operation failed: {{ world.last_op_output|default:'(no output)' }}"
         when: "world.last_op_ok == false"
-      - prose: "Post-merge build failed. Use retry to recheck or rollback to abort the merge."
+      - prose: "❌ Post-merge build failed. The merge path resets the target worktree to its pre-merge commit before returning here. Fix the branch and retry, or clear the failure with rollback."
         when: "world.last_op_outcome == 'post_merge_test_fail'"
-      - prose: "WARNING: this branch has no common ancestor with {{ world.integration_branch }}. Merge and rebase are unavailable."
+      - prose: "⚠️ This branch has no common ancestor with {{ world.integration_branch }}. Merge and rebase are unavailable."
         when: "world.no_common_ancestor == true"
-      - prose: "A merge or rebase is already in progress in this worktree."
+      - prose: "⚠️ A merge or rebase is already in progress in this worktree."
         when: "world.merge_in_progress == true"
       - choice:
           mode: single
@@ -31,6 +38,14 @@ states:
             - label: "pull"
               hint:  "git pull --rebase from upstream"
               intent: pull
+            - label: "sync_main remote=origin"
+              hint:  "reconcile protected {{ world.integration_branch }} with origin/main via .worktrees/"
+              intent: sync_main
+              slots: { remote: "origin", remote_branch: "main" }
+            - label: "push_main remote=origin"
+              hint:  "fast-forward origin/main from local {{ world.integration_branch }}"
+              intent: push_main
+              slots: { remote: "origin", remote_branch: "main" }
             - label: "merge_branch"
               hint:  "merge a named feature branch into {{ world.integration_branch }}"
               intent: merge_branch
@@ -63,7 +78,7 @@ states:
               intent: retry
               when:  "world.last_op_outcome == 'post_merge_test_fail'"
             - label: "rollback"
-              hint:  "abort the merge after build failure"
+              hint:  "clear the already-rolled-back failure"
               intent: rollback
               when:  "world.last_op_outcome == 'post_merge_test_fail'"
             - label: "quit"
@@ -84,8 +99,16 @@ states:
               git update-index -q --refresh 2>/dev/null || true
               BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
               INTEGRATION="{{ world.integration_branch }}"
-              AHEAD=$(git rev-list --count "${INTEGRATION}..HEAD" 2>/dev/null || echo 0)
-              BEHIND=$(git rev-list --count "HEAD..${INTEGRATION}" 2>/dev/null || echo 0)
+              UPSTREAM=$(git rev-parse --abbrev-ref "${INTEGRATION}@{u}" 2>/dev/null || git rev-parse --abbrev-ref "@{u}" 2>/dev/null || echo "")
+              if [ -n "$UPSTREAM" ] && git rev-parse --verify --quiet "$UPSTREAM" >/dev/null; then
+                AHEAD=$(git rev-list --count "${UPSTREAM}..${INTEGRATION}" 2>/dev/null || echo 0)
+                BEHIND=$(git rev-list --count "${INTEGRATION}..${UPSTREAM}" 2>/dev/null || echo 0)
+                HAS_TRACKING=true
+              else
+                AHEAD=$(git rev-list --count "${INTEGRATION}..HEAD" 2>/dev/null || echo 0)
+                BEHIND=$(git rev-list --count "HEAD..${INTEGRATION}" 2>/dev/null || echo 0)
+                HAS_TRACKING=false
+              fi
               UNCOMMITTED=$(git status --porcelain 2>/dev/null | grep -c . || true)
               if [ "$UNCOMMITTED" -gt 0 ]; then HAS_UNCOMMITTED=true; else HAS_UNCOMMITTED=false; fi
               MAIN_WT=$(git worktree list --porcelain 2>/dev/null \
@@ -101,8 +124,6 @@ states:
               fi
               NO_COMMON=false
               if ! git merge-base HEAD "$INTEGRATION" >/dev/null 2>&1; then NO_COMMON=true; fi
-              UPSTREAM=$(git rev-parse --abbrev-ref "@{u}" 2>/dev/null || echo "")
-              if [ -n "$UPSTREAM" ]; then HAS_TRACKING=true; else HAS_TRACKING=false; fi
               jq -n \
                 --arg branch "$BRANCH" \
                 --arg main_wt "$MAIN_WT" \
@@ -134,6 +155,24 @@ states:
     on:
       pull:
         - target: pull
+      sync_main:
+        - target: sync_main
+          operation: gitops.sync_main
+          effects:
+            - set:
+                sync_remote:        "{{ slots.remote ?? 'origin' }}"
+                sync_remote_branch: "{{ slots.remote_branch ?? world.integration_branch }}"
+                sync_name:          "{{ slots.name ?? '' }}"
+                sync_continue_branch: "{{ slots.continue_branch ?? slots.branch ?? '' }}"
+                sync_auto_resolve:  "{{ slots.auto_resolve ?? false }}"
+                sync_result:        {}
+      push_main:
+        - target: push_main
+          effects:
+            - set:
+                push_remote:        "{{ slots.remote ?? 'origin' }}"
+                push_remote_branch: "{{ slots.remote_branch ?? world.integration_branch }}"
+                push_result:        {}
       merge_branch:
         # Operand-as-slot: when branch= is given, skip the picker and go
         # straight to merge_exec (git-ops-smoothing task 1.2).
@@ -184,11 +223,21 @@ states:
                 restore_label:   "{{ slots.label }}"
                 restore_outcome: ""
       retry:
+        - when: "world.last_op_outcome == 'post_merge_test_fail' && world.merge_branch_name != ''"
+          target: merge_exec
+          effects:
+            - set:
+                last_op_outcome: ""
         - when: "world.last_op_outcome == 'post_merge_test_fail'"
           target: merge_into_main
       rollback:
         - when: "world.last_op_outcome == 'post_merge_test_fail'"
-          target: merge_into_main
+          target: main_ops
+          effects:
+            - set:
+                last_op_outcome: ""
+                last_op_output:  ""
+                last_op_ok:      true
       quit:
         - target: done
       look:

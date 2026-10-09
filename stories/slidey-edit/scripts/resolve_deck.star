@@ -14,8 +14,8 @@
 # Interface (authoritative in resolve_deck.star.yaml):
 #   inputs:  spec_path (string), summary (string?), decks_dir (string?)
 #   world:   decks_dir (object) — fallback when the input is empty
-#   outputs: source_deck (object) -> {spec_path, summary}
-#            deck        (object) -> {spec_path, summary}  (promoted draft = the
+#   outputs: source_deck (object) -> {spec_path, workspace_spec_path, summary}
+#            deck        (object) -> {spec_path, workspace_spec_path, summary}  (promoted draft = the
 #                        existing spec, so the existing-deck path renders it IN
 #                        PLACE without an authoring agent pass)
 #            workspace   (string) -> the deck's own directory, so render + refine
@@ -65,11 +65,18 @@ def main(ctx):
     # does. Fall back to "." when the resolved path is bare.
     slash = resolved.rfind("/")
     workspace = resolved[:slash] if slash > 0 else "."
+    workspace_spec_path = resolved[slash+1:] if slash > 0 else resolved
+
+    deck = {
+        "spec_path": resolved,
+        "workspace_spec_path": workspace_spec_path,
+        "summary": summary,
+    }
 
     return {
-        "source_deck": {"spec_path": resolved, "summary": summary},
+        "source_deck": deck,
         # Promote the existing spec straight to the draft slot so the
         # existing-deck path renders it IN PLACE with no authoring agent.
-        "deck": {"spec_path": resolved, "summary": summary},
+        "deck": deck,
         "workspace": workspace,
     }

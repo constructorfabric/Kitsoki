@@ -16,25 +16,29 @@ states:
   review_executing:
     description: "Self-review of the diff (code-review pass)."
     view:
+      - banner:
+          text:     "🔍 REVIEWING DIFF"
+          subtitle: "Agent is checking the final diff before handoff"
+          color:    "#0F766E"
       - prose: '{{ world.ticket_id|default:"(no ticket)" }}  ·  {{ world.workdir|default:"(no workspace)" }}  ·  {{ world.feature_branch|default:"(no branch)" }}  ·  cycle {{ world.cycle }}  ·  judge {{ world.judge_mode }}'
-      - heading: "Self-review of the diff"
       - kv:
           pairs:
             Ticket: "{{ world.ticket_id }} — {{ world.ticket_title }}"
-            Status: '{{ world.review_artifact.status|default:"(pending)" }}'
-      - heading: "Artifact"
-      - code: '{{ world.review_artifact.summary_markdown|default:"(pending — agent has not returned yet)" }}'
+            Summary: '{{ world.review_artifact.summary_title|default:"agent working..." }}'
+            Status: '{{ world.review_artifact.status|default:"running" }}'
+      - template: |
+          **Final review is in progress.** Any blockers will be highlighted at the checkpoint.
       - heading: "Blockers"
         when:  "world.review_artifact.blockers"
-      - code: |
-          {% for b in world.review_artifact.blockers %}- {{ b }}
+      - template: |
+          {% for b in world.review_artifact.blockers %}- ⚠ **{{ b.description|default:"review blocker" }}**
           {% endfor %}
         when: "world.review_artifact.blockers"
       - choice:
           mode: single
           prompt: "Actions"
           items:
-            - { label: "proceed", intent: proceed, hint: "deliver the review to the checkpoint" }
+            - { label: "proceed", intent: proceed, hint: "deliver the review to the checkpoint", when: "world.judge_mode != 'human'" }
             - label:  "restart_from"
               intent: restart_from
               hint:   "bounce back to review_task"
@@ -69,6 +73,38 @@ states:
         bind:
           review_artifact: submitted
         on_error: idle
+      - invoke: host.artifacts_dir
+        id: review_artifact_file
+        with:
+          thread: "implementation_{{ world.ticket_id }}_04_review.md"
+          title:  "Review: {{ world.ticket_id }}"
+          body:   "{{ world.review_artifact.summary_markdown }}"
+          mode:   replace
+        bind:
+          review_artifact_path: path
+        on_error: idle
+      - invoke: host.artifacts_dir
+        id: implementation_progress_file
+        with:
+          thread: "implementation_{{ world.ticket_id }}_progress.yaml"
+          body: |
+            ticket_id: "{{ world.ticket_id }}"
+            phase: review
+            state: ready_for_operator
+            cycle: {{ world.cycle }}
+            review_status: "{{ world.review_artifact.status }}"
+            artifacts:
+              task_summary: "{{ world.task_summary_artifact_path }}"
+              code: "{{ world.code_artifact_path }}"
+              test: "{{ world.test_artifact_path }}"
+              review: "{{ world.review_artifact_path }}"
+            next_action: accept_or_refine
+          mode: replace
+        bind:
+          implementation_progress_artifact_path: path
+        on_error: idle
+      - when: "world.judge_mode == 'human' && world.review_artifact_path != ''"
+        emit_intent: proceed
     on:
       proceed:
         - target: review_awaiting_reply
@@ -81,6 +117,7 @@ states:
                 # Re-entering review_task_executing for a fresh run — clear
                 # its once: cache so the task summary regenerates.
                 task_summary_artifact: {}
+                task_summary_artifact_path: ""
       quit:
         - target: "@exit:abandoned"
       look:
@@ -90,19 +127,34 @@ states:
   review_awaiting_reply:
     description: "Review posted; awaiting verdict."
     view:
+      - when: "world.review_artifact.status == 'changes_requested' || world.review_artifact.status == 'blocked' || world.review_artifact.blockers"
+        banner:
+          text:     "⚠ REVIEW BLOCKERS"
+          subtitle: "Resolve or refine before handoff"
+          color:    "#DC2626"
+      - when: "world.review_artifact.status == 'approved'"
+        banner:
+          text:     "✅ REVIEW READY"
+          subtitle: "Review the short result; open the artifact for details"
+          color:    "#16A34A"
       - prose: '{{ world.ticket_id|default:"(no ticket)" }}  ·  {{ world.workdir|default:"(no workspace)" }}  ·  {{ world.feature_branch|default:"(no branch)" }}  ·  cycle {{ world.cycle }}  ·  judge {{ world.judge_mode }}'
-      - heading: "Review — awaiting verdict"
       - kv:
           pairs:
-            Ticket:     "{{ world.ticket_id }} — {{ world.ticket_title }}"
+            Ticket:   "{{ world.ticket_id }} — {{ world.ticket_title }}"
+            Summary:  '{{ world.review_artifact.summary_title|default:"(missing title)" }}'
+            Status:   '{{ world.review_artifact.status|default:"(unknown)" }}'
+            Artifact: '{{ world.review_artifact_path|default:"(not written)" }}'
+            Progress: '{{ world.implementation_progress_artifact_path|default:"(not written)" }}'
       - when: "(world.llm_verdict.verdict ?? '') != ''"
         kv:
           pairs:
             Verdict:    '{{ world.llm_verdict.verdict }}'
             Confidence: '{{ world.llm_verdict.confidence|floatformat:2 }}'
             Reason:     '{{ world.llm_verdict.reason }}'
-      - heading: "Artifact"
-      - code: '{{ world.review_artifact.summary_markdown|default:"(pending — agent has not returned yet)" }}'
+      - template: |
+          **{{ world.review_artifact.summary_title|default:"Review result" }}**
+
+          {% if world.review_artifact.blockers %}⚠ **Action needed:** blockers are present. Open the artifact before accepting.{% else %}No blockers reported. The detailed review is linked above.{% endif %}
       - choice:
           mode: single
           prompt: "Actions"
@@ -130,7 +182,12 @@ states:
         with:
           thread:    "{{ world.thread }}"
           title:     "Review: {{ world.ticket_id }}"
-          body:      "{{ world.review_artifact.summary_markdown }}"
+          body: |
+            Review ready: {{ world.review_artifact.summary_title }}
+            Status: {{ world.review_artifact.status }}
+
+            Full artifact: {{ world.review_artifact_path }}
+            Progress: {{ world.implementation_progress_artifact_path }}
           phase_id:  "review_{{ world.ticket_id }}_{{ world.cycle }}"
       - invoke: host.inbox.add
         with:
@@ -138,7 +195,7 @@ states:
           title:   "Review: {{ world.ticket_id }}"
           thread:  "{{ world.thread }}"
           state:   review_awaiting_reply
-          body:    "{{ world.review_artifact.summary_markdown }}"
+          body:    "Review ready: {{ world.review_artifact.summary_title }}\nStatus: {{ world.review_artifact.status }}\n\nFull artifact: {{ world.review_artifact_path }}\nProgress: {{ world.implementation_progress_artifact_path }}"
       - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
         invoke: host.agent.decide
         with:
@@ -185,6 +242,7 @@ states:
                 cycle:           "{{ world.cycle + 1 }}"
                 # Clear the once: cache so the code artifact regenerates.
                 code_artifact:   {}
+                code_artifact_path: ""
       restart_from:
         - target: review_task_executing
           effects:
@@ -194,6 +252,7 @@ states:
                 # Re-entering review_task_executing for a fresh run — clear
                 # its once: cache so the task summary regenerates.
                 task_summary_artifact: {}
+                task_summary_artifact_path: ""
       quit:
         - target: "@exit:abandoned"
       look:

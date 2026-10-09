@@ -1,0 +1,2 @@
+{"turn":1,"seq":0,"ts":"2024-01-01T00:00:00Z","kind":"harness.error","state_path":"implement","payload":{"phase":"fixture","error":"guard rejected stale preimage"}}
+{"turn":1,"seq":1,"ts":"2024-01-01T00:00:01Z","kind":"machine.transition","state_path":"implement","payload":{"to":"recover"}}

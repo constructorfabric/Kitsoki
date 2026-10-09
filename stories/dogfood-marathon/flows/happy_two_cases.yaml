@@ -1,5 +1,5 @@
-# happy_two_cases — idle → intake → (per-case loop ×2) → aggregating → reporting
-# → slideshow → done. No LLM (Mode-2).
+# happy_two_cases — idle → intake → autonomous per-case loop ×2 → aggregating
+# → reporting → slideshow → done. No LLM (Mode-2).
 #
 # The DETERMINISTIC starlark scripts (load_backlog / pick_case / record_case /
 # aggregate_run / build_deck) RUN FOR REAL — they carry no LLM and no cost, so the
@@ -13,7 +13,9 @@
 #        → independently verified solved.
 # Case 2 triages STILL-LIVE → driven (needs-human, deliverable present, no oracle
 #        signal) → verified partial.
-# The dispatcher re-enters once per case, then drains → aggregate → report → render.
+# The dispatcher auto-starts each case. The background drive job breaks the chain
+# between cases so the story can run unattended without hitting the engine's
+# emit-depth cap.
 
 test_kind: flow
 app: ../app.yaml
@@ -43,14 +45,38 @@ host_handlers:
             items:
               - { id: "case-1", title: "First case", baseline: "abc123^", repro_command: "go test ./pkg/a" }
               - { id: "case-2", title: "Second case", baseline: "def456^", repro_command: "" }
+          run_id: "dogfood-marathon"
+          run_dir: ".artifacts/dogfood-marathon/dogfood-marathon"
+          journal_path: ".artifacts/dogfood-marathon/dogfood-marathon/journal.json"
+          journal_markdown_path: ".artifacts/dogfood-marathon/dogfood-marathon/journal.md"
+          last_result: {}
+          loaded_journal: false
+          journal_status: "loaded"
+          journal_summary: "loaded"
+          last_checkpoint: "intake"
+      persist_journal:
+        data:
+          run_id: "dogfood-marathon"
+          run_dir: ".artifacts/dogfood-marathon/dogfood-marathon"
+          journal_path: ".artifacts/dogfood-marathon/dogfood-marathon/journal.json"
+          journal_markdown_path: ".artifacts/dogfood-marathon/dogfood-marathon/journal.md"
+          journal_status: "written"
+          journal_summary: "checkpoint written"
+          last_checkpoint: "recorded"
       pick_case:
         data:
           current_case:    { id: "case-x", title: "A case", baseline: "abc^", repro_command: "" }
           current_case_id: "case-x"
+          current_case_json: "{\"id\":\"case-x\",\"title\":\"A case\",\"baseline\":\"abc^\",\"repro_command\":\"\"}"
       record_case:
         data:
           results:  { items: [ { case_id: "case-x", exit: "shipped", verify_status: "solved" } ] }
+          last_result: { case_id: "case-x", title: "A case", source_url: "https://example.test/case-x", exit: "shipped", verify_status: "solved", tokens: 3500000, tokens_display: "3500000", wall_s: 1056, wall_s_display: "1056", trace: "/tmp/dogfood/case-x.jsonl" }
           findings: { items: [] }
+          exceptions: { items: [] }
+          exception_pending: ""
+          exception_summary: ""
+          record_status: "recorded"
       aggregate_run:
         data:
           rollup:
@@ -67,6 +93,7 @@ host_handlers:
           deck_spec:
             spec_path: "stories/dogfood-marathon/baked/report.deck.json"
             summary: "Dogfood marathon report — 2 cases, 2 solved."
+            case_decks: []
 
   host.agent.task:
     by_call:
@@ -88,6 +115,7 @@ host_handlers:
             tokens: 3500000
             wall_s: 1056
             findings: []
+        delay: "20ms"
 
   host.slidey.render:
     by_call:
@@ -105,24 +133,10 @@ host_handlers:
           path: "stories/dogfood-marathon/baked/report.deck.json"
 
 turns:
-  # `start` loads the (seeded) backlog and auto-advances the FIRST case through
-  # triage → drive → verify → record, pausing at the processing checkpoint.
-  # (One case per turn keeps each turn's internal emit chain under the engine's
-  # emit-depth cap — a whole backlog can't auto-run in a single turn.)
+  # `start` loads the backlog, auto-starts both cases, rolls up the run, builds
+  # the deck spec, and renders the baked slidey report → done.
   - intent: { name: start, slots: {} }
-    expect_state: processing
-    expect_world:
-      cases_processed: 1
-
-  # `next_case` processes the SECOND case, then pauses again at the checkpoint.
-  - intent: { name: next_case, slots: {} }
-    expect_state: processing
-    expect_world:
-      cases_processed: 2
-
-  # `next_case` with the backlog drained rolls up the run, builds the deck spec,
-  # and renders the baked slidey report → done.
-  - intent: { name: next_case, slots: {} }
+    advance_clock: "2s"
     expect_state: done
     expect_world:
       report_handle: "dogfood-marathon#1"
@@ -130,6 +144,7 @@ turns:
       deck_spec:
         spec_path: "stories/dogfood-marathon/baked/report.deck.json"
         summary: "Dogfood marathon report — 2 cases, 2 solved."
+        case_decks: []
 
 expect_terminal: false
 expect_no_errors: true

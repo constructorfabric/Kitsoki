@@ -1,0 +1,41 @@
+states:
+  # retrospective — the closeout room reached when the evaluate gate returns done.
+  # A stub for now (Z.0 fleshes this into the deterministic case-study + deck
+  # assembly linked from the exec summary); it surfaces the done summary and closes
+  # the goal out on `close` → @exit:done.
+  retrospective:
+    description: "Retrospective — the goal reached done; close it out."
+    relevant_world: [goal_slug, summary, counts]
+    on_enter:
+      - say: "Goal {{ world.goal_slug }} reached DONE. {{ world.summary }}"
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - heading: "Goal complete"
+          - prose: "{{ world.summary|default:'Every change integrated; every wall-gate green.' }}"
+          - kv:
+              pairs:
+                Integrated: '{{ world.counts.integrated|default:0 }}'
+          - prose: "(Z.0 will flesh this closeout into a deterministic case-study + deck.)"
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - { label: "close", hint: "close out the goal → done" }
+                - { label: "report", hint: "build deterministic summary/decks" }
+                - { label: "look" }
+    on:
+      close:
+        - target: "@exit:done"
+      close_out:
+        - target: "@exit:done"
+      report:
+        - target: report
+      look:
+        - target: .
+      "*":
+        - default: true
+          target: .
+          effects:
+            - say: "Goal complete — type close to finish."

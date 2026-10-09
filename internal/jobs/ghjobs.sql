@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS gh_jobs (
     comment_id    TEXT,                     -- the rolling-status comment id (captured on first Post)
     attempt_count INTEGER NOT NULL DEFAULT 0,
     incident_url  TEXT,
+    metadata_json TEXT,                     -- producer-supplied context for story preflight/triage
     err_msg       TEXT,
     created_at    INTEGER NOT NULL,         -- unix ms
     updated_at    INTEGER NOT NULL
@@ -39,4 +40,3 @@ CREATE TABLE IF NOT EXISTS gh_job_assets (
     UNIQUE(job_id, name)
 ) STRICT;
 CREATE INDEX IF NOT EXISTS gh_job_assets_job ON gh_job_assets(job_id);
-

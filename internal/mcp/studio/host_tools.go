@@ -1,10 +1,13 @@
 package studio
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/google/jsonschema-go/jsonschema"
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -48,7 +51,10 @@ const hostRunArtifactsDir = ".artifacts/mcp-host-run"
 // server: a command runner is a write surface (it can run builds/tests that
 // mutate the worktree), so the Q&A surface must not expose it.
 func (srv *Server) registerHostTools() {
-	if srv.readOnly {
+	if srv.readOnly || srv.operatingSystemProfile == StudioOperatingProfileStrict {
+		return
+	}
+	if srv.operatingSystemProfile == StudioOperatingProfileEscape {
 		return
 	}
 	mcpsdk.AddTool(srv.mcpSrv, &mcpsdk.Tool{
@@ -65,6 +71,11 @@ func (srv *Server) registerHostTools() {
 		// Regression: TestHostRun_TimeoutSchemaIsObject.
 		InputSchema: hostRunInputSchema(),
 	}, srv.handleHostRun)
+
+	mcpsdk.AddTool(srv.mcpSrv, &mcpsdk.Tool{
+		Name:        "host.patch",
+		Description: "Apply a unified diff to a worktree directory with an automatic preflight. {dir (required), patch (required unified diff), dry_run?}: runs git apply --check first; when dry_run is false it then applies the patch. Returns {ok, applied, files[], stdout?}. A failed preflight is data (ok:false, applied:false), not a transport error.",
+	}, srv.handleHostPatch)
 }
 
 // hostRunInputSchema reflects HostRunArgs and patches the polymorphic `timeout`
@@ -85,6 +96,13 @@ func hostRunInputSchema() *jsonschema.Schema {
 
 // HostRunArgs is the input to host.run.
 type HostRunArgs struct {
+	// ObjectiveID and WorkspaceID bind escape/typed-gate host.run use to the
+	// operating-system receipt graph. They are optional only for legacy
+	// compatibility; strict and escape policy rejects an unbound request.
+	ObjectiveID string      `json:"objective_id,omitempty"`
+	WorkspaceID string      `json:"workspace_id,omitempty"`
+	Mode        HostRunMode `json:"mode,omitempty"`
+	Reason      string      `json:"reason,omitempty"`
 	// Dir is the working directory the command runs in — a worktree path.
 	// Required: a gate must name the tree it gates, never the server's cwd.
 	Dir string `json:"dir"`
@@ -114,6 +132,27 @@ type HostRunOK struct {
 	OutputPath string `json:"output_path,omitempty"`
 }
 
+// HostPatchArgs is the input to host.patch.
+type HostPatchArgs struct {
+	// Dir is the worktree directory the patch applies in. Required.
+	Dir string `json:"dir"`
+	// Patch is a unified diff, typically from git diff or apply_patch-style output
+	// converted to a standard diff by the caller. Required.
+	Patch string `json:"patch"`
+	// DryRun only performs the preflight check and reports the files the patch
+	// would touch.
+	DryRun bool `json:"dry_run,omitempty"`
+}
+
+// HostPatchOK is the host.patch result. ok is true exactly when the preflight
+// succeeded and, unless dry_run was set, the patch was applied.
+type HostPatchOK struct {
+	OK      bool     `json:"ok"`
+	Applied bool     `json:"applied"`
+	Files   []string `json:"files"`
+	Stdout  string   `json:"stdout,omitempty"`
+}
+
 // handleHostRun executes a command in a worktree and returns its exit code +
 // output. It is a thin shell over host.RunHandler (cwd = dir): the same handler
 // a story's `invoke: host.run` effect uses, so gate semantics never drift
@@ -127,6 +166,19 @@ func (srv *Server) handleHostRun(
 	req *mcpsdk.CallToolRequest,
 	args HostRunArgs,
 ) (*mcpsdk.CallToolResult, any, error) {
+	var hostPolicy HostRunPolicy
+	if srv.operatingSystem != nil {
+		hostPolicy = srv.operatingSystem.HostRun
+	}
+	decision, policyErr := AuthorizeHostRun(ctx, hostPolicy, HostRunPolicyRequest{
+		ObjectiveID: args.ObjectiveID, WorkspaceID: args.WorkspaceID, Mode: args.Mode, Reason: args.Reason,
+	})
+	if policyErr != nil {
+		return buildToolError(ErrBadRequest, fmt.Sprintf("host.run policy: %v", policyErr)), nil, nil
+	}
+	if !decision.Allowed {
+		return buildToolError(decision.Code, decision.Reason), nil, nil
+	}
 	if args.Dir == "" {
 		return buildToolError(ErrBadRequest, "host.run: dir is required (the worktree to gate)"), nil, nil
 	}
@@ -161,6 +213,7 @@ func (srv *Server) handleHostRun(
 
 	exitCode, _ := res.Data["exit_code"].(int)
 	stdout, _ := res.Data["stdout"].(string)
+	stdout = collapseTerminalProgress(stdout)
 
 	limit := args.TruncateOutput
 	if limit == 0 {
@@ -188,13 +241,138 @@ func (srv *Server) handleHostRun(
 	return nil, out, nil
 }
 
+func (srv *Server) handleHostPatch(
+	ctx context.Context,
+	req *mcpsdk.CallToolRequest,
+	args HostPatchArgs,
+) (*mcpsdk.CallToolResult, any, error) {
+	if args.Dir == "" {
+		return buildToolError(ErrBadRequest, "host.patch: dir is required (the worktree to patch)"), nil, nil
+	}
+	if strings.TrimSpace(args.Patch) == "" {
+		return buildToolError(ErrBadRequest, "host.patch: patch is required"), nil, nil
+	}
+	if info, err := os.Stat(args.Dir); err != nil || !info.IsDir() {
+		return buildToolError(ErrBadRequest, fmt.Sprintf("host.patch: dir %q is not an accessible directory", args.Dir)), nil, nil
+	}
+
+	files := filesFromUnifiedDiff(args.Patch)
+	stdout, ok, err := runGitApply(ctx, args.Dir, args.Patch, "--check")
+	if err != nil {
+		return buildToolError(ErrBadRequest, fmt.Sprintf("host.patch: %v", err)), nil, nil
+	}
+	if !ok {
+		return nil, HostPatchOK{OK: false, Applied: false, Files: files, Stdout: collapseTerminalProgress(stdout)}, nil
+	}
+	if args.DryRun {
+		return nil, HostPatchOK{OK: true, Applied: false, Files: files, Stdout: collapseTerminalProgress(stdout)}, nil
+	}
+
+	stdout, ok, err = runGitApply(ctx, args.Dir, args.Patch)
+	if err != nil {
+		return buildToolError(ErrBadRequest, fmt.Sprintf("host.patch: %v", err)), nil, nil
+	}
+	return nil, HostPatchOK{OK: ok, Applied: ok, Files: files, Stdout: collapseTerminalProgress(stdout)}, nil
+}
+
+func runGitApply(ctx context.Context, dir, patch string, extraArgs ...string) (string, bool, error) {
+	argv := append([]string{"apply", "--whitespace=nowarn"}, extraArgs...)
+	cmd := exec.CommandContext(ctx, "git", argv...)
+	cmd.Dir = dir
+	cmd.Stdin = strings.NewReader(patch)
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &out
+	err := cmd.Run()
+	if err == nil {
+		return out.String(), true, nil
+	}
+	if _, ok := err.(*exec.ExitError); ok {
+		return out.String(), false, nil
+	}
+	return out.String(), false, err
+}
+
+func filesFromUnifiedDiff(patch string) []string {
+	seen := map[string]bool{}
+	var files []string
+	for _, line := range strings.Split(patch, "\n") {
+		var path string
+		switch {
+		case strings.HasPrefix(line, "diff --git "):
+			parts := strings.Fields(line)
+			if len(parts) >= 4 {
+				path = trimDiffPath(parts[3])
+			}
+		case strings.HasPrefix(line, "+++ "):
+			parts := strings.Fields(strings.TrimPrefix(line, "+++ "))
+			if len(parts) == 0 {
+				continue
+			}
+			path = parts[0]
+			if path == "/dev/null" {
+				path = ""
+			} else {
+				path = trimDiffPath(path)
+			}
+		}
+		if path == "" || seen[path] {
+			continue
+		}
+		seen[path] = true
+		files = append(files, path)
+	}
+	return files
+}
+
+func trimDiffPath(path string) string {
+	path = strings.Trim(path, "\t\r\n")
+	path = strings.TrimPrefix(path, "a/")
+	path = strings.TrimPrefix(path, "b/")
+	return path
+}
+
+func collapseTerminalProgress(stdout string) string {
+	if !strings.Contains(stdout, "\r") {
+		return stdout
+	}
+	stdout = strings.ReplaceAll(stdout, "\r\n", "\n")
+	var out strings.Builder
+	var line strings.Builder
+	for _, r := range stdout {
+		switch r {
+		case '\r':
+			line.Reset()
+		case '\n':
+			out.WriteString(line.String())
+			out.WriteByte('\n')
+			line.Reset()
+		default:
+			line.WriteRune(r)
+		}
+	}
+	if line.Len() > 0 {
+		out.WriteString(line.String())
+	}
+	return out.String()
+}
+
 // writeHostRunOutput spills a command's full combined output to a sidecar file
 // under hostRunArtifactsDir so truncating the returned stdout never loses it.
 func writeHostRunOutput(stdout string) (string, error) {
-	if err := os.MkdirAll(hostRunArtifactsDir, 0o755); err != nil {
+	path, err := writeHostRunOutputInDir(hostRunArtifactsDir, stdout)
+	if err == nil {
+		return path, nil
+	}
+	fallbackDir := filepath.Join(os.TempDir(), "kitsoki-mcp-host-run")
+	return writeHostRunOutputInDir(fallbackDir, stdout)
+}
+
+func writeHostRunOutputInDir(dir, stdout string) (string, error) {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}
-	f, err := os.CreateTemp(hostRunArtifactsDir, "host-run-*.log")
+	f, err := os.CreateTemp(dir, "host-run-*.log")
 	if err != nil {
 		return "", err
 	}

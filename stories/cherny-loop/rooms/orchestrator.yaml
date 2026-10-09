@@ -167,9 +167,10 @@ states:
                 id: "worktree-a"
                 when: "world.slot_a_active == true"
                 with:
-                  id:   "{{ world.workspace_id }}-a"
-                  name: "{{ world.workspace_branch }}-a"
-                  base: "{{ world.workspace_base }}"
+                  id:         "{{ world.workspace_id }}-a"
+                  definition: "development"
+                  name:       "{{ world.workspace_branch }}-a"
+                  base:       "{{ world.workspace_base }}"
                 bind:
                   worktree_path_a: path
                 on_error: error
@@ -228,9 +229,10 @@ states:
                 id: "worktree-b"
                 when: "world.slot_b_active == true"
                 with:
-                  id:   "{{ world.workspace_id }}-b"
-                  name: "{{ world.workspace_branch }}-b"
-                  base: "{{ world.workspace_base }}"
+                  id:         "{{ world.workspace_id }}-b"
+                  definition: "development"
+                  name:       "{{ world.workspace_branch }}-b"
+                  base:       "{{ world.workspace_base }}"
                 bind:
                   worktree_path_b: path
                 on_error: error

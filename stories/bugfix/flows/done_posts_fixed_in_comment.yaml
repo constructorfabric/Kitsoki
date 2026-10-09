@@ -12,8 +12,15 @@ initial_world:
   ticket_title:  "Autonomous refine reruns stop"
   thread:        "TKT-FIXED-IN"
   workdir:       ".worktrees/tkt-fixed-in"
+  workspace_id:  "bf-TKT-FIXED-IN-sess-local-audit"
+  feature_branch: "fix/TKT-FIXED-IN-sess-local-audit"
   base_branch:   "main"
+  bugfix_exit:   "open-PR"
   judge_mode:    "human"
+  session_id:    "sess-local-audit"
+  audit_mode:    "headless-local"
+  run_trace_ref: ".artifacts/bugfix/traces/TKT-FIXED-IN.jsonl"
+  run_artifacts_ref: ".artifacts/bugfix/TKT-FIXED-IN"
   done_artifact:
     summary_title:    "Autonomous refine reruns fixed"
     summary_markdown: "Close-out body."
@@ -76,6 +83,42 @@ turns:
             workdir: .worktrees/tkt-fixed-in
             verified:
               - Targeted refine flow passed
+            -->
+
+            <!-- kitsoki-bugfix-audit
+            version: 1
+            story: bugfix
+            classification: bugfix
+            actor: kitsoki
+            audit_mode: headless-local
+            session_id: sess-local-audit
+            trace_ref: .artifacts/bugfix/traces/TKT-FIXED-IN.jsonl
+            artifacts_ref: .artifacts/bugfix/TKT-FIXED-IN
+            ticket_id: TKT-FIXED-IN
+            ticket_repo: local
+            ticket_url: (none)
+            source_mode: local
+            source_ref: (none)
+            thread: TKT-FIXED-IN
+            bugfix_mode: full
+            judge_mode: human
+            bugfix_exit: open-PR
+            base_branch: main
+            base_commit: (none)
+            feature_branch: fix/TKT-FIXED-IN-sess-local-audit
+            workspace_id: bf-TKT-FIXED-IN-sess-local-audit
+            workdir: .worktrees/tkt-fixed-in
+            fixed_in_commit: f2e30bdb1234
+            shipped_sha: (none)
+            merge_sha: (none)
+            pr_url: (none)
+            repro_checked: false
+            repro_gate_ran: false
+            repro_gate_ok: false
+            regression_gate_checked: false
+            regression_red_pre_fix: false
+            unsafe_jumps_made: 0
+            cycle: 0
             -->
       - handler: host.local_files.ticket.transition
         args: { id: "TKT-FIXED-IN", to: "resolved" }

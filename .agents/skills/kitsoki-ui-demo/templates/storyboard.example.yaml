@@ -1,0 +1,75 @@
+# Worked storyboard example — the planning source for a tour-driven demo video.
+# Copy this next to your demo work (planning drafts go in .context/storyboards/,
+# promote beside the capture spec when the demo is committed), then:
+#
+#   go run ./cmd/kitsoki storyboard validate <file>            # lint the plan
+#   go run ./cmd/kitsoki storyboard render   <file> --out plan.md   # human review
+#   go run ./cmd/kitsoki storyboard emit tour <file> --out tour.yaml # capture-ready steps
+#   go run ./cmd/kitsoki storyboard emit qa   <file> --out scenarios.yaml # vision-gate contract
+#   go run ./cmd/kitsoki storyboard check <file> --chapters <video>.mp4  # post-capture drift
+#
+# This example is validated against the repo by internal/storyboard's
+# skill-template test — if you change the referenced story/flow, keep it green.
+version: 1
+id: dev-story-prd-walkthrough
+title: PRD in one conversation
+goal: Show a rough product idea becoming a published PRD through one guided kitsoki conversation.
+audience: Product-site visitors evaluating conversation-driven development
+surface: web
+format: rrweb
+scenario:
+  id: prd-design
+binding:
+  story: stories/dev-story/app.yaml
+  flow: stories/dev-story/flows/prd_to_design_full.yaml
+
+scenes:
+  - id: welcome
+    title: Welcome
+    purpose: Orient the viewer before anything moves — name the promise up front.
+    narration: Kitsoki turns a rough product idea into a published PRD through one guided conversation. This is that session, end to end.
+    screen: Home screen with the story catalogue visible
+    route: home
+    placement: center
+    dwellMs: 7000
+    expect:
+      - A centered popover names the demo and the dev story
+
+  - id: open-session
+    title: Start the session
+    purpose: Get onto the surface the conversation happens on.
+    narration: We start a new session from the dev story card and land in the chat view.
+    route: home
+    anchor: new-session-btn
+    kind: action
+    advance: route-match
+    dwellMs: 6000
+    expect:
+      - The New Session button is spotlighted
+      - The view changes to the interactive chat route
+
+  - id: ask-for-prd
+    title: Ask for a PRD
+    purpose: Show the operator's real words being composed — the input must be seen, not flashed.
+    narration: The operator asks for a PRD in plain language. Watch the words being typed and held before sending.
+    route: interactive
+    anchor: composer-input
+    drive:
+      - type: type-and-send
+        text: I want a PRD for a slack digest bot
+      - type: reveal-turn
+    dwellMs: 7000
+    expect:
+      - The composed request is visible in the input before it is sent
+      - The agent reply scrolls into view from its first line
+
+  - id: publish
+    title: Publish the PRD
+    purpose: Deliver the promise — the conversation produced a real document.
+    narration: The finished PRD is published into the docs tree, and the session offers to carry it into design.
+    route: interactive
+    anchor: chat-transcript
+    dwellMs: 7000
+    expect:
+      - The transcript shows the published PRD path
+      - The state badge shows the session reached the published state

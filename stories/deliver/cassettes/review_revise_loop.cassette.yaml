@@ -1,0 +1,56 @@
+# Cassette for flows/review_revise_loop.yaml — TWO distinct review episodes
+# matching the SAME handler+call, consumed in file order (default replay:
+# single-use): the first entry into review returns revise, the second
+# (after decompose re-runs and lint passes again) returns accept. The
+# decomposer episode is reused (replay: any) across both decompose entries.
+
+kind: host_cassette
+app_id: deliver
+generated_at: 2026-07-05T00:00:00Z
+match_on: [handler, call]
+
+episodes:
+  - id: decomposer_call
+    match:
+      handler: host.agent.task
+      call: decomposer
+    response:
+      data:
+        ok: true
+        submitted:
+          briefs:
+            - id: health-model
+              brief: "Add a HealthStatus struct in internal/health/ with Status and Version fields."
+              gate_command: "go test ./internal/health/..."
+              deps: []
+            - id: health-handler
+              brief: "Add a GET /health handler serialising HealthStatus to JSON."
+              gate_command: "go test ./internal/handler/..."
+              deps: [health-model]
+          coverage_note: "health-model and health-handler together add the endpoint end to end."
+    replay: any
+
+  - id: review_revise
+    match:
+      handler: host.agent.decide
+      call: review
+    response:
+      data:
+        ok: true
+        submitted:
+          verdict: revise
+          reason: "coverage_note claims the endpoint is wired end to end but no brief registers the route in the router."
+          questions:
+            - "Add a brief (or extend health-handler) that registers GET /health in the router and asserts it resolves."
+
+  - id: review_accept
+    match:
+      handler: host.agent.decide
+      call: review
+    response:
+      data:
+        ok: true
+        submitted:
+          verdict: accept
+          reason: "The revised manifest (route registration folded into health-handler) now matches coverage_note."
+          questions: []

@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "review_verdict",
+  "description": "Adversarial review verdict for a green test-fix diff.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["pass", "reason", "functionality_preserved", "tests_not_weakened", "findings", "fixes"],
+  "properties": {
+    "pass": {
+      "type": "boolean",
+      "description": "True only if the command is green, behavior is preserved, and tests were not weakened."
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 10,
+      "description": "Concise rationale for the pass/fail verdict."
+    },
+    "functionality_preserved": {
+      "type": "boolean",
+      "description": "False if the diff appears to remove, narrow, or regress pre-existing or in-progress behavior."
+    },
+    "tests_not_weakened": {
+      "type": "boolean",
+      "description": "False if tests were deleted, skipped, loosened, or made less meaningful to get green."
+    },
+    "findings": {
+      "type": "array",
+      "description": "Specific review findings. Empty when the verdict passes cleanly.",
+      "items": { "type": "string" }
+    },
+    "fixes": {
+      "type": "array",
+      "description": "Concrete fixes the next cycle should make. Empty when pass is true.",
+      "items": { "type": "string" }
+    }
+  }
+}

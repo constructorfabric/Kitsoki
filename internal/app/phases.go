@@ -492,6 +492,7 @@ func substViewElement(el ViewElement, params map[string]any, next map[string]str
 		MediaPath:            substString(el.MediaPath, params, next),
 		AnnotateIntent:       el.AnnotateIntent,
 		AnnotateFeedbackSlot: el.AnnotateFeedbackSlot,
+		AnnotateURL:          substString(el.AnnotateURL, params, next),
 	}
 	if len(el.Items) > 0 {
 		out.Items = make([]ListItem, len(el.Items))

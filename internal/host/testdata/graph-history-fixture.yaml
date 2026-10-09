@@ -1,0 +1,55 @@
+schema: project-object-graph/seed-catalog/v0
+catalog:
+  id: graph-history-test-fixture-catalog
+type_registry:
+  - id: core-node
+    schema: graph-type/v0
+    extends: null
+    required_fields: [id, schema, title, status, visibility]
+  - id: requirement
+    schema: graph-type/v0
+    extends: core-node
+  - id: changeset
+    schema: graph-type/v0
+    extends: core-node
+nodes:
+  - schema: graph/requirement/v0
+    id: req-alpha
+    title: Requirement alpha
+    status: active
+    visibility: internal
+    statement: alpha must hold
+  - schema: graph/requirement/v0
+    id: req-beta
+    title: Requirement beta
+    status: active
+    visibility: internal
+    statement: beta must hold
+  - schema: graph/changeset/v0
+    id: cs-1
+    title: Flip req-beta to done
+    status: applied
+    visibility: internal
+    created_at: "2026-01-01T00:00:00Z"
+    authorized_at: "2026-01-02T00:00:00Z"
+    applied_at: "2026-01-03T00:00:00Z"
+    operations:
+      - kind: modified
+        node: req-beta
+        changes:
+          - path: [status]
+            before: active
+            after: done
+  - schema: graph/changeset/v0
+    id: cs-2
+    title: Propose req-alpha to done
+    status: proposed
+    visibility: internal
+    created_at: "2026-01-05T00:00:00Z"
+    operations:
+      - kind: modified
+        node: req-alpha
+        changes:
+          - path: [status]
+            before: active
+            after: done

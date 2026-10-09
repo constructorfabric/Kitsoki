@@ -12,23 +12,58 @@
 
 states:
 
-  review_task_executing:
-    description: "Reviewing the task and drafting a task-summary artifact."
+  # Surfaced failure state for review_task_executing's iface.ticket.get call
+  # (see the on_error comment there). `start` re-enters review_task_executing
+  # to retry — e.g. after an operator/parent story fixes ticket_id or provisions
+  # the missing ticket record; `quit` abandons like every other room here.
+  review_task_ticket_error:
+    description: "Could not fetch the ticket — the pipeline cannot proceed without it."
     view:
-      - prose: '{{ world.ticket_id|default:"(no ticket)" }}  ·  {{ world.workdir|default:"(no workspace)" }}  ·  {{ world.feature_branch|default:"(no branch)" }}  ·  cycle {{ world.cycle }}  ·  judge {{ world.judge_mode }}'
-      - heading: "Reviewing the task"
+      - banner:
+          text:     "⚠ TICKET FETCH FAILED"
+          subtitle: "Fix the ticket source, then retry"
+          color:    "#DC2626"
+      - heading: "Ticket fetch failed"
+      - prose: "{{ world.last_error|default:'(no error detail)' }}"
       - kv:
           pairs:
-            Ticket:                "{{ world.ticket_id }} — {{ world.ticket_title }}"
-            Summary:               '{{ world.task_summary_artifact.summary_title|default:"(pending)" }}'
-            "Acceptance criteria": '{{ world.task_summary_artifact.acceptance_criteria|join:", "|default:"(pending)" }}'
-      - heading: "Artifact"
-      - code: '{{ world.task_summary_artifact.summary_markdown|default:"(pending — agent has not returned yet)" }}'
+            Ticket: '{{ world.ticket_id|default:"(none)" }}'
       - choice:
           mode: single
           prompt: "Actions"
           items:
-            - { label: "proceed", intent: proceed, hint: "deliver the task summary to the checkpoint" }
+            - { label: "start", intent: start, hint: "retry fetching the ticket" }
+            - { label: "quit",  intent: quit,  hint: "abandon the pipeline" }
+            - { label: "look",  intent: look,  hint: "re-render" }
+    relevant_world: [ticket_id, last_error]
+    on:
+      start:
+        - target: review_task_executing
+      quit:
+        - target: "@exit:abandoned"
+      look:
+        - target: .
+
+  review_task_executing:
+    description: "Reviewing the task and drafting a task-summary artifact."
+    view:
+      - banner:
+          text:     "🔎 REVIEWING TASK"
+          subtitle: "Agent is reading the ticket and preparing a short checkpoint"
+          color:    "#0EA5E9"
+      - prose: '{{ world.ticket_id|default:"(no ticket)" }}  ·  {{ world.workdir|default:"(no workspace)" }}  ·  {{ world.feature_branch|default:"(no branch)" }}  ·  cycle {{ world.cycle }}  ·  judge {{ world.judge_mode }}'
+      - kv:
+          pairs:
+            Ticket:  "{{ world.ticket_id }} — {{ world.ticket_title }}"
+            Summary: '{{ world.task_summary_artifact.summary_title|default:"agent working..." }}'
+            Status:  "running"
+      - template: |
+          **Full output is kept out of the checkpoint.** The artifact link appears as soon as the agent returns.
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - { label: "proceed", intent: proceed, hint: "deliver the task summary to the checkpoint", when: "world.judge_mode != 'human'" }
             - label:  "restart_from"
               intent: restart_from
               hint:   "bounce back to an earlier stage"
@@ -38,20 +73,34 @@ states:
                 placeholder: "e.g. review_task"
             - { label: "quit", intent: quit, hint: "abandon the pipeline" }
             - { label: "look", intent: look, hint: "re-render" }
-    relevant_world: [ticket_id, ticket_title, ticket_body, task_summary_artifact, cycle]
+    relevant_world: [ticket_id, ticket_title, ticket_body, ticket_sources, ticket_source, ticket_source_ref, task_summary_artifact, cycle]
     on_enter:
       # Fetch the ticket. The default host.local_files.ticket binding
-      # is the prefix-fallback handler; cyber-repo's parent rebinds
-      # iface.ticket → host.jira. We bind the body so the LLM has
-      # something to chew on.
+      # is the prefix-fallback handler; a parent (e.g. kitsoki-dev) may
+      # rebind iface.ticket → host.ticket_federation with a configured
+      # ticket_sources list (Jira, multiple GitHub repos, …) — thread the
+      # selector fields through so that routing works either way.
       - invoke: iface.ticket.get
         with:
-          id: "{{ world.ticket_id }}"
+          id:      "{{ world.ticket_id }}"
+          ref:     "{{ world.ticket_source_ref }}"
+          source:  "{{ world.ticket_source }}"
+          sources: "{{ world.ticket_sources }}"
+          repo:    "{{ world.ticket_repo }}"
+          root:    "{{ world.tickets_root }}"
         bind:
           ticket_body:  body
           ticket_title: title
           ticket_url:   url
-        on_error: idle
+        # Genuine failure (empty/unknown ticket_id, missing record) — NOT the
+        # idempotent-reentry guard pattern idle.yaml's provisioning uses.
+        # Routing to idle here used to silently swallow it: idle's view has no
+        # ticket-fetch-failure affordance, so a headless driver bounced
+        # idle → review_task_executing → idle forever with no visible reason
+        # (G3 — errors must surface). review_task_ticket_error shows
+        # world.last_error (the engine-set failing-call message) and gives the
+        # operator/driver an explicit retry/quit choice instead.
+        on_error: review_task_ticket_error
       # Produce the structured task summary.
       # once: skip the regenerate when task_summary_artifact is already
       # bound (reload / self-re-entry safe). Every arc that re-enters
@@ -71,6 +120,37 @@ states:
         bind:
           task_summary_artifact: submitted
         on_error: idle
+      - invoke: host.artifacts_dir
+        id: task_summary_artifact_file
+        with:
+          thread: "implementation_{{ world.ticket_id }}_01_task_summary.md"
+          title:  "Task summary: {{ world.ticket_id }}"
+          body:   "{{ world.task_summary_artifact.summary_markdown }}"
+          mode:   replace
+        bind:
+          task_summary_artifact_path: path
+        on_error: idle
+      - invoke: host.artifacts_dir
+        id: implementation_progress_file
+        with:
+          thread: "implementation_{{ world.ticket_id }}_progress.yaml"
+          body: |
+            ticket_id: "{{ world.ticket_id }}"
+            phase: review_task
+            state: ready_for_operator
+            cycle: {{ world.cycle }}
+            artifacts:
+              task_summary: "{{ world.task_summary_artifact_path }}"
+              code: "{{ world.code_artifact_path }}"
+              test: "{{ world.test_artifact_path }}"
+              review: "{{ world.review_artifact_path }}"
+            next_action: accept_or_refine
+          mode: replace
+        bind:
+          implementation_progress_artifact_path: path
+        on_error: idle
+      - when: "world.judge_mode == 'human' && world.task_summary_artifact_path != ''"
+        emit_intent: proceed
     on:
       proceed:
         - target: review_task_awaiting_reply
@@ -82,6 +162,7 @@ states:
                 cycle: 0
                 # Clear the once: cache so the task summary regenerates.
                 task_summary_artifact: {}
+                task_summary_artifact_path: ""
       quit:
         - target: "@exit:abandoned"
       look:
@@ -91,19 +172,27 @@ states:
   review_task_awaiting_reply:
     description: "Task summary posted; awaiting verdict."
     view:
+      - banner:
+          text:     "✅ TASK SUMMARY READY"
+          subtitle: "Review the short summary; open the artifact for details"
+          color:    "#16A34A"
       - prose: '{{ world.ticket_id|default:"(no ticket)" }}  ·  {{ world.workdir|default:"(no workspace)" }}  ·  {{ world.feature_branch|default:"(no branch)" }}  ·  cycle {{ world.cycle }}  ·  judge {{ world.judge_mode }}'
-      - heading: "Task summary — awaiting verdict"
       - kv:
           pairs:
-            Ticket:     "{{ world.ticket_id }} — {{ world.ticket_title }}"
+            Ticket:   "{{ world.ticket_id }} — {{ world.ticket_title }}"
+            Summary:  '{{ world.task_summary_artifact.summary_title|default:"(missing title)" }}'
+            Artifact: '{{ world.task_summary_artifact_path|default:"(not written)" }}'
+            Progress: '{{ world.implementation_progress_artifact_path|default:"(not written)" }}'
       - when: "(world.llm_verdict.verdict ?? '') != ''"
         kv:
           pairs:
             Verdict:    '{{ world.llm_verdict.verdict }}'
             Confidence: '{{ world.llm_verdict.confidence|floatformat:2 }}'
             Reason:     '{{ world.llm_verdict.reason }}'
-      - heading: "Artifact"
-      - code: '{{ world.task_summary_artifact.summary_markdown|default:"(pending — agent has not returned yet)" }}'
+      - template: |
+          **{{ world.task_summary_artifact.summary_title|default:"Task summary" }}**
+
+          {{ world.task_summary_artifact.scope|default:"Review the linked artifact before accepting." }}
       - choice:
           mode: single
           prompt: "Actions"
@@ -131,7 +220,11 @@ states:
         with:
           thread:    "{{ world.thread }}"
           title:     "Task summary: {{ world.ticket_id }}"
-          body:      "{{ world.task_summary_artifact.summary_markdown }}"
+          body: |
+            Task summary ready: {{ world.task_summary_artifact.summary_title }}
+
+            Full artifact: {{ world.task_summary_artifact_path }}
+            Progress: {{ world.implementation_progress_artifact_path }}
           phase_id:  "review_task_{{ world.ticket_id }}_{{ world.cycle }}"
       - invoke: host.inbox.add
         with:
@@ -139,7 +232,7 @@ states:
           title:   "Task summary: {{ world.ticket_id }}"
           thread:  "{{ world.thread }}"
           state:   review_task_awaiting_reply
-          body:    "{{ world.task_summary_artifact.summary_markdown }}"
+          body:    "Task summary ready: {{ world.task_summary_artifact.summary_title }}\n\nFull artifact: {{ world.task_summary_artifact_path }}\nProgress: {{ world.implementation_progress_artifact_path }}"
       - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
         invoke: host.agent.decide
         with:
@@ -170,6 +263,7 @@ states:
                 # Advancing to write_code_executing for a fresh run — clear
                 # its once: cache so the code artifact regenerates.
                 code_artifact:     {}
+                code_artifact_path: ""
       refine:
         - target: review_task_executing
           effects:
@@ -178,6 +272,7 @@ states:
                 cycle:           "{{ world.cycle + 1 }}"
                 # Clear the once: cache so the task summary regenerates.
                 task_summary_artifact: {}
+                task_summary_artifact_path: ""
       restart_from:
         - target: review_task_executing
           effects:
@@ -186,6 +281,7 @@ states:
                 cycle:              0
                 # Clear the once: cache so the task summary regenerates.
                 task_summary_artifact: {}
+                task_summary_artifact_path: ""
       quit:
         - target: "@exit:abandoned"
       look:

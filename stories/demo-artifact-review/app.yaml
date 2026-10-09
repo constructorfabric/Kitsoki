@@ -1,0 +1,68 @@
+app:
+  id: demo-artifact-review
+  version: 0.1.0
+  title: "Demo artifact review"
+  author: "Kitsoki"
+  license: "CC0"
+
+# This is an importable, deterministic contract. A server resolves the trusted
+# binding id to this entrypoint; the client never names rooms, tools, or grants.
+world:
+  project_id:       { type: string, default: "" }
+  session_id:       { type: string, default: "" }
+  artifact_id:      { type: string, default: "" }
+  binding_id:       { type: string, default: "demo-artifact-review" }
+  revision_policy:  { type: string, default: "separate-records" }
+  assignment_policy: { type: string, default: "declared" }
+  mockup_revision:  { type: object, default: {} }
+  rrweb_revision:   { type: object, default: {} }
+  deck_revision:    { type: object, default: {} }
+  review_status:    { type: string, default: "pending" }
+  review_note:      { type: string, default: "" }
+  abandon_reason:   { type: string, default: "" }
+
+intents:
+  revise_mockup:
+    description: "Record a new mockup revision."
+    examples: ["mockup revision"]
+    priority: 80
+    slots:
+      revision: { type: string, required: true }
+  revise_rrweb:
+    description: "Record a new rrweb revision."
+    examples: ["rrweb revision"]
+    priority: 80
+    slots:
+      revision: { type: string, required: true }
+  revise_deck:
+    description: "Record a new Slidey deck revision."
+    examples: ["deck revision"]
+    priority: 80
+    slots:
+      revision: { type: string, required: true }
+  approve:
+    description: "Approve the three independently recorded demo artifacts."
+    examples: [approve]
+    priority: 90
+  quit:
+    description: "Abandon this artifact review."
+    examples: [quit]
+    priority: 10
+  look:
+    description: "Re-render the review record."
+    examples: [look]
+    priority: 1
+
+exports:
+  intents: [revise_mockup, revise_rrweb, revise_deck, approve, quit, look]
+
+exits:
+  reviewed:
+    requires: [review_status]
+  abandoned:
+    requires: [abandon_reason]
+
+root: review
+
+include:
+  - rooms/*.yaml

@@ -3,14 +3,14 @@
  *
  * `features:check` (generate.ts) already validates the catalog↔spec bijection
  * and that the generated tour TS is fresh. THIS lint adds the per-spec
- * invariants that keep every section recordable into the master tour at zero
- * cost — the things a byte-comparison of generated files can't see:
+ * invariants that keep every catalog demo capture deterministic and
+ * chapter-addressable — the things a byte-comparison of generated files can't
+ * see:
  *
  *   1. camera   — the spec must route newContext through _helpers/camera, so
- *                 every section shares the 1600×900 stitch canvas. Drift here is
- *                 invisible per-spec but silently letterboxes the master tour.
+ *                 every replay/export shares the same 1600×900 capture canvas.
  *   2. chapters — the spec must emit a chapter sidecar (writeChapters), so the
- *                 per-section rail exists and stitch-tour can merge it.
+ *                 rrweb viewer and any explicit legacy export can show a rail.
  *   3. no-LLM   — the spec must drive the server deterministically
  *                 (startWebServer / --flow / --harness), never a live model.
  *                 This is the cost guard AND what makes "the film is a CI test"

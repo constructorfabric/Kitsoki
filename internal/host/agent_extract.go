@@ -1,6 +1,6 @@
 // Package host — host.agent.extract handler.
 //
-// Implements the tiered resolver. See docs/architecture/agent-cli.md.
+// Implements the tiered resolver. See docs/guide/agents/cli.md.
 // Three resolver tiers are tried in declaration order; the first to produce a
 // schema-valid payload returns it:
 //
@@ -264,6 +264,9 @@ func AgentExtractHandler(ctx context.Context, args map[string]any) (Result, erro
 	}
 
 	errStr := ""
+	if runErr != nil {
+		errStr = agentRunErrorMessage("extract", runErr, "")
+	}
 	if res.Error != "" {
 		errStr = res.Error
 	}
@@ -297,7 +300,12 @@ func AgentExtractHandler(ctx context.Context, args map[string]any) (Result, erro
 		})
 	}
 
-	return res, runErr
+	if runErr != nil {
+		res.Error = errStr
+		res.FailureKind = FailureInfra
+		return res, nil
+	}
+	return res, nil
 }
 
 // runExtract is the implementation extracted so tests can call it directly
@@ -330,7 +338,7 @@ func runExtract(ctx context.Context, ea ExtractArgs, bin string, rawArgs map[str
 			mergedArgs["tools"] = perCallTools
 		}
 		for _, t := range effectiveTools(ctx, mergedArgs, agent) {
-			if mutationTools[t] {
+			if fileMutationTools[t] {
 				return Result{Error: fmt.Sprintf(
 					"host.agent.extract: mutation tool %q not permitted in the LLM tier", t)}, nil
 			}

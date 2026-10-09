@@ -1,0 +1,58 @@
+# fix_tests_resets_stale_child_world — the landing quick action starts a fresh
+# imported fix-tests run even if prior child world keys are still present.
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world:
+  landing_request: ""
+  test_cmd: "make test"
+  tests__cycle: 3
+  tests__outcome: "review_failed"
+  tests__review_feedback: "stale feedback from an older run"
+  tests__review_artifact:
+    pass: false
+    reason: "stale"
+  tests__report_path: ".artifacts/fix-tests/report-review_failed.md"
+
+host_handlers:
+  host.run:
+    by_call:
+      run_initial:
+        data: { exit_code: 0, ok: true, stdout: "ok\n" }
+        delay: "10ms"
+      full_verify_run:
+        data: { exit_code: 0, ok: true, stdout: "ok\tfull suite\n" }
+        delay: "10ms"
+  host.agent.decide:
+    by_call:
+      review-0:
+        data:
+          submitted:
+            pass: true
+            reason: "Fresh clean run reviewed from cycle 0."
+            functionality_preserved: true
+            tests_not_weakened: true
+            findings: []
+            fixes: []
+  host.inbox.add:
+    data: { ok: true }
+
+turns:
+  - intent: { name: go_fix_tests, slots: {} }
+    advance_clock: "1s"
+    expect_state: landing
+    expect_world:
+      status: "tests-green"
+      tests__cycle: 0
+      tests__outcome: "clean"
+      tests__review_feedback: ""
+      fix_tests_report_path: ".artifacts/fix-tests/report-clean.md"
+      fix_tests_review:
+        pass: true
+        reason: "Fresh clean run reviewed from cycle 0."
+        functionality_preserved: true
+        tests_not_weakened: true
+        findings: []
+        fixes: []
+
+expect_no_errors: true

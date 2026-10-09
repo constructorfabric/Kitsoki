@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"kitsoki/internal/app"
+	"kitsoki/internal/storyauthoring"
 )
 
 // DetailLevel controls how much internal structure the flowchart emits. The
@@ -147,6 +148,9 @@ func ResolveFilterRooms(a *app.AppDef, f FlowchartFilter) ([]string, error) {
 		}
 		fromRoom := rooms.RoomOf[path]
 		for _, intent := range sortedKeys(s.On) {
+			if storyauthoring.IsFrameworkTransition(path, intent) {
+				continue
+			}
 			for _, tr := range s.On[intent] {
 				target := resolveMermaidTarget(path, tr.Target)
 				if target == "" || strings.Contains(target, "{{") {
@@ -239,6 +243,9 @@ func PipelineOrder(a *app.AppDef) []string {
 		}
 		fromRoom := rooms.RoomOf[path]
 		for _, intent := range sortedKeys(s.On) {
+			if storyauthoring.IsFrameworkTransition(path, intent) {
+				continue
+			}
 			for _, tr := range s.On[intent] {
 				target := resolveMermaidTarget(path, tr.Target)
 				if target == "" || strings.Contains(target, "{{") {
@@ -416,6 +423,9 @@ func emitFlowchartRooms(b *strings.Builder, a *app.AppDef, initialState string, 
 			return
 		}
 		for _, intent := range sortedKeys(s.On) {
+			if storyauthoring.IsFrameworkTransition(path, intent) {
+				continue
+			}
 			for _, tr := range s.On[intent] {
 				target := resolveMermaidTarget(path, tr.Target)
 				if target == "" || strings.Contains(target, "{{") {
@@ -611,6 +621,9 @@ func emitFlowchartStates(b *strings.Builder, a *app.AppDef, detail DetailLevel, 
 		}
 		fromID := "ST_" + fcid(path)
 		for _, intent := range sortedKeys(s.On) {
+			if storyauthoring.IsFrameworkTransition(path, intent) {
+				continue
+			}
 			for _, tr := range s.On[intent] {
 				target := resolveMermaidTarget(path, tr.Target)
 				if target == "" || strings.Contains(target, "{{") {

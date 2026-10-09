@@ -1,0 +1,45 @@
+kind: host_cassette
+app_id: dev-story
+app_version: "1"
+record_mode: none
+match_on:
+  - handler
+
+episodes:
+  - id: local_tests_blocked_affordance
+    match:
+      handler: host.local
+    response:
+      data:
+        ok: false
+        log: "FAIL TestVisibleOutcome: test asserts setup but never verifies the user-visible outcome"
+        passed: 12
+        failed: 1
+    replay: any
+
+  - id: testing_agent_blocked_affordance
+    match:
+      handler: host.agent.task
+    response:
+      data:
+        ok: true
+        submitted:
+          summary_title: "Blocked: no trustworthy regression proof"
+          status: "blocked"
+          tests_added: []
+          tests_run:
+            passed: 12
+            failed: 1
+            skipped: 0
+            log: "FAIL TestVisibleOutcome: test asserts setup but never verifies the user-visible outcome"
+          blockers:
+            - file: "internal/widget/widget_test.go"
+              severity: "blocker"
+              description: "Missing deterministic regression proof; the test asserts setup instead of the user-visible outcome."
+          summary_markdown: >
+            The implementation may be close, but the testing room cannot approve
+            it. The current regression only proves that setup code ran. It does
+            not assert the user-visible outcome described by the ticket, so a
+            distracted operator must not be able to mistake this checkpoint for a
+            normal pass.
+    replay: any

@@ -1,0 +1,492 @@
+kind: arena_cost_corpus
+version: 1
+frozen: true
+selection_rule_committed_at: 7bd95358
+archetypes: tools/arena/corpus/archetypes.yaml
+source_catalog: tools/arena/corpus/sources.yaml
+source_targets: tools/product-journey/github-targets.json
+created_at: "2026-07-04"
+selection_notes:
+  - "20 repo-history tasks cover the pre-registered 10 public OSS targets, two per repo."
+  - "6 existing armed bugfix fixtures add bugfix/failing-test coverage from query-string and kitsoki."
+  - "All tasks record deterministic RED/GREEN proof before freeze; heldout tasks are marked in the manifest and must not be executed during training rounds."
+tasks:
+  - id: vscode-01-docs-site-release
+    repo: vscode
+    repo_label: microsoft/vscode
+    archetype: docs_site_release
+    baseline_sha: b18492a288de038fbc7643aae6de8247029d11bd
+    fix_sha: 7317e60fe47bea256caf45ef830427365e4e6b3d
+    ticket: "Recreate the repo-history docs change from microsoft/vscode commit 7317e60."
+    split: heldout
+    verified_red: true
+    verified_green: true
+    oracle:
+      kind: github_content
+      repo: microsoft/vscode
+      file: src/vs/sessions/LAYOUT_CONTROLLER.md
+      required_text: "> **Docked detail panel (experimental).** With `sessions.layout.singlePaneDetailPanel` enabled, the auxiliary"
+      source_commit_url: https://github.com/microsoft/vscode/commit/7317e60fe47bea256caf45ef830427365e4e6b3d
+      red_rule: required_text absent at baseline_sha
+      green_rule: required_text present at fix_sha
+
+  - id: vscode-02-ui-visual-qa
+    repo: vscode
+    repo_label: microsoft/vscode
+    archetype: ui_visual_qa
+    baseline_sha: b18492a288de038fbc7643aae6de8247029d11bd
+    fix_sha: 7317e60fe47bea256caf45ef830427365e4e6b3d
+    ticket: "Recreate the repo-history UI/action registration change from microsoft/vscode commit 7317e60."
+    split: heldout
+    verified_red: true
+    verified_green: true
+    oracle:
+      kind: github_content
+      repo: microsoft/vscode
+      file: src/vs/platform/actions/common/actions.ts
+      required_text: "static readonly EditorTabsBarAddTab = new MenuId('EditorTabsBarAddTab');"
+      source_commit_url: https://github.com/microsoft/vscode/commit/7317e60fe47bea256caf45ef830427365e4e6b3d
+      red_rule: required_text absent at baseline_sha
+      green_rule: required_text present at fix_sha
+
+  - id: kubernetes-03-docs-site-release
+    repo: kubernetes
+    repo_label: kubernetes/kubernetes
+    archetype: docs_site_release
+    baseline_sha: cbe5e3096ec29950198ed0b77ed9c611f3183c14
+    fix_sha: a84388789f0b4d6a5491a434a057118e8f5a7b26
+    ticket: "Recreate the repo-history scheduler cache change from kubernetes/kubernetes commit a843887."
+    split: training
+    verified_red: true
+    verified_green: true
+    oracle:
+      kind: github_content
+      repo: kubernetes/kubernetes
+      file: pkg/scheduler/backend/cache/snapshot.go
+      required_text: "type snapshotBackupData struct {"
+      source_commit_url: https://github.com/kubernetes/kubernetes/commit/a84388789f0b4d6a5491a434a057118e8f5a7b26
+      red_rule: required_text absent at baseline_sha
+      green_rule: required_text present at fix_sha
+
+  - id: kubernetes-04-git-ops-landing
+    repo: kubernetes
+    repo_label: kubernetes/kubernetes
+    archetype: git_ops_landing
+    baseline_sha: 2521c2effd84d62fdbd904048d6b440b35d237a6
+    fix_sha: eba60f9995765b8f2908b912b26eb9ddfac1daa3
+    ticket: "Recreate the repo-history proxy logging change from kubernetes/kubernetes commit eba60f9."
+    split: heldout
+    verified_red: true
+    verified_green: true
+    oracle:
+      kind: github_content
+      repo: kubernetes/kubernetes
+      file: pkg/proxy/endpointschangetracker.go
+      required_text: "epList := other[svcPortName]"
+      source_commit_url: https://github.com/kubernetes/kubernetes/commit/eba60f9995765b8f2908b912b26eb9ddfac1daa3
+      red_rule: required_text absent at baseline_sha
+      green_rule: required_text present at fix_sha
+
+  - id: nextjs-05-story-runtime
+    repo: nextjs
+    repo_label: vercel/next.js
+    archetype: story_runtime
+    baseline_sha: 65dbff0a82c723e31dd597e770cb002664c42aa0
+    fix_sha: 422c93ef86397f514ab7e2027e7ae642a41ad1bf
+    ticket: "Recreate the repo-history experimental flag change from vercel/next.js commit 422c93e."
+    split: heldout
+    verified_red: true
+    verified_green: true
+    oracle:
+      kind: github_content
+      repo: vercel/next.js
+      file: packages/next/src/build/define-env.ts
+      required_text: "'process.env.__NEXT_SERVER_COMPONENTS_HMR_CANCELLATION': Boolean("
+      source_commit_url: https://github.com/vercel/next.js/commit/422c93ef86397f514ab7e2027e7ae642a41ad1bf
+      red_rule: required_text absent at baseline_sha
+      green_rule: required_text present at fix_sha
+
+  - id: nextjs-06-ui-visual-qa
+    repo: nextjs
+    repo_label: vercel/next.js
+    archetype: ui_visual_qa
+    baseline_sha: 65dbff0a82c723e31dd597e770cb002664c42aa0
+    fix_sha: 422c93ef86397f514ab7e2027e7ae642a41ad1bf
+    ticket: "Recreate the repo-history workflow flag change from vercel/next.js commit 422c93e."
+    split: training
+    verified_red: true
+    verified_green: true
+    oracle:
+      kind: github_content
+      repo: vercel/next.js
+      file: .github/workflows/build_and_test.yml
+      required_text: "export __NEXT_EXPERIMENTAL_SERVER_COMPONENTS_HMR_CANCELLATION=true"
+      source_commit_url: https://github.com/vercel/next.js/commit/422c93ef86397f514ab7e2027e7ae642a41ad1bf
+      red_rule: required_text absent at baseline_sha
+      green_rule: required_text present at fix_sha
+
+  - id: tensorflow-07-docs-site-release
+    repo: tensorflow
+    repo_label: tensorflow/tensorflow
+    archetype: docs_site_release
+    baseline_sha: 7a70bb81f72c68b15c20e4e93c6a4283b46cbba5
+    fix_sha: ec87b64157ba39f0d50fdf1386ef755f34d29431
+    ticket: "Recreate the repo-history GPU custom-call test change from tensorflow/tensorflow commit ec87b64."
+    split: training
+    verified_red: true
+    verified_green: true
+    oracle:
+      kind: github_content
+      repo: tensorflow/tensorflow
+      file: third_party/xla/xla/service/gpu/custom_call_test.cc
+      required_text: "HloInterpreterReferenceMixin<HloTestBase>> {"
+      source_commit_url: https://github.com/tensorflow/tensorflow/commit/ec87b64157ba39f0d50fdf1386ef755f34d29431
+      red_rule: required_text absent at baseline_sha
+      green_rule: required_text present at fix_sha
+
+  - id: tensorflow-08-git-ops-landing
+    repo: tensorflow
+    repo_label: tensorflow/tensorflow
+    archetype: git_ops_landing
+    baseline_sha: 7a70bb81f72c68b15c20e4e93c6a4283b46cbba5
+    fix_sha: ec87b64157ba39f0d50fdf1386ef755f34d29431
+    ticket: "Recreate the repo-history GPU compiler test change from tensorflow/tensorflow commit ec87b64."
+    split: training
+    verified_red: true
+    verified_green: true
+    oracle:
+      kind: github_content
+      repo: tensorflow/tensorflow
+      file: third_party/xla/xla/service/gpu/gpu_compiler_test.cc
+      required_text: ": public HloInterpreterReferenceMixin<HloPjRtGpuTestBase> {"
+      source_commit_url: https://github.com/tensorflow/tensorflow/commit/ec87b64157ba39f0d50fdf1386ef755f34d29431
+      red_rule: required_text absent at baseline_sha
+      green_rule: required_text present at fix_sha
+
+  - id: pytorch-09-docs-site-release
+    repo: pytorch
+    repo_label: pytorch/pytorch
+    archetype: docs_site_release
+    baseline_sha: 90e865f9384c90a70a35a55807dd7a9c5a18e972
+    fix_sha: 447c5259f42e86ab744c7ccf7bffeebff92f3ede
+    ticket: "Recreate the repo-history interval mask test change from pytorch/pytorch commit 447c525."
+    split: training
+    verified_red: true
+    verified_green: true
+    oracle:
+      kind: github_content
+      repo: pytorch/pytorch
+      file: test/inductor/test_interval_mask_packing.py
+      required_text: "case \"row_bounded_causal\":"
+      source_commit_url: https://github.com/pytorch/pytorch/commit/447c5259f42e86ab744c7ccf7bffeebff92f3ede
+      red_rule: required_text absent at baseline_sha
+      green_rule: required_text present at fix_sha
+
+  - id: pytorch-10-story-runtime
+    repo: pytorch
+    repo_label: pytorch/pytorch
+    archetype: story_runtime
+    baseline_sha: 90e865f9384c90a70a35a55807dd7a9c5a18e972
+    fix_sha: 447c5259f42e86ab744c7ccf7bffeebff92f3ede
+    ticket: "Recreate the repo-history interval mask runtime change from pytorch/pytorch commit 447c525."
+    split: training
+    verified_red: true
+    verified_green: true
+    oracle:
+      kind: github_content
+      repo: pytorch/pytorch
+      file: torch/_inductor/kernel/flex/interval_mask_packing.py
+      required_text: "perf_hint_log = torch._logging.getArtifactLogger(__name__, \"perf_hints\")"
+      source_commit_url: https://github.com/pytorch/pytorch/commit/447c5259f42e86ab744c7ccf7bffeebff92f3ede
+      red_rule: required_text absent at baseline_sha
+      green_rule: required_text present at fix_sha
+
+  - id: rust-11-git-ops-landing
+    repo: rust
+    repo_label: rust-lang/rust
+    archetype: git_ops_landing
+    baseline_sha: 17aa77551e89d5e80d4b506c9a32fc151264b8e4
+    fix_sha: 13bcaadd77bb348b2191a95ead34ebdce141d906
+    ticket: "Recreate the repo-history process import change from rust-lang/rust commit 13bcaaa."
+    split: training
+    verified_red: true
+    verified_green: true
+    oracle:
+      kind: github_content
+      repo: rust-lang/rust
+      file: library/std/src/os/unix/process.rs
+      required_text: "use crate::process::{ExitStatus, ExitStatusError};"
+      source_commit_url: https://github.com/rust-lang/rust/commit/13bcaadd77bb348b2191a95ead34ebdce141d906
+      red_rule: required_text absent at baseline_sha
+      green_rule: required_text present at fix_sha
+
+  - id: rust-12-story-runtime
+    repo: rust
+    repo_label: rust-lang/rust
+    archetype: story_runtime
+    baseline_sha: 17aa77551e89d5e80d4b506c9a32fc151264b8e4
+    fix_sha: 13bcaadd77bb348b2191a95ead34ebdce141d906
+    ticket: "Recreate the repo-history process documentation change from rust-lang/rust commit 13bcaaa."
+    split: training
+    verified_red: true
+    verified_green: true
+    oracle:
+      kind: github_content
+      repo: rust-lang/rust
+      file: library/std/src/os/unix/process.rs
+      required_text: "/// Unix-specific extensions to [`ExitStatus`] and [`ExitStatusError`]."
+      source_commit_url: https://github.com/rust-lang/rust/commit/13bcaadd77bb348b2191a95ead34ebdce141d906
+      red_rule: required_text absent at baseline_sha
+      green_rule: required_text present at fix_sha
+
+  - id: cpython-13-docs-site-release
+    repo: cpython
+    repo_label: python/cpython
+    archetype: docs_site_release
+    baseline_sha: ec5f154e33f5d62257d041dd28aad1fe785fa3db
+    fix_sha: 66c76fa6737d497cd3c735f75e67a5ca52eceb15
+    ticket: "Recreate the repo-history http.cookiejar documentation change from python/cpython commit 66c76fa."
+    split: training
+    verified_red: true
+    verified_green: true
+    oracle:
+      kind: github_content
+      repo: python/cpython
+      file: Doc/library/http.cookiejar.rst
+      required_text: ":mailheader:`Set-Cookie2` headers (for example, ``domain`` and ``expires``) are"
+      source_commit_url: https://github.com/python/cpython/commit/66c76fa6737d497cd3c735f75e67a5ca52eceb15
+      red_rule: required_text absent at baseline_sha
+      green_rule: required_text present at fix_sha
+
+  - id: cpython-14-git-ops-landing
+    repo: cpython
+    repo_label: python/cpython
+    archetype: git_ops_landing
+    baseline_sha: 832d5571115fba0adcb09742b56f51ee081710c6
+    fix_sha: ec5f154e33f5d62257d041dd28aad1fe785fa3db
+    ticket: "Recreate the repo-history syntax test helper change from python/cpython commit ec5f154."
+    split: training
+    verified_red: true
+    verified_green: true
+    oracle:
+      kind: github_content
+      repo: python/cpython
+      file: Lib/test/test_syntax.py
+      required_text: "def check_no_warning(self, code, filename=\"<testcase>\", mode=\"exec\"):"
+      source_commit_url: https://github.com/python/cpython/commit/ec5f154e33f5d62257d041dd28aad1fe785fa3db
+      red_rule: required_text absent at baseline_sha
+      green_rule: required_text present at fix_sha
+
+  - id: ansible-15-docs-site-release
+    repo: ansible
+    repo_label: ansible/ansible
+    archetype: docs_site_release
+    baseline_sha: 78c337b82796bc2cedf6fba49d60b3d1a040c0c9
+    fix_sha: 0e69d86c0c6cbbf239c6f9301c31458608503d8a
+    ticket: "Recreate the repo-history strategy plugin change from ansible/ansible commit 0e69d86."
+    split: training
+    verified_red: true
+    verified_green: true
+    oracle:
+      kind: github_content
+      repo: ansible/ansible
+      file: lib/ansible/plugins/strategy/__init__.py
+      required_text: "self._blocked_hosts[host.name] = True"
+      source_commit_url: https://github.com/ansible/ansible/commit/0e69d86c0c6cbbf239c6f9301c31458608503d8a
+      red_rule: required_text absent at baseline_sha
+      green_rule: required_text present at fix_sha
+
+  - id: ansible-16-story-runtime
+    repo: ansible
+    repo_label: ansible/ansible
+    archetype: story_runtime
+    baseline_sha: 78c337b82796bc2cedf6fba49d60b3d1a040c0c9
+    fix_sha: 0e69d86c0c6cbbf239c6f9301c31458608503d8a
+    ticket: "Recreate the repo-history free strategy changelog change from ansible/ansible commit 0e69d86."
+    split: training
+    verified_red: true
+    verified_green: true
+    oracle:
+      kind: github_content
+      repo: ansible/ansible
+      file: changelogs/fragments/86656-fix-step-in-free-strat.yml
+      required_text: "- free strategy - prevent hanging on skipping a task using ``--step`` (https://github.com/ansible/ansible/issues/86656)"
+      source_commit_url: https://github.com/ansible/ansible/commit/0e69d86c0c6cbbf239c6f9301c31458608503d8a
+      red_rule: required_text absent at baseline_sha
+      green_rule: required_text present at fix_sha
+
+  - id: grafana-17-story-runtime
+    repo: grafana
+    repo_label: grafana/grafana
+    archetype: story_runtime
+    baseline_sha: c74d55f533ec51c3bd43b63095b5c71d9b348e99
+    fix_sha: 29b4e114264c06bd4cf6c625444830f141695bb1
+    ticket: "Recreate the repo-history visual refresh theme remap change from grafana/grafana commit 29b4e11."
+    split: training
+    verified_red: true
+    verified_green: true
+    oracle:
+      kind: github_content
+      repo: grafana/grafana
+      file: public/app/core/utils/ConfigProvider.tsx
+      required_text: "// temporarily remap dark/light to the visual refresh themes if the flag is enabled"
+      source_commit_url: https://github.com/grafana/grafana/commit/29b4e114264c06bd4cf6c625444830f141695bb1
+      red_rule: required_text absent at baseline_sha
+      green_rule: required_text present at fix_sha
+
+  - id: grafana-18-ui-visual-qa
+    repo: grafana
+    repo_label: grafana/grafana
+    archetype: ui_visual_qa
+    baseline_sha: c74d55f533ec51c3bd43b63095b5c71d9b348e99
+    fix_sha: 29b4e114264c06bd4cf6c625444830f141695bb1
+    ticket: "Recreate the repo-history visual refresh import change from grafana/grafana commit 29b4e11."
+    split: training
+    verified_red: true
+    verified_green: true
+    oracle:
+      kind: github_content
+      repo: grafana/grafana
+      file: public/app/core/utils/ConfigProvider.tsx
+      required_text: "import { getThemeById, type GrafanaTheme2, ThemeContext } from '@grafana/data';"
+      source_commit_url: https://github.com/grafana/grafana/commit/29b4e114264c06bd4cf6c625444830f141695bb1
+      red_rule: required_text absent at baseline_sha
+      green_rule: required_text present at fix_sha
+
+  - id: typescript-19-git-ops-landing
+    repo: typescript
+    repo_label: microsoft/TypeScript
+    archetype: git_ops_landing
+    baseline_sha: 7816ae6fa7ccfd59b2be3485cc8c108174f2560e
+    fix_sha: 637d5746b70257028fb95aad32ddec6b26ab0a14
+    ticket: "Recreate the repo-history comment parser test change from microsoft/TypeScript commit 637d574."
+    split: training
+    verified_red: true
+    verified_green: true
+    oracle:
+      kind: github_content
+      repo: microsoft/TypeScript
+      file: src/testRunner/unittests/comments.ts
+      required_text: "const endingInHyphen = \"/**comment-*/\";"
+      source_commit_url: https://github.com/microsoft/TypeScript/commit/637d5746b70257028fb95aad32ddec6b26ab0a14
+      red_rule: required_text absent at baseline_sha
+      green_rule: required_text present at fix_sha
+
+  - id: typescript-20-ui-visual-qa
+    repo: typescript
+    repo_label: microsoft/TypeScript
+    archetype: ui_visual_qa
+    baseline_sha: 7964e22f2b85f16e520f0e902c7fd7b6f0c15416
+    fix_sha: 8ef3e2f3d43c8c92bda9510c47f7d4d2b3aeca33
+    ticket: "Recreate the repo-history checkout action pin change from microsoft/TypeScript commit 8ef3e2f."
+    split: training
+    verified_red: true
+    verified_green: true
+    oracle:
+      kind: github_content
+      repo: microsoft/TypeScript
+      file: .github/workflows/accept-baselines-fix-lints.yaml
+      required_text: "- uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0"
+      source_commit_url: https://github.com/microsoft/TypeScript/commit/8ef3e2f3d43c8c92bda9510c47f7d4d2b3aeca33
+      red_rule: required_text absent at baseline_sha
+      green_rule: required_text present at fix_sha
+
+  - id: query-string-qs1-bugfix-test-repair
+    repo: query-string
+    archetype: bugfix_test_repair
+    baseline_sha: 2e1f45aafb71ef247572b10d9d37dce67cd825ac
+    fix_sha: ec67feafcef38759e5ec76f7bc69aa835bc05b9c
+    ticket: "Fix query-string issue 336: encoded separators must not split a single value."
+    split: training
+    verified_red: true
+    verified_green: true
+    oracle:
+      kind: external_bakeoff
+      project: query-string
+      bug: qs1
+      red_rule: bench.py verify proves hidden oracle fails at baseline_sha
+      green_rule: bench.py verify proves hidden oracle passes after fix_source overlay from fix_sha
+
+  - id: query-string-qs2-bugfix-test-repair
+    repo: query-string
+    archetype: bugfix_test_repair
+    baseline_sha: 88e1e36dd3bccf178dfaf54f44293e790d8bbd9d
+    fix_sha: 3e6188231268dca3bb514451839b263a70538e7b
+    ticket: "Fix query-string issue 404: comma array format must honor number-array schemas."
+    split: training
+    verified_red: true
+    verified_green: true
+    oracle:
+      kind: external_bakeoff
+      project: query-string
+      bug: qs2
+      red_rule: bench.py verify proves hidden oracle fails at baseline_sha
+      green_rule: bench.py verify proves hidden oracle passes after fix_source overlay from fix_sha
+
+  - id: query-string-qs3-bugfix-test-repair
+    repo: query-string
+    archetype: bugfix_test_repair
+    baseline_sha: 4287e770ed3e6133217a86ac4ed3cee24cde0622
+    fix_sha: 19c43d4e19ed5f362ee22644b0cced6cabb4dda8
+    ticket: "Fix query-string PR 392 regression: bracket-separator must split decoded values."
+    split: heldout
+    verified_red: true
+    verified_green: true
+    oracle:
+      kind: external_bakeoff
+      project: query-string
+      bug: qs3
+      red_rule: bench.py verify proves hidden oracle fails at baseline_sha
+      green_rule: bench.py verify proves hidden oracle passes after fix_source overlay from fix_sha
+
+  - id: kitsoki-bug9-bugfix-test-repair
+    repo: kitsoki
+    archetype: bugfix_test_repair
+    baseline_sha: ea2ca55a
+    fix_sha: 67ac5fb1
+    ticket: "Fix Kitsoki bug9: concurrent dogfood sessions must not share and clobber one checkout."
+    split: training
+    verified_red: true
+    verified_green: true
+    oracle:
+      kind: external_bakeoff
+      project: kitsoki
+      bug: bug9
+      red_rule: bench.py verify proves hidden oracle fails at baseline_sha
+      green_rule: bench.py verify proves hidden oracle passes after fix_source overlay from fix_sha
+
+  - id: kitsoki-bug12-bugfix-test-repair
+    repo: kitsoki
+    archetype: bugfix_test_repair
+    baseline_sha: 45276b88
+    fix_sha: ea2ca55a
+    ticket: "Fix Kitsoki bug12: captured decide payloads must not be reported as abandoned."
+    split: training
+    verified_red: true
+    verified_green: true
+    oracle:
+      kind: external_bakeoff
+      project: kitsoki
+      bug: bug12
+      red_rule: bench.py verify proves hidden oracle fails at baseline_sha
+      green_rule: bench.py verify proves hidden oracle passes after fix_source overlay from fix_sha
+
+  - id: kitsoki-bug14-bugfix-test-repair
+    repo: kitsoki
+    archetype: bugfix_test_repair
+    baseline_sha: 85ff4917
+    fix_sha: 45276b88
+    ticket: "Fix Kitsoki bug14: web transport must surface background completion failures."
+    # Public focused suite for the strict GREEN→RED reproducer gate. This is
+    # intentionally broader than the hidden external oracle, which remains
+    # unavailable to the worker until deterministic scoring.
+    test_cmd: "cd tools/runstatus && pnpm vitest run"
+    split: heldout
+    verified_red: true
+    verified_green: true
+    oracle:
+      kind: external_bakeoff
+      project: kitsoki
+      bug: bug14
+      red_rule: bench.py verify proves hidden oracle fails at baseline_sha
+      green_rule: bench.py verify proves hidden oracle passes after fix_source overlay from fix_sha

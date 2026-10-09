@@ -7,12 +7,12 @@ initial_world:
   base_branch: main
 
 host_handlers:
-  host.git_worktree.list:
+  host.capsule_workspace.list:
     data:
       workspaces:
         - { id: repo, path: /repo, branch: main, dirty: false }
         - { id: old, path: /repo/.worktrees/old, branch: feature/old, dirty: false }
-  host.git_worktree.cleanup_scan:
+  host.capsule_workspace.cleanup_scan:
     data:
       ok: true
       base: main
@@ -49,7 +49,7 @@ host_handlers:
           recommended: false
           reason: branch is not merged into main
           actions: [worktree_remove, branch_delete]
-  host.git_worktree.cleanup_apply:
+  host.capsule_workspace.cleanup_apply:
     data:
       ok: true
       deleted:
@@ -63,7 +63,7 @@ turns:
   - intent: { name: cleanup_workspaces, slots: {} }
     expect_state: workspace_cleanup_review
     expect_host_calls:
-      - handler: host.git_worktree.cleanup_scan
+      - handler: host.capsule_workspace.cleanup_scan
     expect_world:
       cleanup_base: main
       cleanup_recommended: 2
@@ -103,7 +103,7 @@ turns:
     expect_state: workspace_cleanup_done
     expect_view_matches: "Deleted:\\s+2[\\s\\S]*Skipped:\\s+1"
     expect_host_calls:
-      - handler: host.git_worktree.cleanup_apply
+      - handler: host.capsule_workspace.cleanup_apply
     expect_world:
       cleanup_status: deleted
       cleanup_deleted:

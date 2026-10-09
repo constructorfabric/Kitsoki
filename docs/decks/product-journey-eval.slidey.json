@@ -83,7 +83,7 @@
                     "status": "validated",
                     "detail": "Cached external benchmark pass; heavy recheck stays explicit.",
                     "refType": "command",
-                    "ref": "GEARS_RUST_RECHECK=1 GEARS_RUST_REPO=<path> make gears-bakeoff",
+                    "ref": "BUGFIX_BAKEOFF_RECHECK=1 BUGFIX_BAKEOFF_REPO=<path> make gears-bakeoff",
                     "note": "opt-in"
                 },
                 {

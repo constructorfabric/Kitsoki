@@ -1,15 +1,16 @@
 # Builds and deploys the kitsoki promo site + help docs to GitHub Pages.
 #
-# Demo videos are NEVER committed — this workflow records them with Playwright
-# against the freshly-built binary, in the deterministic no-LLM posture
-# (--flow / --host-cassette). Two-level incrementality keeps that cheap:
+# Demo replays are NEVER committed — this workflow captures rrweb logs with
+# Playwright against the freshly-built binary, in the deterministic no-LLM
+# posture (--flow / --host-cassette). Two-level incrementality keeps that cheap:
 #   1. actions/cache over .artifacts, keyed on every demo-affecting input —
 #      an exact hit means nothing can be stale.
 #   2. per-demo content stamps inside record-demos.sh (feature YAML + spec +
 #      story inputs + binary) — on a partial restore, only changed demos
-#      re-record.
-# A docs-only push therefore deploys in minutes with 0 recordings; a cold run
-# records all ~14 demos (sequentially, watch-speed) and can take 30-50 min.
+#      recapture.
+# A docs-only push therefore deploys in minutes with 0 captures; a cold run
+# captures every rrweb-first feature in the catalog (sequentially, watch-speed —
+# see features-index.json's `demo != null && !demo.external` selector).
 #
 # One-time repo setup: Settings → Pages → Source: "GitHub Actions".
 name: site
@@ -69,15 +70,13 @@ jobs:
             tools/runstatus/pnpm-lock.yaml
             tools/site/pnpm-lock.yaml
 
-      - name: Install recording deps (ffmpeg, jq)
+      - name: Install capture deps (ffmpeg, jq)
         run: sudo apt-get update && sudo apt-get install -y ffmpeg jq
 
-      # make build runs features-check (stale generated manifests fail here),
-      # embeds the SPA, and produces the binary the specs drive.
+      # make build-bin runs features-check (stale generated manifests fail here),
+      # embeds the SPA, and produces bin/kitsoki, the binary the specs drive.
       - name: Build kitsoki
-        run: |
-          make build
-          mkdir -p bin && cp ./kitsoki bin/kitsoki
+        run: make build-bin
 
       - name: Install Playwright
         working-directory: tools/runstatus
@@ -88,33 +87,29 @@ jobs:
       - name: Emit feature catalog contract
         run: make features-index && make site-data
 
-      # Restore previous recordings; the per-demo stamps decide what is stale.
+      # Catch docs/site dead links before spending the longer replay-capture pass.
+      # This is intentionally media-light: missing replays degrade to placeholders.
+      - name: Build site preflight
+        run: make site
+
+      # Restore previous replay captures; the per-demo stamps decide what is stale.
       - uses: actions/cache@v4
         with:
           path: .artifacts
-          key: demos-v1-${{ hashFiles('features/**', 'tools/runstatus/tests/playwright/**', 'tools/runstatus/src/**', 'stories/**', 'internal/**/*.go', 'cmd/**/*.go', 'go.sum') }}
+          key: rrweb-demos-v1-${{ hashFiles('features/**', 'tools/runstatus/tests/playwright/**', 'tools/runstatus/src/**', 'stories/**', 'internal/**/*.go', 'cmd/**/*.go', 'go.sum') }}
           restore-keys: |
-            demos-v1-
+            rrweb-demos-v1-
 
-      - name: Record demos
+      - name: Capture rrweb demos
         id: record-demos
         continue-on-error: true
         run: ./scripts/record-demos.sh ${{ inputs.rerecord && '--force' || '' }}
 
-      # Stitch the per-section recordings into the complete-product-tour master
-      # (pure no-LLM post-processing). Runs after recording so every section
-      # source exists; before the site build so the master + its 8-group rail
-      # deploy instead of degrading to a poster.
-      - name: Stitch master product tour
-        id: stitch-tour
-        continue-on-error: true
-        run: cd tools/runstatus && pnpm exec tsx scripts/features/stitch-tour.mjs complete-product-tour
-
-      - name: Upload recording diagnostics
-        if: ${{ steps.record-demos.outcome == 'failure' || steps.stitch-tour.outcome == 'failure' }}
+      - name: Upload replay diagnostics
+        if: ${{ steps.record-demos.outcome == 'failure' }}
         uses: actions/upload-artifact@v4
         with:
-          name: recording-diagnostics
+          name: replay-capture-diagnostics
           path: |
             .artifacts/**/diagnostic.log
             tools/runstatus/test-results/**
@@ -124,9 +119,25 @@ jobs:
       - name: Build site
         run: make site
 
+      # Hard gate (NOT continue-on-error): every promo-grid feature (the
+      # landing-page set — a `promo:` block in features/<id>.yaml) must have
+      # real staged replay media, not just cached shape. Capture above is
+      # best-effort so a transient failure can't block docs-only pushes, but
+      # this step makes sure that leniency can never silently ship a promo
+      # feature with zero media — it fails the build instead.
+      - name: Check promo media presence
+        run: make media-check-promo
+
+      # Hard gate: every releases/latest/download/... link in download.md must
+      # resolve (the page 404'd for weeks with zero signal when no release
+      # existed — v0.1.0's assets are live now, so a dead download page fails
+      # the build outright).
+      - name: Check download links
+        run: node tools/site/scripts/check-download-links.mjs
+
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: tools/site/.vitepress/dist
+          path: .temp/site/dist
 
   deploy:
     needs: build

@@ -37,7 +37,7 @@ examples:
     args:
       idea: "Add a reusable process for model/harness evaluation and default selection."
       clarification_log: "Must use no-cost tests by default and produce Markdown, deck, and JSON artifacts."
-      upstream_paths: "docs/testing/agent-evals.md, docs/architecture/harness-profiles.md"
+      upstream_paths: "docs/testing/agent-evals.md, docs/guide/agents/harness-profiles.md"
       feedback: ""
       revise: false
       current_references: {}
@@ -47,6 +47,6 @@ examples:
         - path: "docs/testing/agent-evals.md"
           sections: "Dataset Shape; Reports"
           rationale: "Defines story-local agent eval shape and reporting contract."
-        - path: "docs/architecture/harness-profiles.md"
+        - path: "docs/guide/agents/harness-profiles.md"
           sections: "Configuration; Selecting a profile"
           rationale: "Defines configured profiles, model catalogs, and default_profile behavior."

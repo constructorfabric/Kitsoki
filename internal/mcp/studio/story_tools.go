@@ -12,6 +12,7 @@ import (
 
 	"kitsoki/internal/app"
 	"kitsoki/internal/app/graph"
+	"kitsoki/internal/kitstage"
 	"kitsoki/internal/testrunner"
 )
 
@@ -45,23 +46,23 @@ func (srv *Server) registerStoryTools() {
 	if !srv.readOnly {
 		mcpsdk.AddTool(srv.mcpSrv, &mcpsdk.Tool{
 			Name:        "story.write",
-			Description: "Write a workspace-scoped file then auto-validate the story. {path, content}; returns {written, validation} where validation is the same {ok, errors[]} as story.validate. Writes are confined to the workspace dir (path escape rejected).",
+			Description: "Write a workspace-scoped file, auto-validating when the workspace contains app.yaml. {path, content, validate?}; validate defaults to auto (true for story packages, false for plain workspaces). Returns {written, validated, validation?}. Writes are confined to the workspace dir (path escape rejected).",
 		}, srv.handleStoryWrite)
 	}
 
 	mcpsdk.AddTool(srv.mcpSrv, &mcpsdk.Tool{
 		Name:        "story.validate",
-		Description: "Load and validate the story (app.Load). Returns {ok, errors[]} where each error is {file, line, column, message} — the exact load-time invariant set kitsoki run enforces. {dir?} defaults to the bound workspace.",
+		Description: "Load and validate the story (app.Load). Returns {ok, errors[]} where each error is {file, line, column, message} — the exact load-time invariant set kitsoki run enforces. {dir?, staged?}: dir defaults to the bound workspace; staged=true resolves staged kit-update candidates for this call only.",
 	}, srv.handleStoryValidate)
 
 	mcpsdk.AddTool(srv.mcpSrv, &mcpsdk.Tool{
 		Name:        "story.graph",
-		Description: "Inspect the story's room graph (the same computation behind the web /editor). {dir?, room?, agents?}: room set → that room's detail; agents=true → that room's agent contracts; else the BFS room list. {dir?} defaults to the bound workspace.",
+		Description: "Inspect the story graph. {dir?, graph?, room?, agents?}: graph=true → renderer-neutral kitsoki.graph/v1 nodes/edges; room set → that room's detail; agents=true → that room's agent contracts; else the BFS room list. {dir?} defaults to the bound workspace.",
 	}, srv.handleStoryGraph)
 
 	mcpsdk.AddTool(srv.mcpSrv, &mcpsdk.Tool{
 		Name:        "story.test",
-		Description: "Run the story's deterministic flow fixtures (testrunner.RunFlows — no LLM, replay/cassette honored). {dir?, flows?, recording?, allow_missing_recording?, fail_fast?, verbose?, json?, trace_out?, detailed?}: flows overrides the default <dir>/flows/*.yaml glob. Returns a per-fixture pass/fail report (per-fixture failure_count only; pass detailed=true for full failure strings).",
+		Description: "Run the story's deterministic flow fixtures (testrunner.RunFlows — no LLM, replay/cassette honored). {dir?, flows?, recording?, allow_missing_recording?, fail_fast?, verbose?, json?, trace_out?, detailed?, staged?}: flows overrides the default <dir>/flows/*.yaml glob; staged=true resolves staged kit-update candidates for this call only. Returns a per-fixture pass/fail report (per-fixture failure_count only; pass detailed=true for full failure strings).",
 	}, srv.handleStoryTest)
 }
 
@@ -85,17 +86,19 @@ type StoryReadOK struct {
 
 // StoryWriteArgs is the input to story.write.
 type StoryWriteArgs struct {
-	Path    string `json:"path"`
-	Content string `json:"content"`
-	Dir     string `json:"dir,omitempty"`
+	Path     string `json:"path"`
+	Content  string `json:"content"`
+	Dir      string `json:"dir,omitempty"`
+	Validate *bool  `json:"validate,omitempty"`
 }
 
 // StoryWriteOK is the story.write success result: the write landed and the
-// story was re-validated in the same round-trip.
+// story was re-validated in the same round-trip when Validated is true.
 type StoryWriteOK struct {
-	OK         bool            `json:"ok"`         // always true on this branch (the write succeeded)
-	Written    string          `json:"written"`    // the workspace-relative path written
-	Validation StoryValidateOK `json:"validation"` // the post-write validation (same shape as story.validate)
+	OK         bool             `json:"ok"`                   // always true on this branch (the write succeeded)
+	Written    string           `json:"written"`              // the workspace-relative path written
+	Validated  bool             `json:"validated"`            // true when app.Load was run after the write
+	Validation *StoryValidateOK `json:"validation,omitempty"` // the post-write validation (same shape as story.validate)
 }
 
 // StoryValidateArgs is the input to story.validate.
@@ -103,6 +106,11 @@ type StoryValidateArgs struct {
 	// Dir overrides the workspace dir to validate (optional; defaults to the
 	// bound workspace handle). May be a story directory or an app.yaml path.
 	Dir string `json:"dir,omitempty"`
+	// Staged resolves kits with a staged update candidate (kitsoki kit
+	// update) to the candidate's pinned tree FOR THIS CALL ONLY — the
+	// long-lived server's resolver and environment are never mutated.
+	// Kits without a staged entry resolve normally.
+	Staged bool `json:"staged,omitempty"`
 }
 
 // StoryValidateOK is the story.validate result: the structured load-time
@@ -123,21 +131,24 @@ type ValidationItem struct {
 }
 
 // StoryGraphArgs is the input to story.graph. The mode is selected by params:
-// Room set → room detail; Agents=true → agent contracts; else the room list.
+// Graph=true → graph wire shape; Room set → room detail; Agents=true → agent
+// contracts; else the room list.
 type StoryGraphArgs struct {
 	Dir    string `json:"dir,omitempty"`
 	Room   string `json:"room,omitempty"`
 	Agents bool   `json:"agents,omitempty"`
+	Graph  bool   `json:"graph,omitempty"`
 }
 
 // StoryGraphOK is the story.graph result. Exactly one of Rooms / Detail /
 // Agents is populated, per the selected mode; Mode names which.
 type StoryGraphOK struct {
 	OK     bool                  `json:"ok"`               // always true on this branch
-	Mode   string                `json:"mode"`             // "rooms" | "detail" | "agents"
+	Mode   string                `json:"mode"`             // "rooms" | "detail" | "agents" | "graph"
 	Rooms  []RoomSummaryItem     `json:"rooms,omitempty"`  // mode == rooms
 	Detail *graph.RoomDetail     `json:"detail,omitempty"` // mode == detail
 	Agents []graph.AgentContract `json:"agents,omitempty"` // mode == agents
+	Graph  *graph.KitsokiGraph   `json:"graph,omitempty"`  // mode == graph
 }
 
 // RoomSummaryItem is the token-diet projection of graph.RoomSummary for the
@@ -181,6 +192,11 @@ type StoryTestArgs struct {
 	// false (default) only a per-fixture failure COUNT is returned, keeping the
 	// MCP payload small; set true to see *why* a fixture failed.
 	Detailed bool `json:"detailed,omitempty"`
+	// Staged resolves kits with a staged update candidate (kitsoki kit
+	// update) to the candidate's pinned tree FOR THIS CALL ONLY — the
+	// long-lived server's resolver and environment are never mutated.
+	// Kits without a staged entry resolve normally.
+	Staged bool `json:"staged,omitempty"`
 }
 
 // StoryTestOK is the story.test result: the per-fixture pass/fail report.
@@ -249,12 +265,13 @@ func (srv *Server) handleStoryWrite(
 	if err := os.WriteFile(abs, []byte(args.Content), 0o644); err != nil {
 		return buildToolError(ErrBadRequest, fmt.Sprintf("write %s: %v", args.Path, err)), nil, nil
 	}
-	// Auto-validate so a malformed edit is caught now, not on the next session.
-	return nil, StoryWriteOK{
-		OK:         true,
-		Written:    args.Path,
-		Validation: validateStory(appPath, srv.importResolver),
-	}, nil
+	out := StoryWriteOK{OK: true, Written: args.Path}
+	if shouldValidateStoryWrite(appPath, args.Validate) {
+		validation := validateStory(appPath, srv.importResolver)
+		out.Validated = true
+		out.Validation = &validation
+	}
+	return nil, out, nil
 }
 
 // handleStoryValidate loads and validates the story, returning the structured
@@ -268,12 +285,12 @@ func (srv *Server) handleStoryValidate(
 	if rerr != nil {
 		return rerr, nil, nil
 	}
-	return nil, validateStory(appPath, srv.importResolver), nil
+	return nil, validateStory(appPath, srv.callResolver(args.Staged)), nil
 }
 
-// handleStoryGraph computes the room graph view. The mode is selected by the
-// params, mirroring the web editor's dispatch (editor.go): a room id selects
-// detail, the agents flag selects agent contracts, else the room list.
+// handleStoryGraph computes the story graph views. The mode is selected by the
+// params, mirroring the web editor's dispatch for legacy modes, with graph=true
+// returning the renderer-neutral Kitsoki graph API.
 func (srv *Server) handleStoryGraph(
 	ctx context.Context,
 	req *mcpsdk.CallToolRequest,
@@ -289,6 +306,9 @@ func (srv *Server) handleStoryGraph(
 	}
 
 	switch {
+	case args.Graph:
+		g := graph.RoomGraph(a, "story:"+appPath+"#rooms")
+		return nil, StoryGraphOK{OK: true, Mode: "graph", Graph: &g}, nil
 	case args.Room != "" && args.Agents:
 		return nil, StoryGraphOK{OK: true, Mode: "agents", Agents: graph.AgentContracts(a, args.Room)}, nil
 	case args.Agents:
@@ -316,9 +336,9 @@ func (srv *Server) handleStoryTest(
 	if rerr != nil {
 		return rerr, nil, nil
 	}
-	glob := args.Flows
-	if glob == "" {
-		glob = filepath.Join(storyDir, "flows", "*.yaml")
+	glob, gerr := resolveFlowGlob(storyDir, args.Flows)
+	if gerr != nil {
+		return buildToolError(ErrBadRequest, "story.test: "+gerr.Error()), nil, nil
 	}
 	report, err := testrunner.RunFlows(ctx, appPath, glob, testrunner.FlowOptions{
 		RecordingOverride:     args.Recording,
@@ -327,7 +347,7 @@ func (srv *Server) handleStoryTest(
 		Verbose:               args.Verbose,
 		JSONOut:               args.JSON,
 		TracePath:             args.TraceOut,
-		ImportResolver:        srv.importResolver,
+		ImportResolver:        srv.callResolver(args.Staged),
 	})
 	if err != nil {
 		return buildToolError(ErrBadRequest, fmt.Sprintf("run flows: %v", err)), nil, nil
@@ -354,7 +374,119 @@ func (srv *Server) resolveWorkspace(override string) (storyDir, appPath string, 
 		base = wh.Dir
 	}
 	dir, app := splitWorkspacePath(base)
+	if st, err := os.Stat(app); err == nil && !st.IsDir() {
+		return dir, app, nil
+	}
+	if suggestions := discoverStoryRoots(dir, 8); len(suggestions) > 0 {
+		return "", "", buildToolError(ErrBadRequest, fmt.Sprintf("no app.yaml at %s; pass dir as a story root, for example: %s", app, strings.Join(suggestions, ", ")))
+	}
 	return dir, app, nil
+}
+
+func resolveFlowGlob(storyDir, flows string) (string, error) {
+	if strings.TrimSpace(flows) == "" {
+		return filepath.Join(storyDir, "flows", "*.yaml"), nil
+	}
+	parts := strings.Split(flows, ",")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if filepath.IsAbs(part) {
+			out = append(out, part)
+			continue
+		}
+		joined, err := safeJoin(storyDir, part)
+		if err != nil {
+			return "", err
+		}
+		out = append(out, joined)
+	}
+	if len(out) == 0 {
+		return "", errors.New("flows is empty")
+	}
+	return strings.Join(out, ","), nil
+}
+
+func discoverStoryRoots(base string, max int) []string {
+	if max <= 0 {
+		return nil
+	}
+	absBase, err := filepath.Abs(base)
+	if err != nil {
+		return nil
+	}
+	if st, err := os.Stat(absBase); err != nil || !st.IsDir() {
+		return nil
+	}
+	seen := map[string]bool{}
+	var roots []string
+	addRoot := func(root string) bool {
+		if rel, relErr := filepath.Rel(absBase, root); relErr == nil && rel != "." {
+			root = rel
+		}
+		root = filepath.ToSlash(root)
+		if root == "." || seen[root] {
+			return len(roots) >= max
+		}
+		seen[root] = true
+		roots = append(roots, root)
+		return len(roots) >= max
+	}
+	for _, preferred := range []string{"stories", filepath.Join("internal", "basestories", "stories"), filepath.Join(".kitsoki", "stories")} {
+		entries, err := os.ReadDir(filepath.Join(absBase, preferred))
+		if err != nil {
+			continue
+		}
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
+			root := filepath.Join(absBase, preferred, entry.Name())
+			if st, err := os.Stat(filepath.Join(root, "app.yaml")); err == nil && !st.IsDir() {
+				if addRoot(root) {
+					return roots
+				}
+			}
+		}
+	}
+	walkErr := filepath.WalkDir(absBase, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			if path != absBase && skipStoryDiscoveryDir(d.Name()) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if d.Name() != "app.yaml" {
+			return nil
+		}
+		root := filepath.Dir(path)
+		if addRoot(root) {
+			return filepath.SkipAll
+		}
+		return nil
+	})
+	if walkErr != nil && !errors.Is(walkErr, filepath.SkipAll) {
+		return nil
+	}
+	return roots
+}
+
+func skipStoryDiscoveryDir(name string) bool {
+	if strings.HasPrefix(name, ".") {
+		return true
+	}
+	switch name {
+	case "node_modules", "vendor", "dist", "build", "target":
+		return true
+	default:
+		return false
+	}
 }
 
 // splitWorkspacePath maps a workspace handle (a story dir or an app.yaml path)
@@ -365,6 +497,16 @@ func splitWorkspacePath(base string) (storyDir, appPath string) {
 		return filepath.Dir(base), base
 	}
 	return base, filepath.Join(base, "app.yaml")
+}
+
+func shouldValidateStoryWrite(appPath string, explicit *bool) bool {
+	if explicit != nil {
+		return *explicit
+	}
+	if st, err := os.Stat(appPath); err == nil && !st.IsDir() {
+		return true
+	}
+	return false
 }
 
 // safeJoin resolves rel under root and confines it there: an absolute rel, or
@@ -389,6 +531,20 @@ func safeJoin(root, rel string) (string, error) {
 		return "", fmt.Errorf("path %q escapes the workspace", rel)
 	}
 	return joined, nil
+}
+
+// callResolver returns the import resolver one story.* call should use:
+// the server's long-lived resolver, wrapped with staged-candidate
+// resolution (kitstage.WrapResolver, select-all posture — kits without a
+// staged entry fall through) when the caller passed staged:true. The wrap
+// is strictly per-call: the server's resolver and process environment are
+// never mutated, so concurrent calls without staged:true keep accepted
+// resolution.
+func (srv *Server) callResolver(staged bool) app.ImportResolver {
+	if !staged {
+		return srv.importResolver
+	}
+	return kitstage.WrapResolver(srv.importResolver, kitstage.SelectAll)
 }
 
 // ── shared wrappers over shipped functions ────────────────────────────────────

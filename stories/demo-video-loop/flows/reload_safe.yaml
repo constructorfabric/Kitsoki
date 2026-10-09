@@ -24,12 +24,14 @@ host_handlers:
       # (their binds are already set). stamp-epoch / validate-1 / qa-1 run fresh.
       stamp-epoch: { data: { ok: true, exit_code: 0, stdout: "1750000000" } }
       validate-1:  { data: { ok: true, exit_code: 0, stdout: "" } }
-      qa-1:        { data: { ok: true, exit_code: 0, stdout: "PASS" } }
       read-qa-report: { data: { ok: true, exit_code: 0, stdout: "(no failures)" } }
   host.agent.task:
     by_call:
       maker-1: { data: { submitted: { summary: "resumed cut", video_path: ".artifacts/tour/aa.mp4", frames_dir: ".artifacts/tour/frames", chapters_path: ".artifacts/tour/aa.chapters.json", feature_md_path: ".artifacts/ui-qa/feature.md", scenarios_path: ".artifacts/ui-qa/scenarios.yaml" } } }
   host.artifacts_dir: { data: { ok: true } }
+  host.ui_qa.run:
+    by_call:
+      qa-1: { data: { ok: true, exit_code: 0, qa_ok: true, qa_exit_code: 0 } }
 
 turns:
   - intent: { name: retry, slots: {} }
@@ -55,7 +57,7 @@ turns:
       - handler: host.run
         args: { call: validate-1 }
         times: 1
-      - handler: host.run
+      - handler: host.ui_qa.run
         args: { call: qa-1 }
         times: 1
 

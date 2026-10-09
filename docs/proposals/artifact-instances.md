@@ -3,13 +3,15 @@
 **Status:** Draft v1. Nothing implemented yet.
 **Kind:**   runtime
 **Epic:**   ../artifact-driven-stories.md
+**Depends on:** [`artifact-job-registry.md`](artifact-job-registry.md) for the
+durable job identity this workspace attaches to.
 
 ## Why
 
 The design pipeline persists each phase's output to a per-run workspace and reads
 it back later, but the workspace plumbing is hand-rolled and **one-shot**:
 
-- `stories/dev-story/scripts/design_workspace.py` mints
+- `stories/dev-story/scripts/design_workspace.star` mints
   `docs/proposals/.workspace/<slug>/` fresh; the room calls it `once: true` keyed
   on `world.design_workspace` so a `/reload` doesn't re-mint — but there is no
   lookup of a workspace that *already existed before this run*.
@@ -38,10 +40,11 @@ re-joined, and re-run. One sentence: *an artifact-driven story phase persists it
 output to a keyed workspace the moment it's produced, and the workspace is a
 resumable, get-or-create instance — not a fresh scratch dir each run.*
 
-This slice owns the **front half** of the lifecycle: declare → instance →
-persist → discover → re-join → back-step/update-mode. Promotion and disposition
-(share/publish/archive/GC) are [slice 2](artifact-publish-lifecycle.md); the
-operator surface is [slice 3](artifact-instance-console.md).
+This slice owns the **workspace front half** of the lifecycle: declare →
+instance → persist → discover → re-join → back-step/update-mode. Promotion and
+disposition (share/publish/archive/GC) are
+[`artifact-publish-lifecycle.md`](artifact-publish-lifecycle.md); the operator
+surface is [`artifact-instance-console.md`](artifact-instance-console.md).
 
 ## Impact
 
@@ -52,7 +55,7 @@ operator surface is [slice 3](artifact-instance-console.md).
   `.list` host calls + a few world keys (table below). No new effect verbs.
 - **Stories affected:** none change behavior unless they adopt `artifacts:`. The
   design pipeline (`stories/dev-story/rooms/design*.yaml`) migrates onto it as the
-  worked example (task 3.1) — `design_workspace.py`'s mint-only logic becomes a
+  worked example (task 3.1) — `design_workspace.star`'s mint-only logic becomes a
   `resolve` (get-or-create), and `design_search`'s amend path becomes generic
   update-mode.
 - **Backward compat:** opt-in. A story with no `artifacts:` block is unchanged;
@@ -104,7 +107,7 @@ update-mode re-run, carrying `{instance_id, key, from_phase, to_phase, reason}`.
 Artifact *writes* already emit `journal.ArtifactEvent` / `KindArtifactEmitted`
 (`internal/journal/`) — reuse that, don't duplicate it. If `instance.lifecycle`
 needs a new `EventKind`, that's a small tracing concern; note it for the consumer
-([slice 3](artifact-instance-console.md) and runstatus) but it adds no
+([artifact-instance-console.md](artifact-instance-console.md) and runstatus) but it adds no
 interpretive decision to the moat.
 
 ## Engine seams & invariants
@@ -123,7 +126,7 @@ story load, not mid-run):
 ## Backward compatibility / migration
 
 Opt-in and mechanical. The design pipeline is the migration proof:
-`design_workspace.py`'s mint becomes `iface.instance.resolve` (get-or-create, so
+`design_workspace.star`'s mint becomes `iface.instance.resolve` (get-or-create, so
 re-entry re-joins instead of minting a second `<slug>/`); the `design_search` →
 `design_change_target` amend path becomes the generic back-step/update-mode gate.
 The numbered-artifact writes are untouched. Existing flow fixtures for the design
@@ -174,10 +177,12 @@ are mocked, per CLAUDE.md — no real LLM).
 
 ## Non-goals
 
-- **No promotion/publish/archive here.** Draft → shared → published → disposition
-  is [slice 2](artifact-publish-lifecycle.md).
+- **No promotion/publish/archive here.** Draft → shared → published →
+  disposition is [`artifact-publish-lifecycle.md`](artifact-publish-lifecycle.md).
 - **No operator surface here.** The re-join picker and instance manager are
-  [slice 3](artifact-instance-console.md); this slice only exposes the host calls
-  they drive.
+  [`artifact-instance-console.md`](artifact-instance-console.md); this slice only
+  exposes the host calls they drive.
+- **No durable run URL/index here.** The artifact job registry and trace service
+  own session attachment, run URLs, and by-handle artifact serving.
 - **No new artifact file format.** Writes stay on `host.artifacts_dir` /
   [artifact-format](artifact-format.md).

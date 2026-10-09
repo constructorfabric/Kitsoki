@@ -14,6 +14,8 @@ states:
         when: "world.last_op_outcome == 'pruned'"
       - prose: "Worktree removed: {{ world.last_op_output }}"
         when: "world.last_op_outcome == 'removed'"
+      - prose: "Refusing to remove worktree because its branch is not merged: {{ world.last_op_output }}"
+        when: "world.last_op_outcome == 'unmerged_branch'"
       - choice:
           mode: single
           prompt: "Actions"
@@ -116,16 +118,33 @@ states:
             - invoke: host.run
               id: remove_wt_only
               with:
-                cmd: git
-                args: ["worktree", "remove", "{{ slots.path }}"]
+                cmd: bash
+                args:
+                  - "-c"
+                  - |
+                    set -e
+                    export NO_COLOR=1 GIT_TERMINAL_PROMPT=0 GIT_PAGER=cat
+                    WT="$1"
+                    if [ -z "$WT" ]; then
+                      jq -n '{ok:false,outcome:"",output:"no worktree path provided"}'
+                      exit 0
+                    fi
+                    OUT=$(git worktree remove "$WT" 2>&1) || {
+                      jq -n --arg out "$OUT" '{ok:false,outcome:"",output:$out}'
+                      exit 0
+                    }
+                    git worktree prune 2>/dev/null || true
+                    jq -n --arg out "$OUT" --arg wt "$WT" '{ok:true,outcome:"removed",output:("Removed worktree "+$wt)}'
+                  - "kitsoki-remove-worktree"
+                  - "{{ slots.path }}"
                 cwd: "{{ world.working_dir }}"
               bind:
-                last_op_output: stdout
-                last_op_ok:     ok
+                last_op_output:  "stdout_json.output"
+                last_op_ok:      "stdout_json.ok"
+                last_op_outcome: "stdout_json.outcome"
               on_error: worktree_list
             - set:
                 worktree_list:   {}
-                last_op_outcome: "removed"
       remove_all:
         - target: worktree_list
           effects:
@@ -138,20 +157,51 @@ states:
                   - |
                     set -e
                     export NO_COLOR=1 GIT_TERMINAL_PROMPT=0 GIT_PAGER=cat
-                    WT="{{ slots.path }}"
-                    BR=$(git worktree list --porcelain 2>/dev/null | awk "/^worktree $WT\$/{found=1} found && /^branch /{print substr(\$0,15); exit}")
-                    git worktree remove "$WT" 2>&1
-                    [ -n "$BR" ] && git branch -d "$BR" 2>&1 || true
-                    git worktree prune 2>&1
-                    echo "Removed $WT and branch $BR"
+                    WT="$1"
+                    INTEGRATION="$2"
+                    if [ -z "$WT" ]; then
+                      jq -n '{ok:false,outcome:"",output:"no worktree path provided"}'
+                      exit 0
+                    fi
+                    BR=$(git worktree list --porcelain 2>/dev/null | awk -v wt="$WT" '
+                      $0 == "worktree " wt {found=1; next}
+                      found && /^branch / {sub(/^branch refs\/heads\//, ""); print; exit}
+                      found && /^$/ {found=0}
+                    ')
+                    if [ -n "$BR" ] && [ "$BR" != "HEAD" ]; then
+                      if ! git merge-base --is-ancestor "$BR" "$INTEGRATION" 2>/dev/null; then
+                        jq -n --arg br "$BR" --arg int "$INTEGRATION" \
+                          '{ok:false,outcome:"unmerged_branch",output:("branch "+$br+" is not merged into "+$int+"; worktree was not removed")}'
+                        exit 0
+                      fi
+                    fi
+                    OUT=$(git worktree remove "$WT" 2>&1) || {
+                      jq -n --arg out "$OUT" '{ok:false,outcome:"",output:$out}'
+                      exit 0
+                    }
+                    BR_STATE="kept"
+                    if [ -n "$BR" ] && [ "$BR" != "HEAD" ]; then
+                      DEL_OUT=$(git branch -d "$BR" 2>&1) || {
+                        jq -n --arg out "$DEL_OUT" --arg br "$BR" \
+                          '{ok:false,outcome:"",output:("worktree removed, but branch "+$br+" delete failed: "+$out)}'
+                        exit 0
+                      }
+                      BR_STATE="deleted"
+                    fi
+                    git worktree prune 2>/dev/null || true
+                    jq -n --arg wt "$WT" --arg br "$BR" --arg st "$BR_STATE" \
+                      '{ok:true,outcome:"removed",output:("Removed worktree "+$wt+"; branch "+$br+" "+$st)}'
+                  - "kitsoki-remove-all"
+                  - "{{ slots.path }}"
+                  - "{{ world.integration_branch }}"
                 cwd: "{{ world.working_dir }}"
               bind:
-                last_op_output: stdout
-                last_op_ok:     ok
+                last_op_output:  "stdout_json.output"
+                last_op_ok:      "stdout_json.ok"
+                last_op_outcome: "stdout_json.outcome"
               on_error: worktree_list
             - set:
                 worktree_list:   {}
-                last_op_outcome: "removed"
       back:
         - when: "world.on_integration == true"
           target: main_ops

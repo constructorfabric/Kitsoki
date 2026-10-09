@@ -28,12 +28,14 @@ import (
 	"time"
 
 	"github.com/goccy/go-yaml"
+
+	"kitsoki/internal/capsule"
 )
 
 // LocalFilesTicketHandler implements host.local_files.ticket (prefix-fallback).
 //
 // Required args:
-//   - op (string): one of "search", "get", "comment", "transition", "list_mine".
+//   - op (string): one of "search", "get", "comment", "transition", "assign", "unassign", "list_mine".
 //
 // Per-op args/returns follow the ticket iface contract.  See doc comments on each
 // dispatch helper below for the precise shape.
@@ -67,6 +69,10 @@ func LocalFilesTicketHandler(ctx context.Context, args map[string]any) (Result, 
 		return ticketComment(root, args, time.Now().UTC())
 	case "transition":
 		return ticketTransition(root, args)
+	case "assign":
+		return ticketSetAssignee(root, args, false)
+	case "unassign":
+		return ticketSetAssignee(root, args, true)
 	case "list_mine":
 		return ticketListMine(root, args)
 	default:
@@ -75,19 +81,29 @@ func LocalFilesTicketHandler(ctx context.Context, args map[string]any) (Result, 
 }
 
 // resolveTicketsRoot resolves the directory under which `issues/bugs/`
-// lives.  Order of precedence: args.root → $KITSOKI_TICKETS_ROOT → cwd.
+// lives. Order of precedence: args.root -> $KITSOKI_TICKETS_ROOT -> cwd.
+// Relative roots inside a managed capsule are anchored at the recorded source
+// checkout, so readers and mutators use the same durable ticket pile as filers.
 func resolveTicketsRoot(args map[string]any) (string, error) {
-	if v, _ := args["root"].(string); v != "" {
-		return v, nil
+	root, _ := args["root"].(string)
+	root = strings.TrimSpace(root)
+	if root == "" {
+		root = strings.TrimSpace(os.Getenv("KITSOKI_TICKETS_ROOT"))
 	}
-	if v := os.Getenv("KITSOKI_TICKETS_ROOT"); v != "" {
-		return v, nil
+	if root == "" {
+		root = "."
+	}
+	if filepath.IsAbs(root) {
+		return filepath.Clean(root), nil
+	}
+	if sourcePath := capsule.ManagedSourcePathFromCWD(root); sourcePath != "" {
+		return sourcePath, nil
 	}
 	cwd, err := os.Getwd()
 	if err != nil {
 		return "", fmt.Errorf("resolve cwd: %w", err)
 	}
-	return cwd, nil
+	return filepath.Clean(filepath.Join(cwd, root)), nil
 }
 
 // ticketKindDirs enumerates the issues/* subdirectories scanned by the
@@ -100,9 +116,10 @@ var ticketKindDirs = []struct{ Kind, Dir string }{
 	{"epic", "epics"},
 }
 
-// findTicketPath locates issues/<kind>/<id>.md under root.  Returns
-// ("", "", nil) when the id is not found in any of the type dirs; the
-// caller turns that into a domain-level "not found" error.
+// findTicketPath locates a ticket file under issues/<kind>/ using the
+// canonical flat shape (`<id>.md`). Returns ("", "", nil) when the id is
+// not found in any of the type dirs; the caller turns that into a
+// domain-level "not found" error.
 func findTicketPath(root, id string) (path, kind string, err error) {
 	for _, td := range ticketKindDirs {
 		p := filepath.Join(root, "issues", td.Dir, id+".md")
@@ -149,7 +166,7 @@ func readBugFile(path string) (*BugFile, error) {
 		return nil, err
 	}
 	bodyText, comments := splitComments(body)
-	id := strings.TrimSuffix(filepath.Base(path), ".md")
+	id := ticketIDFromPath(path)
 	return &BugFile{
 		ID:       id,
 		Path:     path,
@@ -157,6 +174,10 @@ func readBugFile(path string) (*BugFile, error) {
 		Body:     bodyText,
 		Comments: comments,
 	}, nil
+}
+
+func ticketIDFromPath(path string) string {
+	return strings.TrimSuffix(filepath.Base(path), ".md")
 }
 
 // splitFrontmatter slices the leading `---\n…\n---\n` block off raw and
@@ -289,12 +310,14 @@ func writeBugFile(bf *BugFile) error {
 }
 
 // listAllBugs returns every ticket under root/issues/{bugs,features,
-// epics}/.  Each row carries its source-dir-derived `Kind` so callers
-// can render and route by type.  An absent type-dir yields nothing for
-// that kind — a fresh repo with only bugs is fine.  Name retained for
-// minimal-diff churn; the function now lists all three kinds.
-func listAllBugs(root string) ([]*BugFile, error) {
+// epics}/ using the canonical flat `*.md` shape. Each row carries its
+// source-dir-derived `Kind` so callers can render and route by type.
+// An absent type-dir yields nothing for that kind — a fresh repo with
+// only bugs is fine.  Name retained for minimal-diff churn; the
+// function now lists all three kinds.
+func listAllBugs(root string) ([]*BugFile, []string, error) {
 	var out []*BugFile
+	var warnings []string
 	for _, td := range ticketKindDirs {
 		dir := filepath.Join(root, "issues", td.Dir)
 		entries, err := os.ReadDir(dir)
@@ -302,21 +325,26 @@ func listAllBugs(root string) ([]*BugFile, error) {
 			if os.IsNotExist(err) {
 				continue
 			}
-			return nil, err
+			return nil, nil, err
 		}
 		for _, e := range entries {
-			if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
-				continue
+			if !e.IsDir() && strings.HasSuffix(strings.ToLower(e.Name()), ".md") {
+				// Ticket directories commonly carry their own format README. It is
+				// documentation, not an implicit open ticket.
+				if strings.EqualFold(e.Name(), "README.md") {
+					continue
+				}
+				bf, err := readBugFile(filepath.Join(dir, e.Name()))
+				if err != nil {
+					// Keep the healthy queue available, but make every skipped
+					// candidate visible to the operator. Silently swallowing one
+					// malformed report is indistinguishable from losing it.
+					warnings = append(warnings, fmt.Sprintf("%s: %v", filepath.ToSlash(filepath.Join(dir, e.Name())), err))
+					continue
+				}
+				bf.Kind = td.Kind
+				out = append(out, bf)
 			}
-			bf, err := readBugFile(filepath.Join(dir, e.Name()))
-			if err != nil {
-				// Skip unparseable files so a single bad file doesn't
-				// poison the whole search; callers may grep on stderr
-				// if they care about why.
-				continue
-			}
-			bf.Kind = td.Kind
-			out = append(out, bf)
 		}
 	}
 	// Multi-key sort: severity ASC (P0 first), then ID DESC. IDs are
@@ -333,7 +361,7 @@ func listAllBugs(root string) ([]*BugFile, error) {
 		}
 		return out[i].ID > out[j].ID
 	})
-	return out, nil
+	return out, warnings, nil
 }
 
 // ─── Op dispatchers ─────────────────────────────────────────────────────────
@@ -347,7 +375,7 @@ func ticketSearch(root string, args map[string]any) (Result, error) {
 	query = strings.ToLower(strings.TrimSpace(query))
 	limit := optInt(args, "limit", 0)
 
-	bugs, err := listAllBugs(root)
+	bugs, warnings, err := listAllBugs(root)
 	if err != nil {
 		return Result{Error: fmt.Sprintf("list bugs: %v", err)}, nil
 	}
@@ -359,12 +387,14 @@ func ticketSearch(root string, args map[string]any) (Result, error) {
 				continue
 			}
 		}
-		out = append(out, bugSummary(b))
+		row := bugSummary(b)
+		annotateLocalTicketPath(b, row)
+		out = append(out, row)
 		if limit > 0 && len(out) >= limit {
 			break
 		}
 	}
-	return Result{Data: map[string]any{"tickets": out}}, nil
+	return Result{Data: map[string]any{"tickets": out, "provider_errors": warnings}}, nil
 }
 
 // ticketGet implements ticket.get.
@@ -389,6 +419,7 @@ func ticketGet(root string, args map[string]any) (Result, error) {
 	}
 	bf.Kind = kind
 	data := bugSummary(bf)
+	annotateLocalTicketPath(bf, data)
 	data["body"] = bf.Body
 	cm := make([]map[string]any, 0, len(bf.Comments))
 	for i, c := range bf.Comments {
@@ -495,6 +526,42 @@ func ticketTransition(root string, args map[string]any) (Result, error) {
 	return Result{Data: map[string]any{"ok": true}}, nil
 }
 
+// ticketSetAssignee updates the provider-neutral assignee field. Agent
+// principals are runtime-only identities and must not leak into ticket files.
+func ticketSetAssignee(root string, args map[string]any, clear bool) (Result, error) {
+	id := strings.TrimSpace(ghStr(args["id"]))
+	if id == "" {
+		return Result{Error: "ticket.assign: id argument is required"}, nil
+	}
+	assignee := strings.TrimSpace(ghStr(args["assignee"]))
+	if !clear && assignee == "" {
+		return Result{Error: "ticket.assign: assignee argument is required"}, nil
+	}
+	if strings.HasPrefix(strings.ToLower(assignee), "agent:") {
+		return Result{Error: "ticket.assign: agent principals are runtime-only and cannot be synced to tickets"}, nil
+	}
+	path, _, err := findTicketPath(root, id)
+	if err != nil {
+		return Result{Error: fmt.Sprintf("ticket.assign: %v", err)}, nil
+	}
+	if path == "" {
+		return Result{Error: fmt.Sprintf("ticket.assign: %s not found", id)}, nil
+	}
+	bf, err := readBugFile(path)
+	if err != nil {
+		return Result{Error: fmt.Sprintf("ticket.assign: %v", err)}, nil
+	}
+	if clear {
+		delete(bf.Front, "assignee")
+	} else {
+		bf.Front["assignee"] = assignee
+	}
+	if err := writeBugFile(bf); err != nil {
+		return Result{Error: fmt.Sprintf("ticket.assign: write: %v", err)}, nil
+	}
+	return Result{Data: map[string]any{"ok": true, "assignee": assignee}}, nil
+}
+
 // ticketListMine implements ticket.list_mine.
 //
 // Input args:  filter (string — substring match against assignee).
@@ -505,7 +572,7 @@ func ticketTransition(root string, args map[string]any) (Result, error) {
 func ticketListMine(root string, args map[string]any) (Result, error) {
 	filter, _ := args["filter"].(string)
 	filter = strings.ToLower(strings.TrimSpace(filter))
-	bugs, err := listAllBugs(root)
+	bugs, warnings, err := listAllBugs(root)
 	if err != nil {
 		return Result{Error: fmt.Sprintf("list bugs: %v", err)}, nil
 	}
@@ -515,9 +582,11 @@ func ticketListMine(root string, args map[string]any) (Result, error) {
 		if filter != "" && !strings.Contains(assignee, filter) {
 			continue
 		}
-		out = append(out, bugSummary(b))
+		row := bugSummary(b)
+		annotateLocalTicketPath(b, row)
+		out = append(out, row)
 	}
-	return Result{Data: map[string]any{"tickets": out}}, nil
+	return Result{Data: map[string]any{"tickets": out, "provider_errors": warnings}}, nil
 }
 
 // ─── Field accessors / projections ──────────────────────────────────────────
@@ -536,10 +605,16 @@ func ticketListMine(root string, args map[string]any) (Result, error) {
 // silently get ” for every bug" mistake that produced the original
 // defect.
 func bugSummary(b *BugFile) map[string]any {
+	status := strings.TrimSpace(b.frontString("status"))
+	if status == "" {
+		// Plain Markdown is a valid local ticket. Absence of workflow
+		// frontmatter means newly filed/open, not invisible.
+		status = "open"
+	}
 	out := map[string]any{
 		"id":       b.ID,
 		"title":    b.titleString(),
-		"status":   b.frontString("status"),
+		"status":   status,
 		"severity": b.frontString("severity"),
 		"assignee": b.frontString("assignee"),
 		"url":      b.frontString("url"),
@@ -553,6 +628,25 @@ func bugSummary(b *BugFile) map[string]any {
 		out["type"] = b.Kind
 	}
 	return out
+}
+
+func annotateLocalTicketPath(b *BugFile, row map[string]any) {
+	if b == nil || row == nil {
+		return
+	}
+	path := filepath.ToSlash(b.Path)
+	row["source"] = "local"
+	row["source_id"] = "local"
+	row["source_label"] = "Local"
+	row["source_kind"] = "local"
+	row["source_mode"] = "local"
+	row["source_repo"] = ""
+	row["ticket_repo"] = ""
+	row["ref"] = "local:" + b.ID
+	row["path"] = path
+	if strings.TrimSpace(fmt.Sprint(row["url"])) == "" {
+		row["url"] = path
+	}
 }
 
 // severityRank maps a P0–P3 severity tag to a 0–3 sort weight, with

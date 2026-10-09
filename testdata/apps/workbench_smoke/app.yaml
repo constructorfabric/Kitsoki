@@ -1,0 +1,124 @@
+# workbench_smoke — synthetic no-LLM regression for the `workbench:` state
+# block (docs/proposals/room-workbench.md, Tasks 2.2/2.3).
+#
+# One state (`bench`) declares `workbench:` instead of hand-rolling
+# write_mode/agent_off_ramp/on_enter host.agent.task/default_intent
+# (stories/dev-story/rooms/landing.yaml's pattern). This app exercises the
+# desugared shape end-to-end with NO LLM, mirroring dev-story's own flow
+# fixtures for the equivalent hand-authored primitives:
+#
+#   - free-text capture routes deterministically into the synthesized
+#     `bench_capture` intent (default_intent), which the workbench macro
+#     wires up itself — no hand-authored arc needed.
+#   - the synthesized on_enter host.agent.task dispatch is stubbed by a
+#     flow host_handlers cassette (never a real LLM).
+#   - write_mode: read_only (set by the macro) means the room stays put
+#     across the dispatch — the same observable the gate's own unit table
+#     (internal/host/write_mode_gate_test.go) exercises for the actual
+#     grant mechanics, which a flow fixture cannot drive (the whole
+#     host.agent.task subprocess — and the in-process gate inside it — is
+#     stubbed away; see stories/dev-story/flows/landing_write_mode_opt_in.yaml
+#     for the identical precedent).
+#   - the synthesized agent_off_ramp means an unmapped utterance is
+#     rejected without advancing state or mutating world (the read-only
+#     floor invariant the live off-ramp answer rests on; see
+#     stories/dev-story/flows/landing_off_ramp.yaml).
+#   - a hand-authored route-out arc (`take_route`) proves the deterministic
+#     seam: its `set:` lands on world BEFORE `emit_intent` dispatches into
+#     the second, hand-authored `second` room, whose on_enter reads the
+#     just-set world keys.
+app:
+  id: workbench-smoke
+  version: 0.1.0
+
+hosts:
+  - host.agent.task
+
+toolboxes:
+  bench_toolbox:
+    tools: [Read, Grep, Glob, Edit, Write, Bash]
+    effect: write
+
+world:
+  bench_request: { type: string, default: "" }
+  bench_note:    { type: object, default: {} }
+  ticket_id:     { type: string, default: "" }
+  ticket_type:   { type: string, default: "" }
+  second_note:   { type: string, default: "" }
+  # Optional S6 usable-kitsoki-gate join input (room-workbench Task 1.4(b)'s
+  # real expected_effects join, internal/orchestrator/workbench_gate_signal.go)
+  # — a flow fixture may seed this via initial_world to prove
+  # candidate_completed is computed against bench_note's actual content,
+  # never hardcoded true. Empty by default: ordinary bench_smoke flows never
+  # set it, so the gate signal falls back to its dispatch-only proxy.
+  bench_expected_effects: { type: array, default: [] }
+
+root: bench
+
+intents:
+  # Route-out: fired by the operator (or a rendered quick action) once the
+  # workbench's close-out note suggests a named pipeline. Hand-authored —
+  # workbench: only synthesizes the capture intent, never route-out arcs
+  # (docs/proposals/room-workbench.md's own scoping).
+  take_route:
+    title: "Take the suggested route"
+    description: "Jump onto the pipeline the workbench agent suggested."
+
+  # The second, hand-authored room's own entry intent — what take_route's
+  # emit_intent dispatches into.
+  go_second:
+    title: "Go to second"
+    description: "Enter the second room with the projected ticket."
+
+agents:
+  bench_agent:
+    system_prompt: "You do bench work: pick up the operator's free-form request and get it done."
+    toolbox: bench_toolbox
+
+  agent_qa:
+    system_prompt: "You answer questions about the bench without changing anything."
+    tools: []
+
+states:
+  bench:
+    description: "The synthetic workbench floor."
+    workbench:
+      agent: bench_agent
+      prompt: prompts/bench.md
+      acceptance_schema: schemas/bench-note.json
+      off_ramp_agent: agent_qa
+
+    view:
+      - prose: "Describe what you want done, or take the suggested route."
+
+    on:
+      # Route-out. set: lands on world BEFORE emit_intent dispatches
+      # go_second — the deterministic ordering seam this fixture pins.
+      # emit_intent dispatches against the CURRENT state (bench, since this
+      # transition declares no target: of its own), so the arc it resolves
+      # to is the one below, declared here on bench — mirroring
+      # stories/dev-story/rooms/landing.yaml's take_route/go_bugfix pair.
+      take_route:
+        - effects:
+            - set:
+                ticket_id:   "TKT-900"
+                ticket_type: "task"
+            - emit_intent: "go_second"
+
+      # What take_route's emit_intent resolves to: enters the hand-authored
+      # `second` room, whose on_enter reads the world keys take_route just set.
+      go_second:
+        - target: second
+
+  second:
+    description: "The hand-authored route-out target."
+    relevant_world: [ticket_id, ticket_type, second_note]
+    on_enter:
+      # Reads world.ticket_id / world.ticket_type — proves take_route's set:
+      # effect was already committed to world by the time this on_enter runs
+      # (the ordering the emit_intent seam guarantees).
+      - when: "world.ticket_id != ''"
+        set:
+          second_note: "handling {{ world.ticket_id }} ({{ world.ticket_type }})"
+    view:
+      - prose: "{{ world.second_note }}"

@@ -2,6 +2,7 @@ package harness
 
 import (
 	"context"
+	"encoding/json"
 
 	mcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -90,6 +91,27 @@ type Harness interface {
 
 	// Close releases any subprocess or network resources held by the harness.
 	Close() error
+}
+
+// StructuredInput is a schema-bound, non-routing request handled by harnesses
+// that can expose their underlying model as a general agent plugin. Unlike
+// TurnInput, the supplied schema is the complete output contract; it must not
+// be replaced with the app's transition schema.
+type StructuredInput struct {
+	SessionID  app.SessionID
+	TurnNumber app.TurnNumber
+	StatePath  app.StatePath
+	Prompt     string
+	SchemaJSON json.RawMessage
+}
+
+// StructuredHarness is the optional capability used by agent.FromHarness for
+// arbitrary schema-bound agent calls. Keeping it separate from Harness leaves
+// replay-only routing harnesses source-compatible while preventing the old,
+// unsafe fallback of treating a contextual-router schema as a normal intent
+// turn with an empty allowed-intent list.
+type StructuredHarness interface {
+	RunStructured(ctx context.Context, in StructuredInput) (json.RawMessage, error)
 }
 
 // ClarifyResponse is the error type returned by a harness when the LLM

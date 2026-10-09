@@ -54,7 +54,10 @@ hint in the parallel array of the same name (same order as `stale_docs`).
    skip it and record it in `unresolved[]` with a one-sentence reason.
 5. When done, call `submit` with the `docs_fix_artifact` shape:
    - `applied`: `true` iff every stale_docs entry was addressed.
-   - `summary`: one paragraph naming each touched doc.
+   - Create `.artifacts/docs-review/{{ args.commit_sha }}-fix-report.md` after
+     the first useful diagnosis and update it during each edit. It contains the
+     detailed per-document rationale and evidence; `report_path` returns it.
+   - `summary`: one compact checkpoint sentence naming the result and report.
    - `files_changed[]`: one row per file you edited, each with a
      one-sentence `change:`.
    - `unresolved[]`: rows for skipped entries (empty when applied=true).
@@ -67,7 +70,8 @@ The submit call comes LAST, after all edits are in the worktree.
 ```json
 {
   "applied": true,
-  "summary": "Rewrote §4.3 of docs/embedded/llm-guide.md to lead with the auto-trace default; updated CLAUDE.md's tracing one-liner to match.",
+  "summary": "Updated two stale docs; detailed evidence is in the repair report.",
+  "report_path": ".artifacts/docs-review/abc123-fix-report.md",
   "files_changed": [
     { "path": "docs/embedded/llm-guide.md", "change": "Replaced lines 110-117: --trace is no longer required; auto-trace landing path documented." },
     { "path": "CLAUDE.md", "change": "Updated tracing one-liner: 'pass --trace' → 'every run writes a trace by default'." }

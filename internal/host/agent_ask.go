@@ -1,7 +1,7 @@
 // Package host — host.agent.ask: read-only inspection handler.
 //
 // host.agent.ask is the "read-only inspection" rung of the agent verb ladder
-// (see docs/architecture/agent-cli.md). The LLM may use read tools (Read, Grep, Glob,
+// (see docs/guide/agents/cli.md). The LLM may use read tools (Read, Grep, Glob,
 // WebFetch, WebSearch, Bash under a profile, read-only MCP servers) but cannot
 // mutate anything. Returns prose output; when a schema: is supplied the LLM also
 // calls a submit MCP tool and the handler returns typed JSON alongside stdout.
@@ -35,16 +35,6 @@ import (
 	"kitsoki/internal/render/sourcecolor"
 	"kitsoki/internal/sysprompt"
 )
-
-// mutationTools is the set of tool names that are never permitted in a
-// read-only agent call (ask, decide, extract LLM tier). The loader rejects
-// these at app-load; the handler is a safety net so a manually assembled call
-// cannot sneak mutation tools through.
-var mutationTools = map[string]bool{
-	"Edit":         true,
-	"Write":        true,
-	"NotebookEdit": true,
-}
 
 // AgentAskHandler implements host.agent.ask — the read-only inspection verb.
 //
@@ -186,17 +176,11 @@ func AgentAskHandler(ctx context.Context, args map[string]any) (Result, error) {
 	// Resolve the agent (optional) and compute effective tools.
 	agent, _ := resolveAgent(ctx, args)
 	ctx, agent = applyProvider(ctx, args, agent)
-	tools := effectiveTools(ctx, args, agent)
-
-	// Safety net: reject mutation tools regardless of source.
-	for _, t := range tools {
-		if mutationTools[t] {
-			return Result{Error: fmt.Sprintf(
-				"host.agent.ask: tool %q is not permitted in a read-only ask call (use host.agent.task for mutation tools)",
-				t,
-			)}, nil
-		}
-	}
+	policy := enforceToolbox(ctx, args, agent, "default", ToolboxEnforcementOptions{
+		EffectCeiling:       "read",
+		ReadOnlyDeniedTools: readOnlyAgentVerbDeniedTools,
+	})
+	tools := policy.AllowedTools
 
 	// Bash gate: if Bash is in the effective tool list, the agent must declare
 	// a BashProfile. When no profile is set we deny the call rather than
@@ -226,17 +210,36 @@ func AgentAskHandler(ctx context.Context, args map[string]any) (Result, error) {
 		tools = rewriteToolsForBashMCP(tools)
 	}
 
+	agent = applyNoToolsContract(agent, policy)
 	cliArgs := buildBaseCLIArgs(ctx, sysprompt.Ask, args, agent)
+	cliArgs = setPermissionMode(cliArgs, policy.CLIMode)
+	cliArgs = appendDisallowedToolsFlag(cliArgs, policy.DeniedTools)
+	// When a schema is set the validator MCP server is attached below as
+	// "validator", exposing mcp__validator__submit. Add it to the allowed
+	// tools so the agent can call submit() even when the CLI permission mode
+	// is "default" (the read-only ceiling this handler always enforces) —
+	// without this the tool is outside --allowedTools, so the CLI treats it
+	// as ungranted and blocks on an interactive permission prompt that a
+	// headless `-p` run can never answer (matches the mcp__validator__submit
+	// wiring in agent_task.go's acceptance-schema path).
+	if strings.TrimSpace(schemaArg) != "" {
+		tools = append(tools, "mcp__validator__submit")
+	}
 	// Forward operator questions into kitsoki when a live surface is attached.
 	var opAskCleanup func()
 	cliArgs, tools, opAskCleanup, _ = attachOperatorAsk(ctx, cliArgs, tools)
 	defer opAskCleanup()
+	policy = policy.WithAllowed(tools)
 	cliArgs = appendAllowedToolsFlag(cliArgs, tools)
 
-	// Build the MCP servers map. When Bash is in use we attach the kitsoki-bash
+	// Build the MCP servers map. Contract-level servers are the floor; per-call
+	// mcp/mcp_servers entries override by server name. When Bash is in use we attach the kitsoki-bash
 	// server; when a schema: is given we attach the submit validator. Both can
 	// coexist in the same --mcp-config file.
-	mcpServers := make(map[string]any)
+	mcpServers := effectiveMCPServers(args, agent)
+	if mcpServers == nil {
+		mcpServers = make(map[string]any)
+	}
 
 	if hasBash {
 		bashEntry, bashConfigPath, bashErr := BuildBashMCPEntry(agent.BashProfile, workingDir)
@@ -274,6 +277,8 @@ func AgentAskHandler(ctx context.Context, args map[string]any) (Result, error) {
 		mcpServers["validator"] = validatorEntry
 	}
 
+	mcpServers = attachStudioMCPServer(mcpServers, tools)
+
 	if len(mcpServers) > 0 {
 		mcpConfigPath, cleanup, cfgErr := writeMCPConfigTempfile(mcpServers, "kitsoki-ask-mcp")
 		if cfgErr != nil {
@@ -308,7 +313,7 @@ func AgentAskHandler(ctx context.Context, args map[string]any) (Result, error) {
 	} else if hasVisual {
 		askInput["visual"] = visualBlock
 	}
-	appendAgentCalledEvent(ctx, callStart, callID, rendered, AgentCalledPayload{
+	appendAgentCalledEvent(ctx, callStart, callID, rendered, policy.AgentCalledFields(AgentCalledPayload{
 		Verb:           "ask",
 		Agent:          agentNameFromArgs(args),
 		Model:          agent.Model,
@@ -316,7 +321,7 @@ func AgentAskHandler(ctx context.Context, args map[string]any) (Result, error) {
 		PromptOverlay:  promptOverlay,
 		SpecDefaulted:  specDefaulted,
 		SpecOverridden: specOverridden,
-	})
+	}))
 
 	cr, _, runErr := AgentStreamer{
 		Bin:        bin,
@@ -327,7 +332,21 @@ func AgentAskHandler(ctx context.Context, args map[string]any) (Result, error) {
 	durationMS := time.Since(callStart).Milliseconds()
 
 	if runErr != nil {
-		return Result{}, runErr
+		errMsg := agentRunErrorMessage("ask", runErr, cr.Stderr)
+		slog.InfoContext(ctx, "agent.ask.complete",
+			"call_id", callID,
+			"agent", agent.Model,
+			"model", agent.Model,
+			"duration_ms", durationMS,
+			"error", errMsg,
+		)
+		appendAgentErrorEvent(ctx, time.Now(), callID, AgentErrorPayload{
+			Verb:       "ask",
+			Agent:      agentNameFromArgs(args),
+			DurationMS: durationMS,
+			Error:      errMsg,
+		})
+		return Result{Error: errMsg, FailureKind: FailureInfra}, nil
 	}
 
 	var errMsg string

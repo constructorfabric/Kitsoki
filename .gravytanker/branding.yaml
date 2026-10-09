@@ -1,0 +1,48 @@
+# Kitsoki brand — the Mesa Sun palette from docs/branding/logo.md.
+# Consumed by the POG portal's branding loader (gravytanker/branding/v1):
+# sits next to pog/catalog.yaml so the federated portfolio portal and the
+# focused ?repo=kitsoki surfaces both pick it up.
+schema: gravytanker/branding/v1
+name: Kitsoki
+icon: ../docs/branding/assets/mesa-sun.svg
+
+# The public site runs the "mesa at night" surface: near-black warm canvas,
+# cream text, amber primary — matching the character of the hand-built
+# kitsoki product site (dark, dense, framed cards) rather than the portal's
+# light default. Internal portal surfaces keep the daylight palette below.
+site:
+  hero: split
+  corners: soft
+  cards: boxed
+
+colors:
+  primary: "#7d2e1c"   # rust — ground/shadow band
+  on_primary: "#f6efe2" # paper
+  accent: "#e0a23a"    # gold — the sun
+  on_accent: "#3a2418" # mesa shadow
+  canvas: "#f6efe2"    # paper — the background the mark is tuned for
+  surface: "#fdf8ee"
+  text: "#3a2418"      # mesa shadow
+  muted: "#7d2e1c"     # rust
+  border: "#d8c5a8"    # sand, dimmed
+  warning: "#c97b4a"   # adobe
+
+surfaces:
+  public:
+    colors:
+      primary: "#e0a23a"   # gold carries the CTA and proof/guides bands
+      on_primary: "#221204"
+      accent: "#f0e3c8"    # cream — stat card, complete pills, journey dots
+      on_accent: "#3a2418"
+      canvas: "#191007"    # mesa at night
+      surface: "#241709"
+      text: "#f0e3c8"
+      muted: "#c7a06b"
+      border: "#4a3521"
+      success: "#8fce9f"
+      warning: "#e0a23a"
+      danger: "#e07856"
+  internal:
+    colors:
+      primary: "#2b4a6f"
+      on_primary: "#f6efe2"

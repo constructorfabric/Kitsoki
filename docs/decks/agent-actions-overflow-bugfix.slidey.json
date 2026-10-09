@@ -1,5 +1,5 @@
 {
- "_comment": "Bug report deck (filed → triaged → reproduced → root-caused → fixed → verified) for a real CSS regression in the Agent Actions drawer (AgentActionRow.vue .aar__title): a flex child without min-width:0 can't ellipsis-truncate, so long agent-action titles overflow their card. before/after rrweb clips are captured deterministically by tools/runstatus/tests/playwright/slidey-128-clipbug-rrweb-capture.spec.ts (real .aar* CSS + the real slidey-128 run's agent-action titles, bug on / off). The fix (min-width:0) is committed in AgentActionRow.vue. meta.mode:pitch is required or scenes render blank.",
+ "_comment": "Bug report deck (filed → triaged → reproduced → root-caused → fixed → verified) for a real CSS regression in the Agent Actions drawer (AgentActionRow.vue .aar__title): a flex child without min-width:0 can't ellipsis-truncate, so long agent-action titles overflow their card. before/after rrweb clips are captured deterministically by tools/runstatus/tests/playwright/slidey-128-clipbug-rrweb-capture.spec.ts (real .aar* CSS + the real slidey-128 run's agent-action titles, bug on / off). The fix (min-width:0) is committed in AgentActionRow.vue. meta.mode:pitch is required or scenes render blank. NOTE: the filed-issue thread scene (issue number, reporter name, and conversation) is a DRAMATIZED/illustrative reconstruction of the pipeline's filed->triaged->fixed shape, not a real GitHub issue or person — labeled as such so this deck can't be mistaken for evidence of a real filed ticket.",
  "meta": {
   "mode": "pitch",
   "title": "Bug: Agent Actions title overflow",
@@ -16,7 +16,7 @@
  "scenes": [
   {
    "type": "title",
-   "eyebrow": "Bug report · kitsoki / runstatus · #412",
+   "eyebrow": "Illustrative bug report · kitsoki / runstatus",
    "title": "Agent Action titles overflow their card",
    "subtitle": "Long titles spill past the drawer and collide with the token counts",
    "narration": "Filed, triaged, fixed."
@@ -27,11 +27,11 @@
    "panels": [
     {
      "system": "github",
-     "ref": "#412",
+     "ref": "example",
      "stage": "triaged",
      "messages": [
       {
-       "author": "devon",
+       "author": "reporter",
        "role": "dev",
        "body": "The Agent Actions drawer looks broken when an agent emits a long reasoning or result title — the title runs straight off the right of its card and sits on top of the token and cost numbers. Reproduces every time on verbose THINK / RESULT rows."
       },
@@ -96,7 +96,7 @@
    "mode": "embedded",
    "eyebrow": "Reproduction",
    "title": "The bug in the real drawer",
-   "rrweb": "assets/slidey-128-bugfix/before.rrweb.json",
+   "rrweb": "assets/agent-actions-overflow-bugfix/before.rrweb.json",
    "chapters": "auto",
    "caption": "Each long reasoning / result title runs straight off the right edge, over the in/out token counts and cost.",
    "narration": "Here it is in the real UI — long titles spill straight past their card.",
@@ -152,7 +152,7 @@
    "mode": "embedded",
    "eyebrow": "Verified",
    "title": "After the fix",
-   "rrweb": "assets/slidey-128-bugfix/after.rrweb.json",
+   "rrweb": "assets/agent-actions-overflow-bugfix/after.rrweb.json",
    "chapters": "auto",
    "caption": "Every title truncates inside its card and the token / cost cluster sits where it belongs.",
    "narration": "After the fix, every title truncates inside its card and the columns line up again.",

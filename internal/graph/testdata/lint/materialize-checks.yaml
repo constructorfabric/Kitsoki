@@ -1,0 +1,58 @@
+# Fixture for lintMaterializeChecks: a type whose materialize: declares a
+# script_field gate check, one node that sets the field, one that does not
+# (the warning), plus a script-typed check declaration (type-provided script,
+# never a node obligation — must not warn).
+schema: project-object-graph/seed-catalog/v0
+catalog:
+  id: lint-materialize-checks-fixture
+type_registry:
+  - id: core-node
+    schema: graph-type/v0
+    extends: null
+    required_fields: [id, schema, title, status, visibility]
+  - id: checked-item
+    schema: graph-type/v0
+    extends: core-node
+    artifact:
+      schema: pog/artifact/brief/v0
+      format: markdown
+      presentation: document
+    materialize:
+      story: story
+      gates: [gate]
+      checks:
+        - id: gate
+          script_field: check
+  - id: fixed-check-item
+    schema: graph-type/v0
+    extends: core-node
+    artifact:
+      schema: pog/artifact/brief/v0
+      format: markdown
+      presentation: document
+    materialize:
+      story: story
+      gates: [gate]
+      checks:
+        - id: gate
+          script: checks/fixed.star
+nodes:
+  - schema: graph/checked-item/v0
+    id: item-with-check
+    title: Item that declared its assertion
+    status: active
+    visibility: internal
+    gate: "it works"
+    check: checks/works.star
+  - schema: graph/checked-item/v0
+    id: item-missing-check
+    title: Item that never declared its assertion
+    status: active
+    visibility: internal
+    gate: "it works"
+  - schema: graph/fixed-check-item/v0
+    id: item-type-provided
+    title: Item whose type fixes the assertion
+    status: active
+    visibility: internal
+    gate: "it works"

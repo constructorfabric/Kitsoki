@@ -28,6 +28,10 @@ host_handlers:
       maker-1: { data: { submitted: { summary: "First cut of the tour.",  video_path: ".artifacts/tour/aa.mp4", frames_dir: ".artifacts/tour/frames", chapters_path: ".artifacts/tour/aa.chapters.json", feature_md_path: ".artifacts/ui-qa/feature.md", scenarios_path: ".artifacts/ui-qa/scenarios.yaml" } } }
       maker-2: { data: { submitted: { summary: "Re-cut: open the drawer on screen.", video_path: ".artifacts/tour/aa.mp4", frames_dir: ".artifacts/tour/frames", chapters_path: ".artifacts/tour/aa.chapters.json", feature_md_path: ".artifacts/ui-qa/feature.md", scenarios_path: ".artifacts/ui-qa/scenarios.yaml" } } }
   host.artifacts_dir: { data: { ok: true } }
+  host.ui_qa.run:
+    by_call:
+      qa-1: { data: { ok: false, exit_code: 1, qa_ok: false, qa_exit_code: 1 } }
+      qa-2: { data: { ok: true, exit_code: 0, qa_ok: true, qa_exit_code: 0 } }
 
 turns:
   - intent: { name: retry, slots: {} }
@@ -43,7 +47,7 @@ turns:
       - handler: host.agent.task
         args: { call: maker-1 }
         times: 1
-      - handler: host.run
+      - handler: host.ui_qa.run
         args: { call: qa-1 }
         times: 1
       # read-qa-report is unguarded, so it fires on BOTH qa turns (the fail and
@@ -59,7 +63,7 @@ turns:
       - handler: host.run
         args: { call: validate-2 }
         times: 1
-      - handler: host.run
+      - handler: host.ui_qa.run
         args: { call: qa-2 }
         times: 1
       - handler: host.artifacts_dir

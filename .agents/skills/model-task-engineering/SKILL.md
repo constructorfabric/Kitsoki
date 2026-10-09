@@ -10,6 +10,41 @@ engineering loop. The goal is not to "try again"; the goal is to make the task
 environment easy enough that the selected model can succeed reliably, then prove
 that with reproducible traces and offline scoring.
 
+## Modes
+
+Choose the smallest mode that proves the decision.
+
+### Single-boundary diagnosis
+
+Use this for one room, agent call, or bench case. It retains the trace-first
+loop below and must not be presented as a model-wide comparison.
+
+### Campaign optimization
+
+Use this for a model/treatment/corpus grid. Arena owns planning, arming,
+resumption, immutable cell attempts, and rollups; `internal/agentbench` owns
+trace and lifecycle scoring. Do not add a second scheduler or scorer to a
+story or adapter.
+
+Before any live request, require a `task-optimization/v1` manifest and resolved
+content-addressed lock; distinct learning and frozen confirmation splits; a
+deterministic plan with cell count plus estimated token/time/spend envelope; and
+candidate/treatment preflight that records requested/effective model and effort.
+Unsupported pairs are `unsupported` or `pending`, never model failures.
+
+Each provider request needs an immutable receipt. Keep CodeAct action
+capabilities, its generator runtime, external-agent sandboxing, and oracle
+sandboxing as separate boundaries. Missing artifacts, invalid terminal state,
+unmatched runtime/call events, model/effort mismatch, oracle leakage, or
+incomplete usage all block a solve claim.
+
+Use staged ablations and replicate only decision-boundary cells. Freeze the
+champion before confirmation; do not patch process, corpus, oracle, or metrics
+after confirmation begins. Campaign artifacts are canonical JSON, Markdown, and
+a `.slidey.json` deck under `.artifacts/task-optimization/<study>/`. Explicit
+operator authorization and the study live gate are required before spending;
+flows and CI exercise planning and offline analysis only.
+
 ## Core loop
 
 1. Pick one task boundary.

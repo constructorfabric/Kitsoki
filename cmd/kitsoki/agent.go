@@ -41,12 +41,13 @@ import (
 // session ID into child subprocesses.
 const agentSessionIDEnv = "KITSOKI_SESSION_ID"
 
-// agentCmd returns the top-level `kitsoki agent` command with five subcommands.
+// agentCmd returns the top-level `kitsoki agent` command.
 func agentCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "agent",
 		Short: "Call a kitsoki agent verb from the command line (Phase 6)",
-		Long: `kitsoki agent provides command-line access to the five agent verbs.
+		Long: `kitsoki agent provides command-line access to agent verbs and
+task-agent launch planning.
 
 Subcommands:
   extract  — tiered resolver: synonyms → slot_template → llm
@@ -54,6 +55,8 @@ Subcommands:
   ask      — read-only LLM inspection; prose or typed JSON output
   task     — agentic LLM worker; may mutate files; acceptance loop
   converse — free-form conversation with optional chat transcript
+  launch   — resolve a story agents: entry + harness profile into a Claude/Codex
+             launch plan; dry-run by default, --exec to run
 
 Trace continuity:
   When KITSOKI_SESSION_ID is set (or --parent-session is passed), events
@@ -71,6 +74,7 @@ Auto-delegation:
 	cmd.AddCommand(agentAskCmd())
 	cmd.AddCommand(agentTaskCmd())
 	cmd.AddCommand(agentConverseCmd())
+	cmd.AddCommand(agentLaunchCmd())
 
 	return cmd
 }

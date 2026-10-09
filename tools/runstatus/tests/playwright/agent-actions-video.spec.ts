@@ -141,9 +141,8 @@ async function openDrawerForCall(page: Page, wantEvents: number): Promise<boolea
     // base64 wall open across the spotlight frames.
     const header = row.locator(".trace-timeline__row-main");
     // Dispatch the DOM click directly (not a hit-test .click()): a pre-step
-    // hook can run while the tour-overlay backdrop from the prior step still
-    // covers the trace rows, which intercepts hit-test clicks and times them
-    // out. el.click() fires the row header's @click regardless of the backdrop.
+    // hook can run while the tour popover is still settling, which can make
+    // hit-test clicks flaky. el.click() fires the row header's @click directly.
     await header.evaluate((el) => (el as HTMLElement).click()).catch(() => undefined);
     // The affordance only renders for agent.call.complete rows that carry a
     // transcript_ref. Look for the one whose badge count matches.
@@ -153,8 +152,8 @@ async function openDrawerForCall(page: Page, wantEvents: number): Promise<boolea
       const txt = (await aff.nth(a).textContent({ timeout: 1500 }).catch(() => "")) ?? "";
       if (txt.includes(`(${wantEvents})`)) {
         diag(`  row ${i}: matched affordance "${txt.trim()}"`);
-        // DOM click (backdrop-proof — see header note above): open this call's
-        // agent-actions drawer regardless of any overlay backdrop covering it.
+        // DOM click (hit-test-proof — see header note above): open this call's
+        // agent-actions drawer regardless of overlay placement.
         await aff.nth(a).evaluate((el) => (el as HTMLElement).click());
         const drawer = page.getByTestId("agent-actions-drawer");
         const ok = await drawer
@@ -167,9 +166,8 @@ async function openDrawerForCall(page: Page, wantEvents: number): Promise<boolea
     }
     // Not a match — collapse this row again so the next expand is clean.
     // Dispatch the DOM click directly (not a hit-test .click()): a pre-step
-    // hook can run while the tour-overlay backdrop from the prior step still
-    // covers the trace rows, which intercepts hit-test clicks and times them
-    // out. el.click() fires the row header's @click regardless of the backdrop.
+    // hook can run while the tour popover is still settling, which can make
+    // hit-test clicks flaky. el.click() fires the row header's @click directly.
     await header.evaluate((el) => (el as HTMLElement).click()).catch(() => undefined);
   }
   diag(`openDrawerForCall(${wantEvents}): no matching call found`);
@@ -401,9 +399,8 @@ async function openTaskDetail(page: Page): Promise<boolean> {
     // body swallows center-clicks, so collapsing a non-match needs the header.
     const header = row.locator(".trace-timeline__row-main");
     // Dispatch the DOM click directly (not a hit-test .click()): a pre-step
-    // hook can run while the tour-overlay backdrop from the prior step still
-    // covers the trace rows, which intercepts hit-test clicks and times them
-    // out. el.click() fires the row header's @click regardless of the backdrop.
+    // hook can run while the tour popover is still settling, which can make
+    // hit-test clicks flaky. el.click() fires the row header's @click directly.
     await header.evaluate((el) => (el as HTMLElement).click()).catch(() => undefined);
     const aff = page.getByTestId("agent-actions-affordance");
     const affCount = await aff.count();
@@ -415,9 +412,8 @@ async function openTaskDetail(page: Page): Promise<boolean> {
       }
     }
     // Dispatch the DOM click directly (not a hit-test .click()): a pre-step
-    // hook can run while the tour-overlay backdrop from the prior step still
-    // covers the trace rows, which intercepts hit-test clicks and times them
-    // out. el.click() fires the row header's @click regardless of the backdrop.
+    // hook can run while the tour popover is still settling, which can make
+    // hit-test clicks flaky. el.click() fires the row header's @click directly.
     await header.evaluate((el) => (el as HTMLElement).click()).catch(() => undefined);
   }
   diag(`openTaskDetail: no task call found`);

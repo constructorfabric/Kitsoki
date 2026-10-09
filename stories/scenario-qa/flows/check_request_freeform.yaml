@@ -1,0 +1,156 @@
+# check_request_freeform — the generalized `check_request` intent accepts a
+# whole operator request and becomes an ad-hoc scenario request. This proves the
+# operator is not limited to a few canned catalog examples.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.product_journey.run:
+    by_call:
+      emit_scenario_qa_run:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            run_id: scenario-qa-run-freeform
+            run_dir: /repo/.artifacts/product-journey/scenario-qa-run-freeform
+            driver_plan_path: /repo/.artifacts/product-journey/scenario-qa-run-freeform/driver-plan.md
+            execution_plan_path: /repo/.artifacts/product-journey/scenario-qa-run-freeform/execution-plan.md
+            agent_brief_path: /repo/.artifacts/product-journey/scenario-qa-run-freeform/agent-brief.md
+      build_scenario_qa_deck:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: scenario_qa_deck_built
+            run_dir: /repo/.artifacts/product-journey/scenario-qa-run-freeform
+            deck_path: /repo/.artifacts/product-journey/scenario-qa-run-freeform/deck.slidey.json
+            leg_count: 1
+            pass_count: 1
+            fail_count: 0
+            degraded_count: 0
+            summary: "1 / 1 transport checks passed."
+
+  host.starlark.run:
+    by_call:
+      parse_check_request:
+        data:
+          scenario_ref: ""
+          scenario_description: "settings form keeps validation errors"
+          transport_arg: web
+          persona: core-maintainer
+          target: gears-rust
+          seed: story-flow-freeform
+          live_profile: ""
+          live_budget_minutes: 0
+          mode: adhoc
+          request_status: { parsed: true, source: request }
+      plan_legs:
+        data:
+          legs:
+            items:
+              - leg_id: "adhoc-settings-form-keeps-validation-errors::web"
+                scenario: "adhoc-settings-form-keeps-validation-errors"
+                label: "settings form keeps validation errors"
+                transport: "web"
+                visual_surface: "web"
+                evidence_dir: "evidence/adhoc-settings-form-keeps-validation-errors/web"
+                primary_story: "stories/dev-story/app.yaml"
+                success_criteria:
+                  - "The described behavior is observable on the requested transport(s)."
+                transport_evidence_contract:
+                  primary_tool: "visual.snapshot"
+                  evidence_kind: "browser_screenshot"
+                  level: "frame-level"
+          leg_count: 1
+          driver_agent: ".agents/agents/product-journey-qa-driver.md"
+          run_dir_rel: ".artifacts/product-journey/scenario-qa-run-freeform"
+          plan_status: { resolved: true }
+      pick_leg:
+        data:
+          current_leg:
+            leg_id: "adhoc-settings-form-keeps-validation-errors::web"
+            scenario: "adhoc-settings-form-keeps-validation-errors"
+            transport: "web"
+            visual_surface: "web"
+          current_leg_id: "adhoc-settings-form-keeps-validation-errors::web"
+          current_leg_json: '{"leg_id":"adhoc-settings-form-keeps-validation-errors::web","scenario":"adhoc-settings-form-keeps-validation-errors","transport":"web","visual_surface":"web"}'
+      prepare_judge:
+        data:
+          drive_result_json: '{"status":"captured","evidence_refs":["frame-1"],"frames_dir":"evidence/adhoc-settings-form-keeps-validation-errors/web"}'
+      record_leg_result:
+        data:
+          leg_results:
+            items:
+              - leg_id: "adhoc-settings-form-keeps-validation-errors::web"
+                scenario: "adhoc-settings-form-keeps-validation-errors"
+                transport: "web"
+                evidence_level: "frame-level"
+                driver_status: "captured"
+                verdict: "pass"
+                verdict_summary: "Validation error state remains visible."
+          pass_count: 1
+          fail_count: 0
+          degraded_count: 0
+      build_report:
+        data:
+          report_path: ".artifacts/product-journey/scenario-qa-run-freeform/report.md"
+          report_summary: "1 / 1 transport checks passed."
+
+  host.agent.task:
+    by_call:
+      drive_leg:
+        data:
+          ok: true
+          submitted:
+            status: "captured"
+            evidence_refs: ["frame-1"]
+            frames_dir: "evidence/adhoc-settings-form-keeps-validation-errors/web"
+            summary: "Captured the validation error state on web."
+      judge_leg:
+        data:
+          ok: true
+          submitted:
+            verdict: "pass"
+            summary: "Validation error state remains visible."
+            cited_frames: ["frame-1.png"]
+
+turns:
+  - intent:
+      name: check_request
+      slots:
+        request: "settings form keeps validation errors transport=web persona=core-maintainer target=gears-rust seed=story-flow-freeform"
+    expect_state: report
+    expect_world:
+      mode: adhoc
+      scenario_ref: ""
+      scenario_description: "settings form keeps validation errors"
+      transport_arg: web
+      persona: core-maintainer
+      target: gears-rust
+      seed: story-flow-freeform
+      run_id: scenario-qa-run-freeform
+      leg_count: 1
+      pass_count: 1
+      report_summary: "1 / 1 transport checks passed."
+      deck_path: "/repo/.artifacts/product-journey/scenario-qa-run-freeform/deck.slidey.json"
+    expect_host_calls:
+      - handler: host.starlark.run
+        args: { call: parse_check_request }
+      - handler: host.product_journey.run
+        args: { call: emit_scenario_qa_run }
+      - handler: host.starlark.run
+        args: { call: plan_legs }
+      - handler: host.agent.task
+        args: { call: drive_leg }
+      - handler: host.agent.task
+        args: { call: judge_leg }
+      - handler: host.starlark.run
+        args: { call: build_report }
+      - handler: host.product_journey.run
+        args: { call: build_scenario_qa_deck }
+    expect_view_matches: "SCENARIO QA REPORT[\\s\\S]*1 / 1 transport checks passed[\\s\\S]*Scenario:[\\s\\S]*settings form keeps validation errors[\\s\\S]*Summary report:[\\s\\S]*report.md[\\s\\S]*web \\[frame-level\\] verdict=pass driver=captured"
+
+expect_no_errors: true

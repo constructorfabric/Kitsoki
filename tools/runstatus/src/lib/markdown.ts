@@ -23,7 +23,12 @@
  */
 
 function escapeHtml(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 // renderInline applies bold + inline-code to an ALREADY HTML-escaped string.
@@ -94,6 +99,21 @@ export function renderMarkdownDocument(src: string): string {
       continue;
     }
 
+    // GitHub-style pipe table. Keep this before paragraph handling so a table
+    // block is not collapsed into prose.
+    if (looksLikeTableStart(lines, i)) {
+      const header = splitTableRow(lines[i]);
+      const align = splitTableRow(lines[i + 1]).map(tableAlign);
+      const body: string[][] = [];
+      i += 2;
+      while (i < lines.length && isTableRow(lines[i])) {
+        body.push(splitTableRow(lines[i]));
+        i++;
+      }
+      out.push(renderTable(header, align, body));
+      continue;
+    }
+
     // Blockquote
     if (line.startsWith("> ") || line === ">") {
       const blockLines: string[] = [];
@@ -140,6 +160,53 @@ export function renderMarkdownDocument(src: string): string {
   }
 
   return out.join("\n");
+}
+
+function looksLikeTableStart(lines: string[], idx: number): boolean {
+  if (idx + 1 >= lines.length) return false;
+  return isTableRow(lines[idx]) && isTableSeparator(lines[idx + 1]);
+}
+
+function isTableRow(line: string): boolean {
+  return line.includes("|") && line.trim() !== "";
+}
+
+function isTableSeparator(line: string): boolean {
+  const cells = splitTableRow(line);
+  if (cells.length < 2) return false;
+  return cells.every((cell) => /^:?-{3,}:?$/.test(cell.trim()));
+}
+
+function splitTableRow(line: string): string[] {
+  let s = line.trim();
+  if (s.startsWith("|")) s = s.slice(1);
+  if (s.endsWith("|")) s = s.slice(0, -1);
+  return s.split("|").map((cell) => cell.trim());
+}
+
+function tableAlign(cell: string): string {
+  const trimmed = cell.trim();
+  if (trimmed.startsWith(":") && trimmed.endsWith(":")) return "center";
+  if (trimmed.endsWith(":")) return "right";
+  if (trimmed.startsWith(":")) return "left";
+  return "";
+}
+
+function renderTable(header: string[], align: string[], body: string[][]): string {
+  const alignAttr = (idx: number) =>
+    align[idx] ? ` style="text-align:${align[idx]}"` : "";
+  const heads = header
+    .map((cell, idx) => `<th${alignAttr(idx)}>${renderInlineDoc(cell)}</th>`)
+    .join("");
+  const rows = body
+    .map((row) => {
+      const cells = header
+        .map((_, idx) => `<td${alignAttr(idx)}>${renderInlineDoc(row[idx] ?? "")}</td>`)
+        .join("");
+      return `<tr>${cells}</tr>`;
+    })
+    .join("");
+  return `<table class="md-table"><thead><tr>${heads}</tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 /** Inline markdown: bold, italic, code, links — applied to already-escaped text. */

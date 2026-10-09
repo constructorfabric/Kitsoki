@@ -1,0 +1,67 @@
+# never_silent_error_surface_view — failure class: host domain error caught by
+# an `on_error: .` self-hold. The world-level contract is already pinned by
+# error_clarifying_holds.yaml; THIS fixture pins the SURFACE contract — the
+# operator-visible rendered view must carry the error text, because a
+# last_error that only lives in world is still a silent bounce from the
+# operator's chair (.agents/skills/kitsoki-debugging/SKILL.md: "Always check
+# that the destination room shows world.last_error somewhere").
+#
+# clarifying's own view template renders
+#   "⚠ **Questions generation failed** — {{ world.last_error }} …"
+# when last_error is non-empty, so the story surfaces the error itself (the
+# shared banner seam defers to story-rendered last_error). Asserted here via
+# expect_view_matches on both the template lead-in and the propagated host
+# error text.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  workdir:     "."
+  output_path: ".artifacts/prd.md"
+  judge_mode:  "human"
+  publish_durable_path: "/tmp/kitsoki-prd-fixtures"
+
+starlark_inspect_cassette: ../cassettes/slug_a_cli_for_x.inspect.yaml
+
+host_handlers:
+  host.ide.open_file:
+    data: { ok: true, connected: true }
+  host.chat.resolve:
+    data: { ok: true, chat_id: "chat-1", title: "PRD idea discovery", is_new: true }
+  host.agent.converse:
+    data: { ok: true, answer: "A CLI for X.", chat_id: "chat-1", claude_session_id: "sess-1" }
+  host.agent.search:
+    data: { hits: [] }
+  host.agent.decide:
+    by_call:
+      existing_scan:
+        data:
+          ok: true
+          submitted:
+            overlaps: []
+            roadmap_fit: "Greenfield — no existing PRD covers this."
+      analyst_questions:
+        error: "host.agent.decide: analyst session abandoned without successful submit"
+  host.artifacts_dir:
+    data: { ok: true, path: ".artifacts/prd/a-cli-for-x/001-brief.md", message_id: "001-brief#1" }
+
+turns:
+  - intent: { name: discuss, slots: { message: "I want a CLI for X" } }
+    expect_state: idle
+
+  - intent: { name: start, slots: {} }
+    expect_state: search
+
+  # confirm → clarifying; the on_enter analyst decide fails → on_error: .
+  # holds here. The RENDERED VIEW must show the failure — template lead-in
+  # AND the actual host error message, so the operator knows what broke and
+  # what to do next.
+  - intent: { name: confirm, slots: {} }
+    expect_state: clarifying
+    expect_world:
+      last_error: "host.agent.decide: analyst session abandoned without successful submit"
+    expect_view_matches: "Questions generation failed.*analyst session abandoned"
+
+expect_terminal: false
+expect_no_errors: true

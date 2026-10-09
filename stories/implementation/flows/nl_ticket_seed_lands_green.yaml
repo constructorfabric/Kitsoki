@@ -1,0 +1,162 @@
+# nl_ticket_seed_lands_green — proves two things end to end for a headless
+# dispatch (goal-seeker/punch-list) that hands the maker only a ticket_id (no
+# structured initial_world — live drives have shown the maker doesn't reliably
+# pass it, see stories/goal-seeker/scripts/gs_manifest.star):
+#
+#  1. idle extracts ticket_id (+ ticket_title) from the operator's first-turn
+#     text via the `work_ticket` semantic-router intent (see ../app.yaml) and
+#     self-provisions (idle.on_enter's Step 0-4 chain), reaching
+#     review_task_executing with no explicit `start` — mirroring
+#     stories/bugfix/flows/nl_ticket_extraction_autostarts.yaml.
+#  2. From there, a SIMPLE task walks the normal judge_mode=human happy path
+#     (accept at every checkpoint — same shape as flows/happy_human.yaml) all
+#     the way to a clean @exit:done / merged handoff. This is the "de-risk
+#     the happy path past ticket.get" proof: once ticket_id travels, nothing
+#     downstream strands a trivial single-file task short of a green handoff.
+#
+# We drive `work_ticket` directly rather than a raw `input:` turn because
+# `input:` turns resolve via a recording (LLM-classification cassette), not
+# the live deterministic semroute matcher (internal/testrunner/flows.go) — see
+# the sibling bugfix fixture's header for the full rationale. The router's own
+# template-compile correctness is checked at load time by every
+# `kitsoki test flows` run.
+#
+# Finding fixed alongside this fixture: idle.on_enter had no `thread`
+# derivation (unlike stories/bugfix/rooms/idle.yaml's Step 0) — a dispatch
+# seeding ONLY ticket_id (exactly gs_manifest.star's world_in shape) left
+# world.thread empty, and review_task_awaiting_reply's iface.transport.post
+# (host.append_to_file behind it) hard-fails on an empty thread with no
+# on_error, stranding the very first checkpoint. Fixed by adding the same
+# Step 0 idiom bugfix already has.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  judge_mode:      "human"
+  judge_confidence_threshold: 0.8
+  merge_strategy:  "squash"
+  base_branch:     "main"
+  # ticket_id/thread/workdir/workspace_id/feature_branch intentionally NOT
+  # seeded — proving the self-provisioning chain derives all of it from just
+  # the NL-extracted ticket_id.
+
+host_handlers:
+
+  host.append_to_file: { data: { ok: true, message_id: "msg-1" } }
+  host.inbox.add:       { data: { ok: true, id: "ib-1" } }
+  host.artifacts_dir:   { data: { ok: true, path: ".artifacts/implementation-flow-artifact.md", message_id: "artifact-1" } }
+
+  # handoff room's lost-work clean-tree check.
+  host.run:
+    data: { ok: true, exit_code: 0, stdout_json: { dirty: false, files: "" } }
+
+  # iface.workspace.* — prefix-fallback to host.capsule_workspace.
+  host.capsule_workspace:
+    data: { ok: true, log: "synced" }
+
+  # iface.vcs.* — prefix-fallback.
+  host.git:
+    data:
+      ok:     true
+      sha:    "abc123"
+      diff:   "diff --git a/x b/x"
+      url:    "https://example/pr/T-900"
+      pr_id:  "T-900"
+      state:  "success"
+      checks: ""
+      comments: ""
+
+  # iface.ci.run_tests — host.local prefix-fallback.
+  host.local:
+    data: { ok: true, log: "PASS: 3 tests", state: "success", passed: 3, failed: 0 }
+
+  # iface.ticket.get — populates ticket_body/ticket_title/ticket_url for
+  # real once review_task_executing's on_enter runs (superseding whatever
+  # ticket_title the NL capture happened to grab).
+  host.local_files.ticket:
+    data:
+      ok:    true
+      id:    "TKT-NL-900"
+      title: "Add a health endpoint"
+      body:  "Add a GET /healthz endpoint returning 200 when the process is up."
+      url:   "issues/tasks/tkt-nl-900.md"
+      status: "open"
+
+  # Agent stub covers task_summary_artifact, code_artifact, test_artifact,
+  # review_artifact, judge_verdict.
+  host.agent.decide:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Stub task summary"
+        summary_markdown: "Add a GET /healthz endpoint. Acceptance: returns 200 when up."
+        scope:            "Endpoint and its handler."
+        acceptance_criteria:
+          - "GET /healthz returns 200."
+        involved_components:
+          - { name: "internal/health", reason: "new endpoint" }
+        report_path:      ".artifacts/implementation/TKT-HEALTHZ/code-report.md"
+        affected_files:   ["internal/health/health.go", "internal/health/health_test.go"]
+        confidence:       0.9
+        reasoning:        "Simple handler following the existing pattern."
+        tests_planned:    ["TestHealthzOK"]
+        patch_summary:    "Adds the endpoint; one test covers it."
+        status:           "passed"
+        tests_run:        { passed: 3, failed: 0, log: "PASS: 3 tests" }
+        nits:             []
+        blockers:         []
+        verdict:    "pass"
+        intent:     "accept"
+        reason:     "Stub artifact; accept advances."
+
+turns:
+  # No structured initial_world at all — ticket_id starts empty. The NL
+  # extraction intent seeds it and forces idle.on_enter to re-run for real,
+  # landing at the task-summary checkpoint with no explicit `start`.
+  - intent:
+      name: work_ticket
+      slots:
+        ticket_id:    "TKT-NL-900"
+        ticket_title: "Add a health endpoint"
+    expect_state: review_task_awaiting_reply
+    expect_not_state: idle
+    expect_world:
+      ticket_id:                 "TKT-NL-900"
+      impl_provision_attempted:  true
+      thread:                    "issues/tasks/TKT-NL-900.md"
+
+  - intent: { name: accept, slots: {} }
+    expect_state: write_code_awaiting_reply
+
+  - intent: { name: accept, slots: {} }
+    expect_state: test_awaiting_reply
+
+  - intent: { name: accept, slots: {} }
+    expect_state: review_awaiting_reply
+
+  - intent: { name: accept, slots: {} }
+    expect_state: handoff
+    expect_world:
+      pr_title: "Stub task summary"
+
+  - intent: { name: proceed, slots: {} }
+    expect_state: pr.open_pr
+    expect_world:
+      pr__pr_id:  "T-900"
+      pr__pr_url: "https://example/pr/T-900"
+
+  - intent: { name: pr__proceed, slots: {} }
+    expect_state: pr.ci_monitoring
+  - intent: { name: pr__proceed, slots: {} }
+    expect_state: pr.merge_executing
+  - intent: { name: pr__proceed, slots: {} }
+    expect_state: pr.merge_awaiting_reply
+
+  - intent: { name: pr__accept, slots: {} }
+    expect_state: __exit__done
+    expect_world:
+      status: "merged"
+
+expect_terminal: true
+expect_no_errors: true

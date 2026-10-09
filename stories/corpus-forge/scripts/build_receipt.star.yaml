@@ -1,0 +1,8 @@
+inputs:
+  selection_id: { type: string, required: true }
+  corpus_role: { type: string, required: true }
+  source_manifest_ref: { type: string, required: true }
+  candidates: { type: list, required: true }
+  proofs: { type: list, required: true }
+outputs:
+  receipt: { type: object }

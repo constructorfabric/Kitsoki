@@ -1,0 +1,23 @@
+# A rejected proof is a hard admission failure. The real validate_manifest.star
+# invokes the deterministic stub through ctx.host.call; its error propagates to
+# the Starlark effect's on_error arc and no receipt can be produced.
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  task_limit: 1
+  source_candidates:
+    - { kind: corpus-case.v1, id: rejected, repo: example/rejected, source: arena, baseline_ref: base, fix_ref: fix, ticket: rejected, archetype: bugfix, oracle: { command: [test] }, provenance: { adapter: fixture, locator: rejected, source_digest: sha256:rejected }, verified_red: true, verified_green: true }
+host_handlers:
+  host.corpus.prove:
+    error: "host.corpus.prove: already_green: baseline oracle exited zero"
+turns:
+  - intent: { name: start, slots: {} }
+    expect_state: load
+  - intent: { name: accept, slots: {} }
+    expect_state: select
+  - intent: { name: accept, slots: {} }
+    expect_state: failed
+    expect_view_matches: "already_green"
+    expect_host_calls: [{ handler: host.starlark.run }]
+expect_terminal: false

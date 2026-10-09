@@ -1,22 +1,25 @@
 ---
 name: work-decomposition
-description: Turn an accepted kitsoki proposal (or an epic + its children) into a validated, reviewed YAML decomposition of right-sized agent briefs. Use when the user wants to decompose work into briefs, "break this proposal into tickets/tasks", produce a decomposition.yaml, or check out the brief-manifest shape from docs/proposals/work-decomposition.md before that pipeline is built as a story. Drives discovery → manifest → deterministic structural lint → adversarial feasibility/completeness review, by hand.
+description: Turn an accepted kitsoki proposal (or an epic + its children) into a validated, reviewed YAML decomposition of right-sized agent briefs, by hand — the manual twin of the canonical `stories/deliver` story. Use when the user wants to decompose work into briefs, "break this proposal into tickets/tasks", produce a decomposition.yaml, or run the decomposition discipline outside the engine (no story session, or before wiring `deliver` into a new caller). Drives discovery → manifest → deterministic structural lint → adversarial feasibility/completeness review.
 ---
 
 # Work decomposition
 
-This skill is the **Claude-driven version** of the pipeline proposed in
-[`docs/proposals/work-decomposition.md`](../../proposals/work-decomposition.md):
-it takes an *accepted* proposal (or an epic + its linked children) and produces
+This skill is the **Claude-driven manual twin** of
+[`stories/deliver`](../../../stories/deliver/README.md) — the canonical
+decomposition story (see
+[`docs/stories/deliver.md`](../../../docs/stories/deliver.md) for the
+narrative overview).
+It takes an *accepted* proposal (or an epic + its linked children) and produces
 a `decomposition.yaml` of agent briefs — structurally validated and
-adversarially reviewed — so you can **check out the manifest shape and the
-slicing quality before the `stories/decompose/` story is built**.
+adversarially reviewed — for by-hand runs, or to check out the manifest shape
+before driving the same discipline through `stories/deliver`.
 
-The same discipline the proposal encodes applies here, just run by you instead
-of the engine: the **interpretive** decisions (how to slice, is it feasible, is
-it complete) are your judgment; the **structural** truth (unique ids, acyclic
-DAG, coverage, path bounds) is a deterministic script whose exit code is the
-gate — the kitsoki moat: separate interpretation from deterministic execution.
+The same discipline `deliver` encodes applies here, just run by you instead of
+the engine: the **interpretive** decisions (how to slice, is it feasible, is it
+complete) are your judgment; the **structural** truth (unique ids, acyclic DAG,
+coverage, path bounds) is a deterministic script whose exit code is the gate —
+the kitsoki moat: separate interpretation from deterministic execution.
 
 > Scope: this **decomposes** an accepted proposal. Authoring/scoping the
 > proposal itself is the `proposal-authoring` skill. Implementing a single
@@ -26,9 +29,14 @@ gate — the kitsoki moat: separate interpretation from deterministic execution.
 ## The output shape — the heart
 
 The deliverable is a manifest matching
-[`schemas/decomposition.json`](schemas/decomposition.json): a `coverage_note`
-plus a `briefs[]` array, each brief carrying `id, title, kind, goal, scope[],
-depends_on[], acceptance[], test_plan, agent_brief` (and optional `risk`).
+[`schemas/decomposition.json`](schemas/decomposition.json) — a manual copy of
+`stories/deliver`'s canonical schema, kept identical rather than left to drift.
+The **required** contract (fleet's, unchanged) is `id, brief, gate_command` per
+brief; a top-level `coverage_note` and per-brief `title, kind, scope[],
+acceptance[], risk` are **optional** richer fields this skill still
+recommends writing. `agent_brief`/`brief`, `test_plan`/`gate_command`, and
+`depends_on`/`deps` are read as aliases of each other (schema
+`additionalProperties: true` on brief items permits either spelling).
 
 ```yaml
 coverage_note: >
@@ -40,14 +48,13 @@ briefs:
   - id: engine-once-flag
     title: Add `once:` guard to room on_enter effects
     kind: runtime
-    goal: A room with `once: true` re-runs its on_enter effects at most once per visit, surviving /reload.
     scope: ["internal/machine/", "internal/app/imports.go"]
-    depends_on: []
+    deps: []
     acceptance:
       - "A reloaded room with once:true does not re-fire its on_enter oracle call"
       - "Existing rooms without once: behave unchanged"
-    test_plan: "internal/machine/machine_test.go: new TestOnceGuard; existing flow fixtures stay green."
-    agent_brief: >
+    gate_command: "go test ./internal/machine/... -run TestOnceGuard"
+    brief: >
       Implement an engine-level `once:` boolean on room on_enter effect lists...
       (self-contained — everything the implementer needs, no external context).
     risk: medium
@@ -59,8 +66,8 @@ that don't exist yet (the validator bounds them rather than requiring a match).
 
 ## The loop
 
-Run these phases in order. They mirror the proposal's rooms; each gate must
-pass before the next.
+Run these phases in order. They mirror `stories/deliver`'s rooms; each gate
+must pass before the next.
 
 ### 1. Load the source
 
@@ -95,13 +102,13 @@ Produce the manifest. Slicing rules:
   implementer's head, and could land alone or behind one named dependency. Cut
   along **kind boundaries first** (runtime substrate → story → tui, tracing
   where its events are produced), then along shippable units within a kind.
-- `depends_on` is the real build order — be honest; a missing edge is what the
-  reviewer and the board will trip on.
+- `deps` (aka `depends_on`) is the real build order — be honest; a missing
+  edge is what the reviewer and the board will trip on.
 - **No file double-ownership**: two briefs' `scope` globs should not overlap on
   the same file. Overlap is a slicing bug.
-- `agent_brief` is **self-contained** — the implementer agent gets only that
-  text plus the ticket fields, not this conversation. Spell out the approach,
-  the key files, and the done-condition.
+- `brief` (aka `agent_brief`) is **self-contained** — the implementer agent
+  gets only that text plus the ticket fields, not this conversation. Spell out
+  the approach, the key files, and the done-condition.
 - The `coverage_note` is your **completeness claim** — write it to be attacked:
   state explicitly how the briefs together cover every item in the proposal's
   "What changes", with nothing unowned.
@@ -119,24 +126,26 @@ python3 .agents/skills/work-decomposition/scripts/validate_decomposition.py \
     .artifacts/decompose/<slug>/decomposition.yaml --repo-root .
 ```
 
-It checks schema shape, **unique ids**, **dangling `depends_on`**, an **acyclic
-dependency DAG**, **scope paths bounded inside the repo** (parent dir exists),
-and **non-empty acceptance + test_plan** per brief. On failure: fix the manifest
-(go back to step 3 with the errors as the brief) and re-run until clean. This
-gate has teeth independent of any LLM — trust it over your own read.
+It checks schema shape, **unique ids**, **dangling deps/depends_on**, an
+**acyclic dependency DAG**, **scope paths bounded inside the repo** (parent dir
+exists, when `scope` is present), **non-empty acceptance when present**, and a
+**non-empty gate_command (or test_plan)** per brief. On failure: fix the
+manifest (go back to step 3 with the errors as the brief) and re-run until
+clean. This gate has teeth independent of any LLM — trust it over your own
+read.
 
-There is also a Starlark equivalent (`validate_decomposition.star`) that covers
-the pure-logic checks (unique ids, acyclic DAG, acceptance/test_plan) and can be
-called via `host.starlark.run` from a story room — pass the parsed manifest as
-`inputs.manifest`. It does **not** cover JSON-schema shape or scope-path bounds
-(those need filesystem access and the `jsonschema` library; use the Python script
-for those).
+`stories/deliver/scripts/lint_decomposition.star` is the **canonical**
+deterministic gate — it runs the same checks (minus JSON-schema shape) via
+`host.starlark.run` inside the story, called by `deliver`'s `lint` room. This
+skill's Python script is the manual-run companion for when you're not driving
+`deliver` as a story.
 
 ### 5. Adversarial review — feasibility + completeness
 
 Now switch hats and **attack your own manifest as a skeptic** (or, for a real
 second opinion, spawn a sub-agent with the Agent tool to do it independently —
-that's closer to the proposal's `decomp_adversary`):
+that's closer to `deliver`'s planned `review` room, a `host.agent.decide`
+adversary gate):
 
 - **Per brief:** is this actually buildable *as scoped*? Are its deps right and
   complete? Is anything impossible, hand-wavy, or secretly two briefs?
@@ -161,9 +170,9 @@ On `accept`, present:
 - the `coverage_note` and the review verdict + reason.
 
 Note for the user that each brief is shaped to become a ticket the
-`stories/implementation/` pipeline can build (`id/title/body = agent_brief +
-acceptance + scope + test_plan`) — which is exactly what the proposal's
-`dispatch` room will mint once the story ships.
+`stories/implementation/` pipeline can build (`id/title/body = brief +
+acceptance + scope + gate_command`) — the same shape `stories/fleet` fans
+`ship-it` over when driven through `stories/deliver`.
 
 ## Quick reference
 
@@ -172,7 +181,7 @@ acceptance + scope + test_plan`) — which is exactly what the proposal's
 | Load proposal/epic | read `docs/proposals/<slug>.md` (+ children) | right source confirmed |
 | Discovery | short conversation → `.context/` scope note | slicing rationale in 2 sentences |
 | Decompose | emit manifest → `.artifacts/decompose/<slug>/decomposition.yaml` | schema-shaped |
-| **Validate** | `validate_decomposition.py` (CLI) or `host.starlark.run validate_decomposition.star` (story room) | **exit code 0 / ok: true** |
+| **Validate** | `validate_decomposition.py` (CLI, manual) or `stories/deliver/scripts/lint_decomposition.star` via `host.starlark.run` (canonical, story room) | **exit code 0 / {route: "ok"}** |
 | **Review** | skeptic pass (or sub-agent) | **verdict: accept** |
 | Hand back | board + coverage note + verdict | — |
 
@@ -185,7 +194,11 @@ symlink after adding or moving skills:
 make setup
 ```
 
-When the `stories/decompose/` story from the proposal ships, the
-`schemas/decomposition.json` here and `stories/decompose/schemas/decomposition.json`
-should stay identical — they're the same contract; reconcile them rather than
-letting them drift.
+`schemas/decomposition.json` here is a manual copy of
+[`stories/deliver/schemas/decomposition.json`](../../../stories/deliver/schemas/decomposition.json)
+— the canonical decomposition story owns the contract now (see
+[`docs/stories/deliver.md`](../../../docs/stories/deliver.md)). Keep the two files
+identical rather than letting them drift; when `deliver`'s schema gains a
+field, copy it here too. Likewise, when `deliver`'s `lint_decomposition.star`
+gains a check, port it to `validate_decomposition.py`/`.star` here so a
+by-hand run and a `deliver` run reject the same manifests.

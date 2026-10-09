@@ -1,0 +1,59 @@
+# plan_legs_unresolved_returns_idle — plan_legs.star runs cleanly but
+# resolves ZERO legs for the requested scenario/transport combination
+# (plan_status.resolved=true, leg_count=0): plan.yaml's `legs_unresolved`
+# route (not an on_error path — plan_legs itself did not fail) sends the
+# operator back to idle with an explicit, specific message rather than the
+# generic on_error bounce. Distinct from plan_legs_error_bounces_idle.yaml,
+# which exercises plan_legs actually FAILING.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.product_journey.run:
+    by_call:
+      emit_scenario_qa_run:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            run_id: scenario-qa-run-unresolved
+            run_dir: /repo/.artifacts/product-journey/scenario-qa-run-unresolved
+            driver_plan_path: /repo/.artifacts/product-journey/scenario-qa-run-unresolved/driver-plan.md
+            execution_plan_path: /repo/.artifacts/product-journey/scenario-qa-run-unresolved/execution-plan.md
+            agent_brief_path: /repo/.artifacts/product-journey/scenario-qa-run-unresolved/agent-brief.md
+
+  host.starlark.run:
+    by_call:
+      plan_legs:
+        data:
+          legs: { items: [] }
+          leg_count: 0
+          driver_agent: ".agents/agents/product-journey-qa-driver.md"
+          run_dir_rel: ".artifacts/product-journey/scenario-qa-run-unresolved"
+          plan_status: { resolved: true }
+
+turns:
+  - intent:
+      name: check
+      slots:
+        scenario: bugfix
+        transport: nonexistent-transport
+        persona: core-maintainer
+        target: gears-rust
+        seed: story-flow
+    expect_state: idle
+    expect_world:
+      status: "idle"
+      leg_count: 0
+      last_error: "No transport checks resolved for this scenario/transport combination — check scenario/transport values."
+    expect_host_calls:
+      - handler: host.product_journey.run
+        args: { call: emit_scenario_qa_run }
+      - handler: host.starlark.run
+        args: { call: plan_legs }
+    expect_no_host_calls: [host.agent.task]
+    expect_view_matches: "No transport checks resolved"
+
+expect_no_errors: true

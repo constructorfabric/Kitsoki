@@ -1,0 +1,52 @@
+coverage_note: >
+  These two briefs cover a small deliver fixture: the first adds the shared
+  model and the second wires it into the handler. The second depends on the
+  model, so the graph has one clear edge and no parallel write overlap.
+briefs:
+  - id: health-model
+    wall: WD
+    goal_ref: [G1]
+    title: Add health status model
+    kind: runtime
+    brief: "Add a HealthStatus struct in internal/health with Status and Version fields."
+    goal: "A health status model exists and can be unit-tested without starting the server."
+    scope: ["internal/health/**"]
+    depends_on: []
+    deps: []
+    acceptance:
+      - "HealthStatus has status and version fields."
+      - "The model package has a focused unit test."
+    gate:
+      class: G-GOTEST
+      red_now: "No health status model package exists."
+      green_when: "The health model unit tests pass."
+      cmd: "go test ./internal/health/..."
+    gate_command: "go test ./internal/health/..."
+    agent_brief: >
+      Add a small internal/health package containing a HealthStatus model with
+      status and version fields. Keep the change focused to the model and its
+      unit tests; do not wire HTTP handlers in this brief.
+
+  - id: health-handler
+    wall: WD
+    goal_ref: [G1]
+    title: Wire health handler
+    kind: runtime
+    brief: "Add a GET /health handler that serializes HealthStatus to JSON."
+    goal: "The HTTP handler returns the health model as JSON through a focused handler test."
+    scope: ["internal/handler/**"]
+    depends_on: [health-model]
+    deps: [health-model]
+    acceptance:
+      - "GET /health returns a JSON HealthStatus payload."
+      - "The handler test covers status code and payload shape."
+    gate:
+      class: G-GOTEST
+      red_now: "No health HTTP handler exists."
+      green_when: "The handler package tests pass."
+      cmd: "go test ./internal/handler/..."
+    gate_command: "go test ./internal/handler/..."
+    agent_brief: >
+      Add the HTTP health handler using the HealthStatus model from the prior
+      brief. Scope this to handler wiring and tests; do not change unrelated
+      router or deployment code in this fixture brief.

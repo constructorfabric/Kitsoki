@@ -1,0 +1,23 @@
+name: worktree-repro-repo
+source:
+  synthetic: true
+  default_branch: main
+  steps:
+    - action: write
+      path: app.yaml
+      content: |
+        version: v1
+    - action: write
+      path: seed.txt
+      content: |
+        seed
+    - action: commit
+      message: init
+network: none
+verify:
+  probes:
+    - name: clean-tree
+      run: git diff --quiet && git diff --cached --quiet
+      expect: zero
+scenario:
+  kind: git-flow

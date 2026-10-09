@@ -4,12 +4,16 @@ states:
   # Entry. The make target dispatches `start` directly.
   idle:
     description: "Test auto-fixer parked. Run start to begin."
-    relevant_world: [test_cmd, max_cycles]
+    relevant_world: [test_cmd, quick_test_cmd, quick_test_timeout_seconds, full_test_timeout_seconds, max_cycles]
     view:
       extends: "base"
       blocks:
         body:
-          - prose: "Runs `{{ world.test_cmd }}`, fixes any failures with claude (sonnet), re-runs to confirm, then writes a report."
+          - prose: "Runs a bounded quick gate during repair cycles, proves the full gate, then reviews for no lost functionality or weakened tests."
+          - kv:
+              pairs:
+                "Full gate": "{{ world.test_cmd }}"
+                "Quick override": '{{ world.quick_test_cmd|default:"(uses full gate)" }}'
         choices:
           - heading: "Actions"
           - list:
@@ -19,19 +23,58 @@ states:
                 - label: "look"
     on:
       start:
-        - target: running_executing
+        - target: starting
           effects:
             - set:
-                cycle:        0
-                outcome:      ""
-                tests_passed: false
-                test_cmd:   "{{ slots.test_cmd ?? world.test_cmd }}"
-                max_cycles: "{{ slots.max_cycles ?? world.max_cycles }}"
+                test_cmd:                   "{{ slots.test_cmd ?? world.test_cmd }}"
+                quick_test_cmd:             "{{ slots.quick_test_cmd ?? world.quick_test_cmd }}"
+                quick_test_timeout_seconds: "{{ slots.quick_test_timeout_seconds ?? world.quick_test_timeout_seconds }}"
+                full_test_timeout_seconds:  "{{ slots.full_test_timeout_seconds ?? world.full_test_timeout_seconds }}"
+                max_cycles:                 "{{ slots.max_cycles ?? world.max_cycles }}"
+      look:
+        - target: .
+
+  # ── starting ───────────────────────────────────────────────────────
+  # Shared reset entry for standalone `start` and dev-story's imported
+  # quick action. Keep this separate from `running_executing` so repeated
+  # imported runs do not inherit a previous child cycle/fix/review state.
+  starting:
+    description: "Preparing to run the test suite."
+    relevant_world: [test_cmd, quick_test_cmd, quick_test_timeout_seconds, full_test_timeout_seconds, max_cycles]
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "Preparing the quick gate and full gate."
+          - kv:
+              pairs:
+                "Full gate": "{{ world.test_cmd }}"
+                "Quick override": '{{ world.quick_test_cmd|default:"(uses full gate)" }}'
+    on_enter:
+      - set:
+          cycle:           0
+          outcome:         ""
+          tests_passed:    false
+          last_job_id:     ""
+          effective_quick_test_cmd: "{{ world.quick_test_cmd != '' ? world.quick_test_cmd : world.test_cmd }}"
+          last_run:        {}
+          fix_artifact:    {}
+          review_artifact: {}
+          review_ok:       ""
+          review_reason:   ""
+          review_feedback: ""
+          report_path:     ""
+          report_dir:      "{{ slots.report_dir ?? world.report_dir }}"
+      - emit_intent: start
+    on:
+      start:
+        - target: running_executing
+          operation: fix_tests
       look:
         - target: .
 
   # ── running_executing ───────────────────────────────────────────────
-  # First test run, as a BACKGROUND job. Green → done_clean; red → fixing.
+  # First quick test run, as a BACKGROUND job. Green → full gate; red → fixing.
   #
   # The whole pipeline is built from background `*_executing` rooms whose
   # `on_complete:` runs once the job terminates and TARGETS the next room.
@@ -42,13 +85,13 @@ states:
   # lets the retry loop run 3 cycles without tripping the synchronous
   # post-bind-emit depth cap (=4).
   running_executing:
-    description: "Running the test suite."
-    relevant_world: [test_cmd, cycle, tests_passed]
+    description: "Running the quick test gate."
+    relevant_world: [test_cmd, effective_quick_test_cmd, quick_test_timeout_seconds, cycle, tests_passed]
     view:
       extends: "base"
       blocks:
         body:
-          - prose: "Running `{{ world.test_cmd }}` to discover failures (pending — job running)."
+          - prose: "Running quick gate `{{ world.effective_quick_test_cmd }}` with a {{ world.quick_test_timeout_seconds }}s timeout to discover failures (pending — job running)."
         choices:
           - heading: "Actions"
           - list:
@@ -59,17 +102,26 @@ states:
         id: run_initial
         background: true
         with:
-          cmd: "{{ world.test_cmd }}"
+          cmd: bash
+          args:
+            - "-lc"
+            - "{{ world.effective_quick_test_cmd }}"
+          timeout: "{{ world.quick_test_timeout_seconds }}s"
           cwd: "{{ world.workdir }}"
         bind:
           last_job_id: job_id
         on_complete:
           - set:
-              last_run:     "{{ world.last_job_result }}"
-              tests_passed: "{{ world.last_job_result.exit_code < 1 }}"
+              last_run:        "{{ world.last_job_result }}"
+              tests_passed:    "{{ world.last_job_result.exit_code < 1 }}"
+              review_artifact: {}
+              review_ok:       ""
+              review_reason:   ""
+              review_feedback: ""
           - when: "world.last_job_result.exit_code < 1"
-            set: { outcome: "clean" }
-          - target: "{{ world.last_job_result.exit_code < 1 ? 'done_clean' : 'fixing_executing' }}"
+            target: full_verifying_executing
+          - when: "world.last_job_result.exit_code >= 1"
+            target: fixing_executing
     on:
       look:
         - target: .
@@ -89,6 +141,7 @@ states:
           - kv:
               pairs:
                 "Last fix": '{{ world.fix_artifact.summary_title|default:"(pending — fixer running)" }}'
+                "Cycle report": '{{ world.fix_artifact.report_path|default:"(not written)" }}'
         choices:
           - heading: "Actions"
           - list:
@@ -103,39 +156,70 @@ states:
         with:
           agent: fixer
           working_dir: "{{ world.workdir }}"
+          # A repair may legitimately take several minutes, but it must keep
+          # producing stream-json activity. The shorter activity deadline
+          # kills a wedged provider/tool turn instead of waiting out a long
+          # completion timeout.
+          sandbox:
+            min_strength: supervised
+            degrade: warn
+            # Claude's interactive login is tied to the operator's home. Keep
+            # it only for this explicitly live fixer; settings are still
+            # limited to project/local by the CLI invocation.
+            auth_home: inherit
+            resources:
+              timeout: "30m"
+              # Three minutes allows one focused inspection/verification
+              # round, while still surfacing a silent provider/tool turn far
+              # sooner than the 30-minute completion deadline.
+              activity_timeout: "3m"
           acceptance:
             schema: schemas/fix_artifact.json
             max_retries: 3
           context:
             prompt: prompts/fix.md
             args:
-              test_cmd:   "{{ world.test_cmd }}"
-              failures:   "{{ world.last_run.stdout }}"
-              cycle:      "{{ world.cycle }}"
-              max_cycles: "{{ world.max_cycles }}"
+              test_cmd:       "{{ world.test_cmd }}"
+              quick_test_cmd: "{{ world.effective_quick_test_cmd }}"
+              failures:       "{{ world.last_run.stdout }}"
+              review_feedback: "{{ world.review_feedback }}"
+              cycle:          "{{ world.cycle }}"
+              max_cycles:     "{{ world.max_cycles }}"
         bind:
           last_job_id: job_id
         on_complete:
+          # A failed/cancelled agent job has no Result.Data, hence no
+          # last_job_result.submitted. Handle that terminal status before
+          # dereferencing the acceptance artifact so an activity watchdog or
+          # provider failure cannot strand the session in *_executing.
+          - when: "world.last_job_status != 'done'"
+            set:
+              outcome: "blocked"
+          - when: "world.last_job_status != 'done'"
+            target: blocked
           - set:
               fix_artifact: "{{ world.last_job_result.submitted }}"
           - when: "world.last_job_result.submitted.needs_decision"
             set: { outcome: "blocked" }
-          - target: "{{ world.last_job_result.submitted.needs_decision ? 'blocked' : 'verifying_executing' }}"
+          - when: "world.last_job_result.submitted.needs_decision"
+            target: blocked
+          - when: "world.last_job_result.submitted.needs_decision == false"
+            target: verifying_executing
     on:
       look:
         - target: .
 
   # ── verifying_executing ─────────────────────────────────────────────
-  # Re-run the suite (background). Green → done_clean; red & budget left →
+  # Re-run the quick gate (background). Green → full gate; red & budget left →
   # fixing; red & budget exhausted → done_exhausted.
   verifying_executing:
-    description: "Re-running the test suite to confirm the fix."
-    relevant_world: [cycle, max_cycles, tests_passed]
+    description: "Re-running the quick test gate to confirm the fix."
+    relevant_world: [cycle, max_cycles, effective_quick_test_cmd, quick_test_timeout_seconds, tests_passed]
     view:
       extends: "base"
       blocks:
         body:
-          - prose: "Cycle {{ world.cycle }} — re-running `{{ world.test_cmd }}` to confirm the fix held (pending — job running)."
+          - prose: "Cycle {{ world.cycle }} — re-running quick gate `{{ world.effective_quick_test_cmd }}` with a {{ world.quick_test_timeout_seconds }}s timeout (pending — job running)."
         choices:
           - heading: "Actions"
           - list:
@@ -146,25 +230,168 @@ states:
         id: verify_run
         background: true
         with:
-          cmd: "{{ world.test_cmd }}"
+          cmd: bash
+          args:
+            - "-lc"
+            - "{{ world.effective_quick_test_cmd }}"
+          timeout: "{{ world.quick_test_timeout_seconds }}s"
           cwd: "{{ world.workdir }}"
         bind:
           last_job_id: job_id
         on_complete:
           - set:
-              last_run:     "{{ world.last_job_result }}"
-              tests_passed: "{{ world.last_job_result.exit_code < 1 }}"
+              last_run:        "{{ world.last_job_result }}"
+              tests_passed:    "{{ world.last_job_result.exit_code < 1 }}"
+              review_artifact: {}
+              review_ok:       ""
+              review_reason:   ""
+              review_feedback: ""
+          - when: "world.last_job_result.exit_code >= 1 && world.cycle >= world.max_cycles"
+            set: { outcome: "exhausted" }
           - when: "world.last_job_result.exit_code < 1"
+            target: full_verifying_executing
+          - when: "world.last_job_result.exit_code >= 1 && world.cycle < world.max_cycles"
+            target: fixing_executing
+          - when: "world.last_job_result.exit_code >= 1 && world.cycle >= world.max_cycles"
+            target: done_exhausted
+    on:
+      look:
+        - target: .
+
+  # ── full_verifying_executing ───────────────────────────────────────
+  # Bounded full acceptance gate. This is the authoritative command (usually
+  # make test). Green → review; red/timeout → fixing or exhausted.
+  full_verifying_executing:
+    description: "Running the full deterministic test gate."
+    relevant_world: [test_cmd, full_test_timeout_seconds, cycle, max_cycles, tests_passed]
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "Running full gate `{{ world.test_cmd }}` with a {{ world.full_test_timeout_seconds }}s timeout before review (pending — job running)."
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "look"
+    on_enter:
+      - invoke: host.run
+        id: full_verify_run
+        background: true
+        with:
+          cmd: bash
+          args:
+            - "-lc"
+            - "{{ world.test_cmd }}"
+          timeout: "{{ world.full_test_timeout_seconds }}s"
+          cwd: "{{ world.workdir }}"
+        bind:
+          last_job_id: job_id
+        on_complete:
+          - set:
+              last_run:        "{{ world.last_job_result }}"
+              tests_passed:    "{{ world.last_job_result.exit_code < 1 }}"
+              review_artifact: {}
+              review_ok:       ""
+              review_reason:   ""
+              review_feedback: ""
+          - when: "world.last_job_result.exit_code < 1 && world.cycle == 0"
+            set: { outcome: "clean" }
+          - when: "world.last_job_result.exit_code < 1 && world.cycle > 0"
             set: { outcome: "fixed" }
           - when: "world.last_job_result.exit_code >= 1 && world.cycle >= world.max_cycles"
             set: { outcome: "exhausted" }
-          - target: "{{ world.last_job_result.exit_code < 1 ? 'done_clean' : (world.cycle >= world.max_cycles ? 'done_exhausted' : 'fixing_executing') }}"
+          - when: "world.last_job_result.exit_code < 1"
+            target: reviewing_executing
+          - when: "world.last_job_result.exit_code >= 1 && world.cycle < world.max_cycles"
+            target: fixing_executing
+          - when: "world.last_job_result.exit_code >= 1 && world.cycle >= world.max_cycles"
+            target: done_exhausted
+    on:
+      look:
+        - target: .
+
+  # ── reviewing_executing ────────────────────────────────────────────
+  # Adversarial read-only review after the deterministic command is green.
+  # Passing the full deterministic command is necessary but not sufficient: the reviewer rejects
+  # weakened tests, lost existing functionality, or discarded new work.
+  reviewing_executing:
+    description: "Reviewing the green diff for functionality loss or weakened tests."
+    relevant_world: [test_cmd, cycle, max_cycles, review_ok, review_reason]
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "The full deterministic command is green. Running the read-only review gate before accepting the result."
+          - kv:
+              pairs:
+                "Review": '{{ world.review_reason|default:"(pending — reviewer running)" }}'
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "look"
+    on_enter:
+      - invoke: host.agent.decide
+        id: "review-{{ world.cycle }}"
+        background: true
+        with:
+          prompt: prompts/review.md
+          schema: schemas/review_verdict.json
+          agent: reviewer
+          working_dir: "{{ world.workdir }}"
+          sandbox:
+            min_strength: supervised
+            repo: read_only
+            network: model_only
+            # The live reviewer uses the same operator-scoped Claude login as
+            # the fixer. Without this it fails before submitting a verdict.
+            auth_home: inherit
+            resources:
+              timeout: "8m"
+          args:
+            test_cmd:        "{{ world.test_cmd }}"
+            cycle:           "{{ world.cycle }}"
+            max_cycles:      "{{ world.max_cycles }}"
+            test_stdout:     "{{ world.last_run.stdout }}"
+            fix_artifact:    "{{ world.fix_artifact }}"
+            review_feedback: "{{ world.review_feedback }}"
+        bind:
+          last_job_id: job_id
+        on_complete:
+          # A provider/login/validator failure has no submitted review
+          # artifact. Handle it before dereferencing submitted.* so a failed
+          # review cannot strand the session in reviewing_executing.
+          - when: "world.last_job_status != 'done' || len(world.last_job_result.submitted) == 0"
+            set:
+              outcome: "blocked"
+              review_reason: "Review agent did not produce a verdict."
+          - when: "world.last_job_status != 'done' || len(world.last_job_result.submitted) == 0"
+            target: blocked
+          # Targets do not short-circuit the rest of an on_complete effect
+          # list, so every submitted.* access below must be guarded as well.
+          - when: "world.last_job_status == 'done' && len(world.last_job_result.submitted) > 0"
+            set:
+              review_artifact: "{{ world.last_job_result.submitted }}"
+              review_ok:       "{{ world.last_job_result.submitted.pass }}"
+              review_reason:   "{{ world.last_job_result.submitted.reason }}"
+              review_feedback: "{{ world.last_job_result.submitted.pass ? '' : world.last_job_result.submitted.reason }}"
+          - when: "world.last_job_status == 'done' && len(world.last_job_result.submitted) > 0 && world.last_job_result.submitted.pass == false && world.cycle >= world.max_cycles"
+            set: { outcome: "review_failed" }
+          - when: "world.last_job_status == 'done' && len(world.last_job_result.submitted) > 0"
+            say: "Review gate → {% if world.last_job_result.submitted.pass == true %}PASS{% else %}FAIL{% endif %}: {{ world.last_job_result.submitted.reason }}"
+          - when: "world.last_job_status == 'done' && len(world.last_job_result.submitted) > 0 && world.last_job_result.submitted.pass == true"
+            target: done_clean
+          - when: "world.last_job_status == 'done' && len(world.last_job_result.submitted) > 0 && world.last_job_result.submitted.pass == false && world.cycle < world.max_cycles"
+            target: fixing_executing
+          - when: "world.last_job_status == 'done' && len(world.last_job_result.submitted) > 0 && world.last_job_result.submitted.pass == false && world.cycle >= world.max_cycles"
+            target: done_review_failed
     on:
       look:
         - target: .
 
   # ── done_clean ──────────────────────────────────────────────────────
-  # Terminal: tests green (either first run or after a fix). Exit 0.
+  # Terminal: tests green and review passed (either first run or after a fix).
   done_clean:
     description: "All tests passing."
     relevant_world: [outcome, cycle, report_path]
@@ -182,19 +409,24 @@ states:
               items:
                 - label: "look"
     on_enter:
-      - invoke: host.run
+      - invoke: host.starlark.run
         id: write_report
         with:
-          cmd: python3
-          args:
-            - "stories/fix-tests/scripts/write_report.py"
-            - "{{ world.outcome }}"
-            - "{{ world.cycle }}"
-            - "{{ world.max_cycles }}"
-            - "{{ world.fix_artifact }}"
-            - "true"
+          script: scripts/write_report.star
+          capabilities:
+            fs:
+              read: ["**"]
+              write: ["**"]
+          inputs:
+            outcome: "{{ world.outcome }}"
+            cycle: "{{ world.cycle }}"
+            max_cycles: "{{ world.max_cycles }}"
+            fix_artifact: "{{ world.fix_artifact }}"
+            review_artifact: "{{ world.review_artifact }}"
+            tests_passed: true
+            report_dir: "{{ world.report_dir }}"
         bind:
-          report_path: stdout
+          report_path: report_path
       - invoke: host.inbox.add
         with:
           kind:  checkpoint
@@ -202,7 +434,14 @@ states:
           state: done_clean
           body:  "Tests passing after {{ world.cycle }} cycle(s)."
       - say: "Tests green ({{ world.outcome }})."
+      - emit_intent: finish
     on:
+      finish:
+        - target: "@exit:achieved"
+          effects:
+            - set:
+                outcome: "{{ world.outcome }}"
+                report_path: "{{ world.report_path }}"
       look:
         - target: .
 
@@ -225,19 +464,24 @@ states:
               items:
                 - label: "look"
     on_enter:
-      - invoke: host.run
+      - invoke: host.starlark.run
         id: write_report
         with:
-          cmd: python3
-          args:
-            - "stories/fix-tests/scripts/write_report.py"
-            - "{{ world.outcome }}"
-            - "{{ world.cycle }}"
-            - "{{ world.max_cycles }}"
-            - "{{ world.fix_artifact }}"
-            - "false"
+          script: scripts/write_report.star
+          capabilities:
+            fs:
+              read: ["**"]
+              write: ["**"]
+          inputs:
+            outcome: "{{ world.outcome }}"
+            cycle: "{{ world.cycle }}"
+            max_cycles: "{{ world.max_cycles }}"
+            fix_artifact: "{{ world.fix_artifact }}"
+            review_artifact: "{{ world.review_artifact }}"
+            tests_passed: false
+            report_dir: "{{ world.report_dir }}"
         bind:
-          report_path: stdout
+          report_path: report_path
       - invoke: host.inbox.add
         with:
           kind:  checkpoint
@@ -245,7 +489,72 @@ states:
           state: done_exhausted
           body:  "Tests still failing after {{ world.cycle }} cycle(s)."
       - say: "Tests still red after {{ world.cycle }} cycle(s)."
+      - emit_intent: bail
     on:
+      bail:
+        - target: "@exit:exhausted"
+          effects:
+            - set:
+                outcome: "{{ world.outcome }}"
+                report_path: "{{ world.report_path }}"
+      look:
+        - target: .
+
+  # ── done_review_failed ─────────────────────────────────────────────
+  # Terminal: command is green, but the adversarial review says the diff lost
+  # functionality or weakened tests. Exit nonzero/needs-human rather than
+  # blessing a bad green.
+  done_review_failed:
+    description: "Review rejected the green diff."
+    relevant_world: [outcome, cycle, max_cycles, report_path, review_reason]
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "The command is green, but review rejected the diff after {{ world.cycle }} fix cycle(s)."
+          - code: '{{ world.review_reason|default:"(no review reason recorded)" }}'
+          - kv:
+              pairs:
+                Report: '{{ world.report_path|default:"(pending)" }}'
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "look"
+    on_enter:
+      - invoke: host.starlark.run
+        id: write_report
+        with:
+          script: scripts/write_report.star
+          capabilities:
+            fs:
+              read: ["**"]
+              write: ["**"]
+          inputs:
+            outcome: review_failed
+            cycle: "{{ world.cycle }}"
+            max_cycles: "{{ world.max_cycles }}"
+            fix_artifact: "{{ world.fix_artifact }}"
+            review_artifact: "{{ world.review_artifact }}"
+            tests_passed: true
+            report_dir: "{{ world.report_dir }}"
+        bind:
+          report_path: report_path
+      - invoke: host.inbox.add
+        with:
+          kind:  checkpoint
+          title: "fix-tests: review rejected green diff"
+          state: done_review_failed
+          body:  "The command is green, but the review gate rejected the diff."
+      - say: "Review rejected the green diff."
+      - emit_intent: bail
+    on:
+      bail:
+        - target: "@exit:needs-human"
+          effects:
+            - set:
+                outcome: "{{ world.outcome }}"
+                report_path: "{{ world.report_path }}"
       look:
         - target: .
 
@@ -262,6 +571,7 @@ states:
           - code: '{{ world.fix_artifact.summary_markdown|default:"(the fixer or a test run errored before producing an artifact — see the linked test report)" }}'
           - kv:
               pairs:
+                "Cycle report": '{{ world.fix_artifact.report_path|default:"(not written)" }}'
                 Report: '{{ world.report_path|default:"(pending)" }}'
         choices:
           - heading: "Actions"
@@ -269,19 +579,24 @@ states:
               items:
                 - label: "look"
     on_enter:
-      - invoke: host.run
+      - invoke: host.starlark.run
         id: write_report
         with:
-          cmd: python3
-          args:
-            - "stories/fix-tests/scripts/write_report.py"
-            - "blocked"
-            - "{{ world.cycle }}"
-            - "{{ world.max_cycles }}"
-            - "{{ world.fix_artifact }}"
-            - "false"
+          script: scripts/write_report.star
+          capabilities:
+            fs:
+              read: ["**"]
+              write: ["**"]
+          inputs:
+            outcome: blocked
+            cycle: "{{ world.cycle }}"
+            max_cycles: "{{ world.max_cycles }}"
+            fix_artifact: "{{ world.fix_artifact }}"
+            review_artifact: "{{ world.review_artifact }}"
+            tests_passed: false
+            report_dir: "{{ world.report_dir }}"
         bind:
-          report_path: stdout
+          report_path: report_path
       - invoke: host.inbox.add
         with:
           kind:  checkpoint
@@ -289,6 +604,13 @@ states:
           state: blocked
           body:  "The fixer needs a decision."
       - say: "Blocked — decision needed."
+      - emit_intent: bail
     on:
+      bail:
+        - target: "@exit:needs-human"
+          effects:
+            - set:
+                outcome: "{{ world.outcome }}"
+                report_path: "{{ world.report_path }}"
       look:
         - target: .

@@ -1,0 +1,2 @@
+{"ts":"2026-07-13T00:00:00Z","kind":"agent.call.start","call_id":"clean","payload":{}}
+{"ts":"2026-07-13T00:00:01Z","kind":"agent.call.complete","call_id":"clean","payload":{"state_changed":true}}

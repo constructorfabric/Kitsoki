@@ -129,7 +129,7 @@ on_enter:
   `outcome.NewState=<target>` once everything is committed, so the
   transcript auto-refreshes without the operator typing anything.
 - The PR-refinement / bug-fix-style "executing → done" pattern is the main
-  use case — see `stories/bugfix/app.yaml` in the cyber-repo.
+  use case — see `stories/bugfix/app.yaml` in an importing project.
 
 **Restrictions** (rejected at load time):
 

@@ -1,0 +1,49 @@
+# child — declares a `greeter` host_interface with a plain default binding.
+# The PARENT (../parent/app.yaml) rebinds it onto a starlark script
+# (host_bindings: { greeter: { script: scripts/greet.star } }) — this fixture
+# exercises S3a (kits-implementation-plan.md D2.1): a host_bindings entry that
+# names a starlark script instead of a concrete Go handler.
+app:
+  id: host-binding-starlark-child
+  version: 0.1.0
+
+hosts:
+  - host.run
+
+host_interfaces:
+  greeter:
+    description: "Greets a named visitor."
+    operations:
+      hello:
+        input: { name: string }
+        output: { message: string }
+    default: host.run
+
+world:
+  greeting: { type: string, default: "" }
+
+intents:
+  hi:
+    description: "Say hi."
+    examples: ["hi", "say hi"]
+
+root: idle
+
+states:
+  idle:
+    description: "Ready to greet {{ world.greeting }}."
+    view: |
+      Ready.
+    on:
+      hi:
+        - target: greeted
+          effects:
+            - invoke: iface.greeter.hello
+              with: { name: "Ada" }
+              bind: { greeting: message }
+
+  greeted:
+    terminal: true
+    description: "Greeted."
+    view: |
+      {{ world.greeting }}

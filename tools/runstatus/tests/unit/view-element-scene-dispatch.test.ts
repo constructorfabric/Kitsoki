@@ -77,7 +77,7 @@ describe("ViewElement scene-aware refine dispatch", () => {
     // LIVE anchor into world.annotation (else the refine reads only the seed).
     expect(slots.annotation_anchor).toEqual({
       kind: "semantic_element",
-      semantic_element: { plugin: undefined, ref: "9/image" },
+      semantic_element: { plugin: undefined, ref: "9/image", label: "Scene 9" },
       label: "Scene 9",
     });
   });

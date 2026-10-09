@@ -1,0 +1,66 @@
+# worker_brief_dispatch — WM.1: dispatch's manifest prompt carries the SLIM,
+# bounded-context worker brief (scripts/gs_worker_brief.star's projection,
+# folded in by scripts/gs_manifest.star), not just the bare agent_brief. Real
+# gs_manifest.star runs (only host.agent.decide is stubbed, to pick change W1
+# deterministically); the fixture decomposition
+# (testdata/worker-brief/decomposition.yaml) gives W1 a mixed scope: an
+# existing small file (inlined in full), a not-yet-created file (pointer), and
+# a glob (expanded listing) — so the manifest's `prompt` field must show the
+# gate command, a "## Task" line carrying the agent_brief, and all three scope
+# forms.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: bootstrap
+initial_world:
+  goal_slug: goal-seeker-worker-brief
+  goal_dir:  stories/goal-seeker/testdata/worker-brief
+  work_dir:  .artifacts/goal/flow-worker-brief
+  reset_log: true
+
+host_handlers:
+  host.agent.decide:
+    by_call:
+      evaluate:
+        data:
+          ok: true
+          submitted:
+            verdict: not_done
+            summary: "dispatch the ledger's ready change."
+            next_instruction:
+              change_id: "W1"
+              action: "implement the ready change"
+              pipeline: "implementation"
+              gate: { class: "G-FLOW", cmd: "true" }
+
+turns:
+  - intent: { name: look, slots: {} }
+    expect_state: bootstrap
+  - intent: { name: advance, slots: {} }        # bootstrap → lint_check
+    expect_state: lint_check
+  - intent: { name: advance, slots: {} }        # lint ok → evaluate
+    expect_state: evaluate
+    expect_world: { remaining: 1, ready_id: "W1" }
+  - intent: { name: advance, slots: {} }        # evaluate → deciding
+    expect_state: deciding
+  - intent: { name: advance, slots: {} }        # decide (advisory) → dispatch (real gs_manifest runs)
+    expect_state: dispatch
+    expect_world: { next_change_id: "W1" }
+
+expect_no_errors: true
+
+# SEAM PROOF: the manifest's `prompt` (what punch-list hands the maker) is the
+# router-anchor ticket directive PLUS the full slim brief — gate command, a
+# "## Task" line, and all three in-scope-file forms (inlined small file,
+# not-yet-created pointer, expanded glob listing).
+expect_files:
+  - path: ../../../.artifacts/goal/flow-worker-brief/manifests/W1.json
+    content_matches: '## Gate.*command:.*`true`'
+  - path: ../../../.artifacts/goal/flow-worker-brief/manifests/W1.json
+    content_matches: '## Task.*Update small_file.go per this brief'
+  - path: ../../../.artifacts/goal/flow-worker-brief/manifests/W1.json
+    content_matches: 'small_file.go.*full content'
+  - path: ../../../.artifacts/goal/flow-worker-brief/manifests/W1.json
+    content_matches: 'not_yet_created.go.*does NOT exist yet'
+  - path: ../../../.artifacts/goal/flow-worker-brief/manifests/W1.json
+    content_matches: 'glob.*subdir/\*\.md.*subdir/one.md'

@@ -37,9 +37,12 @@
 package webshot
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -420,8 +423,8 @@ type HandlerServer struct {
 	HealthTimeout time.Duration
 }
 
-// Serve binds Handler on 127.0.0.1:0, waits for GET / to return 200, and returns
-// the base URL plus a stop func that shuts the server down.
+// Serve binds Handler on 127.0.0.1:0, waits for the RPC surface to answer, and
+// returns the base URL plus a stop func that shuts the server down.
 func (h *HandlerServer) Serve(ctx context.Context) (string, func(), error) {
 	if h.Handler == nil {
 		return "", nil, errors.New("webshot: HandlerServer.Handler is required")
@@ -453,21 +456,40 @@ func (h *HandlerServer) Serve(ctx context.Context) (string, func(), error) {
 	return base, stop, nil
 }
 
-// waitHealthy polls base/ until it returns 200 or the deadline passes. Mirrors
-// internal/tour.waitHealthy / the Playwright _helpers waitForHealthy.
+// waitHealthy polls the JSON-RPC story-list endpoint until it returns a
+// successful JSON-RPC response or the deadline passes. Using RPC instead of GET
+// / keeps source-mode `go run ./cmd/kitsoki web-shot` healthy even when the SPA
+// index is not embedded in the temporary binary and / correctly returns 503.
 func waitHealthy(ctx context.Context, base string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	client := &http.Client{Timeout: 2 * time.Second}
 	var lastErr error
 	for time.Now().Before(deadline) {
-		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, base+"/", nil)
+		body := []byte(`{"jsonrpc":"2.0","id":1,"method":"runstatus.stories.list","params":{}}`)
+		req, _ := http.NewRequestWithContext(ctx, http.MethodPost, base+"/rpc", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
 		resp, err := client.Do(req)
 		if err == nil {
+			payload, readErr := io.ReadAll(resp.Body)
 			_ = resp.Body.Close()
-			if resp.StatusCode == http.StatusOK {
-				return nil
+			if readErr != nil {
+				lastErr = readErr
+			} else if resp.StatusCode == http.StatusOK {
+				var decoded struct {
+					Error *struct {
+						Message string `json:"message"`
+					} `json:"error"`
+				}
+				if jsonErr := json.Unmarshal(payload, &decoded); jsonErr != nil {
+					lastErr = fmt.Errorf("invalid JSON-RPC response: %w", jsonErr)
+				} else if decoded.Error != nil {
+					lastErr = fmt.Errorf("JSON-RPC error: %s", decoded.Error.Message)
+				} else {
+					return nil
+				}
+			} else {
+				lastErr = fmt.Errorf("status %d", resp.StatusCode)
 			}
-			lastErr = fmt.Errorf("status %d", resp.StatusCode)
 		} else {
 			lastErr = err
 		}

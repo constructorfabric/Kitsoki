@@ -1,0 +1,3 @@
+{"timestamp": "2026-07-03T11:00:00Z", "type": "session_meta", "payload": {"session_id": "demo2", "originator": "codex_exec", "source": "exec", "cwd": "/Users/inventeduser/code/widget-app", "cli_version": "0.999.0"}}
+{"timestamp": "2026-07-03T11:00:01Z", "type": "event_msg", "payload": {"type": "user_message", "message": "you are operating inside kitsoki as a dispatched agent", "images": [], "local_images": [], "text_elements": []}}
+{"timestamp": "2026-07-03T11:00:02Z", "type": "event_msg", "payload": {"type": "agent_message", "message": "Understood, proceeding autonomously.", "phase": "commentary", "memory_citation": null}}

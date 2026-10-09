@@ -85,6 +85,7 @@ episodes:
         submitted:
           applied: true
           summary: "Patched docs/hosts.md by appending a host.bar row to the registry table at lines 80-92."
+          report_path: ".artifacts/docs-review/abc123-fix-report.md"
           files_changed:
             - path: "docs/hosts.md"
               change: "added host.bar entry mirroring host.run shape"

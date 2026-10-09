@@ -1,0 +1,19 @@
+inputs:
+  leg:           { type: object, required: false }
+  drive_result:  { type: object, required: false }
+  judge_result:  { type: object, required: false }
+  live_profile:  { type: string, required: false }
+  # Batch mode (P2.10 "parallel legs via arena", rooms/parallel.yaml): a list
+  # of {leg, drive_result, judge_result} triples, folded in one call. Wins
+  # over leg/drive_result/judge_result when non-empty.
+  legs_batch:    { type: list, required: false }
+
+outputs:
+  leg_results:     { type: object }
+  pass_count:      { type: int }
+  fail_count:      { type: int }
+  degraded_count:  { type: int }
+  # Dedicated resolved-marker for a caller (rooms/parallel.yaml) that needs
+  # to defer a same-cascade `when:`+`emit_intent:` guard until this script's
+  # bind lands -- see record_leg_result.star's own comment on this field.
+  record_status:   { type: object }

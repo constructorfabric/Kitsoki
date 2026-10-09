@@ -69,3 +69,25 @@ func TestScanTraceStatus_ExitTerminal(t *testing.T) {
 		t.Errorf("terminal session should not be flagged STALLED:\n%s", buf.String())
 	}
 }
+
+func TestScanTraceStatus_FoldsQualifiedImportedStatus(t *testing.T) {
+	tr := `{"turn":3,"seq":0,"ts":"2026-06-25T10:00:00Z","kind":"world.update","state_path":"root.bf.idle","payload":{"set":{"root__bf__status":"open","root__bf__last_error":"old transient error"}}}
+{"turn":14,"seq":0,"ts":"2026-06-25T10:10:00Z","kind":"machine.transition","state_path":"root.human_review_report"}
+{"turn":14,"seq":1,"ts":"2026-06-25T10:10:01Z","kind":"world.update","state_path":"root.human_review_report","payload":{"set":{"root__bf__status":"abandoned","root__human_review_reason":"implementing_cycle_budget_exhausted_after_testing"}}}`
+	st := scanTraceStatus(strings.NewReader(tr))
+	if st.Status != "abandoned" {
+		t.Errorf("status = %q, want abandoned", st.Status)
+	}
+	if st.LastError != "implementing_cycle_budget_exhausted_after_testing" {
+		t.Errorf("last_error/reason = %q", st.LastError)
+	}
+	var buf bytes.Buffer
+	_ = printTraceStatus(&buf, "/x/ticket64.jsonl", st, time.Time{}, false, st.LastTs.Add(time.Hour))
+	out := buf.String()
+	if strings.Contains(out, "STALLED") {
+		t.Errorf("abandoned imported status should be terminal, not stalled:\n%s", out)
+	}
+	if !strings.Contains(out, "✓ terminal") {
+		t.Errorf("abandoned imported status should render terminal:\n%s", out)
+	}
+}

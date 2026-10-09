@@ -63,6 +63,119 @@ func TestTurn_RoutedInput(t *testing.T) {
 	assert.Equal(t, app.StatePath("cloakroom"), out.NextState)
 }
 
+func TestTurn_ReplayWithoutRecordingFallsThroughWhenSemanticDefaultOff(t *testing.T) {
+	resetSemanticRoutingGlobals(t)
+	appPath := writeNoRouteTurnApp(t)
+
+	_, err := runKitsoki(t,
+		"turn", appPath,
+		"--state", "start",
+		"--input", "unmatched free text",
+		"--harness", "replay",
+	)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "noRunHarness")
+}
+
+func TestTurn_SemanticRoutingOptInStillRoutesProbe(t *testing.T) {
+	resetSemanticRoutingGlobals(t)
+	t.Setenv("KITSOKI_SEMANTIC_ROUTING", "true")
+	appPath := writeSemanticTurnApp(t)
+
+	stdout, err := runKitsoki(t,
+		"turn", appPath,
+		"--state", "start",
+		"--input", "wade",
+		"--harness", "replay",
+	)
+	require.NoError(t, err)
+
+	var out struct {
+		Mode      string        `json:"mode"`
+		Intent    string        `json:"intent"`
+		NextState app.StatePath `json:"next_state"`
+		HostCalls []struct {
+			Namespace string `json:"namespace"`
+		} `json:"host_calls"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &out))
+	require.Equal(t, "completed", out.Mode)
+	require.Equal(t, "go_west", out.Intent)
+	require.Equal(t, app.StatePath("ended"), out.NextState)
+	require.Empty(t, out.HostCalls)
+}
+
+func TestTurn_ReplayWithoutRecordingFailsClosedOnHarnessMiss(t *testing.T) {
+	resetSemanticRoutingGlobals(t)
+
+	_, err := runKitsoki(t,
+		"turn", "../../testdata/apps/cloak/app.yaml",
+		"--state", "foyer",
+		"--input", "this should require the harness",
+		"--harness", "replay",
+	)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "noRunHarness")
+	require.NotContains(t, err.Error(), "--recording is required")
+}
+
+func writeSemanticTurnApp(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "app.yaml")
+	yml := []byte(`
+app:
+  id: turn-semantic-opt-in-test
+  version: 0.1.0
+routing:
+  enabled: true
+world: {}
+intents:
+  go_west:
+    title: "Go west"
+    examples: ["go west"]
+    synonyms: ["wade"]
+root: start
+states:
+  start:
+    view: "start"
+    on:
+      go_west:
+        - target: ended
+  ended:
+    terminal: true
+    view: "done"
+`)
+	require.NoError(t, os.WriteFile(path, yml, 0o644))
+	return path
+}
+
+func writeNoRouteTurnApp(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "app.yaml")
+	yml := []byte(`
+app:
+  id: turn-no-route-test
+  version: 0.1.0
+world: {}
+intents:
+  go_west:
+    title: "Go west"
+    examples: ["go west"]
+root: start
+states:
+  start:
+    view: "start"
+    on:
+      go_west:
+        - target: ended
+  ended:
+    terminal: true
+    view: "done"
+`)
+	require.NoError(t, os.WriteFile(path, yml, 0o644))
+	return path
+}
+
 // TestTurn_HostDispatchVisible confirms that one-shot turns dispatch host
 // calls and surface the binding effects in WorldAfter and View, the same as
 // the live orchestrator path does. We cover this with hang_cloak, which

@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "judge_leg_result",
+  "description": "One transport leg's independent judge verdict, grounded in cited evidence (kitsoki-ui-qa posture).",
+  "type": "object",
+  "required": ["verdict"],
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "description": "pass | fail | unsupported | degraded-evidence"
+    },
+    "summary": {
+      "type": "string",
+      "description": "One sentence citing the concrete frame/trace that grounds the verdict."
+    },
+    "cited_frames": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Frame filenames or trace paths the verdict is grounded in."
+    },
+    "frames_dir": {
+      "type": "string",
+      "description": "Directory the cited frames were read from."
+    }
+  },
+  "additionalProperties": true
+}

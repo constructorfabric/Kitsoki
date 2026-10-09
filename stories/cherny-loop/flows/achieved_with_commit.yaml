@@ -10,7 +10,7 @@ app: ../app.yaml
 initial_state: configuring
 
 host_handlers:
-  host.git_worktree: { data: { ok: true, path: ".worktrees/cherny-loop" } }
+  host.capsule_workspace: { data: { ok: true, path: ".capsules/workspaces/cherny-loop" } }
   host.run:
     by_call:
       gate-0: { data: { ok: false, exit_code: 1, stdout: "--- FAIL: TestAllow_Burst" } }
@@ -40,7 +40,7 @@ turns:
     expect_host_calls:
       # The commit fired once in the maker's worktree.
       - handler: host.git.commit
-        args: { workdir: ".worktrees/cherny-loop" }
+        args: { workdir: ".capsules/workspaces/cherny-loop" }
         times: 1
 
 expect_terminal: true

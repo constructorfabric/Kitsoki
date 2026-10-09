@@ -1,0 +1,5 @@
+inputs:
+  want: { type: string, required: true }
+outputs:
+  ok: { type: bool }
+  reasons: { type: list }

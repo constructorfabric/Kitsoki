@@ -10,12 +10,12 @@
 //   - time_range       — a span (or instant) in a video/recording: {start_ms, end_ms?}.
 //   - frame            — a single grabbed still: {frame_handle, t_ms}.
 //   - dom_node         — a resolved DOM element: {selector, role, text, bbox}
-//                        (the v1 element, now one anchor target among several).
+//     (the v1 element, now one anchor target among several).
 //   - region           — a freehand/box/highlight drawn on the pixels:
-//                        {shape: box|freeform|highlight, path[], bbox}.
+//     {shape: box|freeform|highlight, path[], bbox}.
 //   - semantic_element — a producer-declared element picked from the sibling
-//                        semantic sidecar: {plugin, ref, bbox?}. kitsoki never
-//                        interprets `ref`; it round-trips it verbatim.
+//     semantic sidecar: {plugin, ref, bbox?}. kitsoki never
+//     interprets `ref`; it round-trips it verbatim.
 //
 // CRITICAL back-compat contract: the v1 flat fields (frame_handle / point /
 // element / t_ms) are STILL accepted and STILL recorded byte-identically. A v1
@@ -114,9 +114,16 @@ type AnchorRegionTarget struct {
 // (round-tripped verbatim, never interpreted); Bbox (optional) is the element's
 // box for re-overlay when the sidecar supplied one.
 type AnchorSemanticElementTarget struct {
-	Plugin string `json:"plugin"`
-	Ref    string `json:"ref"`
-	Bbox   [4]int `json:"bbox,omitempty"`
+	Plugin       string         `json:"plugin"`
+	Ref          string         `json:"ref"`
+	SemanticKind string         `json:"semantic_kind,omitempty"`
+	Label        string         `json:"label,omitempty"`
+	Description  string         `json:"description,omitempty"`
+	Selector     string         `json:"selector,omitempty"`
+	Text         string         `json:"text,omitempty"`
+	Value        string         `json:"value,omitempty"`
+	Data         map[string]any `json:"data,omitempty"`
+	Bbox         [4]int         `json:"bbox,omitempty"`
 }
 
 // asMap renders the anchor as the template-facing map a pongo2 prompt sees under
@@ -165,6 +172,27 @@ func (a AnnotationAnchor) asMap() map[string]any {
 		if a.SemanticElement != nil {
 			target["plugin"] = a.SemanticElement.Plugin
 			target["ref"] = a.SemanticElement.Ref
+			if a.SemanticElement.SemanticKind != "" {
+				target["semantic_kind"] = a.SemanticElement.SemanticKind
+			}
+			if a.SemanticElement.Label != "" {
+				target["label"] = a.SemanticElement.Label
+			}
+			if a.SemanticElement.Description != "" {
+				target["description"] = a.SemanticElement.Description
+			}
+			if a.SemanticElement.Selector != "" {
+				target["selector"] = a.SemanticElement.Selector
+			}
+			if a.SemanticElement.Text != "" {
+				target["text"] = a.SemanticElement.Text
+			}
+			if a.SemanticElement.Value != "" {
+				target["value"] = a.SemanticElement.Value
+			}
+			if len(a.SemanticElement.Data) > 0 {
+				target["data"] = a.SemanticElement.Data
+			}
 			if a.SemanticElement.Bbox != ([4]int{}) {
 				target["bbox"] = bboxSlice(a.SemanticElement.Bbox)
 			}
@@ -298,6 +326,15 @@ func AnchorFromParams(m map[string]any) AnnotationAnchor {
 			s := &AnchorSemanticElementTarget{}
 			s.Plugin, _ = se["plugin"].(string)
 			s.Ref, _ = se["ref"].(string)
+			s.SemanticKind, _ = se["semantic_kind"].(string)
+			s.Label, _ = se["label"].(string)
+			s.Description, _ = se["description"].(string)
+			s.Selector, _ = se["selector"].(string)
+			s.Text, _ = se["text"].(string)
+			s.Value, _ = se["value"].(string)
+			if data, ok := se["data"].(map[string]any); ok {
+				s.Data = data
+			}
 			s.Bbox = anchorBbox(se["bbox"])
 			a.SemanticElement = s
 		}

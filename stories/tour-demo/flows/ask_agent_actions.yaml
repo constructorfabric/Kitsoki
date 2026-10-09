@@ -1,0 +1,68 @@
+# ask_agent_actions — the deterministic, no-LLM proof of the P5 serving
+# loop's story wiring: asking about a feature plans+validates a tour and
+# lands in `planned` with both the v2 document and the v1 steps the
+# EXISTING player (tools/runstatus's tour overlay) already knows how to
+# render, bound into world.
+#
+# host.tour.plan/host.tour.validate are pure Go functions with zero
+# LLM/network dependency (see internal/host/tour_plan.go and its own
+# TestTourPlanHandler_PlansFromRealFeatureCatalog /
+# TestTourValidateHandler_ValidatesAndConvertsAPlannedTour, which call the
+# real handlers directly against the real features/agent-actions.yaml).
+# This flow fixture still stubs them via host_handlers, matching this
+# repo's flow-test convention (every host call is an "external" effect the
+# harness requires a canned response for, exactly like host.run gets
+# stubbed even for a deterministic shell command elsewhere) — its job is
+# to prove the STORY's routing/binding/on_error wiring, not re-prove the
+# handler logic the Go unit tests already cover.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world: {}
+
+host_handlers:
+  host.tour.plan:
+    data:
+      tour:
+        version: 2
+        id: "agent-actions"
+        steps:
+          - id: "step-1"
+            kind: "highlight"
+            target: { testid: "agent-actions-panel" }
+            popover: { title: "Agent Actions", body: "See what the agent did." }
+  host.tour.validate:
+    data:
+      ok: true
+      v1_steps:
+        - id: "step-1"
+          target: "agent-actions-panel"
+          title: "Agent Actions"
+          body: "See what the agent did."
+          placement: ""
+          kind: "explain"
+          advance: "next"
+
+turns:
+  - intent: { name: ask, slots: { feature_id: "agent-actions" } }
+    expect_state: planned
+    expect_world:
+      tour_v2:
+        version: 2
+        id: "agent-actions"
+        steps:
+          - id: "step-1"
+            kind: "highlight"
+            target: { testid: "agent-actions-panel" }
+            popover: { title: "Agent Actions", body: "See what the agent did." }
+      tour_v1_steps:
+        - id: "step-1"
+          target: "agent-actions-panel"
+          title: "Agent Actions"
+          body: "See what the agent did."
+          placement: ""
+          kind: "explain"
+          advance: "next"
+
+expect_no_errors: true

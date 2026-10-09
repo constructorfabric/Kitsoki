@@ -1,6 +1,6 @@
 # workspace_manager — list / create / switch workspaces. Dispatches
 # via iface.workspace.{list,create,sync}. Wave 2 ships a minimal
-# surface; cyber-repo's `workspace-manager` CLI rebinds the iface to
+# surface; a project wrapper can rebind the iface to
 # `host.workspace_manager` for the full feature set.
 
 states:
@@ -17,7 +17,7 @@ states:
             Workdir:             '{{ world.workdir|default:"(none)" }}'
             "Feature branch":    '{{ world.feature_branch|default:"(none)" }}'
       - code: |
-          {% if world.workspace_list %}{% for w in world.workspace_list %}{{ forloop.Counter }}. {{ w.id }}  {{ w.branch|default:"(detached)" }}  {{ w.path }}{% if w.dirty %}  dirty{% endif %}
+          {% if world.workspace_list|default:'' %}{% for w in world.workspace_list|default:'' %}{{ forloop.Counter }}. {{ w.id }}  {{ w.branch|default:"(detached)" }}  {{ w.path }}{% if w.dirty %}  dirty{% endif %}
           {% endfor %}{% else %}(workspace list has not been fetched yet){% endif %}
       - choice:
           mode: single
@@ -90,7 +90,7 @@ states:
             "Refinement filter": '{{ world.cleanup_filter|default:"(none)" }}'
             Recommended: "{{ world.cleanup_recommended }}"
       - code: |
-          {% if world.cleanup_candidates %}{% for c in world.cleanup_candidates %}{% if c.recommended %}[delete]{% else %}[keep]{% endif %} {{ c.kind }} {{ c.branch|default:"(detached)" }}{% if c.path %}  {{ c.path }}{% endif %} — {{ c.reason }}
+          {% if world.cleanup_candidates|default:'' %}{% for c in world.cleanup_candidates|default:'' %}{% if c.recommended %}[delete]{% else %}[keep]{% endif %} {{ c.kind }} {{ c.branch|default:"(detached)" }}{% if c.path %}  {{ c.path }}{% endif %} — {{ c.reason }}
           {% endfor %}{% else %}(no worktree or branch candidates found){% endif %}
       - choice:
           mode: single

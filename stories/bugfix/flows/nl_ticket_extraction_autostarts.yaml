@@ -1,0 +1,97 @@
+# nl_ticket_extraction_autostarts — a headless dispatcher whose maker does NOT
+# pass `initial_world` to session.new (live drives have shown this happens even
+# when explicitly instructed — see stories/goal-seeker/scripts/gs_manifest.star
+# and stories/punch-list/prompts/drive_item.md) instead drives the ticket
+# directive as plain operator text: "Work ticket <id> titled "<title>". <brief>".
+#
+# Unlike headless_ticket_autostarts_reproducing.yaml (which proves the
+# STRUCTURED initial_world path — ticket_id already present when idle.on_enter
+# first runs), this fixture proves the NL FALLBACK: idle starts with NO ticket
+# at all, a `work_ticket` intent (the semantic router's real landing spot for
+# that leading directive — see the `work_ticket` intent doc in ../app.yaml)
+# sets world.ticket_id (+ ticket_title) and explicitly re-targets idle (not
+# `.`), which re-fires on_enter for real — falling into the SAME Step 0-4
+# autostart chain the structured path already uses, landing in `reproducing`
+# with no intervening explicit `start`.
+#
+# We drive the `work_ticket` intent directly (rather than a raw `input:` turn)
+# because `test_kind: flow`'s `input:` turns are resolved via a recording
+# (an LLM-classification cassette), not the live deterministic semroute
+# matcher (see internal/testrunner/flows.go) — so a flow can't literally
+# re-derive the router's {ticket_id} capture without faking the very thing
+# under test. This fixture instead pins the STORY-SIDE contract: given that
+# intent+slots (whatever produced them — human, live router, or LLM), does
+# idle correctly seed ticket_id/ticket_title and self-provision? The router's
+# own template-compile correctness is checked at load time by every
+# `kitsoki test flows` run (a bad {slot} reference or adjacent-capture bug
+# would fail app.Load before any turn runs).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  judge_mode: "human"
+
+host_handlers:
+  host.append_to_file: { data: { ok: true, message_id: "msg-1" } }
+  host.inbox.add:       { data: { ok: true, id: "ib-1" } }
+  host.capsule_workspace:    { data: { ok: true, log: "synced" } }
+  # reproducing.on_enter's artifact agent (human judge_mode: runs once, binds
+  # reproduction_artifact; no judge call follows).
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary_title:        "Reproduced"
+        summary_markdown:     "Repro artifact body."
+        bug_verified:         true
+        involved_components:  []
+  # A fresh autostart runs the auto_triage pre-flight first (see idle.yaml
+  # Step 3 / triaging.yaml): the read-only triager binds a verdict before any
+  # maker budget is spent. judge_mode=human dwells at triaging for the
+  # operator's accept.
+  host.agent.codeact:
+    data:
+      ok: true
+      terminated: "done"
+      payload:
+        verdict:          "STILL-LIVE"
+        confidence:       0.9
+        summary_title:    "STILL-LIVE — flaky sleep-based wait still present"
+        evidence:         "internal/ratelimit/limiter_test.go:88 still polls with time.Sleep; the reported flake is unaddressed."
+        summary_markdown: "The cited flaky wait is still in the tree; proceed with the fix pipeline."
+        suggested_action: "drive the full bugfix pipeline"
+        fixed_in_ref:     null
+        involved_components:
+          - { name: "internal/ratelimit/limiter_test.go", reason: "flaky sleep still present" }
+      steps: []
+
+turns:
+  # No structured initial_world at all — ticket_id starts empty. The NL
+  # extraction intent seeds it and forces idle.on_enter to re-run for real.
+  # The autostart chain provisions the worktree, then lands in the auto_triage
+  # PRE-FLIGHT (not straight into reproducing): judge_mode=human, so the
+  # session dwells at triaging with the verdict rendered.
+  - intent:
+      name: work_ticket
+      slots:
+        ticket_id:    "TKT-NL-042"
+        ticket_title: "Fix the flaky rate-limiter test"
+    expect_state: triaging
+    expect_not_state: idle
+    expect_world:
+      ticket_id:               "TKT-NL-042"
+      ticket_title:            "Fix the flaky rate-limiter test"
+      bf_autostart_attempted:  true
+      thread:                  "issues/bugs/TKT-NL-042.md"
+
+  # Operator accepts the STILL-LIVE verdict → the pre-flight continues into
+  # the pipeline proper (bugfix_mode untouched, so accept routes to
+  # reproducing rather than @exit:triaged).
+  - intent: { name: accept, slots: {} }
+    expect_state: reproducing
+    expect_world:
+      bugfix_mode: "full"
+
+expect_terminal: false
+expect_no_errors: true

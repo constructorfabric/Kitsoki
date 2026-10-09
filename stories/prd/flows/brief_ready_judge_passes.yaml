@@ -21,24 +21,19 @@ initial_world:
   judge_mode:        "human"
   idea:              "A CLI for X that helps developers do Y."
   workdir:           "."
+  publish_durable_path: "/tmp/kitsoki-prd-fixtures"
   prd_slug:          "example-cli"
   prd_workspace:     ".artifacts/prd/example-cli"
   brief_path:        ".artifacts/prd/example-cli/001-brief.md"
   clarification_log: "── Round 1 ──\nQuestions: who is the user?\nAnswers: platform developers\n\n"
+
+starlark_inspect_cassette: ../cassettes/publish_example_cli_flat.inspect.yaml
 
 host_handlers:
   host.ide.open_file:
     data: { ok: true, connected: true }
   host.artifacts_dir:
     data: { ok: true, path: ".artifacts/out.md", message_id: "out#1" }
-  # accept publishes the draft out of the workspace into the durable home.
-  host.run:
-    by_call:
-      publish:
-        data:
-          ok: true
-          exit_code: 0
-          stdout_json: { prd_file: "docs/prd/example-cli.md" }
   # references on_enter runs the optional semantic pre-seed; empty hits = no embeddings.
   host.agent.search:
     data: { hits: [] }
@@ -97,7 +92,7 @@ turns:
     expect_state: __exit__done
     expect_world:
       status:   "done"
-      prd_file: "docs/prd/example-cli.md"
+      prd_file: "/tmp/kitsoki-prd-fixtures/example-cli.md"
 
 expect_terminal: true
 expect_no_errors: true

@@ -1,0 +1,75 @@
+states:
+  # report - deterministic PM-facing report/deck hierarchy.
+  #
+  # Re-folds the ledger first, then projects the latest ledger + log into an exec
+  # summary Markdown file, an exec-summary Slidey deck, and one Markdown/deck pair
+  # for each integrated change. No LLM, no shell, no rendering side effect.
+  report:
+    description: "Report - deterministic PM summary and deck hierarchy."
+    relevant_world: [goal_slug, report_status, report_summary_path, report_deck_path, report_change_count]
+    on_enter:
+      - invoke: host.starlark.run
+        id: gs_ledger
+        with:
+          script: scripts/gs_ledger.star
+          capabilities:
+            fs:
+              read: ["**"]
+              write: ["**"]
+          inputs:
+            goal_dir: "{{ world.goal_dir }}"
+            work_dir: "{{ world.work_dir }}"
+        bind:
+          ledger: ledger
+          counts: counts
+          remaining: remaining
+          ready_id: ready_id
+        on_error: needs_human
+      - invoke: host.starlark.run
+        id: report_deck
+        with:
+          script: scripts/report_deck.star
+          capabilities:
+            fs:
+              read: ["**"]
+              write: ["**"]
+          inputs:
+            goal_slug: "{{ world.goal_slug }}"
+            goal_dir: "{{ world.goal_dir }}"
+            work_dir: "{{ world.work_dir }}"
+        bind:
+          report_status: status
+          report_summary_path: summary_path
+          report_deck_path: deck_path
+          report_change_count: change_count
+        on_error: needs_human
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - kv:
+              pairs:
+                Status: "{{ world.report_status|default:'(pending)' }}"
+                Summary: "{{ world.report_summary_path|default:'(pending)' }}"
+                Deck: "{{ world.report_deck_path|default:'(pending)' }}"
+                Change decks: "{{ world.report_change_count|default:0 }}"
+          - prose: "Report artifacts are deterministic projections of ledger.json and log.jsonl."
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - { label: "advance", hint: "return to evaluate" }
+                - { label: "report", hint: "rebuild artifacts" }
+                - { label: "look" }
+    on:
+      advance:
+        - target: evaluate
+      report:
+        - target: report
+      look:
+        - target: .
+      "*":
+        - default: true
+          target: .
+          effects:
+            - say: "Report artifacts are already projected; use report to rebuild or advance to return."

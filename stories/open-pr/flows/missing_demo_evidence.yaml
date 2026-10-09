@@ -1,0 +1,44 @@
+# missing_demo_evidence — prepare rejects a PR package that has no rendered demo.
+#
+# MOCKS prepare_pr_package (host.run) returning the no_demo outcome. The story
+# must stop at @exit:needs-human before any push/gh side effect can run.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  repo:          bsacrobatix/Kitsoki
+  head_branch:   feature/product-site-demo-proof
+  branch_kind:   feature
+  base_branch:   main
+  remote:        origin
+  worktree_path: .worktrees/product-site-demo-proof
+  title:         "feat(site): add demo proof to PR packaging"
+  feature_description: "Adds product-site copy and a local demo render requirement to PR packaging."
+  product_site_paths: "features/open-pr.yaml"
+  product_feature_id: open-pr
+  demo_source_path: "tools/runstatus/tests/playwright/open-pr-video.spec.ts"
+
+host_handlers:
+  host.run:
+    by_call:
+      prepare_pr_package:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            outcome: no_demo
+            body: ""
+            package_path: ""
+            demo_video_path: ""
+            last_error: "no rendered demo MP4 found under .artifacts/open-pr"
+
+turns:
+  - intent: { name: open, slots: {} }
+    expect_state: __exit__needs-human
+    expect_world:
+      status: needs-human
+      prepare_outcome: no_demo
+      last_error: "no rendered demo MP4 found under .artifacts/open-pr"
+
+expect_terminal: true

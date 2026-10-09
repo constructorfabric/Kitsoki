@@ -1,0 +1,10 @@
+inputs:
+  outcome:      { type: string, required: true }
+  cycle:        { type: int, required: true }
+  max_cycles:   { type: int, required: true }
+  fix_artifact: { type: object }
+  review_artifact: { type: object }
+  tests_passed: { type: bool, required: true }
+  report_dir: { type: string, required: true }
+outputs:
+  report_path: { type: string }

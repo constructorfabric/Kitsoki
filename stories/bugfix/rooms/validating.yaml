@@ -38,20 +38,66 @@ states:
           text:     "VALIDATING"
           subtitle: "Phase 6 / 7  ·  full-environment validation of the fix"
           color:    "#F97316"   # orange — last gate before close-out
+      - banner:
+          text:     "ACTION NEEDED: VALIDATION FAIL SHORT"
+          subtitle: "A minor implementation patch is needed. Continue or refine returns to implementing."
+          color:    "#DC2626"
+        when: "world.validate_artifact.outcome == 'fail_short'"
+      - banner:
+          text:     "ACTION NEEDED: VALIDATION FAILED"
+          subtitle: "The fix strategy appears wrong. Continue or refine returns to proposing."
+          color:    "#DC2626"
+        when: "world.validate_artifact.outcome == 'fail'"
+      - banner:
+          text:     "ACTION NEEDED: VALIDATION INFRA ERROR"
+          subtitle: "The environment failed. Continue retries validation with this diagnostic."
+          color:    "#F59E0B"
+        when: "world.validate_artifact.outcome == 'infra_error'"
+      - banner:
+          text:     "VALIDATION PASSED"
+          subtitle: "Structured artifact reports outcome=pass; continue advances to done."
+          color:    "#16A34A"
+        when: "world.validate_artifact.outcome == 'pass'"
       - prose: "{{ world.ticket_id|default:'(no ticket)' }} · cycle {{ world.cycle }} · {{ world.bugfix_mode }} bugfix · judge {{ world.judge_mode }}"
       - kv:
           pairs:
             Ticket:  "{{ world.ticket_id }} — {{ world.ticket_title }}"
             Summary: '{{ world.validate_artifact.summary_title|default:"(pending)" }}'
             Outcome: '{{ world.validate_artifact.outcome|default:"(pending)" }}'
-      - heading: "Artifact"
-      - code: '{{ world.validate_artifact.summary_markdown|default:"(pending — agent has not returned yet)" }}'
+            "Continue does": '{% if world.validate_artifact.outcome == "fail_short" %}return to implementing{% elif world.validate_artifact.outcome == "fail" %}return to proposing{% elif world.validate_artifact.outcome == "infra_error" %}retry validation{% else %}post and advance to done{% endif %}'
+            # Editor awareness (WS-C C3): honest either way — an attached
+            # `/ide` link's diagnostic count, or an explicit "no editor
+            # attached" rather than silently omitting the row.
+            "Editor diagnostics": '{% if world.ide_diagnostics_result.connected %}{{ world.ide_diagnostics|length }}{% else %}no editor attached{% endif %}'
+      - heading: "Action needed"
+        when: "world.validate_artifact.outcome == 'fail_short' || world.validate_artifact.outcome == 'fail' || world.validate_artifact.outcome == 'infra_error' || world.validate_artifact.next_action_hint"
+      - prose: "Patch the implementation. The next implementation cycle receives the validation hint below."
+        when: "world.validate_artifact.outcome == 'fail_short'"
+      - prose: "Redraft the fix proposal. The next proposal cycle receives the validation hint below."
+        when: "world.validate_artifact.outcome == 'fail'"
+      - prose: "The validation environment failed. The next validation cycle receives this diagnostic."
+        when: "world.validate_artifact.outcome == 'infra_error'"
+      - heading: "Next action"
+        when: "world.validate_artifact.next_action_hint"
+      - prose: "{{ world.validate_artifact.next_action_hint }}"
+        when: "world.validate_artifact.next_action_hint"
+      - heading: "Evidence"
+        when: "world.validate_artifact.evidence"
+      - kv:
+          pairs:
+            Build: '{{ world.validate_artifact.evidence.build|default:"(not provided)" }}'
+            API:   '{{ world.validate_artifact.evidence.api|default:"(not provided)" }}'
+            UI:    '{{ world.validate_artifact.evidence.ui|default:"(not provided)" }}'
+            Logs:  '{{ world.validate_artifact.evidence.logs|default:"(not provided)" }}'
+        when: "world.validate_artifact.evidence"
+      - heading: "Summary"
+      - template: '{{ world.validate_artifact.summary_markdown|default:"(pending — agent has not returned yet)" }}'
       - choice:
           mode: single
           prompt: "Actions"
           items:
-            - label:  "continue"
-              hint:   "post and advance to done"
+            - label:  "{% if world.validate_artifact.outcome == 'fail_short' %}patch fix{% elif world.validate_artifact.outcome == 'fail' %}redraft fix{% elif world.validate_artifact.outcome == 'infra_error' %}infra: retry{% else %}continue{% endif %}"
+              hint:   "{% if world.validate_artifact.outcome == 'fail_short' %}ACTION NEEDED: return to implementing with this validation hint{% elif world.validate_artifact.outcome == 'fail' %}ACTION NEEDED: return to proposing with this validation hint{% elif world.validate_artifact.outcome == 'infra_error' %}ACTION NEEDED: retry validation with this diagnostic{% else %}post and advance to done{% endif %}"
               intent: accept
             - label:  "refine"
               hint:   "re-validate with feedback"
@@ -87,8 +133,27 @@ states:
             - label:  "look"
               hint:   "re-render"
               intent: look
-    relevant_world: [judge_mode, judge_confidence_threshold, ticket_id, ticket_title, thread, workdir, validate_artifact, implement_review_artifact, ci_log, llm_verdict, refine_feedback, cycle]
+    relevant_world: [judge_mode, judge_confidence_threshold, ticket_id, ticket_title, thread, workdir, validate_artifact, implement_review_artifact, ci_log, ide_diagnostics_result, ide_diagnostics, llm_verdict, refine_feedback, cycle]
     on_enter:
+      # Editor awareness (WS-C C3 / docs/proposals/ide-integration.md follow-up
+      # 3): surface REAL diagnostics from an attached editor as extra evidence
+      # for the validator, alongside the build. host.ide.* is "not-connected is
+      # a value" (docs/architecture/hosts.md#hostide--editor-awareness) — no
+      # live `/ide` link (every flow/cassette run, and any headless dispatch)
+      # returns a typed {connected:false, diagnostics:[]}, never a Go error —
+      # so this always degrades HONESTLY (rendered above) rather than being a
+      # silent no-op. `once: true`: pulling diagnostics is a read, but the same
+      # reload-safety rule as the other `once:` binds here applies — a fresh
+      # pull re-arms only via the refine/restart-from clears below.
+      - invoke: host.ide.get_diagnostics
+        id: validating_ide_diagnostics
+        once: true
+        with:
+          path: "{{ world.workdir }}"
+        bind:
+          ide_diagnostics_result: "{{ result }}"
+          ide_diagnostics:        diagnostics
+
       # `target:` is intentionally absent — ciBuild treats target as a
       # literal go-package-path arg appended to `go build ./...`. Pre-fix,
       # passing `target: "default"` here produced
@@ -131,9 +196,13 @@ states:
             args:
               ticket_id:       "{{ world.ticket_id }}"
               ticket_title:    "{{ world.ticket_title }}"
+              ticket_body:     "{{ world.ticket_body }}"
               workdir:         "{{ world.workdir }}"
               build_log:       "{{ world.ci_log }}"
               review_body:     "{{ world.implement_review_artifact.summary_markdown }}"
+              ide_connected:       "{{ world.ide_diagnostics_result.connected }}"
+              ide_diagnostics_count: "{{ len(world.ide_diagnostics) }}"
+              ide_diagnostics:       "{{ world.ide_diagnostics }}"
               refine_feedback: "{{ world.refine_feedback }}"
               cycle:           "{{ world.cycle }}"
         bind:
@@ -149,6 +218,7 @@ states:
           working_dir: "{{ world.workdir }}"
           args:
             ticket_id:       "{{ world.ticket_id }}"
+            ticket_title:    "{{ world.ticket_title }}"
             artifact_title:  "{{ world.validate_artifact.summary_title }}"
             artifact_body:   "{{ world.validate_artifact.summary_markdown }}"
         bind:
@@ -156,7 +226,8 @@ states:
 
       - when: |
           world.judge_mode != 'human' &&
-          world.llm_verdict.confidence >= world.judge_confidence_threshold &&
+          (world.llm_verdict.verdict ?? '') != '' &&
+          (world.llm_verdict.confidence ?? 0) >= world.judge_confidence_threshold &&
           world.llm_verdict.verdict != 'uncertain' &&
           world.llm_verdict.intent != 'uncertain'
         emit_intent: "{{ world.llm_verdict.intent }}"
@@ -185,8 +256,11 @@ states:
                 implementing_cycle: "{{ world.implementing_cycle + 1 }}"
                 cycle:              "{{ world.cycle + 1 }}"
                 # Re-enter implementing for a fresh re-apply: clear its
-                # once: bind so the implementer agent runs again.
-                implement_artifact: {}
+                # once: bind so the implementer agent runs again. Downstream
+                # test/validation artifacts are now stale too.
+                implement_artifact:        {}
+                implement_review_artifact: {}
+                validate_artifact:         {}
 
         # fail — proposal needs a re-draft.
         - when: |
@@ -224,8 +298,12 @@ states:
                 refine_feedback:   "{{ world.validate_artifact.next_action_hint ?? world.validate_artifact.summary_markdown }}"
                 validating_cycle:  "{{ world.validating_cycle + 1 }}"
                 cycle:             "{{ world.cycle + 1 }}"
-                # Self-loop for a fresh re-validate: clear the once: bind.
-                validate_artifact: {}
+                # Self-loop for a fresh re-validate: clear the once: binds so
+                # both the validator agent AND the editor-diagnostics pull
+                # re-run (a re-validate should see fresh diagnostics too).
+                validate_artifact:      {}
+                ide_diagnostics_result: {}
+                ide_diagnostics:        []
 
         # pass — the success close-out. Also the fall-through for legacy
         # artifacts that don't set `outcome`.
@@ -234,6 +312,7 @@ states:
             - invoke: iface.transport.post
               with:
                 thread:   "{{ world.thread }}"
+                workdir:  "{{ world.workdir }}"
                 title:    "Validation: {{ world.ticket_id }}"
                 body:     "{{ world.validate_artifact.summary_markdown }}"
                 phase_id: "validating_{{ world.ticket_id }}_{{ world.cycle }}"
@@ -242,7 +321,61 @@ states:
                 refine_feedback:   ""
                 cycle:             0
 
+      # refine mirrors accept's outcome-awareness (see file header): a
+      # fail_short/fail outcome means the IMPLEMENTATION or PROPOSAL is
+      # broken, not the validation run itself, so it must route back to
+      # implementing/proposing like accept does — a bare self-loop here
+      # only re-ran the validator, burning validating_budget
+      # re-validating the same unfixed code while implement_artifact's
+      # (or propose_fix_artifact's) once: bind stayed set and the maker
+      # never ran again.
       refine:
+        # fail_short — implementation needs a minor patch.
+        - when: |
+            world.validate_artifact.outcome == 'fail_short' &&
+            world.implementing_cycle >= world.implementing_budget
+          target: "@exit:abandoned"
+          effects:
+            - set:
+                abandon_reason: "implementing_cycle_budget_exhausted_after_validation_refine"
+                status:         "abandoned"
+        - when: "world.validate_artifact.outcome == 'fail_short'"
+          target: implementing
+          effects:
+            - set:
+                refine_feedback:    "{{ slots.feedback ?? world.validate_artifact.next_action_hint ?? world.validate_artifact.summary_markdown }}"
+                implementing_cycle: "{{ world.implementing_cycle + 1 }}"
+                cycle:              "{{ world.cycle + 1 }}"
+                # Re-enter implementing for a fresh re-apply: clear its
+                # once: bind so the implementer agent runs again. Downstream
+                # test/validation artifacts are now stale too.
+                implement_artifact:        {}
+                implement_review_artifact: {}
+                validate_artifact:         {}
+
+        # fail — proposal needs a re-draft.
+        - when: |
+            world.validate_artifact.outcome == 'fail' &&
+            world.proposing_cycle >= world.proposing_budget
+          target: "@exit:abandoned"
+          effects:
+            - set:
+                abandon_reason: "proposing_cycle_budget_exhausted_after_validation_refine"
+                status:         "abandoned"
+        - when: "world.validate_artifact.outcome == 'fail'"
+          target: proposing
+          effects:
+            - set:
+                refine_feedback:      "{{ slots.feedback ?? world.validate_artifact.next_action_hint ?? world.validate_artifact.summary_markdown }}"
+                proposing_cycle:      "{{ world.proposing_cycle + 1 }}"
+                cycle:                "{{ world.cycle + 1 }}"
+                # Re-enter proposing for a fresh re-draft: clear its
+                # once: bind so the proposer agent runs again.
+                propose_fix_artifact: {}
+
+        # infra_error / pass (or legacy/missing outcome) — the fix is
+        # fine; the validation run itself needs another pass, so
+        # self-loop and re-run only the validator.
         - when: "world.validating_cycle >= world.validating_budget"
           target: "@exit:abandoned"
           effects:
@@ -255,8 +388,11 @@ states:
                 refine_feedback:   "{{ slots.feedback ?? world.llm_verdict.reason }}"
                 validating_cycle:  "{{ world.validating_cycle + 1 }}"
                 cycle:             "{{ world.cycle + 1 }}"
-                # Clear the once: bind so on_enter re-runs the agent.
-                validate_artifact: {}
+                # Clear the once: binds so on_enter re-runs the agent AND
+                # re-pulls editor diagnostics.
+                validate_artifact:      {}
+                ide_diagnostics_result: {}
+                ide_diagnostics:        []
 
       restart_from:
         - when: "slots.stage == 'reproducing'"
@@ -288,7 +424,9 @@ states:
                 implementing_cycle:  0
                 cycle:               0
                 # Clear implementing's once: bind so it re-applies fresh.
-                implement_artifact:  {}
+                implement_artifact:        {}
+                implement_review_artifact: {}
+                validate_artifact:         {}
         - when: "slots.stage == 'testing' || slots.stage == 'test'"
           target: testing
           effects:

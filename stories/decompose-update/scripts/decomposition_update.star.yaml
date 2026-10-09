@@ -1,0 +1,13 @@
+inputs:
+  op: {type: string, required: true}
+  base: {type: string}
+  delta: {type: string}
+  out: {type: string}
+  versions_dir: {type: string}
+  event_log: {type: string}
+  ledger: {type: string}
+  version_id: {type: string}
+  list_key: {type: string}
+  skip_validate: {type: bool}
+outputs:
+  result: {type: object, required: true}

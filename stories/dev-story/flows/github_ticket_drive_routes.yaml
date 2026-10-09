@@ -14,8 +14,8 @@
 #        the local↔issue identity visible. The pick binds ticket_title
 #        from the same get; the legacy_id round-trips on the row.
 #
-# host_bindings rebinds iface.ticket → host.gh.ticket (the kitsoki-dev
-# instance binding), and the stub returns the SHAPE the real provider now
+# host_bindings rebinds iface.ticket → host.gh.ticket, and the stub returns
+# the SHAPE the real provider now
 # emits: search rows with `type` + `source`, and a get carrying legacy_id.
 # (Flows use stubs only — the classifier itself is unit-tested against the
 # real provider in internal/host/github_test.go, no `gh` / network.)
@@ -24,6 +24,12 @@ test_kind: flow
 app: ../app.yaml
 initial_state: landing
 initial_world:
+  # Opt out of bf's auto_triage pre-flight (default on): this fixture tests
+  # the downstream bugfix walk, not triage. Parent-level key — the import
+  # wrapper re-seeds bf__auto_triage on entry; only the world_in projection
+  # sticks. The pre-flight contract lives in
+  # stories/bugfix/flows/preflight_triage_*.yaml.
+  auto_triage: false
   workdir:        ".worktrees/tkt-19"
   workspace_id:   "ws-19"
   base_branch:    "main"
@@ -64,7 +70,7 @@ host_handlers:
     data: { ok: true, message_id: "msg-1" }
   host.git:
     data: { ok: true, sha: "abc", diff: "", state: "success", url: "", pr_id: "" }
-  host.git_worktree:
+  host.capsule_workspace:
     data: { ok: true, log: "" }
   host.local:
     data: { ok: true, state: "success", log: "" }
@@ -83,6 +89,13 @@ turns:
   # stub, binding ticket_results (the one classified bug row).
   - intent: { name: go_ticket_search, slots: {} }
     expect_state: ticket_search
+    # The external ticket-repo passthrough: the room threads
+    # world.ticket_repo into the search as the `repo` arg, so the gh
+    # provider reads the CONFIGURED repo (an onboarded external project's
+    # slug), never a silently-resolved local `origin`.
+    expect_host_calls:
+      - handler: host.gh.ticket.search
+        args: { repo: "acme/repo" }
 
   # Pick row 1 by number — pick_ticket reads ticket_type off the picked
   # ROW (the provider-classified `type: bug`), NOT from a type slot. This
@@ -90,10 +103,16 @@ turns:
   # binds the title; the legacy_id rides the row for the identity surface.
   - intent: { name: pick_ticket, slots: { n: 1 } }
     expect_state: ticket_search
+    # The pick's iface.ticket.get carries the same repo pin.
+    expect_host_calls:
+      - handler: host.gh.ticket.get
+        args: { repo: "acme/repo" }
     expect_world:
       ticket_id:    "19"
       ticket_type:  "bug"
       ticket_title: "Esc hangs the TUI"
+      ticket_url:   "https://github.com/acme/repo/issues/19"
+      thread:       "https://github.com/acme/repo/issues/19"
 
   # The headline `drive` affordance routes by ticket_type. Before the
   # provider fix this bounced in place (empty type → catch-all self-loop);
@@ -103,5 +122,6 @@ turns:
     expect_state: bf.reproducing
     expect_world:
       bf__ticket_id: "19"
+      bf__thread:    "https://github.com/acme/repo/issues/19"
 
 expect_no_errors: true

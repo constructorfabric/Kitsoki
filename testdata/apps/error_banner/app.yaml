@@ -24,6 +24,10 @@ intents:
     title: "Do the thing"
     description: "Run a host command that will fail."
     examples: ["do it", "go", "run"]
+  do_thing_silently:
+    title: "Do the thing (wipes last_error on arrival)"
+    description: "Run a host command that will fail, landing in a room that clears world.last_error before rendering."
+    examples: ["do it quietly", "go quiet", "run silent"]
 
 root: lobby
 
@@ -35,6 +39,8 @@ states:
     on:
       do_thing:
         - target: working
+      do_thing_silently:
+        - target: working_silent
 
   working:
     description: "Running the command…"
@@ -51,5 +57,33 @@ states:
   bounced:
     terminal: true
     description: "Back at the lobby."
+    view: |
+      Back at the lobby. Try again when ready.
+
+  working_silent:
+    description: "Running the command (silent variant)…"
+    view: |
+      Running…
+    on_enter:
+      - invoke: host.run
+        with:
+          cmd: "false"
+        on_error: bounced_silent
+
+  # bounced_silent_gap: the on_error: target's own on_enter clears
+  # world.last_error before the shared applyErrorBannerSeam (host_dispatch.go)
+  # gets to inspect it — applyErrorBannerSeam only fires when last_error is a
+  # non-empty string, so a room that wipes it (whether by an authored `set:`
+  # step or any on_enter logic that resets diagnostic state) still produces a
+  # bannerless, silent-bounce view even though the shared seam is in place.
+  # This is exactly the case the G-FLOW gate (Task 2.2) exists to catch,
+  # independent of the banner seam itself: it flags ANY on_error: transition
+  # whose final rendered view lacks the marker, regardless of why.
+  bounced_silent:
+    terminal: true
+    description: "Back at the lobby (silently)."
+    on_enter:
+      - set:
+          last_error: ""
     view: |
       Back at the lobby. Try again when ready.

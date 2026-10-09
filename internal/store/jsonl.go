@@ -21,7 +21,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"syscall"
+	"sync"
 	"time"
 
 	"golang.org/x/text/unicode/norm"
@@ -57,6 +57,17 @@ type EventSink interface {
 // JSONLSink implements EventSink against an on-disk JSONL file.
 // Append is O(1) per event; OpenJSONL is O(N) once per session.
 type JSONLSink struct {
+	// mu guards every access to the mutable in-memory state below (hist,
+	// rawLines, seqByTurn) and the file handle. A session's trace sink is
+	// written by the foreground turn loop AND the background job listener
+	// (both under the orchestrator's per-session lock) but is ALSO read
+	// concurrently — without that lock — by session.inspect / history
+	// snapshots / runstatus projections. Append reallocating hist while a
+	// reader iterates the slice it got from History() is a live data race
+	// (the race detector flags Append at jsonl.go vs History/BuildJourney).
+	// Holding mu across each public method, and returning copies from the
+	// readers, keeps the sink self-consistent regardless of caller locking.
+	mu sync.Mutex
 	// Path is the file path passed to OpenJSONL; exposed for diagnostics.
 	Path string
 	hist History
@@ -73,9 +84,15 @@ type JSONLSink struct {
 	// in memory for in-process sessions.  Acceptable for phase A scale.
 	rawLines [][]byte
 
-	// openIno is the inode number of the trace file at open time.
-	// Before each Append we stat the path and compare to detect replacement.
-	openIno uint64
+	// openInfo is the os.FileInfo of the trace file at open time. Before each
+	// Append we stat the path and compare against this via os.SameFile to
+	// detect replacement (e.g. an atomic rename swapping the file at Path out
+	// from under the still-open descriptor). os.SameFile is used instead of a
+	// raw inode number because it is portable: on unix it compares dev+ino,
+	// and on windows it compares the NTFS file ID Go's os.Stat captures
+	// internally — neither of which is exposed as a public field we could
+	// otherwise read cross-platform.
+	openInfo os.FileInfo
 
 	// seqByTurn tracks the next seq to assign for each turn number.
 	// Populated from history on open; incremented on each Append.
@@ -113,7 +130,7 @@ func OpenJSONL(path string) (*JSONLSink, error) {
 			return nil, fmt.Errorf("store/jsonl: open %q: %w", path, err)
 		}
 		// Acquire exclusive advisory lock (non-blocking: fail if already held).
-		if flockErr := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); flockErr != nil {
+		if flockErr := flockExclusiveNB(f); flockErr != nil {
 			_ = f.Close()
 			return nil, fmt.Errorf("store/jsonl: open %q: trace file is locked by another writer: %w", path, flockErr)
 		}
@@ -135,12 +152,12 @@ func OpenJSONL(path string) (*JSONLSink, error) {
 			_ = f.Close()
 			return nil, fmt.Errorf("store/jsonl: fsync after header: %w", err)
 		}
-		ino, inoErr := fileInode(f)
-		if inoErr != nil {
+		info, statErr := f.Stat()
+		if statErr != nil {
 			_ = f.Close()
-			return nil, fmt.Errorf("store/jsonl: stat %q for inode: %w", path, inoErr)
+			return nil, fmt.Errorf("store/jsonl: stat %q: %w", path, statErr)
 		}
-		return &JSONLSink{Path: path, f: f, openIno: ino, seqByTurn: make(map[app.TurnNumber]int)}, nil
+		return &JSONLSink{Path: path, f: f, openInfo: info, seqByTurn: make(map[app.TurnNumber]int)}, nil
 	}
 
 	// Existing file: validate and load.
@@ -155,49 +172,34 @@ func OpenJSONL(path string) (*JSONLSink, error) {
 		return nil, fmt.Errorf("store/jsonl: reopen %q for append: %w", path, err)
 	}
 	// Acquire exclusive advisory lock (non-blocking).
-	if flockErr := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); flockErr != nil {
+	if flockErr := flockExclusiveNB(f); flockErr != nil {
 		_ = f.Close()
 		return nil, fmt.Errorf("store/jsonl: open %q: trace file is locked by another writer: %w", path, flockErr)
 	}
-	ino, inoErr := fileInode(f)
-	if inoErr != nil {
+	info, statErr := f.Stat()
+	if statErr != nil {
 		_ = f.Close()
-		return nil, fmt.Errorf("store/jsonl: stat %q for inode: %w", path, inoErr)
+		return nil, fmt.Errorf("store/jsonl: stat %q: %w", path, statErr)
 	}
 	// Initialise per-turn seq counters from existing history.
 	seqByTurn := make(map[app.TurnNumber]int)
 	for _, ev := range hist {
 		seqByTurn[ev.Turn] = ev.Seq + 1 // next seq for this turn
 	}
-	return &JSONLSink{Path: path, hist: hist, rawLines: rawLines, f: f, openIno: ino, seqByTurn: seqByTurn}, nil
+	return &JSONLSink{Path: path, hist: hist, rawLines: rawLines, f: f, openInfo: info, seqByTurn: seqByTurn}, nil
 }
 
-// fileInode returns the inode number of the open file f.
-func fileInode(f *os.File) (uint64, error) {
-	fi, err := f.Stat()
+// ValidateJSONL verifies an EventSink JSONL trace without opening it for
+// append. It enforces the session-header schema plus contiguous per-turn
+// sequences and cross-turn ordering, making the same persistence oracle
+// available to read-only CI and trace consumers.
+func ValidateJSONL(path string) error {
+	data, err := os.ReadFile(path)
 	if err != nil {
-		return 0, err
+		return fmt.Errorf("store/jsonl: read %q: %w", path, err)
 	}
-	st, ok := fi.Sys().(*syscall.Stat_t)
-	if !ok {
-		return 0, fmt.Errorf("cannot read inode: unexpected Sys() type")
-	}
-	return st.Ino, nil
-}
-
-// pathInode returns the inode number of the file at path (via Lstat — does not
-// follow symlinks for the path itself, since we want the inode of what the path
-// points to at this moment).
-func pathInode(path string) (uint64, error) {
-	fi, err := os.Stat(path) // Stat follows symlinks to get the target's inode
-	if err != nil {
-		return 0, err
-	}
-	st, ok := fi.Sys().(*syscall.Stat_t)
-	if !ok {
-		return 0, fmt.Errorf("cannot read inode: unexpected Sys() type")
-	}
-	return st.Ino, nil
+	_, _, err = loadAndValidate(data, path)
+	return err
 }
 
 // loadAndValidate reads existing JSONL bytes, validates the header, and
@@ -383,14 +385,19 @@ type traceEvent struct {
 //   - payload contains NFD-normalised unicode (must be NFC)
 //   - marshalled line > pipeBuf bytes
 //   - ts is normalised to UTC with explicit Z suffix
-//   - trace file has been replaced at path (inode changed since open)
+//   - trace file has been replaced at path (identity changed since open)
 func (s *JSONLSink) Append(ev Event) error {
-	// Inode check: detect file replacement between open and this append.
-	if s.openIno != 0 {
-		curIno, inoErr := pathInode(s.Path)
-		if inoErr == nil && curIno != s.openIno {
-			return fmt.Errorf("store/jsonl: append: trace file replaced under us; original inode %d, current %d",
-				s.openIno, curIno)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	// Identity check: detect file replacement between open and this append
+	// (e.g. an atomic rename swapping in a new file at Path). If the stat
+	// fails (e.g. Path no longer exists) we deliberately don't error here —
+	// the subsequent write against the still-open fd is the authoritative
+	// outcome, matching the pre-existing behaviour for that case.
+	if s.openInfo != nil {
+		curInfo, statErr := os.Stat(s.Path)
+		if statErr == nil && !os.SameFile(s.openInfo, curInfo) {
+			return fmt.Errorf("store/jsonl: append: trace file replaced under us at %q", s.Path)
 		}
 	}
 
@@ -517,9 +524,17 @@ func rejectNFD(raw json.RawMessage) error {
 	return nil
 }
 
-// History returns the in-memory event history.
+// History returns a snapshot copy of the in-memory event history. The copy is
+// defensive: a caller may iterate it (e.g. BuildJourney during session.inspect)
+// while a concurrent Append on the foreground/background path grows the live
+// slice. The returned slice header is fresh; the Event values (including their
+// json.RawMessage payloads) are shared read-only.
 func (s *JSONLSink) History() History {
-	return s.hist
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make(History, len(s.hist))
+	copy(out, s.hist)
+	return out
 }
 
 // Lines returns a defensive copy (slice header only) of the raw JSONL bytes
@@ -534,6 +549,8 @@ func (s *JSONLSink) History() History {
 // Memory: O(N) per session.  Acceptable for phase A scale; phase B can
 // revisit if memory pressure surfaces.
 func (s *JSONLSink) Lines() [][]byte {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	out := make([][]byte, len(s.rawLines))
 	copy(out, s.rawLines)
 	return out
@@ -542,8 +559,10 @@ func (s *JSONLSink) Lines() [][]byte {
 // Close releases the advisory flock and closes the underlying file.
 // The kernel also releases the lock on process exit (including abnormal exit).
 func (s *JSONLSink) Close() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	// Release the flock before closing (best-effort; Close also releases it).
-	_ = syscall.Flock(int(s.f.Fd()), syscall.LOCK_UN)
+	_ = flockRelease(s.f)
 	return s.f.Close()
 }
 

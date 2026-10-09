@@ -72,12 +72,10 @@ states:
                 validation_warnings: 0
                 validation_issue_summary: ""
                 status: "creating_matrix"
-            - invoke: host.run
+            - invoke: host.product_journey.run
               id: emit_product_journey_matrix
               with:
-                cmd: python3
                 args:
-                  - tools/product-journey/run.py
                   - --emit-matrix
                   - --json-output
                   - --seed
@@ -117,12 +115,10 @@ states:
                 validation_warnings: 0
                 validation_issue_summary: ""
                 status: "creating"
-            - invoke: host.run
+            - invoke: host.product_journey.run
               id: emit_product_journey_run
               with:
-                cmd: python3
                 args:
-                  - tools/product-journey/run.py
                   - --emit-run
                   - --json-output
                   - --project
@@ -154,6 +150,8 @@ states:
                 finding_total_count: "stdout_json.finding_total_count"
                 strength_count: "stdout_json.strength_count"
                 weakness_count: "stdout_json.weakness_count"
+                weakness_route_count: "stdout_json.weakness_route_count"
+                weakness_route_summary: "stdout_json.weakness_route_summary"
                 issue_count: "stdout_json.issue_count"
                 fix_count: "stdout_json.fix_count"
                 blocked_count: "stdout_json.blocked_count"
@@ -179,12 +177,10 @@ states:
                 validation_warnings: 0
                 validation_issue_summary: ""
                 status: "rolling_up"
-            - invoke: host.run
+            - invoke: host.product_journey.run
               id: rollup_product_journey_matrix
               with:
-                cmd: python3
                 args:
-                  - tools/product-journey/run.py
                   - --rollup-matrix
                   - --json-output
                   - --matrix-dir
@@ -227,12 +223,10 @@ states:
           effects:
             - set:
                 status: "validating_matrix"
-            - invoke: host.run
+            - invoke: host.product_journey.run
               id: validate_product_journey_matrix
               with:
-                cmd: python3
                 args:
-                  - tools/product-journey/run.py
                   - --validate-matrix
                   - --json-output
                   - --matrix-dir
@@ -252,12 +246,10 @@ states:
           effects:
             - set:
                 status: "validating_matrix_strict"
-            - invoke: host.run
+            - invoke: host.product_journey.run
               id: validate_product_journey_matrix_strict
               with:
-                cmd: python3
                 args:
-                  - tools/product-journey/run.py
                   - --validate-matrix
                   - --strict-target-proof
                   - --json-output

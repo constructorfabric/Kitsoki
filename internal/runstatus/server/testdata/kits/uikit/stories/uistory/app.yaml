@@ -1,0 +1,21 @@
+app:
+  id: kit-uikit-uistory
+  version: 0.1.0
+
+hosts: []
+
+intents:
+  start:
+    description: "Begin."
+    examples: ["start", "go"]
+
+root: idle
+
+states:
+  idle:
+    description: "Ready."
+    view: |
+      Ready.
+    on:
+      start:
+        - target: idle

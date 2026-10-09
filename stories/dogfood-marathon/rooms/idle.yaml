@@ -1,43 +1,200 @@
-# idle — confirm the run config (inner pipeline, backlog source, baseline policy)
+# idle — confirm the run config (inner workflow, queue source, baseline policy)
 # and start the marathon. Deterministic, no LLM.
 
 states:
 
   idle:
-    description: "Dogfood marathon. Pick the inner pipeline + backlog, then process every case and report the run."
-    relevant_world: [inner_pipeline, backlog_source, baseline_policy, profile, backlog_limit]
+    description: "Marathon room. Pick the inner workflow + queue, then process each case and report the run."
+    relevant_world: [inner_pipeline, backlog_sources, baseline_policy, profile, model, backlog_limit, run_id, journal_path, autonomous, plan_revision, plan_feedback]
     view:
-      - heading: "Dogfood marathon"
-      - prose: "Drive a backlog of cases through an inner kitsoki pipeline (bugfix / delivery-tail / ship-it), independently verify every deliverable, capture friction as findings, and bake the run into a slidey report. This wraps the dogfood-marathon skill — improve the pipeline WITHOUT overfitting to the cases."
+      - heading: "Marathon"
+      - prose: "Work down a queue of cases through a configured inner workflow, independently verify every deliverable, capture friction as findings, and bake the run into a slidey report. Use this as a generic queue marathon; dogfood is just one configuration."
       - kv:
           pairs:
-            Inner pipeline:  '{{ world.inner_pipeline }}'
-            Backlog source:  '{{ world.backlog_source }}'
+            Inner workflow:  '{{ world.inner_pipeline }}'
+            Queue sources:   '{{ world.backlog_sources }}'
             Baseline policy: '{{ world.baseline_policy }}'
             Maker profile:   '{{ world.profile }}'
+            Model:           '{{ world.model }}'
             Backlog limit:   '{{ world.backlog_limit }}'
-      - heading: "Actions"
-      - list:
+            Mode:            '{% if world.autonomous %}autonomous{% else %}operator-paced{% endif %}'
+            Run id:          '{{ world.run_id }}'
+            Journal:         '{{ world.journal_path|default:"(derived at intake)" }}'
+            "Plan revision": '{{ world.plan_revision }}'
+      - heading: "Plan"
+      - prose: "Start will load up to {{ world.backlog_limit }} queue case(s) from {{ world.backlog_sources }}, run {{ world.inner_pipeline }} with {{ world.profile }} / {{ world.model }}, keep a durable journal under the run id, independently verify each deliverable, park serious exceptions for the operator, and produce one report deck per case plus an aggregate deck."
+      - prose: "Last refinement: {{ world.plan_feedback }}"
+        when: "world.plan_feedback != ''"
+      - prose: "Default start is intentionally clean: `start the marathon` uses this configured plan and a fresh durable journal. Use `refine plan` before start when the source, limit, model, or run id needs to change."
+      - choice:
+          mode: single
+          prompt: "Actions"
           items:
-            - label: "start"
-              hint:  "load the backlog and start processing"
-            - label: "start backlog_source=… inner_pipeline=…"
-              hint:  "override the source / inner pipeline"
+            - label: "start the marathon"
+              hint:  "fresh durable journal; autonomous until a serious exception"
+              intent: start_marathon
+            - label: "refine plan"
+              hint:  "edit queue sources, limit, workflow, model, or run id before starting"
+              intent: refine_plan
+              param:
+                slot:        feedback
+                type:        string
+                placeholder: "what should change?"
+                required:    false
+            - label: "resume the marathon"
+              hint:  "load the durable journal and continue from the next case"
+              intent: resume
+              when:  "world.journal_path != ''"
             - label: "quit"
               hint:  "abandon"
+              intent: quit
             - label: "look"
+              hint:  "re-render"
+              intent: look
     on:
       start:
         - target: intake
           effects:
             - set:
-                backlog_source: "{{ slots.backlog_source ?? world.backlog_source }}"
-                inner_pipeline: "{{ slots.inner_pipeline ?? world.inner_pipeline }}"
+                backlog_source:  "{{ slots.backlog_source ?? world.backlog_source }}"
+                backlog_sources: "{{ slots.backlog_sources ?? slots.backlog_source ?? world.backlog_sources }}"
+                inner_pipeline:  "{{ slots.inner_pipeline ?? world.inner_pipeline }}"
+                backlog_limit:   "{{ slots.backlog_limit ?? world.backlog_limit }}"
+                run_id:          "{{ slots.run_id ?? world.run_id }}"
+                journal_path:    "{{ slots.journal_path ?? world.journal_path }}"
+                profile:         "{{ slots.profile ?? world.profile }}"
+                model:           "{{ slots.model ?? world.model }}"
+                autonomous:      true
+                resume_from_journal: false
                 # fresh run — reset the loop counters
+                backlog: { items: [] }
                 case_index: 0
                 cases_processed: 0
+                current_case: {}
+                current_case_id: ""
+                current_case_json: "{}"
                 results: { items: [] }
                 findings: { items: [] }
+                exceptions: { items: [] }
+                last_result: {}
+                rollup: {}
+                deck_spec: {}
+                deck_path: ""
+                report_handle: ""
+                intake_job_id: ""
+                pick_job_id: ""
+                triage_job_id: ""
+                drive_job_id: ""
+                verify_job_id: ""
+                record_job_id: ""
+                journal_job_id: ""
+                aggregate_job_id: ""
+                deck_job_id: ""
+                render_job_id: ""
+                publish_job_id: ""
+                record_status: ""
+                exception_pending: ""
+                exception_summary: ""
+                loaded_journal: false
+                journal_status: ""
+                journal_summary: ""
+                last_checkpoint: "start"
+                plan_feedback: ""
+      start_marathon:
+        - target: intake
+          effects:
+            - set:
+                backlog_source:  "{{ slots.backlog_source ?? world.backlog_source }}"
+                backlog_sources: "{{ slots.backlog_sources ?? slots.backlog_source ?? world.backlog_sources }}"
+                inner_pipeline:  "{{ slots.inner_pipeline ?? world.inner_pipeline }}"
+                backlog_limit:   "{{ slots.backlog_limit ?? world.backlog_limit }}"
+                run_id:          "{{ slots.run_id ?? world.run_id }}"
+                journal_path:    "{{ slots.journal_path ?? world.journal_path }}"
+                profile:         "{{ slots.profile ?? world.profile }}"
+                model:           "{{ slots.model ?? world.model }}"
+                autonomous:      true
+                resume_from_journal: false
+                # fresh run — reset the loop counters
+                backlog: { items: [] }
+                case_index: 0
+                cases_processed: 0
+                current_case: {}
+                current_case_id: ""
+                current_case_json: "{}"
+                results: { items: [] }
+                findings: { items: [] }
+                exceptions: { items: [] }
+                last_result: {}
+                rollup: {}
+                deck_spec: {}
+                deck_path: ""
+                report_handle: ""
+                intake_job_id: ""
+                pick_job_id: ""
+                triage_job_id: ""
+                drive_job_id: ""
+                verify_job_id: ""
+                record_job_id: ""
+                journal_job_id: ""
+                aggregate_job_id: ""
+                deck_job_id: ""
+                render_job_id: ""
+                publish_job_id: ""
+                record_status: ""
+                exception_pending: ""
+                exception_summary: ""
+                loaded_journal: false
+                journal_status: ""
+                journal_summary: ""
+                last_checkpoint: "start"
+                plan_feedback: ""
+      refine_plan:
+        - target: .
+          effects:
+            - set:
+                backlog_source:  "{{ slots.backlog_source ?? world.backlog_source }}"
+                backlog_sources: "{{ slots.backlog_sources ?? slots.backlog_source ?? world.backlog_sources }}"
+                inner_pipeline:  "{{ slots.inner_pipeline ?? world.inner_pipeline }}"
+                backlog_limit:   "{{ slots.backlog_limit ?? world.backlog_limit }}"
+                run_id:          "{{ slots.run_id ?? world.run_id }}"
+                journal_path:    "{{ slots.journal_path ?? world.journal_path }}"
+                profile:         "{{ slots.profile ?? world.profile }}"
+                model:           "{{ slots.model ?? world.model }}"
+                resume_from_journal: false
+                plan_revision:   "{{ world.plan_revision + 1 }}"
+                plan_feedback:   "{{ slots.feedback ?? 'plan reviewed without extra notes' }}"
+            - say: "Marathon plan updated. Review the plan, then start the marathon or refine again."
+      resume:
+        - target: intake
+          effects:
+            - set:
+                backlog_sources: "{{ slots.backlog_sources ?? world.backlog_sources }}"
+                backlog_limit:   "{{ slots.backlog_limit ?? world.backlog_limit }}"
+                run_id:          "{{ slots.run_id ?? world.run_id }}"
+                journal_path:    "{{ slots.journal_path ?? world.journal_path }}"
+                profile:         "{{ slots.profile ?? world.profile }}"
+                model:           "{{ slots.model ?? world.model }}"
+                autonomous:      true
+                resume_from_journal: true
+                backlog: { items: [] }
+                current_case: {}
+                current_case_id: ""
+                current_case_json: "{}"
+                intake_job_id: ""
+                pick_job_id: ""
+                triage_job_id: ""
+                drive_job_id: ""
+                verify_job_id: ""
+                record_job_id: ""
+                journal_job_id: ""
+                aggregate_job_id: ""
+                deck_job_id: ""
+                render_job_id: ""
+                publish_job_id: ""
+                record_status: ""
+                exception_pending: ""
+                exception_summary: ""
+                last_checkpoint: "resume"
       quit:
         - target: "@exit:abandoned"
           effects:

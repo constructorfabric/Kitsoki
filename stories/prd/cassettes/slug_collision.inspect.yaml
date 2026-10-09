@@ -1,0 +1,11 @@
+kind: inspect_cassette
+interactions:
+  - op: exists
+    target: .artifacts/prd/a-cli-for-x-that-helps
+    out: "true"
+  - op: exists
+    target: .artifacts/prd/a-cli-for-x-that-helps-2
+    out: "false"
+  - op: exists
+    target: /tmp/kitsoki-prd-fixtures/a-cli-for-x-that-helps-2.md
+    out: "false"

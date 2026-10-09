@@ -39,7 +39,7 @@ always points at a deterministic, host-local surface:
 
 ```sh
 make web
-GOCACHE=$(mktemp -d) go run ./cmd/kitsoki web --addr 127.0.0.1:7777
+GOCACHE="${KITSOKI_GOCACHE:-/private/tmp/kitsoki-gocache}" go run ./cmd/kitsoki web --addr 127.0.0.1:7777
 ```
 
 To emit a deterministic product-journey artifact bundle and Slidey deck without

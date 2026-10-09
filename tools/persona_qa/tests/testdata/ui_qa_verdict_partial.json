@@ -1,0 +1,35 @@
+{
+  "overall": "fail",
+  "summary": {"scenarios_total": 2, "passed": 1, "failed": 0, "unsupported": 1},
+  "frames_reviewed": ["0001-0ms.png"],
+  "scenarios": [
+    {
+      "id": "drive",
+      "title": "Drive the onboarding tour",
+      "required": true,
+      "status": "pass",
+      "steps": [
+        {
+          "text": "The tour opens on the welcome screen",
+          "status": "pass",
+          "evidence": [{"frame": "0001-0ms.png", "observation": "welcome banner visible"}],
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "id": "invite",
+      "title": "Invite a teammate",
+      "required": false,
+      "status": "unsupported",
+      "steps": [
+        {
+          "text": "The invite dialog appears",
+          "status": "unsupported",
+          "evidence": [],
+          "confidence": 0.2
+        }
+      ]
+    }
+  ]
+}

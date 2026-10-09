@@ -1,0 +1,62 @@
+# Example paired-task matrix for comparing normal Codex with Kitsoki CodeAct
+# action surfaces. `arena run` defaults to no-LLM arming; live execution still
+# requires --live plus ARENA_PAIRED_TASK_ENABLE_CODEX=1.
+
+job_type: paired-task
+
+targets:
+  - id: codex-codeact-action-surface
+    label: "Codex action-surface comparison"
+    image: kitsoki-arena/paired-task:latest
+    dockerfile: tools/arena/docker/Dockerfile.paired-task
+    corpus: tools/arena/corpus/cost-bench.manifest.yaml
+
+variants:
+  - id: raw-codex-gpt55
+    treatment: raw-codex
+    backend: codex
+    model: gpt-5.5
+    effort: medium
+
+  - id: codex-codeact-gpt55
+    treatment: codex-codeact
+    backend: codex
+    model: gpt-5.5
+    effort: medium
+    agent: kitsoki-codeact-driver
+    capability_preset: repo_patch
+
+  - id: kitsoki-mcp-gpt55
+    treatment: kitsoki-mcp
+    backend: codex
+    model: gpt-5.5
+    effort: medium
+    worker_profile: codex-native
+
+  - id: kitsoki-mcp-codeact-gpt55
+    treatment: kitsoki-mcp-codeact
+    backend: codex
+    model: gpt-5.5
+    effort: medium
+    worker_profile: codex-native
+    implementation_mode: codeact
+    capability_preset: repo_patch
+
+axes:
+  task:
+    - query-string-qs1-bugfix-test-repair
+
+options:
+  live_gate_env: ARENA_PAIRED_TASK_ENABLE_CODEX
+  capability_presets:
+    repo_patch:
+      fs:
+        read: ["**"]
+        write: ["**"]
+        max_bytes: 1048576
+      vcs: read
+
+placement:
+  hosts: [local]
+  concurrency: 1
+  retry: 0

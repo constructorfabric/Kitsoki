@@ -19,13 +19,12 @@ states:
       - prose: "Re-running preflight/verify and re-auditing prepared MCP handoffs is free and deterministic. If this pass does not change completion blockers, the flow routes back to scoring and then to running."
     on_enter:
       - when: "world.repo_dir == ''"
-        invoke: host.run
+        invoke: host.bakeoff.run
         id: repair_preflight
         once: true
         with:
-          cmd: python3
+          op: bench
           args:
-            - "bench.py"
             - "preflight"
             - "--project"
             - "{{ world.project }}"
@@ -39,13 +38,12 @@ states:
           preflight_log: stdout
         on_error: scoring
       - when: "world.repo_dir == ''"
-        invoke: host.run
+        invoke: host.bakeoff.run
         id: repair_verify
         once: true
         with:
-          cmd: python3
+          op: bench
           args:
-            - "bench.py"
             - "verify"
             - "--project"
             - "{{ world.project }}"
@@ -57,11 +55,11 @@ states:
           verify_log: stdout
         on_error: scoring
       - when: "world.repo_dir == ''"
-        invoke: host.run
+        invoke: host.bakeoff.run
         id: repair_prepare_handoffs
         once: true
         with:
-          cmd: "./prepare_handoffs.sh"
+          op: prepare_handoffs
           args:
             - "--project"
             - "{{ world.project }}"
@@ -80,13 +78,12 @@ states:
           handoffs_ready: stdout_json.ok
         on_error: scoring
       - when: "world.repo_dir != ''"
-        invoke: host.run
+        invoke: host.bakeoff.run
         id: repair_preflight_local
         once: true
         with:
-          cmd: python3
+          op: bench
           args:
-            - "bench.py"
             - "preflight"
             - "--project"
             - "{{ world.project }}"
@@ -102,13 +99,12 @@ states:
           preflight_log: stdout
         on_error: scoring
       - when: "world.repo_dir != ''"
-        invoke: host.run
+        invoke: host.bakeoff.run
         id: repair_verify_local
         once: true
         with:
-          cmd: python3
+          op: bench
           args:
-            - "bench.py"
             - "verify"
             - "--project"
             - "{{ world.project }}"
@@ -122,11 +118,11 @@ states:
           verify_log: stdout
         on_error: scoring
       - when: "world.repo_dir != ''"
-        invoke: host.run
+        invoke: host.bakeoff.run
         id: repair_prepare_handoffs_local
         once: true
         with:
-          cmd: "./prepare_handoffs.sh"
+          op: prepare_handoffs
           args:
             - "--project"
             - "{{ world.project }}"

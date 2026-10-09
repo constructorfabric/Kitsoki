@@ -1,0 +1,20 @@
+{
+  "name": "kitsoki-tour-player",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/tour-player.esm.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test test/*.test.mjs",
+    "typecheck": "tsc --noEmit",
+    "verify:pog-portal": "node scripts/verify-pog-portal.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0",
+    "jsdom": "^25.0.0",
+    "playwright-core": "^1.61.1",
+    "typescript": "^5.8.3"
+  }
+}

@@ -42,8 +42,6 @@ import (
 	jsonschema "github.com/santhosh-tekuri/jsonschema/v6"
 )
 
-// mutationTools is shared with agent_ask.go and now covers decide too.
-
 // decideDefaultMaxRetries is the per-submission retry budget for the decide
 // validator. Mirrors validatorDefaultMaxRetries in agent_ask_with_mcp.go.
 const decideDefaultMaxRetries = 5
@@ -93,20 +91,33 @@ exit the conversation without submitting.`
 //     validator: was declared).
 //   - claude_session_id (string): recorded in trace; not meant for YAML binding.
 func AgentDecideHandler(ctx context.Context, args map[string]any) (Result, error) {
+	return runAgentVerbWithLadder(ctx, args, "decide", agentDecideHandlerOnce)
+}
+
+// agentDecideHandlerOnce is the original AgentDecideHandler body: a single
+// dispatch attempt. runAgentVerbWithLadder calls it once directly when no
+// harness_ladder: is configured (today's behavior, unchanged), or repeatedly
+// — once per ladder rung, each with its own ctx via WithLadderRung — when one
+// is. See applyLadderRung for how a rung overrides the resolved agent.
+func agentDecideHandlerOnce(ctx context.Context, args map[string]any) (Result, error) {
 	if args == nil {
 		args = map[string]any{}
+	}
+	sandbox, sandboxErr := parseAgentSandbox(args)
+	if sandboxErr != "" {
+		return Result{Error: "host.agent.decide: " + sandboxErr, FailureKind: FailureFatal}, nil
 	}
 
 	// schema: is mandatory for decide.
 	schemaArg, _ := args["schema"].(string)
 	if strings.TrimSpace(schemaArg) == "" {
-		return Result{Error: "host.agent.decide: schema: argument is required"}, nil
+		return Result{Error: "host.agent.decide: schema: argument is required", FailureKind: FailureFatal}, nil
 	}
 
 	// Resolve prompt.
 	rendered, errMsg := resolveDecidePrompt(ctx, args)
 	if errMsg != "" {
-		return Result{Error: errMsg}, nil
+		return Result{Error: errMsg, FailureKind: FailureFatal}, nil
 	}
 
 	// B-7: If an agent plugin registry is wired in context, route through
@@ -123,46 +134,66 @@ func AgentDecideHandler(ctx context.Context, args map[string]any) (Result, error
 			pluginSchemaJSON = json.RawMessage(`"` + strings.TrimSpace(schemaArg) + `"`)
 		}
 	}
-	if pluginRes, handled, pluginErr := TryDispatchVerb(ctx, "decide", rendered, "", agentNameFromArgs(args), "", withArgs, pluginSchemaJSON); handled {
-		if pluginErr != nil {
-			return Result{Error: pluginErr.Error()}, nil
+	if sandbox == nil {
+		if pluginRes, handled, pluginErr := TryDispatchVerb(ctx, "decide", rendered, "", agentNameFromArgs(args), "", withArgs, pluginSchemaJSON); handled {
+			if pluginErr != nil {
+				return Result{Error: pluginErr.Error()}, nil
+			}
+			return pluginRes, nil
 		}
-		return pluginRes, nil
 	}
 
 	// Resolve agent and validate tools.
 	agent, _ := resolveAgent(ctx, args)
 	ctx, agent = applyProvider(ctx, args, agent)
-	if errMsg := rejectMutationTools(ctx, args, agent); errMsg != "" {
-		return Result{Error: errMsg}, nil
-	}
+	ctx, agent = applyLadderRung(ctx, agent)
 
 	bin, err := resolveAgentBin(ctx)
 	if err != nil {
-		return Result{Error: err.Error()}, nil
+		// The selected backend's CLI binary is missing/unavailable — this is
+		// exactly the axis the ladder rotates on (a different rung may name a
+		// different backend), so classify as infra rather than fatal.
+		return Result{Error: err.Error(), FailureKind: FailureInfra}, nil
 	}
 
 	workingDir, _ := args["working_dir"].(string)
 	workingDir = appendDefaultCwd(workingDir, agent)
 
-	// Build base CLI args.
-	cliArgs := buildBaseCLIArgs(ctx, sysprompt.Decide, args, agent)
-
 	// Resolve effective tools and apply Bash MCP rewrite if Bash is present.
 	// For decide calls, Bash must have a BashProfile (enforced by the loader;
 	// the runtime check below is a safety net).
-	tools := effectiveTools(ctx, args, agent)
+	policy := enforceToolbox(ctx, args, agent, "default", ToolboxEnforcementOptions{
+		EffectCeiling:       "read",
+		ReadOnlyDeniedTools: readOnlyAgentVerbDeniedTools,
+	})
+	tools := policy.AllowedTools
+	agent = applyNoToolsContract(agent, policy)
+	// Build base CLI args.
+	cliArgs := buildBaseCLIArgs(ctx, sysprompt.Decide, args, agent)
+	cliArgs = setPermissionMode(cliArgs, policy.CLIMode)
 	hasBash, bashErrMsg := validateBashProfile("host.agent.decide", tools, agent)
 	if bashErrMsg != "" {
-		return Result{Error: bashErrMsg}, nil
+		return Result{Error: bashErrMsg, FailureKind: FailureFatal}, nil
 	}
 	if hasBash {
 		tools = rewriteToolsForBashMCP(tools)
 	}
+	cliArgs = appendDisallowedToolsFlag(cliArgs, policy.DeniedTools)
+	// schema: is mandatory for decide (checked above), so the validator MCP
+	// server is always auto-attached below as "validator", exposing
+	// mcp__validator__submit. Add it to the allowed tools so the agent can
+	// call submit() even though the CLI permission mode is always "default"
+	// here (decide's EffectCeiling forces the read-only ceiling) — without
+	// this the tool is outside --allowedTools, so the CLI treats it as
+	// ungranted and blocks on an interactive permission prompt that a
+	// headless `-p` run can never answer. This mirrors the
+	// mcp__validator__submit wiring in agent_task.go's acceptance-schema path.
+	tools = append(tools, "mcp__validator__submit")
 	// Forward operator questions into kitsoki when a live surface is attached.
 	var opAskCleanup func()
 	cliArgs, tools, opAskCleanup, _ = attachOperatorAsk(ctx, cliArgs, tools)
 	defer opAskCleanup()
+	policy = policy.WithAllowed(tools)
 	if len(tools) > 0 {
 		cliArgs = appendAllowedToolsFlag(cliArgs, tools)
 	}
@@ -170,15 +201,14 @@ func AgentDecideHandler(ctx context.Context, args map[string]any) (Result, error
 	// Parse optional validator block.
 	vopts, vparseErr := parseValidatorOptions(args)
 	if vparseErr != "" {
-		return Result{Error: fmt.Sprintf("host.agent.decide: %s", vparseErr)}, nil
+		return Result{Error: fmt.Sprintf("host.agent.decide: %s", vparseErr), FailureKind: FailureFatal}, nil
 	}
 	_, validatorBlockPresent := args["validator"]
 
 	// Build merged mcp_servers map with auto-attached submit validator.
-	callerServers, _ := args["mcp_servers"].(map[string]any)
-	mcpServers := make(map[string]any, len(callerServers)+1)
-	for k, v := range callerServers {
-		mcpServers[k] = v
+	mcpServers := effectiveMCPServers(args, agent)
+	if mcpServers == nil {
+		mcpServers = make(map[string]any)
 	}
 
 	// Attach kitsoki-bash MCP server when Bash is in the tool list.
@@ -221,8 +251,10 @@ func AgentDecideHandler(ctx context.Context, args map[string]any) (Result, error
 			// so post_cmd never runs unsandboxed inside mcp-validator. The decide
 			// handler runs post_cmd itself via RunValidatorSandboxed (below).
 			schemaOnlyOpts := validatorOptions{
-				MaxRetries:    vopts.MaxRetries,
-				StateFilePath: validatorStateFilePath,
+				MaxRetries:          vopts.MaxRetries,
+				MinInformationRatio: vopts.MinInformationRatio,
+				MinInformationBits:  vopts.MinInformationBits,
+				StateFilePath:       validatorStateFilePath,
 			}
 			// Add the state file path to vopts so the sandbox loop can read state.
 			vopts.StateFilePath = validatorStateFilePath
@@ -239,6 +271,8 @@ func AgentDecideHandler(ctx context.Context, args map[string]any) (Result, error
 			mcpServers["validator"] = validatorEntry
 		}
 	}
+
+	mcpServers = attachStudioMCPServer(mcpServers, tools)
 
 	// Materialize mcp_servers into a temp config file.
 	if len(mcpServers) > 0 {
@@ -268,7 +302,7 @@ func AgentDecideHandler(ctx context.Context, args map[string]any) (Result, error
 	// Wave 3-agent: write AgentCalled to the JSONL sink at dispatch time.
 	decidePromptRef, _ := args["prompt_path"].(string)
 	dOverlay, dDefaulted, dOverridden := promptTraceProvenance(ctx, decidePromptRef)
-	appendAgentCalledEvent(ctx, callStart, callID, rendered, AgentCalledPayload{
+	appendAgentCalledEvent(ctx, callStart, callID, rendered, policy.AgentCalledFields(AgentCalledPayload{
 		Verb:           "decide",
 		Agent:          agentNameFromArgs(args),
 		Model:          agent.Model,
@@ -276,7 +310,7 @@ func AgentDecideHandler(ctx context.Context, args map[string]any) (Result, error
 		PromptOverlay:  dOverlay,
 		SpecDefaulted:  dDefaulted,
 		SpecOverridden: dOverridden,
-	})
+	}))
 
 	// Always use the retry loop so the abandonment-nudge cycle fires for every
 	// decide call, not just those with an explicit validator: block.
@@ -309,6 +343,7 @@ func AgentDecideHandler(ctx context.Context, args map[string]any) (Result, error
 		MaxOuterIterations:   decideMaxOuterIterations,
 		ValidatorMaxRetries:  effectiveMaxRetries,
 		SandboxValidatorOpts: sandboxOpts,
+		Sandbox:              sandbox,
 	})
 	durationMS := time.Since(callStart).Milliseconds()
 	emitDecideJournal(ctx, callID, callStart, durationMS, agentNameFromArgs(args), agent.Model,
@@ -368,6 +403,7 @@ func emitDecideJournal(ctx context.Context, callID string, callStart time.Time, 
 			Agent:      agentName,
 			DurationMS: durationMS,
 			Error:      res.Error,
+			Meta:       ladderMetaFields(ctx, res.FailureKind),
 		})
 	} else {
 		// On a tool bypass, annotate the trace's agent.call.complete Meta so
@@ -382,6 +418,17 @@ func emitDecideJournal(ctx context.Context, callID string, callStart time.Time, 
 			}
 			meta["tool_bypassed"] = true
 			meta["verdict_recovered_from"] = "code_block"
+		}
+		if ladderMeta := ladderMetaFields(ctx, FailureNone); ladderMeta != nil {
+			if meta == nil {
+				meta = agentUsageMeta(ctx)
+			}
+			if meta == nil {
+				meta = map[string]any{}
+			}
+			for k, v := range ladderMeta {
+				meta[k] = v
+			}
 		}
 		appendAgentReturnedEvent(ctx, callEnd, callID, AgentReturnedPayload{
 			Verb:       "decide",
@@ -449,19 +496,6 @@ func resolveDecidePrompt(ctx context.Context, args map[string]any) (string, stri
 	return rendered, ""
 }
 
-// rejectMutationTools checks that neither per-call tools nor agent tools contain
-// mutation capabilities. Returns an error message if any mutation tool is found.
-// This is the runtime safety net; the loader is the primary enforcement.
-func rejectMutationTools(ctx context.Context, args map[string]any, agent Agent) string {
-	tools := effectiveTools(ctx, args, agent)
-	for _, t := range tools {
-		if mutationTools[t] {
-			return fmt.Sprintf("host.agent.decide: mutation tool %q is not permitted on decide calls; use host.agent.task for agentic work", t)
-		}
-	}
-	return ""
-}
-
 // errValidatorExceededContract is the sentinel returned when RunValidatorSandboxed
 // detects a write or network access attempt — i.e. the validator tried to mutate
 // state outside /tmp: "validator exceeded read-only contract —
@@ -522,6 +556,9 @@ type decideLoopParams struct {
 	// submission rather than delegating to mcp-validator's unsandboxed path.
 	// C1 fix: this ensures decide.validator always executes under the sandbox.
 	SandboxValidatorOpts *validatorOptions
+	// Sandbox, when non-nil, runs every decide subprocess iteration through the
+	// agent runtime, including resource limits such as timeout.
+	Sandbox *AgentSandboxSpec
 }
 
 // runDecideWithValidatorRetryLoop runs the decide call with the validator retry
@@ -602,6 +639,7 @@ func runDecideWithValidatorRetryLoop(ctx context.Context, p decideLoopParams) Re
 				CLIArgs:    iterArgs,
 				Stdin:      stdin,
 				WorkingDir: p.WorkingDir,
+				Sandbox:    p.Sandbox,
 			}.Run(ctx)
 			if streamSID != "" {
 				sessionID = streamSID
@@ -642,6 +680,7 @@ func runDecideWithValidatorRetryLoop(ctx context.Context, p decideLoopParams) Re
 				CLIArgs:    iterArgs,
 				Stdin:      stdin,
 				WorkingDir: p.WorkingDir,
+				Sandbox:    p.Sandbox,
 			}.Run(ctx)
 			if streamSID != "" {
 				sessionID = streamSID
@@ -736,8 +775,12 @@ func runDecideWithValidatorRetryLoop(ctx context.Context, p decideLoopParams) Re
 					// fix a missing interpreter or dropped import root. Return a hard
 					// Result.Error immediately. The schema-valid captured payload is
 					// still surfaced via buildDecideResult so downstream sees it.
-					return buildDecideResult(lastStdout, lastExitCode, lastStderr, p.ValidatorOutputPath, sessionID,
+					// FailureFatal: a broken validator script is unrelated to which
+					// model/backend answered, so no ladder rung can fix it either.
+					res := buildDecideResult(lastStdout, lastExitCode, lastStderr, p.ValidatorOutputPath, sessionID,
 						fmt.Sprintf("post_cmd validator failed to start: %s", infraErr))
+					res.FailureKind = FailureFatal
+					return res
 				}
 				if rejection != "" {
 					// Semantic rejection — nudge and retry.
@@ -752,7 +795,9 @@ func runDecideWithValidatorRetryLoop(ctx context.Context, p decideLoopParams) Re
 			if strings.TrimSpace(msg) == "" {
 				msg = fmt.Sprintf("validator: max retries exhausted after %d attempts", attempts)
 			}
-			return buildDecideResult(lastStdout, lastExitCode, lastStderr, p.ValidatorOutputPath, sessionID, msg)
+			res := buildDecideResult(lastStdout, lastExitCode, lastStderr, p.ValidatorOutputPath, sessionID, msg)
+			res.FailureKind = FailureCapability
+			return res
 		case mcpOutcomeAbandoned:
 			continue
 		}
@@ -764,7 +809,7 @@ func runDecideWithValidatorRetryLoop(ctx context.Context, p decideLoopParams) Re
 		if s := strings.TrimSpace(lastStderr); s != "" {
 			msg = fmt.Sprintf("%s\nstderr: %s", msg, s)
 		}
-		return Result{Error: msg}
+		return Result{Error: msg, FailureKind: FailureInfra}
 	}
 
 	attempts, _, lastErr := kitsokimcp.ReadStateFile(p.ValidatorStatePath)
@@ -783,7 +828,19 @@ func runDecideWithValidatorRetryLoop(ctx context.Context, p decideLoopParams) Re
 			msg = fmt.Sprintf("validator: session abandoned without successful submit after %d outer iteration(s), %d attempt(s)", maxOuter, attempts)
 		}
 	}
-	return buildDecideResult(lastStdout, lastExitCode, lastStderr, p.ValidatorOutputPath, sessionID, msg)
+	// If the validator never saw even one submit attempt, the active harness did
+	// not expose or honor the submit tool. More effort on the same lane will
+	// usually repeat the protocol failure, so let the ladder rotate lanes.
+	failureKind := FailureCapability
+	if attempts == 0 && strings.Contains(msg, "without successful submit") {
+		failureKind = FailureInfra
+	}
+	// Otherwise, the model ran to completion for every outer iteration but never
+	// produced an accepted verdict — a capability failure the ladder can
+	// escalate (higher effort, then a stronger model), not an infra one.
+	res := buildDecideResult(lastStdout, lastExitCode, lastStderr, p.ValidatorOutputPath, sessionID, msg)
+	res.FailureKind = failureKind
+	return res
 }
 
 // runDecideSandboxValidator reads the captured payload from outputPath and

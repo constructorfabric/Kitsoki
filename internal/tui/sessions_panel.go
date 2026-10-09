@@ -150,47 +150,71 @@ func (m sessionsPanelModel) View() string {
 		return sb.String()
 	}
 
-	// Render the header + rows using the same cell layout the inline
-	// /meta list uses (metaListColumns / metaListingCells), then
-	// column-pad to make the columns line up under the header.
-	headers := metaListColumns()
-	rows := make([][]string, 0, len(m.listings))
-	for _, l := range m.listings {
-		rows = append(rows, metaListingCells(l))
-	}
+	header, rows := m.tableRows()
+	sb.WriteString(header)
+	sb.WriteByte('\n')
+	sb.WriteString(strings.Join(rows, "\n"))
+	sb.WriteByte('\n')
+	return sb.String()
+}
 
-	widths := computeColumnWidths(headers, rows)
-	// Header row.
-	sb.WriteString("  ") // marker column padding
-	for i, h := range headers {
-		sb.WriteString(padRight(h, widths[i]))
+// ChromeView renders the sessions panel through the shared normal-screen row
+// budget. The title and column labels stay fixed when space allows; the
+// selected logical session remains visible through the window.
+func (m sessionsPanelModel) ChromeView(width, maxRows int) string {
+	if !m.active {
+		return ""
+	}
+	title := "meta sessions (↑/↓ to move, Enter to resume, Esc to close)"
+	if len(m.listings) == 0 {
+		return renderLiveOverlay([]string{title}, []string{
+			"(no active meta sessions — start one with /meta <mode>)",
+		}, 0, width, maxRows)
+	}
+	header, rows := m.tableRows()
+	return renderLiveOverlay([]string{title, header}, rows, m.selected, width, maxRows)
+}
+
+func (m sessionsPanelModel) tableRows() (string, []string) {
+	headers := metaListColumns()
+	cellsByRow := make([][]string, 0, len(m.listings))
+	for _, listing := range m.listings {
+		cellsByRow = append(cellsByRow, metaListingCells(listing))
+	}
+	widths := computeColumnWidths(headers, cellsByRow)
+
+	var header strings.Builder
+	header.WriteString("  ")
+	for i, text := range headers {
+		header.WriteString(padRight(text, widths[i]))
 		if i < len(headers)-1 {
-			sb.WriteString("  ")
+			header.WriteString("  ")
 		}
 	}
-	sb.WriteByte('\n')
 
-	for i, cells := range rows {
+	rows := make([]string, 0, len(cellsByRow))
+	for i, cells := range cellsByRow {
+		var row strings.Builder
 		marker := "  "
 		if i == m.selected {
 			marker = "▸ "
 		}
-		sb.WriteString(marker)
-		for j, c := range cells {
-			cell := padRight(c, widths[j])
+		row.WriteString(marker)
+		for j, cellText := range cells {
+			cell := padRight(cellText, widths[j])
 			if i == m.selected {
 				cell = menuItemSelectedStyle.Render(cell)
 			} else {
 				cell = menuItemStyle.Render(cell)
 			}
-			sb.WriteString(cell)
+			row.WriteString(cell)
 			if j < len(cells)-1 {
-				sb.WriteString("  ")
+				row.WriteString("  ")
 			}
 		}
-		sb.WriteByte('\n')
+		rows = append(rows, row.String())
 	}
-	return sb.String()
+	return header.String(), rows
 }
 
 // computeColumnWidths returns the per-column max display width across

@@ -151,6 +151,11 @@ states:
     on:
       to_qa:
         - target: qa
+          operation: demo_video_qa
+          effects:
+            - set:
+                qa_completion_state_path: ""
+                qa_completion_artifact_handle: ""
       # The video gate failed with budget left: carry the gate reason forward and
       # route THROUGH the thin `looping` room (not a self-target — see looping.yaml)
       # so generating's on_enter re-fires for the next maker turn.

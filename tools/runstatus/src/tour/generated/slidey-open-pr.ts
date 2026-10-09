@@ -17,7 +17,6 @@ export const SLIDEY_OPEN_PR_TOUR_STEPS: readonly TourStep[] = [
     advance: "next",
     waitForTarget: "home-view",
     dwellMs: 6000,
-    drive: [],
   },
   {
     id: "sop-intro-story",
@@ -30,7 +29,6 @@ export const SLIDEY_OPEN_PR_TOUR_STEPS: readonly TourStep[] = [
     advance: "next",
     waitForTarget: "story-card",
     dwellMs: 5500,
-    drive: [],
   },
   {
     id: "sop-intro-start",
@@ -44,7 +42,6 @@ export const SLIDEY_OPEN_PR_TOUR_STEPS: readonly TourStep[] = [
     advanceRoute: "interactive",
     waitForTarget: "new-session-btn",
     dwellMs: 3500,
-    drive: [],
   },
   {
     id: "sop-intro-observe",
@@ -57,7 +54,6 @@ export const SLIDEY_OPEN_PR_TOUR_STEPS: readonly TourStep[] = [
     advance: "next",
     waitForTarget: "observe-link",
     dwellMs: 5500,
-    drive: [],
   },
   {
     id: "sop-open",

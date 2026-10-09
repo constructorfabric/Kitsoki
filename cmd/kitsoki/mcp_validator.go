@@ -88,16 +88,18 @@ func embeddedSchemaNames() []string {
 
 func mcpValidatorCmd() *cobra.Command {
 	var (
-		schemaPath    string
-		outputPath    string
-		toolName      string
-		description   string
-		postCmd       string
-		postCmdArgs   []string
-		postCmdCwd    string
-		maxRetries    int
-		stateFilePath string
-		validateOnce  bool
+		schemaPath          string
+		outputPath          string
+		toolName            string
+		description         string
+		postCmd             string
+		postCmdArgs         []string
+		postCmdCwd          string
+		maxRetries          int
+		minInformationRatio float64
+		minInformationBits  float64
+		stateFilePath       string
+		validateOnce        bool
 	)
 	cmd := &cobra.Command{
 		Use:   "mcp-validator [name]",
@@ -195,15 +197,17 @@ The schema must be a JSON Schema object whose top-level "type" is
 			}
 
 			srv, err := kitsokimcp.NewValidatorServer(kitsokimcp.ValidatorConfig{
-				SchemaJSON:      raw,
-				ToolName:        toolName,
-				ToolDescription: description,
-				OutputPath:      outputPath,
-				PostCmd:         postCmd,
-				PostCmdArgs:     parsedArgs,
-				PostCmdCwd:      postCmdCwd,
-				MaxRetries:      maxRetries,
-				StateFilePath:   stateFilePath,
+				SchemaJSON:          raw,
+				ToolName:            toolName,
+				ToolDescription:     description,
+				OutputPath:          outputPath,
+				PostCmd:             postCmd,
+				PostCmdArgs:         parsedArgs,
+				PostCmdCwd:          postCmdCwd,
+				MaxRetries:          maxRetries,
+				MinInformationRatio: &minInformationRatio,
+				MinInformationBits:  &minInformationBits,
+				StateFilePath:       stateFilePath,
 			})
 			if err != nil {
 				return fmt.Errorf("build validator: %w", err)
@@ -249,6 +253,10 @@ The schema must be a JSON Schema object whose top-level "type" is
 	cmd.Flags().IntVar(&maxRetries, "max-retries", 5,
 		"max submit attempts (schema-fail + post-cmd-fail combined). On exhaustion the next call "+
 			"returns a final-error response and Run() reports OutcomeRetriesExhausted.")
+	cmd.Flags().Float64Var(&minInformationRatio, "min-information-ratio", kitsokimcp.DefaultMinInformationRatio,
+		"reject a schema-valid submission below this fraction of the richest parsed attempt (0 disables)")
+	cmd.Flags().Float64Var(&minInformationBits, "min-information-bits", kitsokimcp.DefaultMinInformationBits,
+		"activate the relative information gate only after an attempt reaches this Shannon-information score")
 	cmd.Flags().StringVar(&stateFilePath, "state-file", "",
 		"persist session counters (attempts/successful_submits/last_error) to this JSON file. "+
 			"At startup the file is read to seed counters; after every submit it is rewritten "+

@@ -2,7 +2,7 @@
 # advances the workbench and never mutates world.
 #
 # The landing declares agent_off_ramp: { agent: agent_qa }. In a LIVE run
-# (web / TUI / dogfood), free text the router maps to no declared intent is
+# (web or TUI), free text the router maps to no declared intent is
 # answered IN PLACE by a read-only converse turn (ModeOffPath) — the room
 # stays put, the quick actions are still there next turn. That converse
 # answer is the genuinely-LLM step and is exercised by the deterministic web

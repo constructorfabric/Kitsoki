@@ -1,0 +1,45 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.product_journey.run:
+    by_call:
+      validate_autonomous_marathon_smoke_ledger:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: invalid
+            summary: ledger path missing
+            ledger_path: ""
+            ledger_markdown_path: ""
+            min_cycle_count: 1
+            errors: 1
+            warnings: 0
+            issues:
+              - severity: error
+                id: ledger-path
+                message: Autonomous marathon smoke ledger path was not provided
+
+turns:
+  - intent:
+      name: validate_marathon_smoke_ledger
+      slots: {}
+    expect_state: idle
+    expect_world:
+      status: marathon_smoke_ledger_validated
+      marathon_smoke_ledger_validation_status: invalid
+      marathon_smoke_ledger_validation_summary: ledger path missing
+      marathon_smoke_ledger_validation_errors: 1
+      marathon_smoke_ledger_validation_warnings: 0
+      marathon_smoke_ledger_validation_cycle_count: 0
+      marathon_smoke_ledger_validation_min_cycle_count: 1
+      marathon_smoke_ledger_validation_path: ""
+      marathon_smoke_ledger_validation_markdown_path: ""
+    expect_host_calls:
+      - handler: host.product_journey.run
+        args: { call: validate_autonomous_marathon_smoke_ledger }
+    expect_view_matches: "PRODUCT JOURNEY QA[\\s\\S]*Marathon ledger validation[\\s\\S]*invalid: ledger path missing[\\s\\S]*cycles=0, min=1[\\s\\S]*Status[\\s\\S]*marathon_smoke_ledger_validated"
+
+expect_no_errors: true

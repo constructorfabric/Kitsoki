@@ -1,6 +1,6 @@
 ---
 name: kitsoki-ui-review
-description: Heuristic UI layout & usability review of the kitsoki web UI. Walks the onboarding tour manifest at mobile/tablet/desktop, runs a deterministic DOM-geometry + axe-core audit per step, then fans the frames out across MULTIPLE read-only claude vision agents (one per surface, so no single agent holds every image) that critique each surface against a Nielsen-based heuristic catalog, adversarially re-checked, and emits a gated review-report.md + verdict.json with concrete fixes. Use when asked to review / critique / find layout, usability, responsive, or accessibility problems in the kitsoki web UI — distinct from kitsoki-ui-qa (which checks "does the demo SHOW scenario X").
+description: Heuristic UI layout & usability review of the kitsoki web UI. Walks the onboarding tour manifest at mobile/tablet/desktop, runs a deterministic DOM-geometry + axe-core audit per step, then fans the frames out across MULTIPLE read-only local vision reviewers (Codex, Claude, or agy; one per surface, so no single agent holds every image) that critique each surface against a Nielsen-based heuristic catalog, adversarially re-checked, and emits a gated review-report.md + verdict.json with concrete fixes. Use when asked to review / critique / find layout, usability, responsive, or accessibility problems in the kitsoki web UI — distinct from kitsoki-ui-qa (which checks "does the demo SHOW scenario X").
 ---
 
 # Kitsoki UI layout & usability review
@@ -18,10 +18,11 @@ this review — [[project_onboarding_tour_generic]]).
 
 > LLM-driven review **by design** (it needs vision). It is NOT a no-LLM flow test
 > and must never be wired into the automated suite (CLAUDE.md,
-> [[feedback_no_llm_tests]]). It uses the local `claude` CLI, so — like the
-> engine's oracle — there's no API key and no per-call cost
-> ([[project_oracle_uses_claude_cli]]). Stage 1 (capture) and stage 3 (report)
-> are fully deterministic and testable without any LLM.
+> [[feedback_no_llm_tests]]). It uses the first available local agent CLI from
+> `codex`, `claude`, and `agy` (`--reviewer auto` by default). An explicit
+> reviewer is treated as a preference and still falls back to the others if that
+> harness is unavailable or fails. Stage 1 (capture) and stage 3 (report) are
+> fully deterministic and testable without any LLM.
 
 ## Why it's reliable (read this first)
 
@@ -34,7 +35,7 @@ this review — [[project_onboarding_tour_generic]]).
    truth — the vision pass never has to guess at them.
 2. **Many small agents, not one big one.** Stage 2 shards the frames (default:
    one tour step = that surface across all viewports, ~3 frames) and fans them
-   out across several **independent read-only `claude` vision agents** running in
+   out across several **independent read-only local vision reviewers** running in
    parallel. No single agent's context holds the whole frame set — each judges a
    coherent handful against the heuristic catalog, with that surface's audit
    findings handed in as already-known truth.
@@ -48,9 +49,10 @@ this review — [[project_onboarding_tour_generic]]).
 
 ## Prerequisites
 
-`pnpm`, `ffmpeg`-free (no video here), `jq`, and the `claude` CLI on PATH. The
-`@axe-core/playwright` dev dep is installed in `tools/runstatus`. Stage 1 runs
-`make build` to embed the current SPA (override with `--no-build`).
+`pnpm`, `ffmpeg`-free (no video here), `jq`, and at least one local reviewer CLI
+on PATH: `codex`, `claude`, or `agy`. The `@axe-core/playwright` dev dep is
+installed in `tools/runstatus`. Stage 1 runs `make build` to embed the current
+SPA (override with `--no-build`).
 
 ## The loop
 
@@ -85,7 +87,7 @@ this review — [[project_onboarding_tour_generic]]).
 S=.agents/skills/kitsoki-ui-review/scripts
 $S/ui-review.sh --viewports desktop                 # one viewport (fast)
 $S/ui-review.sh --no-build --no-capture --strict    # re-review existing frames
-$S/ui-review.sh --model claude-sonnet-4-6 --jobs 6   # cheaper/faster, more parallel
+$S/ui-review.sh --reviewer codex,claude --jobs 6     # prefer an order, still fallback
 $S/capture.sh --fast --viewports desktop             # capture only (no LLM)
 ```
 
@@ -93,12 +95,16 @@ $S/capture.sh --fast --viewports desktop             # capture only (no LLM)
 
 | Script | Stage | Does | LLM? |
 |---|---|---|---|
-| `ui-review.sh [--viewports …] [--design-intent F] [--model M] [--jobs N] [--shard step\|viewport] [--no-adversary] [--strict] [--no-build] [--no-capture]` | all | One-shot wrapper; exit code is the gate | via review |
+| `ui-review.sh [--viewports …] [--design-intent F] [--model M] [--reviewer auto\|codex\|claude\|agy\|ORDER] [--jobs N] [--shard step\|viewport] [--no-adversary] [--strict] [--no-build] [--no-capture]` | all | One-shot wrapper; exit code is the gate | via review |
 | `capture.sh [--no-build] [--viewports a,b,c] [--fast]` | 1 | `make build` + run the `tour-review` spec → `frames/` + `audit.json` | no |
-| `review.sh --audit A --frames D --heuristics H --out vision.json [--design-intent F] [--model M] [--jobs N] [--shard step\|viewport] [--no-adversary]` | 2 | Shard frames → parallel read-only vision agents → adversarial re-check → merged `vision.json` | **yes** |
+| `review.sh --audit A --frames D --heuristics H --out vision.json [--design-intent F] [--model M] [--reviewer auto\|codex\|claude\|agy\|ORDER] [--jobs N] [--shard step\|viewport] [--no-adversary]` | 2 | Shard frames → parallel read-only vision agents → adversarial re-check → merged `vision.json` | **yes** |
 | `report.sh --audit A --vision V --out report.md --verdict verdict.json [--strict]` | 3 | Merge deterministic + vision findings → report + recompute gate exit | no |
 
-Defaults: model `claude-opus-4-8`; `--jobs 4`; shard by `step`; adversary on;
+Defaults: reviewer `auto` (`codex claude agy`, adjusted when the model name
+clearly targets Claude or Gemini), using each CLI's configured default model.
+Override with `KITSOKI_UI_REVIEW_MODEL` / `--model`, or per-backend overrides
+`KITSOKI_UI_REVIEW_CODEX_MODEL`, `KITSOKI_UI_REVIEW_CLAUDE_MODEL`, and
+`KITSOKI_UI_REVIEW_AGY_MODEL`. `--jobs 4`; shard by `step`; adversary on;
 viewports `desktop,tablet,mobile`.
 
 ## Capture spec & audit (the deterministic half)
@@ -158,7 +164,7 @@ JSON with full context but are not expanded as cards, to keep the report skimmab
   [`docs/stories/ui-fix.md`](../../stories/ui-fix.md).
 - Sibling skills: [[kitsoki-ui-demo]] (records a video), [[kitsoki-ui-qa]]
   (scenario validation), `kitsoki-web-debug` (when the UI is actually broken/500ing).
-- The vision agent is the local `claude` CLI: `internal/host/oracle_runner.go`.
+- Vision reviewers use the local agent CLIs: `codex`, `claude`, or `agy`.
 
 ## Maintenance
 

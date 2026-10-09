@@ -11,6 +11,7 @@ import (
 )
 
 func kmsg(t tea.KeyType) tea.KeyMsg { return tea.KeyMsg{Type: t} }
+func rmsg(s string) tea.KeyMsg      { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)} }
 
 // drive feeds a sequence of keys through the model, returning the final model
 // and the first non-nil result encountered (the commit/cancel signal).
@@ -19,6 +20,18 @@ func drive(m operatorQuestionModel, keys ...tea.KeyType) (operatorQuestionModel,
 	for _, k := range keys {
 		var r *operatorQuestionResult
 		m, _, r = m.Update(kmsg(k))
+		if r != nil {
+			res = r
+		}
+	}
+	return m, res
+}
+
+func driveMsgs(m operatorQuestionModel, msgs ...tea.Msg) (operatorQuestionModel, *operatorQuestionResult) {
+	var res *operatorQuestionResult
+	for _, msg := range msgs {
+		var r *operatorQuestionResult
+		m, _, r = m.Update(msg)
 		if r != nil {
 			res = r
 		}
@@ -46,6 +59,56 @@ func TestOperatorQuestion_SingleSelectAnswersByLabel(t *testing.T) {
 	require.NotNil(t, res)
 	assert.False(t, res.Cancel)
 	assert.Equal(t, map[string]any{"Ship it?": "No"}, res.Answers)
+}
+
+func TestOperatorQuestion_SingleSelectCustomAnswer(t *testing.T) {
+	var m operatorQuestionModel
+	require.NoError(t, m.Open([]host.OperatorQuestion{{
+		Question: "Ship it?",
+		Header:   "Ship",
+		Options:  []host.OperatorOption{{Label: "Yes"}, {Label: "No"}},
+	}}, make(chan map[string]any, 1)))
+
+	// Cursor down past the listed answers to Custom answer, type text, then Enter.
+	m, res := drive(m, tea.KeyDown, tea.KeyDown)
+	require.Nil(t, res)
+	_, res = driveMsgs(m, rmsg("Canary"), kmsg(tea.KeySpace), rmsg("after"), kmsg(tea.KeySpace), rmsg("checks"), kmsg(tea.KeyEnter))
+
+	require.NotNil(t, res)
+	assert.False(t, res.Cancel)
+	assert.Equal(t, map[string]any{"Ship it?": "Canary after checks"}, res.Answers)
+}
+
+func TestOperatorQuestion_SingleSelectCustomAnswerRequiresText(t *testing.T) {
+	var m operatorQuestionModel
+	require.NoError(t, m.Open([]host.OperatorQuestion{{
+		Question: "Ship it?",
+		Header:   "Ship",
+		Options:  []host.OperatorOption{{Label: "Yes"}, {Label: "No"}},
+	}}, make(chan map[string]any, 1)))
+
+	m, res := drive(m, tea.KeyDown, tea.KeyDown, tea.KeyEnter)
+	assert.Nil(t, res)
+	assert.True(t, m.IsActive())
+	assert.Contains(t, m.View(60), "type a custom answer")
+}
+
+func TestOperatorQuestion_SingleSelectRendersCustomAffordance(t *testing.T) {
+	var m operatorQuestionModel
+	require.NoError(t, m.Open([]host.OperatorQuestion{{
+		Question: "Ship it?",
+		Header:   "Ship",
+		Options: []host.OperatorOption{
+			{Label: "Yes", Description: "deploy now"},
+			{Label: "No", Description: "stop"},
+		},
+	}}, make(chan map[string]any, 1)))
+
+	analyzer := NewRenderingAnalyzer(t, m.View(70))
+	analyzer.AssertContains("Custom answer")
+	analyzer.AssertContains("type your own response")
+	analyzer.AssertContains("type on Custom answer")
+	analyzer.AssertLineSeparation("No", "Custom answer")
 }
 
 func TestOperatorQuestion_MultiSelectAnswersByLabelList(t *testing.T) {

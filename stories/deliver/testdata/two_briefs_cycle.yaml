@@ -1,0 +1,48 @@
+coverage_note: >
+  Invalid fixture used by the decomposition-graph validator gate. The two
+  briefs intentionally depend on each other so the validator must reject the
+  dependency DAG before any runtime tries to drive it.
+briefs:
+  - id: cycle-a
+    wall: WD
+    goal_ref: [G1]
+    title: Invalid cycle A
+    kind: runtime
+    brief: "Invalid fixture node A."
+    goal: "This invalid fixture should never be accepted by the graph validator."
+    scope: ["internal/health/**"]
+    depends_on: [cycle-b]
+    deps: [cycle-b]
+    acceptance:
+      - "This invalid fixture is rejected."
+    gate:
+      class: G-GOTEST
+      red_now: "Cycle fixture exists."
+      green_when: "The validator rejects this fixture."
+      cmd: "go test ./internal/health/..."
+    gate_command: "go test ./internal/health/..."
+    agent_brief: >
+      This is an intentionally invalid decomposition-graph fixture. It must be
+      rejected because cycle-a and cycle-b depend on each other.
+
+  - id: cycle-b
+    wall: WD
+    goal_ref: [G1]
+    title: Invalid cycle B
+    kind: runtime
+    brief: "Invalid fixture node B."
+    goal: "This invalid fixture should never be accepted by the graph validator."
+    scope: ["internal/handler/**"]
+    depends_on: [cycle-a]
+    deps: [cycle-a]
+    acceptance:
+      - "This invalid fixture is rejected."
+    gate:
+      class: G-GOTEST
+      red_now: "Cycle fixture exists."
+      green_when: "The validator rejects this fixture."
+      cmd: "go test ./internal/handler/..."
+    gate_command: "go test ./internal/handler/..."
+    agent_brief: >
+      This is an intentionally invalid decomposition-graph fixture. It must be
+      rejected because cycle-b and cycle-a depend on each other.

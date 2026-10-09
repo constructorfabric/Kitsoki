@@ -1,0 +1,12 @@
+schema: capsule-definition/v1
+id: development
+description: Protected Kitsoki development workspace through the migration adapter.
+source:
+  kind: dev-workspace-script
+  development:
+    base: staging/local
+    target: staging/local
+    branch_prefix: agent/
+    bootstrap: true
+policy:
+  network: none

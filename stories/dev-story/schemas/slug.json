@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "slug",
-  "description": "A short, meaningful kebab-case slug for the proposal, named by the LLM from the idea (NOT a raw sentence). Uniqueness is enforced deterministically downstream (design_workspace.py), but the namer should still avoid obviously-taken names.",
+  "description": "A short, meaningful kebab-case slug for the proposal, named by the LLM from the idea (NOT a raw sentence). Uniqueness is enforced deterministically downstream (design_workspace.star), but the namer should still avoid obviously-taken names.",
   "type": "object",
   "required": ["slug", "rationale"],
   "properties": {

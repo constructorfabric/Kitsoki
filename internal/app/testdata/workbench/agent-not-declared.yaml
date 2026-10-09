@@ -1,0 +1,15 @@
+app:
+  id: wb-agent-not-declared
+  version: 0.1.0
+hosts:
+  - host.agent.task
+intents:
+  go:
+    title: Go
+root: bench
+states:
+  bench:
+    workbench:
+      agent: ghost
+      prompt: prompts/bench.md
+      acceptance_schema: schemas/out.json

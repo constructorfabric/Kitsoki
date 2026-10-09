@@ -1,0 +1,85 @@
+states:
+
+  idle:
+    description: "Ask how to do something."
+    relevant_world: [tour_v2, tour_v1_steps, plan_error]
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: 'Ask how to do something, e.g. "how do I use agent actions".'
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "ask"
+                  hint: "plan and validate a tour for a known feature"
+    # Post-bind routing (mirrors stories/git-ops/rooms/cleanup.yaml): `ask`
+    # self-targets so the invoke+bind effects land in world BEFORE routing
+    # decides where to go, then on_enter's guard reads the now-bound world
+    # to emit the intent that actually navigates.
+    on_enter:
+      - when: "world.tour_v1_steps != nil"
+        emit_intent: tour_ready
+    on:
+      ask:
+        - target: idle
+          effects:
+            - set:
+                plan_error: ""
+                tour_v2: {}
+                tour_v1_steps: {}
+            - invoke: host.tour.plan
+              with:
+                feature_id: "{{ slots.feature_id }}"
+              bind:
+                tour_v2: tour
+              on_error: not_found
+            - invoke: host.tour.validate
+              with:
+                tour: "{{ world.tour_v2 }}"
+              bind:
+                tour_v1_steps: v1_steps
+              on_error: not_found
+      tour_ready:
+        - target: planned
+
+  planned:
+    description: "A validated tour is ready to push to the live session."
+    relevant_world: [tour_v2, tour_v1_steps]
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "Here's how — the tour is ready and pushed to your session."
+          - kv:
+              pairs:
+                Tour: '{{ world.tour_v2.id }}'
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "ask"
+    on:
+      ask:
+        - target: idle
+
+  not_found:
+    description: "No plannable tour for that question."
+    relevant_world: [plan_error]
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "I don't have a tour for that yet."
+          - kv:
+              pairs:
+                Reason: '{{ world.plan_error }}'
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "ask"
+    on:
+      ask:
+        - target: idle
